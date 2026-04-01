@@ -8,11 +8,13 @@ using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -253,10 +255,14 @@ public class IdentityHardeningTests
         var http = new DefaultHttpContext();
         var tempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 
+        var piiProtector = new PiiProtector(new ServiceCollection()
+            .AddDataProtection().Services
+            .BuildServiceProvider()
+            .GetRequiredService<IDataProtectionProvider>());
         var controller = new OnboardingController(
             db, config, provisioning,
             NullLogger<OnboardingController>.Instance,
-            emailSender)
+            emailSender, piiProtector)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = tempData
@@ -315,10 +321,14 @@ public class IdentityHardeningTests
         http.Request.Host = new HostString("portal.mylegnd.com");
         var tempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 
+        var piiProtector = new PiiProtector(new ServiceCollection()
+            .AddDataProtection().Services
+            .BuildServiceProvider()
+            .GetRequiredService<IDataProtectionProvider>());
         var controller = new OnboardingController(
             db, config, provisioning,
             NullLogger<OnboardingController>.Instance,
-            emailSender)
+            emailSender, piiProtector)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = tempData

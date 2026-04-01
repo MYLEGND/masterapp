@@ -93,7 +93,13 @@ builder.Services.AddHealthChecks()
     .AddCheck<DbReadinessCheck>("db", tags: ["ready"]);
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-builder.Services.AddSignalR();
+// Application Insights telemetry (activated when APPLICATIONINSIGHTS_CONNECTION_STRING is set)
+builder.Services.AddApplicationInsightsTelemetry();
+
+var signalRBuilder = builder.Services.AddSignalR();
+var redisConn = builder.Configuration["SignalR:RedisConnectionString"];
+if (!string.IsNullOrWhiteSpace(redisConn))
+    signalRBuilder.AddStackExchangeRedis(redisConn);
 
 // CORS for ingest endpoints (allow local testing + portal host)
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
@@ -328,6 +334,16 @@ static string ResolveSqliteForEnvironment(IWebHostEnvironment env)
 
 var sqliteConn = useSqlServer ? null : ResolveSqliteForEnvironment(builder.Environment);
 
+// PRODUCTION GUARD: OWNER_EMAIL must be set in production.
+var ownerEmail = builder.Configuration["OWNER_EMAIL"] ?? Environment.GetEnvironmentVariable("OWNER_EMAIL");
+if (string.IsNullOrWhiteSpace(ownerEmail) &&
+    string.Equals(builder.Environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException(
+        "STARTUP BLOCKED: OWNER_EMAIL environment variable is required in Production. " +
+        "Set it in Azure Portal → App Service → Configuration → Application settings.");
+}
+
 // PRODUCTION GUARD: refuse to start on SQLite when running on Azure App Service.
 // If WEBSITE_SITE_NAME is set, we are in a hosted/deployed environment and must have
 // a SQL Server connection string. A missing or misconfigured connection string must
@@ -505,7 +521,7 @@ app.Use(async (context, next) =>
         var csp = "default-src 'self'; " +
                   "img-src 'self' data: blob: https:; " +
                   "style-src 'self' 'unsafe-inline' https:; " +
-                  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+                  "script-src 'self' 'unsafe-inline' https:; " +
                   "font-src 'self' data: https:; " +
                   "connect-src 'self' https: wss:; " +
                   "frame-ancestors 'self';";

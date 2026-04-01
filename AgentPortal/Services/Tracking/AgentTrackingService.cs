@@ -20,7 +20,7 @@ public sealed class AgentTrackingService : IAgentTrackingService
         _db = db;
         _logger = logger;
         _publicBaseUrl = config["Protect:PublicBaseUrl"] ?? "https://protect.mylegnd.com";
-        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
     public async Task<AgentTrackingProfile?> GetByUserIdAsync(string agentUserId, CancellationToken ct = default)

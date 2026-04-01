@@ -28,7 +28,7 @@ namespace AgentPortal.Controllers;
             _tracking = tracking;
             _logger = logger;
             _db = db;
-            _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+            _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
             _config = config;
             _effectiveContext = effectiveContext;
         }

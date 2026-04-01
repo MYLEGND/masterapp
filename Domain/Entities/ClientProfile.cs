@@ -64,4 +64,6 @@ public class ClientProfile
     // ============================
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
+
+    public byte[] RowVersion { get; set; } = Array.Empty<byte>();
 }

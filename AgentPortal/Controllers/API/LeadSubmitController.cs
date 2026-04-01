@@ -30,7 +30,7 @@ public class LeadSubmitController : ControllerBase
         _emailSender = emailSender;
         _resolver = resolver;
         _logger = logger;
-        _founderUpn = _config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = _config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
     public sealed class LeadSubmitRequest

@@ -96,6 +96,8 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
             else
                 e.HasIndex(x => x.NormalizedEmail).IsUnique();
+
+            e.Property(x => x.RowVersion).IsRowVersion();
         });
 
         // ==========================================================
@@ -386,6 +388,8 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.AgentUserId, x.OriginalLeadType });
             e.HasIndex(x => x.Phone);
             e.HasIndex(x => x.Email);
+
+            e.Property(x => x.RowVersion).IsRowVersion();
         });
 
         // PROPOSALS
@@ -654,6 +658,8 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.LeadId);
             e.HasIndex(x => x.ClientUserId);
             e.HasIndex(x => x.Status);
+
+            e.Property(x => x.RowVersion).IsRowVersion();
         });
     }
 }
