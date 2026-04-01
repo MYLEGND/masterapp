@@ -1,0 +1,397 @@
+@model Protect_Website.Models.LifeQuoteFormModel
+
+@{
+    ViewData["Title"] = "Life Insurance Quote";
+    ViewData["PageKey"] = "quote_life";
+}
+
+<div class="container-narrow">
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Life Insurance Quote
+        </h1>
+    </div>
+
+    <p class="required-note text-center">
+        <strong>
+            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+        </strong>
+    </p>
+
+<style>
+    body { background-color: #0f172a; color: #f8fafc; }
+
+    .section-card {
+        background-color: #0f172a;
+        border: 1.6px solid #c79931;
+        padding: 24px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+        color: #f8fafc;
+    }
+
+    .section-title {
+        font-size: 1.4rem;
+        font-weight: 900;
+        color: #c79931;
+        margin-bottom: 20px;
+    }
+
+    .form-control,
+    .form-select {
+        border: 1.6px solid #c79931;
+        margin-bottom: 15px;
+        background: #ffffff;
+        color: #0f172a;
+    }
+    .form-control::placeholder,
+    .form-select::placeholder{
+        color: rgba(15,23,42,0.55);
+    }
+    .form-control:focus,
+    .form-select:focus {
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
+        border-color: #c79931;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    .btn-gold {
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+        font-weight: 900;
+        padding: 10px 30px;
+        border-radius: 6px;
+        font-size: 1.1rem;
+        border: 1.4px solid #c79931;
+        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
+    }
+
+    .btn-gold:hover {
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+    }
+
+    .text-gold { color: #c79931; }
+
+    .success-message {
+        color: #f8fafc;
+        font-weight: bold;
+        margin-bottom: 20px;
+        font-size: 1.1rem;
+    }
+
+    /* ===== Visual-only: single-card layout + tighter, lead-form grouping ===== */
+    .lead-card{
+        max-width: 1320px;   /* was 980px */
+        width: 100%;          /* keeps nice margin on ultra-wide monitors */
+        margin: 0 auto 30px auto;
+    }
+
+
+    .lead-grid{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+
+    @@media (min-width: 992px){
+        .lead-grid{
+            grid-template-columns: 1fr 1fr;
+            gap: 22px;
+        }
+    }
+
+    .lead-block{
+        border: 1.4px solid #c79931;
+        border-radius: 10px;
+        padding: 16px 16px 6px 16px;
+        background: #111c32;
+        color: #f8fafc;
+    }
+
+    .lead-block .section-title{
+        margin-bottom: 12px;
+        font-size: 1.15rem;
+    }
+
+    .lead-row{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px 14px;
+    }
+
+    @@media (min-width: 768px){
+        .lead-row.three{
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .lead-row.two{
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .field{
+        margin-bottom: 0;
+    }
+
+    .field label{
+        display:block;
+        margin-bottom: 6px;
+        font-weight: 800;
+        color: #f8fafc;
+        font-size: .95rem;
+    }
+
+    /* keep your existing inputs/selects untouched; just tighten spacing visually */
+    .field .form-control,
+    .field .form-select{
+        margin-bottom: 10px;
+    }
+
+.disclaimer-wrap{
+    margin-top: 6px;
+}
+.disclaimer-check{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:10px 0;
+}
+.disclaimer-check .form-check-input{
+    width:18px;
+    height:18px;
+    margin-top:2px;
+    margin-left:0;
+    margin-right:0;
+    position:static;
+    flex-shrink:0;
+}
+.disclaimer-check .form-check-label{
+    line-height:1.5;
+    white-space:normal;
+    color:#f8fafc;
+}
+</style>
+
+<div class="container">
+
+    @if (ViewBag.Success != null)
+    {
+        <div class="success-message">
+            @ViewBag.Success
+        </div>
+    }
+
+<form asp-action="SubmitLifeQuote" asp-controller="LifeQuote" method="post" id="lifeQuoteForm" data-form-key="quote_life_form">
+
+    <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
+    <div class="section-card lead-card">
+
+        <div class="lead-grid">
+
+            <!-- LEFT: Personal Info + Next Steps -->
+            <div class="lead-block">
+
+                <div class="section-title">Personal Information</div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>First Name<span class="text-danger">*</span></label>
+                        <input type="text" name="FirstName" class="form-control" placeholder="First Name*" required />
+                    </div>
+
+                    <div class="field">
+                        <label>Last Name<span class="text-danger">*</span></label>
+                        <input type="text" name="LastName" class="form-control" placeholder="Last Name*" required />
+                    </div>
+
+                    <div class="field">
+                        <label>Age<span class="text-danger">*</span></label>
+                        <input type="number" name="Age" class="form-control" placeholder="Age*" required />
+                    </div>
+                </div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Email<span class="text-danger">*</span></label>
+                        <input type="email" name="Email" class="form-control" placeholder="Email*" required />
+                    </div>
+
+                    <div class="field">
+                        <label>Phone<span class="text-danger">*</span></label>
+                        <input type="tel" name="Phone" class="form-control" placeholder="Phone*" required />
+                    </div>
+                </div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Marital Status<span class="text-danger">*</span></label>
+                        <select name="MaritalStatus" class="form-select" required>
+                            <option value="">Marital Status*</option>
+                            <option>Single</option>
+                            <option>Married</option>
+                            <option>Separated</option>
+                            <option>Divorced</option>
+                            <option>Widowed</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Preferred Contact Method<span class="text-danger">*</span></label>
+                        <select name="ContactMethod" class="form-select" required>
+                            <option value="">Preferred contact method*</option>
+                            <option>Phone</option>
+                            <option>Email</option>
+                            <option>Text</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Best Time to Contact</label>
+                        <select name="BestTimeToContact" class="form-select">
+                            <option value="">Best time to contact</option>
+                            <option>Morning</option>
+                            <option>Afternoon</option>
+                            <option>Evening</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <!-- spacer to keep the grid balanced on desktop -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT: Life Goals -->
+            <div class="lead-block">
+
+                <div class="section-title">Life Insurance Goals</div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Primary Reason<span class="text-danger">*</span></label>
+                        <select name="PrimaryReason" class="form-select" required>
+                            <option value="">Primary reason for life insurance*</option>
+                            <option>Legacy planning</option>
+                            <option>Protect family income</option>
+                            <option>Cover debts / mortgage</option>
+                            <option>Business or estate planning</option>
+                            <option>Final expenses</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Current Coverage<span class="text-danger">*</span></label>
+                        <select name="CurrentCoverage" class="form-select" required>
+                            <option value="">Do you currently have life insurance?*</option>
+                            <option>No</option>
+                            <option>Yes – Individual</option>
+                            <option>Yes – Employer provided</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>Coverage Amount<span class="text-danger">*</span></label>
+                        <select name="CoverageAmount" class="form-select" required>
+                            <option value="">Desired coverage amount*</option>
+                            <option>$100,000 – $250,000</option>
+                            <option>$250,000 – $500,000</option>
+                            <option>$500,000 – $1,000,000</option>
+                            <option>$1,000,000+</option>
+                            <option>Not sure</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Policy Type Interest<span class="text-danger">*</span></label>
+                        <select name="PolicyTypeInterest" class="form-select" required>
+                            <option value="">Policy type interest*</option>
+                            <option>Term</option>
+                            <option>Permanent (Whole / IUL)</option>
+                            <option>Not sure – need guidance</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Timeline<span class="text-danger">*</span></label>
+                        <select name="Timeline" class="form-select" required>
+                            <option value="">When do you want coverage?*</option>
+                            <option>Immediately</option>
+                            <option>Within 30 days</option>
+                            <option>Just exploring options</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ===================== DISCLAIMER ===================== -->
+        <div class="lead-block disclaimer-wrap">
+            <div class="form-check disclaimer-check">
+                <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
+                <label class="form-check-label" for="disclaimerCheckbox">
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my life insurance quote request.<span class="text-danger">*</span>
+                </label>
+            </div>
+            <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
+
+            <div class="text-center mb-5" style="margin-top: 30px;">
+                <button type="submit" class="btn btn-gold">Submit Life Quote Request</button>
+            </div>
+        </div>
+
+    </div>
+
+</form>
+
+<script>
+    const form = document.getElementById('lifeQuoteForm');
+    const checkbox = document.getElementById('disclaimerCheckbox');
+
+    if (form && checkbox) {
+        form.addEventListener('submit', function(event) {
+            if (!checkbox.checked) {
+                event.preventDefault();
+                alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your life insurance interest.');
+            }
+        });
+    }
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector("form");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function (event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+
+            const firstInvalid = form.querySelector(":invalid");
+            if (firstInvalid) {
+                firstInvalid.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center"
+                });
+                firstInvalid.focus();
+            }
+        }
+    });
+});
+</script>

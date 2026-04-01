@@ -1,0 +1,286 @@
+@model Domain.Entities.ClientProfile
+@using Domain.Entities
+
+@{
+    ViewData["Title"] = "Profile";
+
+    var viewMode = (string)(ViewBag.ViewMode ?? "client");
+    viewMode = (viewMode ?? "client").Trim().ToLowerInvariant();
+
+    var badge = viewMode == "agent" ? "Agent View" : "My Profile";
+
+    var so = ViewBag.SignificantOther as HouseholdMember;
+
+    // Fallback: if SO wasn’t loaded from HouseholdMembers,
+    // but ClientProfile has SignificantOther fields populated, build a display object
+    HouseholdMember? soFallback = null;
+
+    string T(string? v) => (v ?? "").Trim();
+
+    var hasSoOnProfile =
+        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherFirstName)) ||
+        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherLastName)) ||
+        Model.SignificantOtherDOB.HasValue ||
+        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherEmail)) ||
+        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherPhone));
+
+    if (so == null && hasSoOnProfile)
+    {
+        soFallback = new HouseholdMember
+        {
+            FirstName = T(Model.SignificantOtherFirstName),
+            LastName = T(Model.SignificantOtherLastName),
+            DOB = Model.SignificantOtherDOB,
+            Email = T(Model.SignificantOtherEmail),
+            Phone = T(Model.SignificantOtherPhone),
+            RelationshipType = "SignificantOther"
+        };
+    }
+
+    var soToShow = so ?? soFallback;
+
+    var needsSO =
+        string.Equals((Model.MaritalStatus ?? "").Trim(), "Married", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals((Model.MaritalStatus ?? "").Trim(), "Domestic Partnership", StringComparison.OrdinalIgnoreCase);
+
+    string DashIfBlank(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v!;
+}
+
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-strong:#c79931;
+        --navy:#0b1529;
+        --navy-2:#0f1d38;
+    }
+    body { background:#ffffff; color:#f8fafc; font-family:'Inter', sans-serif; }
+
+    .legend-profile-page{
+        max-width:1100px;
+        margin:0 auto;
+        padding:24px 16px 42px;
+    }
+    .legend-card.legend-profile-shell{
+        background: var(--navy);
+        border:1.6px solid var(--gold);
+        border-radius:16px;
+        box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+        overflow:hidden;
+    }
+    .legend-head.legend-profile-head{
+        background: var(--navy-2);
+        border-bottom:1px solid rgba(166,128,35,.38);
+        padding:1.1rem 1.5rem;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        flex-wrap:wrap;
+        gap:1rem;
+    }
+    .legend-title.legend-profile-title{
+        margin:0;
+        font-weight:900;
+        letter-spacing:.4px;
+        color: var(--gold-strong);
+    }
+    .legend-badge.legend-profile-badge{
+        background: rgba(166,128,35,.16);
+        border:1px solid rgba(166,128,35,.52);
+        color:#0b1529;
+        font-weight:850;
+        padding:0.35rem 0.9rem;
+        border-radius:999px;
+    }
+    .legend-body.legend-profile-body{
+        padding:1.5rem;
+        display:grid;
+        gap:1.1rem;
+        color:#f8fafc;
+    }
+    .legend-profile-grid{
+        display:grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px,1fr));
+        gap:14px;
+    }
+    .legend-profile-field{
+        background: var(--navy-2);
+        border:1px solid rgba(166,128,35,.42);
+        border-radius:12px;
+        padding:12px 14px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .legend-label{
+        font-weight:800;
+        color:#cbd5e1;
+        margin-bottom:4px;
+        letter-spacing:.2px;
+    }
+    .legend-val{
+        font-weight:900;
+        color:#f8fafc;
+        letter-spacing:.15px;
+    }
+    .legend-divider{
+        height:1px;
+        background: rgba(166,128,35,.32);
+        border-radius:999px;
+    }
+    .legend-subcard.legend-profile-section-card{
+        background: var(--navy-2);
+        border:1px solid rgba(166,128,35,.38);
+        border-radius:14px;
+        padding:14px;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    .legend-profile-section-head{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        flex-wrap:wrap;
+        gap:10px;
+    }
+    .legend-section-title{
+        color: var(--gold-strong);
+        font-weight:900;
+        margin:0;
+    }
+    .legend-badge.legend-profile-mini-badge{
+        background: rgba(166,128,35,.18);
+        border:1px solid rgba(166,128,35,.52);
+        color:#0b1529;
+        font-weight:850;
+        padding:0.35rem 0.8rem;
+        border-radius:999px;
+    }
+    .legend-warn.legend-profile-warn{
+        background: rgba(220,53,69,.14);
+        border:1px solid rgba(220,53,69,.45);
+        color:#ffecec;
+        border-radius:12px;
+        padding:0.85rem 1rem;
+        font-weight:750;
+    }
+    .legend-actions .legend-btn.legend-btn-outline{
+        border:1.6px solid var(--gold);
+        color:#f8fafc;
+        background: var(--navy-2);
+        border-radius:12px;
+        font-weight:900;
+        padding:0.85rem 1.3rem;
+        box-shadow:0 14px 28px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.08);
+        text-decoration:none;
+    }
+    .legend-actions .legend-btn.legend-btn-outline:hover{
+        background: rgba(166,128,35,.18);
+        color:#f8fafc;
+        border-color: var(--gold-strong);
+    }
+    .legend-profile-actions{
+        display:flex;
+        justify-content:flex-start;
+        gap:10px;
+        flex-wrap:wrap;
+    }
+</style>
+
+<div class="legend-wrap legend-profile-page">
+    <div class="legend-card legend-profile-shell">
+        <div class="legend-head legend-profile-head">
+            <div class="legend-profile-heading">
+                <h2 class="legend-title legend-profile-title">
+                @(viewMode == "agent"
+                    ? $"Viewing {Model.FirstName} {Model.LastName}"
+                    : "My Profile")
+                </h2>
+            </div>
+            <div class="legend-profile-meta">
+                <span class="legend-badge legend-profile-badge">@badge</span>
+            </div>
+        </div>
+
+        <div class="legend-body legend-profile-body">
+            <div class="legend-row legend-profile-grid legend-summary-grid">
+                <div class="legend-field legend-profile-field">
+                    <div class="legend-label">Name</div>
+                    <div class="legend-val">@Model.FirstName @Model.LastName</div>
+                </div>
+
+                <div class="legend-field legend-profile-field">
+                    <div class="legend-label">Email</div>
+                    <div class="legend-val">@DashIfBlank(Model.Email)</div>
+                </div>
+
+                <div class="legend-field legend-profile-field">
+                    <div class="legend-label">Phone</div>
+                    <div class="legend-val">@DashIfBlank(Model.Phone)</div>
+                </div>
+
+                <div class="legend-field legend-profile-field">
+                    <div class="legend-label">Date of Birth</div>
+                    <div class="legend-val">@((Model.DOB.HasValue) ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                </div>
+
+                <div class="legend-field legend-profile-field">
+                    <div class="legend-label">Marital Status</div>
+                    <div class="legend-val">@DashIfBlank(Model.MaritalStatus)</div>
+                </div>
+            </div>
+
+            @if (soToShow != null)
+            {
+                <div class="legend-divider"></div>
+
+                <div class="legend-subcard legend-profile-section-card">
+                    <div class="legend-profile-section-head">
+                        <div class="legend-section-title mb-0">Significant Other</div>
+                        <span class="legend-badge legend-profile-mini-badge">
+                            @(!string.IsNullOrWhiteSpace(soToShow.RelationshipType) ? soToShow.RelationshipType : "Household")
+                        </span>
+                    </div>
+
+                    <div class="legend-row legend-profile-grid legend-so-grid">
+                        <div class="legend-field legend-profile-field">
+                            <div class="legend-label">Name</div>
+                            <div class="legend-val">@soToShow.FirstName @soToShow.LastName</div>
+                        </div>
+
+                        <div class="legend-field legend-profile-field">
+                            <div class="legend-label">Date of Birth</div>
+                            <div class="legend-val">@((soToShow.DOB.HasValue) ? soToShow.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                        </div>
+
+                        <div class="legend-field legend-profile-field">
+                            <div class="legend-label">Email</div>
+                            <div class="legend-val">@DashIfBlank(soToShow.Email)</div>
+                        </div>
+
+                        <div class="legend-field legend-profile-field">
+                            <div class="legend-label">Phone</div>
+                            <div class="legend-val">@DashIfBlank(soToShow.Phone)</div>
+                        </div>
+                    </div>
+                </div>
+            }
+            else if (needsSO)
+            {
+                <div class="legend-divider"></div>
+                <div class="legend-warn legend-profile-warn">
+                    Significant Other is required for this marital status, but no household member is on file for this client.
+                </div>
+            }
+
+            <div class="legend-divider"></div>
+
+            <div class="legend-actions legend-profile-actions">
+                @if (viewMode == "client")
+                {
+                    <a class="legend-btn legend-btn-outline" href="/profile/edit">Edit My Profile</a>
+                }
+                else
+                {
+                    <a class="legend-btn legend-btn-outline" href="javascript:history.back()">Back</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,399 @@
+(function(){
+  const bridges = Array.from(document.querySelectorAll('[data-lead-bridge]'));
+  if (!bridges.length) return;
+
+  const LS_PROFILE = "legend_agent_profile";
+  const bucketLabels = {
+    MortgageProtection: "Mortgage Protection",
+    LifeInsurance: "Life Insurance",
+    FinalExpense: "Final Expense",
+    Medicare: "Medicare",
+    DisabilityInsurance: "Disability Insurance",
+    Contacted: "Contacted",
+    Booked: "Booked",
+    FollowUp: "Follow Up",
+    NeedsDocs: "Needs Docs",
+    PolicyPlaced: "Policy Placed",
+    NotInterested: "Not Interested",
+    Nurture: "Nurture"
+  };
+
+  function loadProfile(){
+    try { return JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") || {}; }
+    catch { return {}; }
+  }
+
+  function escapeHtml(value){
+    return (value ?? '').toString()
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function bucketLabel(value){
+    return bucketLabels[value] || value || 'Lead';
+  }
+
+  function ensureAgentPhone(){
+    const profile = loadProfile();
+    if (profile.phone) return profile.phone;
+    const entered = window.prompt("Enter your call-back number to use in texts:", "");
+    if (entered){
+      profile.phone = entered.trim();
+      localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
+      return profile.phone;
+    }
+    return "";
+  }
+
+  function ensureAgentName(){
+    const profile = loadProfile();
+    if (profile.firstName) return profile.firstName;
+    const entered = window.prompt("Enter your first name for texting:", "");
+    if (entered){
+      profile.firstName = entered.trim();
+      localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
+      return profile.firstName;
+    }
+    return "Agent";
+  }
+
+  function getToken(root){
+    const local = root.querySelector('input[name="__RequestVerificationToken"]');
+    if (local) return local.value;
+    const global = document.querySelector('input[name="__RequestVerificationToken"]');
+    return global ? global.value : '';
+  }
+
+  function fmtPhone(raw){
+    const digits = (raw || '').replace(/\D/g, '');
+    if (digits.length === 10) return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+    return raw || '';
+  }
+
+  function buildTextMessage(lead, bucket){
+    const leadFirst = (lead.firstName || "there").trim() || "there";
+    const agentFirst = ensureAgentName();
+    const agentPhone = ensureAgentPhone() || "623-223-7177";
+    const addrLine = (lead.addressLine || "").trim();
+    const city = (lead.city || "").trim();
+    const state = (lead.state || "").trim();
+    const zip = (lead.zipCode || lead.zip || "").trim();
+    const lender = (lead.mortgageLender || lead.lender || "").trim() || "your lender";
+    const addrFull = [addrLine, city, state, zip].filter(Boolean).join(" ").replace(/\s+/g," ").trim();
+
+    if ((bucket || "").toLowerCase() === "mortgageprotection"){
+      return `${leadFirst}, this is ${agentFirst} regarding your mortgage with ${lender}. Just left you a message. Give me a call back when you get this, we have some pending paperwork to get out to you regarding the mortgage for your property at ${addrFull || 'your property'}. The office number is ${agentPhone}, thanks`;
+    }
+
+    return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${bucket || 'policy'} - call or text me at ${agentPhone}.`;
+  }
+
+  bridges.forEach(async (bridge) => {
+    const bucket = bridge.getAttribute('data-bucket') || '';
+    const token = getToken(bridge);
+    const statusEl = bridge.querySelector('[data-lb-status]');
+    const posEl = bridge.querySelector('[data-lb-pos]');
+    const nextBtn = bridge.querySelector('[data-lb-next]');
+    const callBtn = bridge.querySelector('[data-lb-call]');
+    const textBtn = bridge.querySelector('[data-lb-text]');
+    const deleteBtn = bridge.querySelector('[data-lb-delete]');
+    const outcomeButtons = Array.from(bridge.querySelectorAll('[data-outcome]'));
+    const baseLabels = {
+      call: (callBtn?.textContent || 'Call').trim() || 'Call',
+      text: (textBtn?.textContent || 'Text').trim() || 'Text'
+    };
+    const fields = {
+      name: bridge.querySelector('[data-lf-value="name"]'),
+      address: bridge.querySelector('[data-lf-value="address"]'),
+      city: bridge.querySelector('[data-lf-value="city"]'),
+      state: bridge.querySelector('[data-lf-value="state"]'),
+      county: bridge.querySelector('[data-lf-value="county"]'),
+      dob: bridge.querySelector('[data-lf-value="dob"]'),
+      gender: bridge.querySelector('[data-lf-value="gender"]'),
+      lender: bridge.querySelector('[data-lf-value="lender"]'),
+      loan: bridge.querySelector('[data-lf-value="loan"]'),
+      phone: bridge.querySelector('[data-lf-value="phone"]'),
+      phone2: bridge.querySelector('[data-lf-value="phone2"]'),
+      age: bridge.querySelector('[data-lf-value="age"]'),
+      btc: bridge.querySelector('[data-lf-value="btc"]')
+    };
+    let confirmTimer = 0;
+    let pendingAction = null;
+    let leads = [];
+    let idx = 0;
+
+    function setStatusHtml(html, tone){
+      if (!statusEl) return;
+      statusEl.innerHTML = html;
+      statusEl.classList.toggle('is-auth', tone === 'auth');
+      statusEl.classList.toggle('is-bad', tone === 'bad');
+    }
+
+    function setStatusMessage(message, tone){
+      setStatusHtml(`<span class="lb-status-note">${escapeHtml(message)}</span>`, tone);
+    }
+
+    function getStatusHtml(lead){
+      if (!lead) return '<span class="lb-status-note">No leads found</span>';
+      return `
+        <span class="lb-status-line">
+          <span class="lb-status-bucket">${escapeHtml(bucketLabel(lead.bucket || bucket))}</span>
+          <span class="lb-status-divider">&#8226;</span>
+          <span class="lb-status-calls-label">Calls:</span>
+          <span class="lb-status-calls-value">${escapeHtml(String(lead.callCount ?? 0))}</span>
+        </span>
+      `;
+    }
+
+    function clearConfirmTimer(){
+      if (!confirmTimer) return;
+      window.clearTimeout(confirmTimer);
+      confirmTimer = 0;
+    }
+
+    function restoreActionButtons(){
+      if (callBtn){
+        callBtn.textContent = baseLabels.call;
+        callBtn.removeAttribute('data-confirming');
+      }
+      if (textBtn){
+        textBtn.textContent = baseLabels.text;
+        textBtn.removeAttribute('data-confirming');
+      }
+    }
+
+    function resetPendingAction(options){
+      const preserveStatus = !!(options && options.preserveStatus);
+      pendingAction = null;
+      clearConfirmTimer();
+      restoreActionButtons();
+      if (!preserveStatus){
+        setStatusHtml(getStatusHtml(leads[idx]));
+      }
+    }
+
+  function armPendingAction(action, lead, digits){
+      const targetBtn = action === 'call' ? callBtn : textBtn;
+      pendingAction = {
+        action,
+        leadId: lead.leadId,
+        digits
+      };
+
+      restoreActionButtons();
+      if (targetBtn){
+        targetBtn.setAttribute('data-confirming', 'true');
+      }
+
+      // Immediately show the blue link so user clicks only once after the main button
+      setStatusHtml(`
+        <button type="button" class="lb-auth-link" data-lb-authorize="${action}">${escapeHtml(fmtPhone(digits))}</button>
+        <span class="lb-auth-note">Click the blue number to proceed. Press Escape to cancel.</span>
+      `, 'auth');
+
+      clearConfirmTimer();
+      confirmTimer = window.setTimeout(() => {
+        if (!pendingAction || pendingAction.action !== action) return;
+        resetPendingAction();
+      }, 8000);
+    }
+
+    async function incrementCallForLead(lead){
+      let nextCount = (lead.callCount ?? 0) + 1;
+      try {
+        const res = await fetch('/Leads/IncrementCall', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: `id=${encodeURIComponent(lead.leadId || '')}`
+        });
+        if (res.ok){
+          const payload = await res.json().catch(() => ({}));
+          if (typeof payload.callCount === 'number') nextCount = payload.callCount;
+        }
+      } catch {}
+      lead.callCount = nextCount;
+      return nextCount;
+    }
+
+    async function authorizePendingAction(){
+      if (!pendingAction || !leads.length) return;
+      const lead = leads.find(x => x.leadId === pendingAction.leadId);
+      if (!lead) return;
+      const digits = pendingAction.digits;
+      const action = pendingAction.action;
+
+      resetPendingAction({ preserveStatus: true });
+
+      if (action === 'call'){
+        await incrementCallForLead(lead);
+        showCurrent();
+        window.location.href = `tel:${digits}`;
+        return;
+      }
+
+      const msg = buildTextMessage(lead, bucket || lead.bucket);
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(msg);
+        copied = true;
+      } catch {}
+      setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
+      window.location.href = `sms:${digits}?&body=${encodeURIComponent(msg)}`;
+    }
+
+    function renderLead(lead, index, total){
+      resetPendingAction({ preserveStatus: true });
+      if (!lead){
+        Object.values(fields).forEach(f => f && (f.textContent = '—'));
+        setStatusMessage('No leads found');
+        posEl.textContent = 'Lead 0 of 0';
+        return;
+      }
+      fields.name.textContent = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || '—';
+      fields.address.textContent = lead.addressLine || '—';
+      fields.city.textContent = lead.city || '—';
+      fields.state.textContent = lead.state || '—';
+      fields.county.textContent = lead.county || '—';
+      fields.dob.textContent = lead.dob ? lead.dob.slice(0,10) : '—';
+      fields.gender.textContent = lead.gender || '—';
+      fields.lender.textContent = lead.mortgageLender || '—';
+      fields.loan.textContent = lead.loanAmount || '—';
+      fields.phone.textContent = fmtPhone(lead.phone) || '—';
+      fields.phone2.textContent = fmtPhone(lead.phone2) || '—';
+      fields.age.textContent = lead.age || '—';
+      fields.btc.textContent = lead.btc || '—';
+      posEl.textContent = `Lead ${index+1} of ${total}`;
+      setStatusHtml(getStatusHtml(lead));
+    }
+
+    async function fetchLeads(){
+      setStatusMessage('Loading...');
+      const res = await fetch(`/Leads/Leads?bucket=${encodeURIComponent(bucket)}`);
+      const data = await res.json();
+      data.sort((a,b)=>{
+        const ao = a.crmOrder ?? 0;
+        const bo = b.crmOrder ?? 0;
+        if (bo !== ao) return bo - ao; // highest CrmOrder first (matches Leads list)
+        const ac = a.callCount ?? 0;
+        const bc = b.callCount ?? 0;
+        return ac - bc; // tie-breaker: fewer calls first
+      });
+      return data;
+    }
+
+    function showCurrent(){
+      renderLead(leads[idx], idx, leads.length);
+    }
+
+    async function deleteCurrentLead(){
+      if (!leads.length) return;
+      const lead = leads[idx];
+      const confirmed = window.confirm(`Delete lead ${lead.firstName || ''} ${lead.lastName || ''}? This cannot be undone.`);
+      if (!confirmed) return;
+      setStatusMessage('Deleting...');
+      try {
+        const res = await fetch('/Leads/Delete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: `clientUserId=${encodeURIComponent(lead.leadId || '')}`
+        });
+        if (!res.ok) throw new Error('Delete failed');
+        leads.splice(idx, 1);
+        if (idx >= leads.length && leads.length > 0) idx = leads.length - 1;
+        setStatusMessage('Lead deleted');
+        showCurrent();
+      } catch {
+        setStatusMessage('Failed to delete lead', 'bad');
+      }
+    }
+
+    nextBtn?.addEventListener('click', () => {
+      resetPendingAction({ preserveStatus: true });
+      if (!leads.length) return;
+      idx = (idx + 1) % leads.length;
+      showCurrent();
+    });
+
+    callBtn?.addEventListener('click', () => {
+      if (!leads.length) return;
+      const lead = leads[idx];
+      const digits = (lead?.phone || '').replace(/\D/g,'');
+      if (!digits){
+        setStatusMessage('No phone on file', 'bad');
+        return;
+      }
+      armPendingAction('call', lead, digits);
+    });
+
+    textBtn?.addEventListener('click', () => {
+      if (!leads.length) return;
+      const lead = leads[idx];
+      const digits = (lead?.phone || '').replace(/\D/g,'');
+      if (!digits){
+        setStatusMessage('No phone on file', 'bad');
+        return;
+      }
+      armPendingAction('text', lead, digits);
+    });
+
+    deleteBtn?.addEventListener('click', deleteCurrentLead);
+
+    statusEl?.addEventListener('click', async (event) => {
+      const authLink = event.target.closest('[data-lb-authorize]');
+      if (!authLink) return;
+      event.preventDefault();
+      await authorizePendingAction();
+    });
+
+    outcomeButtons.forEach(btn => btn.addEventListener('click', async () => {
+      resetPendingAction({ preserveStatus: true });
+      if (!leads.length) return;
+      const lead = leads[idx];
+      setStatusMessage('Saving...');
+      await fetch('/Leads/ApplyOutcome', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'RequestVerificationToken': token
+        },
+        credentials: 'include',
+        body: JSON.stringify({ clientUserId: lead.leadId, outcomeCode: btn.dataset.outcome, customNote: null })
+      }).catch(()=>{});
+      idx = (idx + 1) % leads.length;
+      showCurrent();
+    }));
+
+    document.addEventListener('click', (event) => {
+      if (!pendingAction) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (callBtn?.contains(target) || textBtn?.contains(target) || statusEl?.contains(target)) return;
+      resetPendingAction();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+      if (!pendingAction) return;
+      if (event.key !== 'Escape') return;
+      resetPendingAction();
+    });
+
+    try {
+      leads = await fetchLeads();
+      idx = 0;
+      showCurrent();
+    } catch {
+      setStatusMessage('Failed to load leads', 'bad');
+    }
+  });
+})();

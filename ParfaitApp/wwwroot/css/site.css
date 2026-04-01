@@ -1,0 +1,159 @@
+/* ============================== GLOBAL / BASE STYLES ============================== */
+
+/* ------------------------------ Base font sizing -------------------------------- */
+html { font-size: 14px; height: 100%; }
+@media (min-width: 768px) { html { font-size: 16px; } }
+
+/* ------------------------------ Bootstrap focus styles -------------------------------- */
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, 
+.form-control:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 0.1rem #ffffff, 0 0 0 0.25rem #258cfb;
+}
+
+/* ------------------------------ Full-height layout (footer stays down) -------------------------------- */
+html, body {
+    height: 100%;
+    margin: 0;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    font-family: 'Inter', sans-serif;
+}
+
+main {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+footer.footer {
+    flex-shrink: 0;
+    width: 100%;
+    text-align: center;
+    padding: 1rem 0;
+    background-color: #f8f9fa;
+    color: #926950;
+    border-top: 1.5px solid #926950;
+}
+
+/* ============================== NAVBAR / HEADER ============================== */
+.navbar { 
+    background-color: #fff; 
+    border: 1.5px solid #926950; 
+    z-index: 1050; 
+    flex-direction: column; /* stack top & bottom rows */
+    position: relative;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+    padding: 2rem 2rem;
+}
+
+/* ---------------------- Top row: logo left, nav right ---------------------- */
+.navbar-top {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* ---------------------- Brand Text (PARFAIT) ---------------------- */
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    white-space: nowrap;
+    font-weight: 700;
+    transition: transform 0.2s ease;
+}
+.navbar-brand:hover { transform: translateY(-2px); }
+
+.title-nunito-expanded {
+    font-family: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 40px;
+    color: #926950;
+    font-weight: 700;
+    font-style: italic;
+    text-transform: uppercase;
+    font-stretch: expanded;
+    letter-spacing: 0.04em;
+    transform: skew(-8deg);
+    margin: 0;
+    padding: 0;
+}
+
+/* ---------------------- Nav Tabs on RIGHT ---------------------- */
+.navbar-right {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.navbar-right .nav-link {
+    font-weight: 700;
+    color: #1a1a1a !important;
+    padding: 0.5rem 1.25rem;
+    border-radius: 50px;
+    background-color: #fff;
+    border: 1px solid transparent;
+    transition: all 0.25s ease;
+    letter-spacing: 0.5px;
+}
+
+.navbar-right .nav-link:hover,
+.navbar-right .nav-link.active {
+    color: #926950 !important;
+    background-color: rgba(146, 105, 80, 0.18);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+    border-color: rgba(146, 105, 80, 0.18);
+}
+
+/* ---------------------- Bottom row: centered LIFE HAC ---------------------- */
+.navbar-bottom {
+    width: 100%;
+    text-align: center;
+    margin-top: 1rem;
+}
+
+.header-psalms {
+    font-size: clamp(0.9rem, 2.5vw, 1.4rem);
+    font-weight: 700;
+    color: #926950;
+    letter-spacing: 1.2px;
+}
+
+/* ---------------------- Dropdowns (if needed) ---------------------- */
+.dropdown { position: relative; }
+.dropdown-menu-centered {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    background-color: #fff;
+    border: 1px solid #926950;
+    border-radius: 12px;
+    padding: 0.5rem 0;
+    display: none;
+    flex-direction: column;
+    min-width: 200px;
+    z-index: 999;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+    backdrop-filter: blur(4px);
+}
+.dropdown:hover .dropdown-menu-centered { display: flex; }
+
+/* ============================== RESPONSIVE ============================== */
+@media (max-width: 992px) {
+    .navbar-top { flex-direction: column; align-items: flex-start; gap: 1rem; }
+    .navbar-right { width: 100%; justify-content: flex-start; }
+    .navbar-bottom { margin-top: 1rem; }
+}
+
+@media (max-width: 576px) {
+    .title-nunito-expanded { font-size: 1.8rem; }
+    .navbar-right .nav-link { padding: 0.4rem 0.8rem; font-size: 0.9rem; }
+    .header-psalms { font-size: 1rem; }
+}

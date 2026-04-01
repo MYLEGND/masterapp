@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>/tmp/masterapp/obj/AgentPortal/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/AgentPortal/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>/tmp/masterapp/bin/AgentPortal/</BaseOutputPath>
+  </PropertyGroup>
+</Project>
+

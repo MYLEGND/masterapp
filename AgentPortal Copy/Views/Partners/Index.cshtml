@@ -1,0 +1,442 @@
+@{
+    ViewData["Title"] = "Home";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="home-container">
+
+    <!-- HERO -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold">STRATEGIC PARTNERSHIPS</h1>
+        <p class="lead mb-3">
+            Your Personal Access to Our Complete Network of Trusted Partners
+        </p>
+        <hr class="my-3 hero-hr" />
+    </div>
+
+    <!-- SEARCH BAR -->
+    <div class="text-center mb-5 search-container position-relative">
+        <input type="text" id="toolSearch" class="search-input" placeholder="Search Partners or Industry..." />
+        <button id="clearSearch" class="btn-clear-search">Clear Search</button>
+        <div id="autocompleteList" class="autocomplete-list"></div>
+    </div>
+
+    <!-- SPIRITUAL HEALTH -->
+    <div class="category-container mb-5" data-category="Spiritual Health">
+        <h3 class="text-center mb-4 fw-bold">Spiritual Health</h3>
+        <div class="centered-tools">
+            @{
+                var SpiritualHealthTools = new[]
+                {
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://connect.integrity.com/agent/dashboard", Icon = ".png", Desc = "PARTNER" },
+                };
+            }
+
+            @foreach (var tool in SpiritualHealthTools)
+            {
+                <a href="@tool.Url" target="_blank" class="trusted-partners-tool" data-name="@tool.Name">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                    <div class="tool-desc">@tool.Desc</div>
+                </a>
+            }
+        </div>
+    </div>
+
+    <hr class="my-6 hero-hr" />
+
+    <!-- MENTAL HEALTH -->
+    <div class="category-container mb-5" data-category="Mental Health">
+        <h3 class="text-center mb-4 fw-bold">Mental Health</h3>
+        <div class="centered-tools">
+            @{
+                var MentalHealthTools = new[]
+                {
+                    new { Name = "Bryan Fobs", Url = "https://login.glic.com/", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://login.glic.com/", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://login.glic.com/", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://login.glic.com/", Icon = ".png", Desc = "PARTNER" },
+                };
+            }
+
+            @foreach (var tool in MentalHealthTools)
+            {
+                <a href="@tool.Url" target="_blank" class="trusted-partners-tool" data-name="@tool.Name">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                    <div class="tool-desc">@tool.Desc</div>
+                </a>
+            }
+        </div>
+    </div>
+
+    <hr class="my-6 hero-hr" />
+
+    <!-- PHYSICAL HEALTH -->
+    <div class="category-container mb-5" data-category="Physical Health">
+        <h3 class="text-center mb-4 fw-bold">Physical Health</h3>
+        <div class="centered-tools">
+            @{
+                var PhysicalHealthTools = new[]
+                {
+                    new { Name = "Bryan Fobbs", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                };
+            }
+
+            @foreach (var tool in PhysicalHealthTools)
+            {
+                <a href="@tool.Url" target="_blank" class="trusted-partners-tool" data-name="@tool.Name">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                    <div class="tool-desc">@tool.Desc</div>
+                </a>
+            }
+        </div>
+    </div>
+
+    <hr class="my-6 hero-hr" />
+
+    <!-- FINANCIAL HEALTH -->
+    <div class="category-container mb-5" data-category="Financial Health">
+        <h3 class="text-center mb-4 fw-bold">Financial Health</h3>
+        <div class="centered-tools">
+            @{
+                var FinancialHealthTools = new[]
+                {
+                    new { Name = "Kirk Quitno", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "Disability Insurance Specialist" },
+                    new { Name = "Darren Johnson", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "Real Estate Agent / Broker / Mortgage Lender" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                    new { Name = "Partner", Url = "https://app.ezlynx.com/auth/account/login", Icon = ".png", Desc = "PARTNER" },
+                };
+            }
+
+            @foreach (var tool in FinancialHealthTools)
+            {
+                <a href="@tool.Url" target="_blank" class="trusted-partners-tool" data-name="@tool.Name">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                    <div class="tool-desc">@tool.Desc</div>
+                </a>
+            }
+        </div>
+    </div>
+</div>
+
+
+
+</div>
+
+<style>
+/* ==============================
+   THEME VARIABLES
+============================== */
+:root {
+    /* Colors */
+    --gold-color: #a68023;
+    --gold-light: rgba(166,128,35,0.3);
+    --text-color: #000;
+    --background-color: #fff;
+
+    /* Tool card dimensions */
+    --tool-width: 180px;
+    --tool-height: 150px;
+    --tool-radius: 10px;
+    --tool-gap: 1.5rem;
+
+    /* Search input */
+    --search-width: 400px;
+    --search-radius: 50px;
+
+    /* Hero divider */
+    --divider-color: #333;
+    --divider-width: 2px;
+    --divider-margin: 1rem auto 1.5rem;
+
+    /* Tool glow on hover */
+    --tool-glow-color: rgba(166,128,35,0.45);
+}
+
+/* ==============================
+   GENERAL CONTAINER
+============================== */
+.home-container {
+    padding: 2rem 1rem;
+}
+
+/* ==============================
+   HERO / TITLE
+============================== */
+.hero-hr {
+    border-color: var(--divider-color);
+    border-width: var(--divider-width);
+    max-width: 1500px;
+    margin: var(--divider-margin);
+}
+
+/* ==============================
+   SEARCH BAR
+============================== */
+.search-container {
+    display: flex;
+    justify-content: center; /* center input + button */
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.search-input {
+    width: var(--search-width);
+    max-width: 90%;
+    padding: 0.6rem 1rem;
+    border-radius: var(--search-radius);
+    border: 2px solid var(--gold-color);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #b2882b;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+}
+
+/* New clear button next to input */
+.btn-clear-search {
+    padding: 0.55rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    border: 2px solid var(--gold-color);
+    background-color: var(--gold-color);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-clear-search:hover {
+    background-color: #b2882b;
+    color: #fff;
+    box-shadow: 0 0 12px var(--gold-light);
+}
+
+/* ==============================
+   AUTOCOMPLETE
+============================== */
+.autocomplete-list {
+    position: absolute;
+    top: 110%;
+    left: 0;
+    right: 0;
+    background: var(--background-color);
+    border: 1px solid var(--gold-color);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+    z-index: 999;
+    max-height: 150px;
+    overflow-y: auto;
+    display: none;
+}
+
+.autocomplete-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background 0.2s;
+}
+
+.autocomplete-item img {
+    width: 30px;
+    height: 30px;
+}
+
+.autocomplete-item:hover {
+    background-color: var(--gold-light);
+}
+
+/* ==============================
+   TOOL CARD
+============================== */
+.trusted-partners-tool {
+    width: var(--tool-width);
+    max-width: 180px;
+    height: var(--tool-height);
+    border: 1px solid var(--gold-color);
+    border-radius: var(--tool-radius);
+    padding: 0.5rem;
+    text-decoration: none;
+    color: var(--text-color);
+    font-weight: 600;
+    background: var(--background-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    position: relative; /* added for overlay */
+}
+
+.trusted-partners-tool:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 0 20px 4px var(--tool-glow-color);
+    color: var(--gold-color);
+}
+
+.trusted-partners-tool img {
+    max-width: 80px;
+    max-height: 60px;
+}
+
+/* ==============================
+   TOOL HOVER DESCRIPTION OVERLAY
+============================== */
+.trusted-partners-tool .tool-desc {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fff;  /* Silver/grey */
+    color: #a68023;        /* Legend gold */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+    border-radius: var(--tool-radius);
+    font-weight: 700;
+}
+.trusted-partners-tool:hover .tool-desc {
+    opacity: 1;
+}
+
+.trusted-partners-tool:hover img,
+.trusted-partners-tool:hover .tool-name {
+    opacity: 0.2;
+    transition: opacity 0.25s ease-in-out;
+}
+
+/* ==============================
+   RESPONSIVE
+============================== */
+@@media (max-width: 576px) {
+    .trusted-partners-tool { width: 160px; height: 130px; }
+    .trusted-partners-tool img { width: 50px; height: 50px; }
+    .search-input { width: 90%; font-size: 0.95rem; }
+    .btn-clear-search { font-size: 0.9rem; padding: 0.45rem 0.8rem; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    const searchInput = document.getElementById('toolSearch');
+    const autocompleteList = document.getElementById('autocompleteList');
+    const clearBtn = document.getElementById('clearSearch');
+
+    const tools = Array.from(document.querySelectorAll('.trusted-partners-tool')).map(tool => ({
+        name: tool.dataset.name || tool.querySelector('.tool-name').textContent.trim(),
+        description: tool.querySelector('.tool-desc')?.textContent.toLowerCase() || '',
+        href: tool.href,
+        imgSrc: tool.querySelector('img').src
+    }));
+
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        autocompleteList.style.display = 'none';
+    });
+
+    searchInput.addEventListener('input', () => {
+        const value = searchInput.value.toLowerCase().trim();
+        autocompleteList.innerHTML = '';
+
+        if (!value) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        const matches = tools.filter(t =>
+            t.name.toLowerCase().includes(value) ||
+            t.description.includes(value)
+        );
+
+        if (!matches.length) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        matches.forEach(tool => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            item.innerHTML = `
+                <img src="${tool.imgSrc}" />
+                <span>${tool.name}</span>
+            `;
+            item.onclick = () => window.open(tool.href, '_blank');
+            autocompleteList.appendChild(item);
+        });
+
+        autocompleteList.style.display = 'block';
+    });
+
+    document.addEventListener('click', e => {
+        if (!searchInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+            autocompleteList.style.display = 'none';
+        }
+    });
+
+    const enableMobileCollapses = () => {
+        const mq = window.matchMedia('(max-width: 720px)');
+        if (!mq.matches) return;
+
+        const categories = Array.from(document.querySelectorAll('.category-container'));
+        categories.forEach((cat, idx) => {
+            const tools = cat.querySelector('.centered-tools');
+            const heading = cat.querySelector('h3');
+            if (!tools || !heading) return;
+
+            const setState = (open) => {
+                cat.classList.toggle('is-open', open);
+                tools.style.display = open ? 'flex' : 'none';
+                heading.dataset.mobileState = open ? '−' : '+';
+            };
+
+            heading.setAttribute('role', 'button');
+            heading.setAttribute('tabindex', '0');
+
+            const initialOpen = idx === 0;
+            setState(initialOpen);
+
+            const toggle = () => setState(!cat.classList.contains('is-open'));
+            heading.addEventListener('click', toggle);
+            heading.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        });
+    };
+
+    enableMobileCollapses();
+});
+</script>

@@ -1,0 +1,498 @@
+@{
+    ViewData["Title"] = "Website Analytics";
+    var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
+    var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
+    var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
+    var personalLink = ViewData["PersonalLink"] as string;
+    var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
+    var callerProfileId = ViewData["CallerProfileId"] as Guid?;
+    var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
+    var isFounder = agentOptionsJson != "[]";
+    if (isFounder)
+    {
+        callerProfileId = null;
+    }
+}
+
+<link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
+
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
+    <div class="hero-link mb-4 p-4 p-md-5">
+        <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
+            <div>
+                <h4 class="mb-1 fw-bold text-gold">Your Website Link</h4>
+                <div class="text-silver">This is your personal link. Share it to track your traffic and leads.</div>
+            </div>
+            <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2">
+                <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+                <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
+                    <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-3">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <div>
+                <h2 class="mb-0 fw-bold" style="color: var(--legend-gold);">Website Analytics</h2>
+                <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
+            </div>
+            <div class="fa-env-badge" id="fa-env-label"></div>
+            @if(isFounder)
+            {
+            <div class="ms-auto">
+                <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
+                        style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
+                    Team Performance
+                </button>
+            </div>
+            }
+        </div>
+    </div>
+
+    <div class="control-bar d-flex flex-nowrap align-items-center gap-3 mb-3">
+        <div class="btn-group btn-group-sm flex-shrink-0" role="group">
+            <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
+            <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
+            <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
+            <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
+            <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
+        </div>
+        <div class="date-group d-flex align-items-center gap-2 flex-fill">
+            <input type="date" id="range-from" class="form-control form-control-sm flex-fill" />
+            <input type="date" id="range-to" class="form-control form-control-sm flex-fill" />
+            <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Custom</button>
+        </div>
+        <div id="fa-range-error" class="text-danger small"></div>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-4 row-cols-lg-8 g-3 fa-kpi-grid">
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Page Views</div>
+                <div class="fa-kpi-value" id="kpi-pageviews">0</div>
+                <div class="fa-kpi-delta" id="kpi-pv-delta"></div>
+                <div class="fa-spark" id="kpi-pv-spark"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Unique Visitors</div>
+                <div class="fa-kpi-value" id="kpi-visitors">0</div>
+                <div class="fa-kpi-delta" id="kpi-vis-delta"></div>
+                <div class="fa-spark" id="kpi-vis-spark"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Sessions</div>
+                <div class="fa-kpi-value" id="kpi-sessions">0</div>
+                <div class="fa-kpi-delta" id="kpi-ses-delta"></div>
+                <div class="fa-spark" id="kpi-ses-spark"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Verified Leads</div>
+                <div class="fa-kpi-value" id="kpi-leads">0</div>
+                <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
+                <div class="fa-spark" id="kpi-leads-spark"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Intent Conversion</div>
+                <div class="fa-kpi-value" id="kpi-intent">—</div>
+                <div class="fa-kpi-sub" id="kpi-intent-sub">Verified Leads / Quote Starts</div>
+                <div class="fa-kpi-warning" id="kpi-intent-warning"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Session Conversion Rate</div>
+                <div class="fa-kpi-value" id="kpi-session">0%</div>
+                <div class="fa-kpi-sub">Verified Leads / Sessions</div>
+                <div class="fa-kpi-warning" id="kpi-session-warning"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Top Page</div>
+                <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
+                <div class="fa-kpi-sub">Most viewed</div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="kpi-card">
+                <div class="fa-kpi-title">Top CTA</div>
+                <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
+                <div class="fa-kpi-sub">Most clicked</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modules -->
+    <div class="fa-modules row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
+        <div class="col">
+            <div class="fa-module" id="mod-traffic">
+                <h5>Traffic Overview</h5>
+                <div class="fa-module-meta" id="mod-traffic-meta">Views, sessions, visitors · click to drill in</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="fa-module" id="mod-page">
+                <h5>Page Performance</h5>
+                <div class="fa-module-meta" id="mod-page-meta">Top pages and conversions</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="fa-module" id="mod-cta">
+                <h5>CTA Performance</h5>
+                <div class="fa-module-meta" id="mod-cta-meta">Clicks by CTA</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="fa-module" id="mod-quote">
+                <h5>Quote Funnel</h5>
+                <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="fa-module" id="mod-conv">
+                <h5>Conversion Center</h5>
+                <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="fa-module" id="mod-leads">
+                <h5>Leads Snapshot</h5>
+                <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        @if(isFounder)
+        {
+        <div class="col">
+            <div class="fa-module" id="mod-agentperf">
+                <h5>Agent Performance</h5>
+                <div class="fa-module-meta" id="mod-agentperf-meta">Top performers · founder only</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
+        }
+    </div>
+</div>
+
+@if (isFounder)
+{
+<div class="modal fade" id="teamRollupModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width:1200px;">
+    <div class="modal-content" style="background:#0a1122;color:#f5f7fb;border:2px solid rgba(199,153,49,0.95);box-shadow:0 28px 72px rgba(0,0,0,.55);border-radius:18px;">
+      <div class="modal-header border-0 pb-0">
+        <div>
+          <h4 class="modal-title fw-bold mb-1" style="color:#e6c078;">Team Performance</h4>
+          <div class="text-muted small">Agency-wide rollup across all sites</div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body pt-3">
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Page Views</div><div class="fa-kpi-value" id="team-kpi-pageviews">0</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Unique Visitors</div><div class="fa-kpi-value" id="team-kpi-visitors">0</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Sessions</div><div class="fa-kpi-value" id="team-kpi-sessions">0</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Verified Leads</div><div class="fa-kpi-value" id="team-kpi-leads">0</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Session Conv</div><div class="fa-kpi-value" id="team-kpi-session">0%</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Intent Conv</div><div class="fa-kpi-value" id="team-kpi-intent">—</div></div></div>
+          <div class="col-12 d-flex justify-content-end">
+            <div class="text-silver small">Range: <span id="team-range-label"></span></div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Top Page</div><div class="fa-kpi-value" id="team-top-page">—</div></div></div>
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Top CTA</div><div class="fa-kpi-value" id="team-top-cta">—</div></div></div>
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Quote Starts</div><div class="fa-kpi-value" id="team-quote-starts">0</div></div></div>
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Form Starts</div><div class="fa-kpi-value" id="team-quote-form-starts">0</div></div></div>
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Submits</div><div class="fa-kpi-value" id="team-quote-submits">0</div></div></div>
+          <div class="col-6 col-lg-2"><div class="kpi-card subtle team-kpi"><div class="fa-kpi-title">Total Conversions</div><div class="fa-kpi-value" id="team-total-conv">0</div></div></div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <h6 class="text-warning">Top Pages</h6>
+              <ul class="list-unstyled mb-0" id="team-top-pages-list"></ul>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <h6 class="text-warning">Top CTAs</h6>
+              <ul class="list-unstyled mb-0" id="team-top-ctas-list"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-lg-6">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <h6 class="text-warning">Top Sources</h6>
+              <ul class="list-unstyled mb-0" id="team-top-sources-list"></ul>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <h6 class="text-warning">Top Campaigns</h6>
+              <ul class="list-unstyled mb-0" id="team-top-campaigns-list"></ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+          <div class="col-12">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-warning mb-0">Agent Leaderboard</h6>
+                <div class="text-silver small">Best performers across the agency</div>
+              </div>
+              <div class="table-responsive">
+                <table class="table table-sm mb-0 text-light align-middle">
+                  <thead><tr><th>Agent</th><th>Slug</th><th class="text-end">Leads</th><th class="text-end">Conversions</th><th class="text-end">Sessions</th><th class="text-end">Intent Conv</th><th>Top Source</th></tr></thead>
+                  <tbody id="team-agent-rows"><tr><td colspan="7" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-12">
+            <div class="fa-module team-module" style="background:#0c1427;border-color:rgba(199,153,49,0.7);">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-warning mb-0">Recent Activity</h6>
+                <div class="text-silver small">Latest team-wide events</div>
+              </div>
+              <ul class="list-unstyled mb-0" id="team-recent-activity"></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+}
+<!-- Modals -->
+<div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Traffic Overview · <span id="traffic-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <h6 class="text-warning">Top Pages</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th></tr></thead>
+                    <tbody id="traffic-top-pages-body"></tbody>
+                </table>
+            </div>
+            <div class="col-lg-6">
+                <h6 class="text-warning">Entry Pages</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Page</th><th class="text-end">Sessions</th></tr></thead>
+                    <tbody id="traffic-entry-pages-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="row g-3 mt-2">
+            <div class="col-lg-6">
+                <h6 class="text-warning">Top Sources</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Source</th><th class="text-end">Events</th></tr></thead>
+                    <tbody id="traffic-top-sources-body"></tbody>
+                </table>
+            </div>
+            <div class="col-lg-6">
+                <h6 class="text-warning">Top Campaigns</h6>
+                <table class="table table-sm">
+                    <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
+                    <tbody id="traffic-top-campaigns-body"></tbody>
+                </table>
+            </div>
+        </div>
+        <h6 class="text-warning mt-3">Recent Activity</h6>
+        <table class="table table-sm">
+            <thead><tr><th>When (UTC)</th><th>Event</th><th>Page</th><th>Element</th></tr></thead>
+            <tbody id="traffic-activity-body"></tbody>
+        </table>
+        </div>
+    </div>
+  </div>
+</div>
+
+@if(isFounder)
+{
+<div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Agent Performance · <span id="agentperf-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="fa-muted mb-2">Founder-only cross-agent comparison. Low-sample rows are flagged.</div>
+        <table class="table table-sm align-middle">
+            <thead><tr><th>Agent</th><th>Slug</th><th class="text-end">Leads</th><th class="text-end">Conversions</th><th class="text-end">Session Conv</th><th class="text-end">Intent Conv</th><th>Top Source</th><th>Notes</th></tr></thead>
+            <tbody id="agentperf-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+}
+
+<div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Page Performance · <span id="pageperf-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm">
+            <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead>
+            <tbody id="pageperf-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">CTA Performance · <span id="ctaperf-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm">
+            <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Clicks</th></tr></thead>
+            <tbody id="ctaperf-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Quote Funnel · <span id="quote-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+            <div class="col-4">
+                <div class="fa-kpi-title">Starts</div>
+                <div class="fa-kpi-value" id="quote-starts">0</div>
+            </div>
+            <div class="col-4">
+                <div class="fa-kpi-title">Form Starts</div>
+                <div class="fa-kpi-value" id="quote-form-starts">0</div>
+            </div>
+            <div class="col-4">
+                <div class="fa-kpi-title">Submits</div>
+                <div class="fa-kpi-value" id="quote-form-submits">0</div>
+            </div>
+        </div>
+        <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
+        <h6 class="text-warning mt-3">By Quote Type</h6>
+        <table class="table table-sm">
+            <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
+            <tbody id="quote-type-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Conversion Center · <span id="conv-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
+            <div>
+                <div class="fa-kpi-title">Intent Conversion</div>
+                <div class="fa-kpi-value" id="conv-intent">—</div>
+                <div class="fa-kpi-sub" id="conv-intent-sub">Verified Leads / Quote Starts</div>
+                <div class="fa-kpi-warning" id="conv-intent-warning"></div>
+            </div>
+            <div>
+                <div class="fa-kpi-title">Session Conversion Rate</div>
+                <div class="fa-kpi-value" id="conv-session">—</div>
+                <div class="fa-kpi-sub">Verified Leads / Sessions</div>
+                <div class="fa-kpi-warning" id="conv-session-warning"></div>
+            </div>
+            <div>
+                <div class="fa-kpi-title">Total Conversions</div>
+                <div class="fa-kpi-value" id="conv-total">0</div>
+            </div>
+            <button class="btn btn-sm fa-export-btn" id="export-conv">Export CSV</button>
+        </div>
+        <h6 class="text-warning mt-3">Recent</h6>
+        <table class="table table-sm">
+            <thead><tr><th>When (UTC)</th><th>Event</th><th>Page</th><th>CTA</th></tr></thead>
+            <tbody id="conv-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Leads Snapshot · <span id="leads-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fa-kpi-title">Total Leads</div>
+            <div class="d-flex align-items-center gap-3">
+                <div class="fa-kpi-value" id="leads-total">0</div>
+                <button class="btn btn-sm fa-export-btn" id="export-leads">Export CSV</button>
+            </div>
+        </div>
+        <table class="table table-sm">
+            <thead><tr><th>When (UTC)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th></tr></thead>
+            <tbody id="leads-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="~/js/website-analytics.js" asp-append-version="true"></script>
+<script>
+    window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
+    window.CALLER_PROFILE_ID = "@callerProfileId";
+</script>

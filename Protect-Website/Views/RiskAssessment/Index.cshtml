@@ -1,0 +1,1041 @@
+@model Protect_Website.Models.RiskAssessmentModel
+@{
+    ViewData["Title"] = "Risk Assessment";
+    ViewData["PageKey"] = "risk_assessment";
+}
+
+<style>
+    /* ============================================================
+       RISK ASSESSMENT — match Finance theme (white premium, soft gold)
+       SURGICAL: style-only upgrades, no markup/JS behavior changes
+       ============================================================ */
+
+    /* theme tokens aligned to home page (navy + gold) */
+    :root{
+        --surface:#0f172a;
+        --surface-soft:#111c32;
+        --ink:#0f172a;
+        --ink-light:#f8fafc;
+        --gold:#a68023;
+        --gold-strong:#c79931;
+        --goldSoft: rgba(199,153,49,.18);
+        --border: rgba(199,153,49,.95);
+        --card:#0f172a;
+        --shadow: 0 18px 55px rgba(0,0,0,.18);
+        --shadowSoft: 0 12px 28px rgba(0,0,0,.14);
+        --radius: 18px;
+    }
+
+    /* header + container feel */
+    .required-note{
+        font-size: .95rem;
+        margin-bottom: 18px;
+        color: #0f172a;
+        font-weight: 800;
+    }
+
+    /* Title matches your premium headers */
+    .page-title{
+        font-weight: 900;
+        letter-spacing: .2px;
+        color: var(--gold-strong);
+        margin: 0 0 10px;
+    }
+
+    /* section cards match Finance side cards */
+    .section-card{
+        position: relative;
+        background: var(--card);
+        border: 1.6px solid var(--border) !important;
+        padding: 22px 20px;
+        border-radius: 20px;
+        margin-bottom: 18px;
+        box-shadow:
+            0 20px 60px rgba(0,0,0,0.18),
+            inset 0 1px 0 rgba(255,255,255,0.05);
+        overflow: hidden;
+        color: var(--ink-light);
+    }
+
+    /* subtle gold corner glow */
+    .section-card:before{
+        content:"";
+        position:absolute;
+        inset:0;
+        border-radius: 20px;
+        pointer-events:none;
+        background:
+            radial-gradient(700px 260px at 12% 0%, rgba(199,153,49,0.16), transparent 60%);
+    }
+
+    /* subtle inner highlight border */
+    .section-card:after{
+        content:"";
+        position:absolute;
+        inset:0;
+        border-radius: 20px;
+        pointer-events:none;
+        border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .section-title{
+        font-size: 1.12rem;
+        font-weight: 900;
+        color: var(--gold-strong);
+        margin-bottom: 16px;
+        display:flex;
+        align-items:center;
+        justify-content: space-between;
+        gap: 12px;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Stepper styling to match Finance pills */
+    .stepper{
+        display:flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 0 0 18px;
+    }
+
+    .step-pill{
+        border: 2px solid rgba(199,153,49,.55);
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-weight: 900;
+        font-size: .9rem;
+        color: var(--ink-light);
+        background: var(--surface-soft);
+        cursor: pointer;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, color .15s ease;
+        user-select:none;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.14);
+    }
+
+    .step-pill:hover{
+        transform: translateY(-1px);
+        border-color: rgba(199,153,49,0.75);
+        box-shadow: 0 14px 34px rgba(0,0,0,0.16);
+    }
+
+    .step-pill.active{
+        border-color: var(--gold-strong);
+        color: #f8fafc;
+        background: rgba(199,153,49,0.14);
+    }
+
+    .step-pill.done{
+        border-color: rgba(199,153,49,0.55);
+        color: var(--ink-light);
+        opacity: .9;
+    }
+
+    /* Inputs/selects match Finance */
+    .form-control,
+    .form-select{
+        border-radius: 12px !important;
+        border: 1.6px solid rgba(199,153,49,0.85) !important;
+        padding: 10px 12px !important;
+        font-weight: 700;
+        background: #ffffff;
+        color: #0f172a;
+        margin-bottom: 15px;
+        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
+    }
+
+    .form-control::placeholder{
+        color: rgba(15,23,42,0.55);
+    }
+
+    .form-control:focus,
+    .form-select:focus{
+        outline: none !important;
+        border-color: rgba(199,153,49,1) !important;
+        box-shadow: 0 0 0 .2rem rgba(199,153,49,0.24) !important;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    /* Labels */
+    label{
+        font-weight: 800;
+        color: #f8fafc;
+        margin-bottom: 6px;
+    }
+
+    /* Buttons match Finance */
+    .btn-gold{
+        background: linear-gradient(180deg, var(--gold-strong), var(--gold));
+        color: #fff;
+        font-weight: 900;
+        padding: 10px 26px;
+        border-radius: 12px;
+        font-size: 1.05rem;
+        border: 1.6px solid var(--border);
+        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+    }
+
+    .btn-gold:hover{
+        background-color: #8f6f1e;
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(0,0,0,0.10);
+        filter: brightness(0.99);
+    }
+
+    .btn-outline-gold{
+        background:#0b1529;
+        border: 2px solid var(--border);
+        color:#f8fafc;
+        font-weight: 900;
+        padding: 10px 26px;
+        border-radius: 12px;
+        font-size: 1.05rem;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, color .18s ease;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.14);
+    }
+
+    .btn-outline-gold:hover{
+        border-color: var(--gold-strong);
+        color:#f8fafc;
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(0,0,0,0.10);
+    }
+
+    .nav-row{
+        display:flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 10px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .nav-row .spacer{ flex: 1 1 auto; }
+
+    .step-wrap{ display:none; }
+    .step-wrap.active{ display:block; }
+
+    /* currency input */
+    .input-group{ position: relative; }
+    .currency-input{ padding-right: 36px; }
+    .currency-symbol{
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #5a3b00;
+        font-weight: 900;
+        pointer-events: none;
+        opacity: .9;
+    }
+
+    .mini-hint{
+        font-size: .9rem;
+        color: rgba(248,250,252,0.78);
+        margin-top: -6px;
+        margin-bottom: 12px;
+        font-weight: 650;
+    }
+
+    /* checkbox */
+    .form-check-input{
+        accent-color: #b28f35;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    /* Responsive polish */
+    @@media (max-width: 575.98px){
+        .section-card{ padding: 18px 16px; border-radius: 18px; }
+        .step-pill{ font-size: .86rem; }
+    }
+</style>
+
+<div class="container-narrow">
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Risk Assessment Questionnaire / Legacy Review
+        </h1>
+    </div>
+
+    <p class="required-note text-center">
+        <strong>
+            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+        </strong>
+    </p>
+
+<form asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="container" data-form-key="risk_assessment_form">
+    @Html.AntiForgeryToken()
+
+    <!-- keep step on postback -->
+    <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
+
+    <div class="stepper" id="stepper">
+        <div class="step-pill" data-step="1">1) Personal</div>
+        <div class="step-pill" data-step="2">2) Income</div>
+        <div class="step-pill" data-step="3">3) Cash Flow</div>
+        <div class="step-pill" data-step="4">4) Estate</div>
+        <div class="step-pill" data-step="5">5) Coverage</div>
+        <div class="step-pill" data-step="6">6) Review</div>
+    </div>
+
+    <!-- ===================== STEP 1 ===================== -->
+    <div class="step-wrap" data-step="1">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Personal Information</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 1 of 6</span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>First Name<span class="text-danger">*</span></label>
+                    <input asp-for="FirstName" class="form-control" required />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Last Name<span class="text-danger">*</span></label>
+                    <input asp-for="LastName" class="form-control" required />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Email<span class="text-danger">*</span></label>
+                    <input asp-for="Email" class="form-control" required />
+                    <span asp-validation-for="Email" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Phone Number</label>
+                    <input asp-for="PhoneNumber" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label>Age</label>
+                    <input asp-for="Age" type="number" class="form-control" id="age-input" />
+                </div>
+                <div class="col-md-4">
+                    <label>Marital Status</label>
+                    <select asp-for="MaritalStatus" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Single</option>
+                        <option>Married</option>
+                        <option>Domestic Partner</option>
+                        <option>Widowed</option>
+                        <option>Separated</option>
+                        <option>Divorced</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Household Size</label>
+                    <input asp-for="HouseholdSize" type="number" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label>State</label>
+                    <select asp-for="State" class="form-control">
+                        <option value="">--Select a state--</option>
+                        <option>AZ</option>
+                        <option>CA</option>
+                        <option>IA</option>
+                        <option>KS</option>
+                        <option>LA</option>
+                        <option>MD</option>
+                        <option>MS</option>
+                        <option>OH</option>
+                        <option>SC</option>
+                        <option>SD</option>
+                        <option>TX</option>
+                        <option>WA</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label>Occupation</label>
+                    <input asp-for="Occupation" class="form-control" />
+                </div>
+            </div>
+
+            <div class="nav-row">
+                <div class="spacer"></div>
+                <button type="button" class="btn btn-gold" id="next-1">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 2 ===================== -->
+    <div class="step-wrap" data-step="2">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Income & Work</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 2 of 6</span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Annual Income</label>
+                    <input asp-for="AnnualIncome" type="number" class="form-control" id="income-input"/>
+                </div>
+                <div class="col-md-4">
+                    <label>Retirement Age Target</label>
+                    <input asp-for="RetirementAgeTarget" type="number" class="form-control" id="retirement-age-input"/>
+                </div>
+                <div class="col-md-4">
+                    <label>Working Years Left</label>
+                    <input asp-for="WorkingYearsLeft" type="number" class="form-control" id="working-years-left" readonly />
+                    <div class="mini-hint">Auto-calculated from Age and Retirement Age.</div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label>Self Employed?</label>
+                    <select asp-for="SelfEmployed" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label>Employer Benefits?</label>
+                    <select asp-for="EmployerBenefits" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="nav-row">
+                <button type="button" class="btn btn-outline-gold" id="back-2">← Back</button>
+                <button type="button" class="btn btn-gold" id="next-2">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 3 ===================== -->
+    <div class="step-wrap" data-step="3">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Cash Flow</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 3 of 6</span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Monthly Income</label>
+                    <div class="input-group">
+                        <input asp-for="MonthlyIncome" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Other Income</label>
+                    <div class="input-group">
+                        <input asp-for="OtherIncome" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Taxes</label>
+                    <div class="input-group">
+                        <input asp-for="Taxes" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label>Monthly Expenses</label>
+                    <div class="input-group">
+                        <input asp-for="MonthlyExpenses" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Monthly Debt</label>
+                    <div class="input-group">
+                        <input asp-for="MonthlyDebt" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Mortgage Payment</label>
+                    <div class="input-group">
+                        <input asp-for="MortgagePayment" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Emergency Savings</label>
+                    <div class="input-group">
+                        <input asp-for="EmergencySavings" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Checking Account</label>
+                    <div class="input-group">
+                        <input asp-for="CheckingAccount" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Savings Account</label>
+                    <div class="input-group">
+                        <input asp-for="SavingsAccount" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label>Roth IRA</label>
+                    <div class="input-group">
+                        <input asp-for="RothIRA" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Traditional IRA</label>
+                    <div class="input-group">
+                        <input asp-for="TraditionalIRA" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>401k</label>
+                    <div class="input-group">
+                        <input asp-for="_401k" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label>Brokerage Account</label>
+                    <div class="input-group">
+                        <input asp-for="BrokerageAccount" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>HSA</label>
+                    <div class="input-group">
+                        <input asp-for="HSA" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Other Assets</label>
+                    <div class="input-group">
+                        <input asp-for="OtherPropertyAssets" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Business Ownership Value</label>
+                    <div class="input-group">
+                        <input asp-for="BusinessOwnershipValue" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Primary Real Estate</label>
+                    <div class="input-group">
+                        <input asp-for="RealEstateValue" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Rental Property</label>
+                    <div class="input-group">
+                        <input asp-for="RentalPropertyValue" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label>Vehicle Value</label>
+                    <div class="input-group">
+                        <input asp-for="VehicleValue" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Collectibles Value</label>
+                    <div class="input-group">
+                        <input asp-for="CollectiblesValue" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Mortgage Balance</label>
+                    <div class="input-group">
+                        <input asp-for="MortgageBalance" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-2">
+                <div class="col-md-4">
+                    <label>Student Loans</label>
+                    <div class="input-group">
+                        <input asp-for="StudentLoans" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Other Liabilities</label>
+                    <div class="input-group">
+                        <input asp-for="OtherLiabilities" type="number" class="form-control currency-input" min="0" />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label>Net Monthly Cash Flow</label>
+                    <div class="input-group">
+                        <input asp-for="NetCashFlow" type="number" class="form-control currency-input" readonly />
+                        <span class="currency-symbol">$</span>
+                    </div>
+                    <div class="mini-hint">Auto-calculated from your cash flow inputs.</div>
+                </div>
+            </div>
+
+            <div class="nav-row">
+                <button type="button" class="btn btn-outline-gold" id="back-3">← Back</button>
+                <button type="button" class="btn btn-gold" id="next-3">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 4 ===================== -->
+    <div class="step-wrap" data-step="4">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Estate Planning</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 4 of 6</span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-3">
+                    <label>Do you have a Will?</label>
+                    <select asp-for="HasWill" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label>Trust?</label>
+                    <select asp-for="HasTrust" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label>Power of Attorney?</label>
+                    <select asp-for="HasPOA" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label>Health Directive / Living Will?</label>
+                    <select asp-for="HasHealthDirective" class="form-select">
+                        <option value="">--Select--</option>
+                        <option>Yes</option>
+                        <option>No</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="nav-row">
+                <button type="button" class="btn btn-outline-gold" id="back-4">← Back</button>
+                <button type="button" class="btn btn-gold" id="next-4">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 5 ===================== -->
+    <div class="step-wrap" data-step="5">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Coverage</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 5 of 6</span>
+            </div>
+
+            <!-- LIFE -->
+            <div class="section-card" style="margin-bottom:18px;">
+                <div class="section-title">Life Insurance</div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Do you have life insurance?<span class="text-danger">*</span></label>
+                        <select asp-for="HasLifeInsurance" class="form-select insurance-toggle" required>
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                        <span asp-validation-for="HasLifeInsurance" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Individual Coverage</label>
+                        <div class="input-group">
+                            <input asp-for="LifeCoverageIndividual" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasLifeInsurance" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Group Coverage</label>
+                        <div class="input-group">
+                            <input asp-for="LifeCoverageGroup" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasLifeInsurance" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label>Primary Beneficiaries</label>
+                        <input asp-for="PrimaryBeneficiaries" class="form-control" />
+                    </div>
+                    <div class="col-md-6">
+                        <label>Secondary Beneficiaries</label>
+                        <input asp-for="SecondaryBeneficiaries" class="form-control" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- DISABILITY -->
+            <div class="section-card" style="margin-bottom:18px;">
+                <div class="section-title">Disability Insurance</div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Do you have disability insurance?<span class="text-danger">*</span></label>
+                        <select asp-for="HasDI" class="form-select insurance-toggle" required>
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                        <span asp-validation-for="HasDI" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Monthly Benefit</label>
+                        <div class="input-group">
+                            <input asp-for="DIBenefitMonthly" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasDI" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Waiting Period (Months)</label>
+                        <input asp-for="DIWaitingPeriod" type="number" class="form-control" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Benefit Period</label>
+                        <input asp-for="DIBenefitPeriod" class="form-control" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- HEALTH -->
+            <div class="section-card" style="margin-bottom:18px;">
+                <div class="section-title">Health Coverage</div>
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Coverage Type</label>
+                        <input asp-for="HealthCoverageType" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label>Deductible</label>
+                        <input asp-for="HealthDeductible" type="number" class="form-control" />
+                    </div>
+                    <div class="col-md-4">
+                        <label>Out-of-Pocket Max</label>
+                        <input asp-for="HealthOutOfPocketMax" type="number" class="form-control" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- PROPERTY & LIABILITY -->
+            <div class="section-card">
+                <div class="section-title">Property & Liability</div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Home Insurance?</label>
+                        <select asp-for="HasHomeInsurance" class="form-select insurance-toggle">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Home Coverage Limit</label>
+                        <div class="input-group">
+                            <input asp-for="HomeCoverageLimit" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasHomeInsurance" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Auto Insurance?</label>
+                        <select asp-for="HasAutoInsurance" class="form-select insurance-toggle">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Auto Coverage Limit</label>
+                        <div class="input-group">
+                            <input asp-for="AutoCoverageLimit" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasAutoInsurance" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label>General Liability?</label>
+                        <select asp-for="HasGeneralLiability" class="form-select insurance-toggle">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>General Liability Limit</label>
+                        <div class="input-group">
+                            <input asp-for="GeneralLiabilityLimit" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasGeneralLiability" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Professional Liability?</label>
+                        <select asp-for="HasProfessionalLiability" class="form-select insurance-toggle">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Professional Liability Limit</label>
+                        <div class="input-group">
+                            <input asp-for="ProfessionalLiabilityLimit" type="number" class="form-control currency-input coverage-field"
+                                   data-parent="HasProfessionalLiability" min="0" />
+                            <span class="currency-symbol">$</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="nav-row">
+                <button type="button" class="btn btn-outline-gold" id="back-5">← Back</button>
+                <button type="button" class="btn btn-gold" id="next-5">Next →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== STEP 6 ===================== -->
+    <div class="step-wrap" data-step="6">
+        <div class="section-card">
+            <div class="section-title">
+                <span>Review & Submit</span>
+                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 6 of 6</span>
+            </div>
+
+        <div class="section-card mt-3">
+            <div class="form-check">
+                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" />
+                <label class="form-check-label" for="AcknowledgedDisclaimer">
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my risk assessment / legacy review request.<span class="text-danger">*</span>
+                </label>
+                <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
+            </div>
+
+            <div class="nav-row">
+                <button type="button" class="btn btn-outline-gold" id="back-6">← Back</button>
+                <button type="submit" class="btn btn-gold">Submit Risk Assessment</button>
+            </div>
+        </div>
+    </div>
+
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        // ---------- STEP CONTROL ----------
+        const stepWraps = Array.from(document.querySelectorAll(".step-wrap"));
+        const stepPills = Array.from(document.querySelectorAll(".step-pill"));
+        const currentStepInput = document.getElementById("CurrentStep");
+
+        function clampStep(n){
+            n = parseInt(n || 1);
+            if (isNaN(n) || n < 1) n = 1;
+            if (n > 6) n = 6;
+            return n;
+        }
+
+        function setStep(step){
+            step = clampStep(step);
+            currentStepInput.value = step;
+
+            stepWraps.forEach(w => w.classList.toggle("active", w.getAttribute("data-step") == step));
+            stepPills.forEach(p => {
+                const s = parseInt(p.getAttribute("data-step"));
+                p.classList.toggle("active", s === step);
+                p.classList.toggle("done", s < step);
+            });
+
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+
+        function validateStep(step){
+            const wrap = stepWraps.find(w => w.getAttribute("data-step") == step);
+            if (!wrap) return true;
+
+            // validate only visible step required inputs/selects/textarea that are NOT disabled
+            const fields = wrap.querySelectorAll("input, select, textarea");
+            for (const f of fields){
+                if (f.disabled) continue;
+                if (!f.hasAttribute("required")) continue;
+
+                // HTML5 constraint validation
+                if (!f.checkValidity()){
+                    f.reportValidity();
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // click step pills (only allow back freely; forward requires current step valid)
+        stepPills.forEach(p => {
+            p.addEventListener("click", () => {
+                const target = parseInt(p.getAttribute("data-step"));
+                const current = clampStep(currentStepInput.value);
+
+                if (target <= current) return setStep(target);
+                if (validateStep(current)) setStep(target);
+            });
+        });
+
+        // wire next/back buttons
+        function next(step){
+            if (!validateStep(step)) return;
+            setStep(step + 1);
+        }
+        function back(step){
+            setStep(step - 1);
+        }
+
+        document.getElementById("next-1").addEventListener("click", () => next(1));
+        document.getElementById("next-2").addEventListener("click", () => next(2));
+        document.getElementById("next-3").addEventListener("click", () => next(3));
+        document.getElementById("next-4").addEventListener("click", () => next(4));
+        document.getElementById("next-5").addEventListener("click", () => next(5));
+
+        document.getElementById("back-2").addEventListener("click", () => back(2));
+        document.getElementById("back-3").addEventListener("click", () => back(3));
+        document.getElementById("back-4").addEventListener("click", () => back(4));
+        document.getElementById("back-5").addEventListener("click", () => back(5));
+        document.getElementById("back-6").addEventListener("click", () => back(6));
+
+        // ---------- COVERAGE FIELD TOGGLES ----------
+        document.querySelectorAll(".insurance-toggle").forEach(select => {
+            const fields = document.querySelectorAll(`[data-parent='${select.name}']`);
+
+            function sync() {
+                if (select.value === "No") {
+                    fields.forEach(f => {
+                        f.value = 0;
+                        f.disabled = true;
+                        f.removeAttribute("required");
+                    });
+                } else if (select.value === "Yes") {
+                    fields.forEach(f => {
+                        f.disabled = false;
+                        // keep optional unless you explicitly want required when Yes
+                        // f.setAttribute("required", "required");
+                        if (f.value == 0) f.value = "";
+                    });
+                } else {
+                    fields.forEach(f => {
+                        f.disabled = true;
+                        f.value = "";
+                    });
+                }
+            }
+
+            select.addEventListener("change", sync);
+            sync();
+        });
+
+        // ---------- Working Years Left ----------
+        const ageInput = document.getElementById("age-input");
+        const retirementInput = document.getElementById("retirement-age-input");
+        const workingYearsInput = document.getElementById("working-years-left");
+
+        function updateWorkingYears() {
+            const age = parseInt(ageInput?.value) || 0;
+            const retirement = parseInt(retirementInput?.value) || 0;
+            let yearsLeft = retirement - age;
+            if (workingYearsInput) workingYearsInput.value = yearsLeft > 0 ? yearsLeft : 0;
+        }
+
+        if (ageInput) ageInput.addEventListener("input", updateWorkingYears);
+        if (retirementInput) retirementInput.addEventListener("input", updateWorkingYears);
+
+        // ---------- init step from server ----------
+        setStep(@Model.CurrentStep);
+        updateWorkingYears();
+    </script>
+}

@@ -1,0 +1,187 @@
+@model string
+@{
+    var bucket = Model ?? "";
+}
+
+<section class="lead-bridge" data-lead-bridge data-bucket="@bucket">
+    @Html.AntiForgeryToken()
+    <div class="lb-filterbar">
+        <div class="lb-filter">
+            <select id="lbStateFilter" data-lb-state-filter>
+                <option value="" selected>State</option>
+            </select>
+        </div>
+        <div class="lb-filter">
+            <select id="lbStageFilter" data-lb-stage-filter>
+                <option value="" selected>Stage</option>
+            </select>
+        </div>
+        <div class="lb-filter">
+            <select id="lbCalledFilter" data-lb-called-filter>
+                <option value="" selected>Calls</option>
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+                <option value="6">6</option>
+                <option value="7">7</option>
+                <option value="8">8</option>
+                <option value="9">9</option>
+                <option value="10">10+</option>
+            </select>
+        </div>
+        <div class="lb-filter">
+            <select id="lbAgeFilter" data-lb-age-filter>
+                <option value="" selected>Age</option>
+            </select>
+        </div>
+        <div class="lb-filter lb-search">
+            <input id="lbSearch" type="search" data-lb-search placeholder="Search name, phone, email" autocomplete="off" />
+        </div>
+        <div class="lb-filter">
+            <button type="button" class="btn lb-btn ghost" data-lb-clear>Clear</button>
+        </div>
+        <div class="lb-filter">
+            <button type="button" class="btn lb-btn note-self-cta" data-note-self-open>📝 Note to Self</button>
+        </div>
+        <div class="lb-filter">
+            <a class="btn lb-btn ghost" data-lb-open-crm target="_blank" rel="noopener">Open in CRM</a>
+        </div>
+    </div>
+
+    <div class="note-self-overlay" data-note-self-overlay hidden>
+        <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">
+            <div class="note-self-head">
+                <div class="note-self-title-wrap">
+                    <h3 class="note-self-title">Note to Self</h3>
+                    <p class="note-self-sub">Track what went well and what could have been better by date.</p>
+                </div>
+                <button type="button" class="note-self-close" data-note-self-close aria-label="Close">×</button>
+            </div>
+
+            <div class="note-self-toolbar">
+                <label class="note-self-field note-self-field-lead">
+                    <span>Lead</span>
+                    <input type="text" data-note-self-lead readonly />
+                </label>
+                <label class="note-self-field">
+                    <span>Date</span>
+                    <input type="date" data-note-self-date />
+                </label>
+                <label class="note-self-field">
+                    <span>Saved notes</span>
+                    <select data-note-self-dates>
+                        <option value="">Select lead + date</option>
+                    </select>
+                </label>
+                <button type="button" class="btn lb-btn" data-note-self-save>Save</button>
+            </div>
+
+            <div class="note-self-doc" data-note-self-doc>
+                <section class="note-self-col">
+                    <h4>What went well</h4>
+                    <textarea data-note-self-well placeholder="Capture wins, strong moments, and what worked..."></textarea>
+                </section>
+                <section class="note-self-col">
+                    <h4>What could have been better</h4>
+                    <textarea data-note-self-better placeholder="Capture misses, gaps, and adjustments for next time..."></textarea>
+                </section>
+            </div>
+
+            <div class="note-self-foot" data-note-self-status>Ready</div>
+        </div>
+    </div>
+
+    <div class="lb-row lb-row-fields">
+        <div class="lead-field mobile-allowed" data-lf="name">
+            <span class="lf-label">Name</span>
+            <span class="lf-value" data-lf-value="name">—</span>
+            <span class="lf-sub" data-lf-value="calls">Calls: —</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="address">
+            <span class="lf-label">Address</span>
+            <span class="lf-value" data-lf-value="address">—</span>
+        </div>
+        <div class="lead-field mobile-allowed" data-lf="city">
+            <span class="lf-label">City</span>
+            <span class="lf-value" data-lf-value="city">—</span>
+        </div>
+        <div class="lead-field mobile-allowed" data-lf="state">
+            <span class="lf-label">State</span>
+            <span class="lf-value" data-lf-value="state">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="county">
+            <span class="lf-label">County</span>
+            <span class="lf-value" data-lf-value="county">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="dob">
+            <span class="lf-label">DOB</span>
+            <span class="lf-value" data-lf-value="dob">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="gender">
+            <span class="lf-label">M/F</span>
+            <span class="lf-value" data-lf-value="gender">—</span>
+        </div>
+        <div class="lead-field mobile-allowed" data-lf="lender">
+            <span class="lf-label" data-lf-label="lender">Lender</span>
+            <span class="lf-value" data-lf-value="lender">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="loan">
+            <span class="lf-label" data-lf-label="loan">Loan Amount</span>
+            <span class="lf-value" data-lf-value="loan">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="phone">
+            <span class="lf-label">Phone #</span>
+            <span class="lf-value" data-lf-value="phone">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="phone2">
+            <span class="lf-label">Phone #2</span>
+            <span class="lf-value" data-lf-value="phone2">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="age">
+            <span class="lf-label">Age</span>
+            <span class="lf-value" data-lf-value="age">—</span>
+        </div>
+        <div class="lead-field mobile-hidden" data-lf="btc">
+            <span class="lf-label">BTC</span>
+            <span class="lf-value" data-lf-value="btc">—</span>
+        </div>
+        <span class="visually-hidden" data-lf-value="leadId"></span>
+    </div>
+
+    <div class="lb-row lb-row-actions">
+        <div class="lb-actions">
+            <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-call>Call</button>
+            <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-text>Text ▾</button>
+            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-day disabled>
+                <span class="lb-dials-label">Today’s Dials:</span>
+                <span class="lb-dials-count lb-dials-day">—</span>
+            </button>
+            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-week disabled>
+                <span class="lb-dials-label">Week’s Dials:</span>
+                <span class="lb-dials-count lb-dials-week">—</span>
+            </button>
+            <button type="button" class="btn lb-btn next mobile-allowed" data-lb-next>Next ➜</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="NoAnswer">No Answer</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="Contacted">Mark Contacted</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="FollowUp">Follow Up</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="Booked">Booked Meeting</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="NeedsDocs">Needs Docs</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="PolicyPlaced">Policy Placed</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="AIReception">AI Reception</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="Nurture">Nurture</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="NotInterested">Not Interested</button>
+            <button type="button" class="btn lb-btn mobile-hidden" data-outcome="Lost">Lost</button>
+            <button type="button" class="btn lb-btn danger mobile-hidden" data-lb-delete style="background:#dc2626;color:#fff;border-color:#b91c1c;">Delete Lead</button>
+        </div>
+        <div class="lb-meta mobile-allowed">
+            <span class="lb-pos" data-lb-pos>Lead 0 of 0</span>
+            <span class="lb-origin mobile-hidden" data-lb-origin>Origin: —</span>
+            <span class="lb-status" data-lb-status>Loading…</span>
+        </div>
+    </div>
+
+    <div class="lb-toast" data-lb-toast aria-live="polite"></div>
+</section>

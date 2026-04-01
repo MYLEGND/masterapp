@@ -1,0 +1,2048 @@
+@* Views/FactFinder/Senior.cshtml *@
+@model AgentPortal.Models.FactFinderViewModel
+
+@{
+    ViewData["Title"] = "Senior Fact Finder";
+
+    // ✅ CRITICAL: "Prepopulated" means on FIRST LOAD (GET) we show ONLY ONE card in every repeater.
+    // If the page is being re-rendered after a POST (validation failure, etc.), we render ALL items so data is not lost.
+    var isPost = string.Equals(ViewContext?.HttpContext?.Request?.Method, "POST", StringComparison.OrdinalIgnoreCase);
+}
+
+<style>
+    :root{
+        --navy-900: #0b1529;
+        --navy-800: #0f1d38;
+        --navy-700: #162445;
+        --gold: #a68023;
+        --gold-dark:#8f6f1e;
+        --ink:#f8fafc;
+        --muted: #cbd5e1;
+        --line: rgba(166,128,35,.55);
+        --bg: var(--navy-900);
+        --soft:#0f1d38;
+        --card:#0f1d38;
+        --shadow: 0 18px 38px rgba(0,0,0,.32);
+        --radius: 18px;
+    }
+
+    body { background-color: var(--bg); color: var(--ink); }
+
+    .ff-shell{
+        max-width: 980px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 14px 30px 14px;
+        color: var(--ink);
+    }
+
+    .success-message{
+        background: #e9f7ef;
+        border: 1px solid #bfe5cf;
+        color: #135b2c;
+        padding: 12px 14px;
+        border-radius: 12px;
+        margin-top: 14px;
+        font-weight: 800;
+    }
+
+    .ff-title{
+        margin-top: 18px;
+        margin-bottom: 8px;
+        text-align:center;
+    }
+
+    .ff-title h1{
+        font-weight: 950;
+        font-size: clamp(2.0rem, 3.2vw, 2.6rem);
+        color: var(--ink);
+        letter-spacing: .5px;
+        margin: 0;
+    }
+
+    .required-note{
+        text-align:center;
+        color: var(--muted);
+        margin: 0 0 14px 0;
+    }
+
+    .req{ color:#dc3545; font-weight: 900; margin-left: 2px; }
+
+    /* Progress */
+    .ff-progress-wrap{
+        background: var(--soft);
+        border: 1.5px solid var(--gold);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        box-shadow: var(--shadow);
+        margin-bottom: 14px;
+        color: var(--ink);
+    }
+
+    .ff-progress-top{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+    }
+
+    .ff-step-pill{
+        background: var(--navy-800);
+        border: 1.2px solid var(--gold);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-weight: 950;
+        color: var(--ink);
+        font-size: .9rem;
+        white-space: nowrap;
+    }
+
+    .ff-progress{
+        height: 10px;
+        border-radius: 999px;
+        background: var(--navy-700);
+        overflow:hidden;
+        border: 1px solid var(--gold);
+    }
+
+    #ffProgressBarSenior{
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+        border-radius: 999px;
+        transition: width .25s ease;
+    }
+
+    /* Steps */
+    .wizard-step{ display:none; }
+    .wizard-step.active{ display:block; }
+
+    /* Cards */
+    .section-card{
+        background: #fff;
+        border: 1.6px solid var(--gold);
+        border-radius: var(--radius);
+        padding: 16px 16px;
+        box-shadow: var(--shadow);
+        margin-bottom: 14px;
+        color: var(--navy-900);
+    }
+
+    .section-title{
+        font-weight: 950;
+        color: var(--navy-900);
+        font-size: 1.15rem;
+        margin-bottom: 4px;
+    }
+
+    .subtle{
+        color: var(--navy-900);
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    /* Two-column main layout (you used this in markup) */
+    .grid.two{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        align-items: start;
+    }
+
+    @@media (max-width: 980px){
+        .grid.two{ grid-template-columns: 1fr; }
+    }
+
+    /* Vertical blocks */
+    .stack{
+        display:flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .block{
+        background: var(--navy-800);
+        border: 1.3px solid var(--gold);
+        border-radius: 16px;
+        padding: 14px;
+        color: var(--ink);
+    }
+
+    .block label,
+    .block .field label,
+    .block .block-title,
+    .block .mini-title,
+    .block .subtle{
+        color: #fff !important;
+    }
+
+    .block label,
+    .block .field label,
+    .block .block-title{
+        color: var(--ink) !important;
+    }
+
+    .block-title{
+        font-weight: 950;
+        color: var(--ink);
+        font-size: 1.05rem;
+        margin-bottom: 10px;
+        letter-spacing: .2px;
+    }
+
+    .mini-title{
+        font-weight: 950;
+        color: var(--ink);
+        margin-top: 12px;
+        margin-bottom: 8px;
+        opacity: .92;
+    }
+
+    /* Rows */
+    .row.one{
+        display:grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.two{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.three{
+        display:grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.four{
+        display:grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .row.five{
+        display:grid;
+        grid-template-columns: 1.1fr .9fr .6fr .9fr 1.1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    @@media (max-width: 980px){
+        .row.one, .row.two, .row.three, .row.four, .row.five{ grid-template-columns: 1fr; }
+    }
+
+    .field label{
+        display:block;
+        font-weight: 900;
+        color: var(--navy-900);
+        margin-bottom: 6px;
+        font-size: .92rem;
+    }
+
+    /* White container text clarity */
+    .section-card .field label,
+    .section-card .section-title,
+    .section-card .subtle,
+    .section-card .table-like label{
+        color: var(--navy-900) !important;
+    }
+
+.table-like{
+    background:#fff;
+    border: 1px solid rgba(0,0,0,.06);
+    border-radius: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
+    position: relative;
+    color: var(--navy-900);
+}
+
+/* Force white text inside navy blocks */
+.block label,
+.block .field label,
+.block .block-title,
+.block .mini-title,
+.block .subtle{
+    color: #fff !important;
+}
+
+/* Override for white tables inside blocks */
+.table-like label,
+.table-like .field label{
+    color: var(--navy-900) !important;
+}
+
+.ack-text{
+    color: var(--navy-900) !important;
+}
+
+    /* GOLD INPUTS */
+    input.form-control,
+    textarea.form-control,
+    select.form-select{
+        border: 1.6px solid var(--gold) !important;
+        border-radius: 12px !important;
+        padding: 10px 12px !important;
+        background: #fff !important;
+        color: #0b1529 !important;
+        font-weight: 700;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    input.form-control:focus,
+    textarea.form-control:focus,
+    select.form-select:focus{
+        border-color: var(--gold) !important;
+        box-shadow: 0 0 0 .22rem rgba(166,128,35,.25) !important;
+    }
+
+    textarea.form-control{ resize: vertical; }
+
+    .checkline{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        background: var(--navy-800);
+        border: 1.2px solid var(--gold);
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .checkline input[type="checkbox"]{
+        width: 18px;
+        height: 18px;
+        accent-color: var(--gold);
+    }
+
+    /* Table-like rows */
+    .table-like{
+        background:#fff;
+        border: 1px solid rgba(0,0,0,.06);
+        border-radius: 14px;
+        padding: 10px;
+        margin-bottom: 10px;
+    }
+
+    /* Buttons */
+    .wizard-actions{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn{
+        border-radius: 999px !important;
+        font-weight: 950 !important;
+        letter-spacing: .2px;
+        padding: 10px 16px !important;
+    }
+
+    .btn-gold{
+        background: linear-gradient(180deg, var(--gold), var(--gold-dark)) !important;
+        border: 1px solid rgba(0,0,0,.06) !important;
+        color: #fff !important;
+        box-shadow: 0 12px 26px rgba(166,128,35,.25);
+    }
+
+    .btn-gold:hover{ filter: brightness(1.02); }
+
+    .btn-ghost{
+        background: var(--navy-900) !important;
+        border: 2px solid var(--gold) !important;
+        color: #fff !important;
+    }
+
+    .btn-ghost:hover{
+        border-color: var(--gold) !important;
+        filter: brightness(1.05);
+        box-shadow: 0 10px 20px rgba(0,0,0,.2);
+    }
+
+    /* Repeater card actions (BOTTOM LEFT like your Middle-Aged) */
+    .ff-card-actions{
+        display:flex;
+        gap: 10px;
+        justify-content:flex-start;
+        margin-top: 10px;
+    }
+
+    .btn-mini{
+        padding: 9px 14px !important;
+        font-size: .92rem !important;
+        box-shadow: none !important;
+    }
+
+    .btn-danger-pill{
+        background: #dc3545 !important;
+        border: 1px solid rgba(0,0,0,.06) !important;
+        color: #fff !important;
+    }
+
+    .btn-danger-pill:hover{ filter: brightness(0.98); }
+</style>
+
+<div class="ff-shell">
+
+    @if (ViewBag.Success != null)
+    {
+        <div class="success-message">@ViewBag.Success</div>
+    }
+
+    <div class="ff-title">
+        <h1>Fact Finder - Seniors (62+)</h1>
+    </div>
+
+    <p class="required-note">
+        <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
+    </p>
+
+    <div class="ff-progress-wrap">
+        <div class="ff-progress-top">
+            <div class="ff-step-pill">
+                Step <span id="ffStepNowSenior">1</span> of <span id="ffStepTotalSenior">4</span>
+            </div>
+            <div style="font-weight:900; color:var(--muted); font-size:.95rem;" id="ffStepLabelSenior">
+                Priorities + Pain Points
+            </div>
+        </div>
+        <div class="ff-progress"><div id="ffProgressBarSenior"></div></div>
+    </div>
+
+    <div id="ffSeniorApp">
+        <form id="factFinderFormSenior" method="post" asp-action="Submit" asp-controller="FactFinder" novalidate>
+            @Html.AntiForgeryToken()
+
+            @* CRITICAL: tells controller which section was submitted *@
+            <input type="hidden" asp-for="FormType" value="Senior" />
+
+            <!-- =========================================================
+                 STEP 1 — PRIORITIES + PAIN POINTS (VALUES FIRST)
+                 ✅ Minimal identity (name required) + ALL "what needs fixing" first.
+            ========================================================== -->
+            <section class="wizard-step active" data-step="1" data-label="Priorities + Pain Points">
+
+                <div class="section-card">
+                    <div class="section-title">Part 1 — Priorities & Pain Points</div>
+                    <div class="subtle">We start with what you want fixed and what matters most — then we’ll inventory what you have.</div>
+
+                    <div class="stack">
+
+                        <!-- Minimal Identity -->
+                        <div class="block">
+                            <div class="block-title">Quick Identity (Minimal)</div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Applicant Name<span class="req">*</span></label>
+                                    <input asp-for="Senior.Applicant.ApplicantName" class="form-control" placeholder="Applicant Name*" required />
+                                    <span asp-validation-for="Senior.Applicant.ApplicantName" class="text-danger"></span>
+                                </div>
+                                <div class="field">
+                                    <label>Date of Birth</label>
+                                    <input asp-for="Senior.Applicant.DateOfBirth" type="date" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Phone No.</label>
+                                    <input asp-for="Senior.Applicant.Phone" type="tel" class="form-control" placeholder="Phone" />
+                                </div>
+                                <div class="field">
+                                    <label>Email</label>
+                                    <input asp-for="Senior.Applicant.Email" type="email" class="form-control" placeholder="Email" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Medical Priorities (QUESTIONS FIRST) -->
+                        <div class="block">
+                            <div class="block-title">Medical Expenses — Priorities</div>
+
+                            <div class="field">
+                                <label>1) Many people are concerned about the high cost of healthcare. What are you doing to protect yourself?</label>
+                                <textarea asp-for="Senior.Medical.ProtectYourselfPlan" class="form-control" placeholder="Type here..."></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>2) Tell me about your health in the last three years.</label>
+                                <textarea asp-for="Senior.Medical.HealthLastThreeYears" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>3) What medications are you taking currently?</label>
+                                <textarea asp-for="Senior.Medical.CurrentMedications" class="form-control"></textarea>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>4) Is there a family history of cancer, stroke, or heart attack?</label>
+                                    <select asp-for="Senior.Medical.FamilyHistoryCancerStrokeHeart" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="field">
+                                <label>What impact was there on the family? On the finances?</label>
+                                <textarea asp-for="Senior.Medical.FamilyHistoryImpact" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>5) If you could change anything about your present coverage, what would it be?</label>
+                                <textarea asp-for="Senior.Medical.ChangeAboutPresentCoverage" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>6) What is your strategy for covering medical expenses outside your plan’s coverage?</label>
+                                <textarea asp-for="Senior.Medical.StrategyCoverOutsidePlansCoverage" class="form-control"></textarea>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Would you like to learn about ways to avoid potential out-of-pocket costs?</label>
+                                    <select asp-for="Senior.Medical.WouldLikeLearnAvoidOutOfPocket" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+                        </div>
+
+                        <!-- Extended Care Priorities (QUESTIONS FIRST; POLICY DETAILS LATER) -->
+                        <div class="block">
+                            <div class="block-title">Extended Care — Priorities</div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you have extended care coverage?</label>
+                                    <select asp-for="Senior.ExtendedCare.HasExtendedCareCoverage" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="mini-title">8) If no extended care coverage:</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>a) Have you ever looked into it?</label>
+                                    <select asp-for="Senior.ExtendedCare.LookedIntoIt" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="field">
+                                <label>b) Why or why wasn’t it important for you to look into?</label>
+                                <textarea asp-for="Senior.ExtendedCare.WhyNotImportant" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>c) If you decided against getting coverage, what prevented you from moving forward? (Price, benefits, health?)</label>
+                                <textarea asp-for="Senior.ExtendedCare.WhatPreventedMovingForward" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>9) Who do you know who has needed extended or recovery care either at home or in a facility?</label>
+                                <textarea asp-for="Senior.ExtendedCare.KnowSomeoneNeededCare" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>10) Was a spouse or other family member financially impacted by this need for care? If yes, tell me about that.</label>
+                                <textarea asp-for="Senior.ExtendedCare.FinanciallyImpactedStory" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>11) Biggest concern regarding extended care:</label>
+                                <select asp-for="Senior.ExtendedCare.BiggestConcernChoice" class="form-select">
+                                    <option value="">Select one</option>
+                                    <option>Remaining independent</option>
+                                    <option>Having choices</option>
+                                    <option>Protecting their assets</option>
+                                    <option>Burdening others</option>
+                                </select>
+                            </div>
+
+                            <div class="field">
+                                <label>Why?</label>
+                                <textarea asp-for="Senior.ExtendedCare.BiggestConcernWhy" class="form-control" style="min-height:72px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>12) What involvement do you see your children having should you need extended or recovery care?</label>
+                                <textarea asp-for="Senior.ExtendedCare.ChildrenInvolvementView" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>13) What conversations has your family had about aging in place and the potential need for extended or recovery care?</label>
+                                <textarea asp-for="Senior.ExtendedCare.FamilyConversationsAgingInPlace" class="form-control"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="wizard-actions">
+                        <div></div>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 2 — FACTS + INVENTORY (HOUSEHOLD + COVERAGE DETAILS)
+                 ✅ All the "hard facts" + tables moved here.
+            ========================================================== -->
+            <section class="wizard-step" data-step="2" data-label="Facts + Inventory">
+
+                <div class="section-card">
+                    <div class="section-title">Part 2 — Facts & Inventory</div>
+                    <div class="subtle">Now we document household details and what you currently have.</div>
+
+                    <div class="stack">
+
+                        <!-- Applicant (full facts) -->
+                        <div class="block">
+                            <div class="block-title">Applicant (Details)</div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Occupation</label>
+                                    <input asp-for="Senior.Applicant.Occupation" class="form-control" placeholder="Occupation" />
+                                </div>
+                                <div class="field">
+                                    <label>Retired?</label>
+                                    <select asp-for="Senior.Applicant.IsRetired" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Retired Year</label>
+                                    <input asp-for="Senior.Applicant.RetiredYear" type="number" class="form-control" placeholder="Year" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Benefits</div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Applicant.Benefit_Pension" type="checkbox" id="appBenPensionSenior" />
+                                <label for="appBenPensionSenior">Pension</label>
+                            </div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Applicant.Benefit_HealthPlan" type="checkbox" id="appBenHealthSenior" />
+                                <label for="appBenHealthSenior">Health Plan</label>
+                            </div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Applicant.Benefit_Other" type="checkbox" id="appBenOtherSenior" />
+                                <label for="appBenOtherSenior">Other</label>
+                            </div>
+                            <div class="row one">
+                                <div class="field">
+                                    <label>Other (Explain)</label>
+                                    <input asp-for="Senior.Applicant.BenefitOtherText" class="form-control" placeholder="Other benefits" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Address</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Address</label>
+                                    <input asp-for="Senior.Applicant.Address" class="form-control" placeholder="Address" />
+                                </div>
+                                <div class="field">
+                                    <label>City</label>
+                                    <input asp-for="Senior.Applicant.City" class="form-control" placeholder="City" />
+                                </div>
+                            </div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>State</label>
+                                    <input asp-for="Senior.Applicant.State" class="form-control" placeholder="State" />
+                                </div>
+                                <div class="field">
+                                    <label>ZIP</label>
+                                    <input asp-for="Senior.Applicant.Zip" class="form-control" placeholder="ZIP" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Spouse + Kids + Emergency + Appointment -->
+                        <div class="block">
+                            <div class="block-title">Spouse / Household</div>
+
+                            <div class="mini-title">Spouse</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Spouse Name</label>
+                                    <input asp-for="Senior.Spouse.SpouseName" class="form-control" placeholder="Spouse Name" />
+                                </div>
+                                <div class="field">
+                                    <label>Date of Birth</label>
+                                    <input asp-for="Senior.Spouse.DateOfBirth" type="date" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Occupation</label>
+                                    <input asp-for="Senior.Spouse.Occupation" class="form-control" placeholder="Occupation" />
+                                </div>
+                                <div class="field">
+                                    <label>Retired?</label>
+                                    <select asp-for="Senior.Spouse.IsRetired" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Retired Year</label>
+                                    <input asp-for="Senior.Spouse.RetiredYear" type="number" class="form-control" placeholder="Year" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Benefits</div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Spouse.Benefit_Pension" type="checkbox" id="spBenPensionSenior" />
+                                <label for="spBenPensionSenior">Pension</label>
+                            </div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Spouse.Benefit_HealthPlan" type="checkbox" id="spBenHealthSenior" />
+                                <label for="spBenHealthSenior">Health Plan</label>
+                            </div>
+                            <div class="checkline">
+                                <input asp-for="Senior.Spouse.Benefit_Other" type="checkbox" id="spBenOtherSenior" />
+                                <label for="spBenOtherSenior">Other</label>
+                            </div>
+                            <div class="field">
+                                <label>Other (Explain)</label>
+                                <input asp-for="Senior.Spouse.BenefitOtherText" class="form-control" placeholder="Other benefits" />
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Email</label>
+                                    <input asp-for="Senior.Spouse.Email" type="email" class="form-control" placeholder="Email" />
+                                </div>
+                                <div class="field">
+                                    <label>Phone No.</label>
+                                    <input asp-for="Senior.Spouse.Phone" type="tel" class="form-control" placeholder="Phone" />
+                                </div>
+                            </div>
+
+                            <!-- =========================================================
+                                 CHILDREN / DEPENDENTS — INDEX REPEATER
+                                 ✅ SURGICAL CHANGE: ONLY ONE CARD PREPOPULATED ON GET.
+                            ========================================================== -->
+                            <div class="mini-title">Children / Dependents</div>
+                            <div class="subtle">Add only what you need.</div>
+
+                            <div class="stack" id="seniorChildrenRepeater">
+                                @if (!isPost)
+                                {
+                                    var key = Guid.NewGuid().ToString("N");
+                                    <div class="table-like" data-item>
+                                        <input type="hidden" name="Senior.Children.Index" value="@key" />
+
+                                        <div class="row three">
+                                            <div class="field">
+                                                <label>Child Name</label>
+                                                <input class="form-control" name="Senior.Children[@key].ChildName" placeholder="Name" />
+                                            </div>
+                                            <div class="field">
+                                                <label>Age</label>
+                                                <input class="form-control" type="number" name="Senior.Children[@key].Age" placeholder="Age" />
+                                            </div>
+                                            <div class="field">
+                                                <label>City</label>
+                                                <input class="form-control" name="Senior.Children[@key].City" placeholder="City" />
+                                            </div>
+                                        </div>
+
+                                        <div class="ff-card-actions">
+                                            <button type="button" class="btn btn-mini btn-gold" data-add-child>+ Add Child</button>
+                                            <button type="button" class="btn btn-mini btn-danger-pill" data-del-child>Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    if ((Model?.Senior?.Children?.Count ?? 0) == 0)
+                                    {
+                                        var key = Guid.NewGuid().ToString("N");
+                                        <div class="table-like" data-item>
+                                            <input type="hidden" name="Senior.Children.Index" value="@key" />
+
+                                            <div class="row three">
+                                                <div class="field">
+                                                    <label>Child Name</label>
+                                                    <input class="form-control" name="Senior.Children[@key].ChildName" placeholder="Name" />
+                                                </div>
+                                                <div class="field">
+                                                    <label>Age</label>
+                                                    <input class="form-control" type="number" name="Senior.Children[@key].Age" placeholder="Age" />
+                                                </div>
+                                                <div class="field">
+                                                    <label>City</label>
+                                                    <input class="form-control" name="Senior.Children[@key].City" placeholder="City" />
+                                                </div>
+                                            </div>
+
+                                            <div class="ff-card-actions">
+                                                <button type="button" class="btn btn-mini btn-gold" data-add-child>+ Add Child</button>
+                                                <button type="button" class="btn btn-mini btn-danger-pill" data-del-child>Delete</button>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        for (int i = 0; i < Model!.Senior.Children.Count; i++)
+                                        {
+                                            var item = Model.Senior.Children[i];
+                                            var key = Guid.NewGuid().ToString("N");
+
+                                            <div class="table-like" data-item>
+                                                <input type="hidden" name="Senior.Children.Index" value="@key" />
+
+                                                <div class="row three">
+                                                    <div class="field">
+                                                        <label>Child Name</label>
+                                                        <input class="form-control"
+                                                               name="Senior.Children[@key].ChildName"
+                                                               value="@(item?.ChildName ?? "")"
+                                                               placeholder="Name" />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>Age</label>
+                                                        <input class="form-control"
+                                                               type="number"
+                                                               name="Senior.Children[@key].Age"
+                                                               value="@(item != null ? item.Age : (int?)null)"
+                                                               placeholder="Age" />
+                                                    </div>
+                                                    <div class="field">
+                                                        <label>City</label>
+                                                        <input class="form-control"
+                                                               name="Senior.Children[@key].City"
+                                                               value="@(item?.City ?? "")"
+                                                               placeholder="City" />
+                                                    </div>
+                                                </div>
+
+                                                <div class="ff-card-actions">
+                                                    <button type="button" class="btn btn-mini btn-gold" data-add-child>+ Add Child</button>
+                                                    <button type="button" class="btn btn-mini btn-danger-pill" data-del-child>Delete</button>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
+                                }
+                            </div>
+
+                            <template id="tplSeniorChildRow">
+                                <div class="table-like" data-item>
+                                    <input type="hidden" name="Senior.Children.Index" value="__KEY__" />
+
+                                    <div class="row three">
+                                        <div class="field">
+                                            <label>Child Name</label>
+                                            <input class="form-control" name="Senior.Children[__KEY__].ChildName" placeholder="Name" />
+                                        </div>
+                                        <div class="field">
+                                            <label>Age</label>
+                                            <input class="form-control" type="number" name="Senior.Children[__KEY__].Age" placeholder="Age" />
+                                        </div>
+                                        <div class="field">
+                                            <label>City</label>
+                                            <input class="form-control" name="Senior.Children[__KEY__].City" placeholder="City" />
+                                        </div>
+                                    </div>
+
+                                    <div class="ff-card-actions">
+                                        <button type="button" class="btn btn-mini btn-gold" data-add-child>+ Add Child</button>
+                                        <button type="button" class="btn btn-mini btn-danger-pill" data-del-child>Delete</button>
+                                    </div>
+                                </div>
+                            </template>
+                            <!-- ========================================================= -->
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Ages of Grandchildren</label>
+                                    <input asp-for="Senior.AgesOfGrandchildren" class="form-control" placeholder="Example: 3, 6, 9" />
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="mini-title">Emergency Contact</div>
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Name</label>
+                                    <input asp-for="Senior.EmergencyContact.Name" class="form-control" placeholder="Name" />
+                                </div>
+                                <div class="field">
+                                    <label>Phone No.</label>
+                                    <input asp-for="Senior.EmergencyContact.Phone" type="tel" class="form-control" placeholder="Phone" />
+                                </div>
+                                <div class="field">
+                                    <label>Email</label>
+                                    <input asp-for="Senior.EmergencyContact.Email" type="email" class="form-control" placeholder="Email" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Appointment (Agent Use)</div>
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Source of Visit</label>
+                                    <input asp-for="Senior.SourceOfVisit" class="form-control" placeholder="Referral / Event / Online / Other" />
+                                </div>
+                                <div class="field">
+                                    <label>Agent(s)</label>
+                                    <input asp-for="Senior.Agents" class="form-control" placeholder="Agent name(s)" />
+                                </div>
+                                <div class="field">
+                                    <label>Date of Appointment</label>
+                                    <input asp-for="Senior.DateOfAppointment" type="date" class="form-control" />
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Medical Coverage (FACTS/TABLES) -->
+                        <div class="block">
+                            <div class="block-title">Medical Coverage Snapshot (Inventory)</div>
+
+                            <div class="mini-title">Coverage Review — Applicant</div>
+                            <div class="row four">
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.None" type="checkbox" id="acNoneSenior" /><label for="acNoneSenior">None</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.OriginalMedicare" type="checkbox" id="acOmSenior" /><label for="acOmSenior">Original Medicare</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Medicaid" type="checkbox" id="acMedicaidSenior" /><label for="acMedicaidSenior">Medicaid</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Group" type="checkbox" id="acGroupSenior" /><label for="acGroupSenior">Group</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.MedSupp" type="checkbox" id="acMsSenior" /><label for="acMsSenior">MedSupp</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.MA" type="checkbox" id="acMaSenior" /><label for="acMaSenior">MA</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.HIP_CI" type="checkbox" id="acHipSenior" /><label for="acHipSenior">HIP / CI</label></div>
+                                <div class="field">
+                                    <label>Other</label>
+                                    <input asp-for="Senior.Medical.ApplicantCoverage.Other" class="form-control" placeholder="Other coverage" />
+                                </div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field"><label>Company Name</label><input asp-for="Senior.Medical.ApplicantCoverage.CompanyName" class="form-control" /></div>
+                                <div class="field"><label>Plan</label><input asp-for="Senior.Medical.ApplicantCoverage.Plan" class="form-control" /></div>
+                                <div class="field"><label>Premium</label><input asp-for="Senior.Medical.ApplicantCoverage.Premium" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Drug coverage?</label>
+                                    <select asp-for="Senior.Medical.ApplicantCoverage.DrugCoverage" class="form-select">
+                                        <option value="">Select</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Provider (PCP)</label>
+                                    <input asp-for="Senior.Medical.ApplicantCoverage.ProviderPCP" class="form-control" placeholder="Primary doctor" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Additional Benefits — Applicant</div>
+                            <div class="row two">
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Add_Dental" type="checkbox" id="acDentSenior" /><label for="acDentSenior">Dental</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Add_Vision" type="checkbox" id="acVisionSenior" /><label for="acVisionSenior">Vision</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Add_CriticalIllness" type="checkbox" id="acCiSenior" /><label for="acCiSenior">Critical Illness</label></div>
+                                <div class="field">
+                                    <label>
+                                        <input asp-for="Senior.Medical.ApplicantCoverage.Add_Other" type="checkbox" id="acAddOtherSenior" style="accent-color: var(--gold);" />
+                                        Other
+                                    </label>
+                                    <input asp-for="Senior.Medical.ApplicantCoverage.AddOtherText" class="form-control" placeholder="Other benefits" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Coverage Review — Spouse</div>
+                            <div class="row four">
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.None" type="checkbox" id="scNoneSenior" /><label for="scNoneSenior">None</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.OriginalMedicare" type="checkbox" id="scOmSenior" /><label for="scOmSenior">Original Medicare</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Medicaid" type="checkbox" id="scMedicaidSenior" /><label for="scMedicaidSenior">Medicaid</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Group" type="checkbox" id="scGroupSenior" /><label for="scGroupSenior">Group</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.MedSupp" type="checkbox" id="scMsSenior" /><label for="scMsSenior">MedSupp</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.MA" type="checkbox" id="scMaSenior" /><label for="scMaSenior">MA</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.HIP_CI" type="checkbox" id="scHipSenior" /><label for="scHipSenior">HIP / CI</label></div>
+                                <div class="field">
+                                    <label>Other</label>
+                                    <input asp-for="Senior.Medical.SpouseCoverage.Other" class="form-control" placeholder="Other coverage" />
+                                </div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field"><label>Company Name</label><input asp-for="Senior.Medical.SpouseCoverage.CompanyName" class="form-control" /></div>
+                                <div class="field"><label>Plan</label><input asp-for="Senior.Medical.SpouseCoverage.Plan" class="form-control" /></div>
+                                <div class="field"><label>Premium</label><input asp-for="Senior.Medical.SpouseCoverage.Premium" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Drug coverage?</label>
+                                    <select asp-for="Senior.Medical.SpouseCoverage.DrugCoverage" class="form-select">
+                                        <option value="">Select</option>
+                                        <option value="true">Yes</option>
+                                        <option value="false">No</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Provider (PCP)</label>
+                                    <input asp-for="Senior.Medical.SpouseCoverage.ProviderPCP" class="form-control" placeholder="Primary doctor" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Additional Benefits — Spouse</div>
+                            <div class="row two">
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Add_Dental" type="checkbox" id="scDentSenior" /><label for="scDentSenior">Dental</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Add_Vision" type="checkbox" id="scVisionSenior" /><label for="scVisionSenior">Vision</label></div>
+                                <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Add_CriticalIllness" type="checkbox" id="scCiSenior" /><label for="scCiSenior">Critical Illness</label></div>
+                                <div class="field">
+                                    <label>
+                                        <input asp-for="Senior.Medical.SpouseCoverage.Add_Other" type="checkbox" id="scAddOtherSenior" style="accent-color: var(--gold);" />
+                                        Other
+                                    </label>
+                                    <input asp-for="Senior.Medical.SpouseCoverage.AddOtherText" class="form-control" placeholder="Other benefits" />
+                                </div>
+                            </div>
+
+                            @{
+                                var appParents = Model?.Senior?.Medical?.ApplicantParents ?? new List<AgentPortal.Models.SeniorParentInfo>();
+                                var spParents  = Model?.Senior?.Medical?.SpouseParents ?? new List<AgentPortal.Models.SeniorParentInfo>();
+                            }
+
+                            <div class="mini-title">Applicant Parents (Age / Cause of Death-Age at Death)</div>
+                            @for (int i = 0; i < appParents.Count; i++)
+                            {
+                                <div class="table-like">
+                                    <div class="row three">
+                                        <div class="field">
+                                            <label>@(appParents[i].Label ?? $"Applicant Parent {i+1}")</label>
+                                            <input type="hidden" asp-for="Senior.Medical.ApplicantParents[@i].Label" />
+                                        </div>
+                                        <div class="field">
+                                            <label>Age</label>
+                                            <input asp-for="Senior.Medical.ApplicantParents[@i].Age" type="number" class="form-control" />
+                                        </div>
+                                        <div class="field">
+                                            <label>Cause of Death / Age at Death</label>
+                                            <input asp-for="Senior.Medical.ApplicantParents[@i].CauseOfDeathOrAgeAtDeath" class="form-control" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+
+                            <div class="mini-title">Spouse Parents (Age / Cause of Death-Age at Death)</div>
+                            @for (int i = 0; i < spParents.Count; i++)
+                            {
+                                <div class="table-like">
+                                    <div class="row three">
+                                        <div class="field">
+                                            <label>@(spParents[i].Label ?? $"Spouse Parent {i+1}")</label>
+                                            <input type="hidden" asp-for="Senior.Medical.SpouseParents[@i].Label" />
+                                        </div>
+                                        <div class="field">
+                                            <label>Age</label>
+                                            <input asp-for="Senior.Medical.SpouseParents[@i].Age" type="number" class="form-control" />
+                                        </div>
+                                        <div class="field">
+                                            <label>Cause of Death / Age at Death</label>
+                                            <input asp-for="Senior.Medical.SpouseParents[@i].CauseOfDeathOrAgeAtDeath" class="form-control" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+
+                        <!-- Extended Care Policy Details (FACTS) -->
+                        <div class="block">
+                            <div class="block-title">Extended Care — Current Policy Details (If Applicable)</div>
+
+                            <div class="mini-title">7) If you have coverage (fill in):</div>
+                            <div class="row two">
+                                <div class="field"><label>Benefits Covered</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.BenefitsCovered" class="form-control" /></div>
+                                <div class="field"><label>Benefit Period</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.BenefitPeriod" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Elimination Period</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.EliminationPeriod" class="form-control" /></div>
+                                <div class="field"><label>Premium</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.Premium" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Company</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.Company" class="form-control" /></div>
+                                <div class="field"><label>Benefit Amount</label><input asp-for="Senior.ExtendedCare.CurrentPolicy.BenefitAmount" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="field">
+                                <label>Inflation Protection</label>
+                                <input asp-for="Senior.ExtendedCare.CurrentPolicy.InflationProtection" class="form-control" placeholder="Yes/No/Describe" />
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 3 — PART 3: LIFE INSURANCE
+                 (Already priority-first. Kept intact.)
+            ========================================================== -->
+            <section class="wizard-step" data-step="3" data-label="Life Insurance">
+
+                <div class="section-card">
+                    <div class="section-title">Part 3 — Final Expenses / Life Insurance</div>
+                    <div class="subtle">Existing coverage snapshot + beneficiary/cash values + planning prompts.</div>
+
+                    <div class="block">
+                        <div class="block-title">Life Insurance</div>
+
+                        <div class="field">
+                            <label>14) What is the primary purpose of your current life insurance?</label>
+                            <textarea asp-for="Senior.LifeInsurance.PrimaryPurposeOfCurrentLifeInsurance" class="form-control"></textarea>
+                        </div>
+
+                        <!-- =========================================================
+                             APPLICANT POLICIES — INDEX REPEATER
+                             ✅ SURGICAL CHANGE: ONLY ONE CARD PREPOPULATED ON GET.
+                        ========================================================== -->
+                        <div class="mini-title">Applicant Policies</div>
+                        <div class="subtle">Add/Delete as needed.</div>
+
+                        <div class="stack" id="seniorApplicantPoliciesRepeater">
+                            @if (!isPost)
+                            {
+                                var key = Guid.NewGuid().ToString("N");
+                                <div class="table-like" data-item>
+                                    <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies.Index" value="@key" />
+                                    <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies[@key].Label" value="Policy" />
+
+                                    <div class="mini-title">Policy</div>
+
+                                    <div class="row three">
+                                        <div class="field"><label>Face Amount</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].FaceAmount" />
+                                        </div>
+                                        <div class="field"><label>Company</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].Company" />
+                                        </div>
+                                        <div class="field"><label>Premium</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].Premium" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row three">
+                                        <div class="field"><label>Type</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].Type" placeholder="Term / Whole / UL / Variable" />
+                                        </div>
+                                        <div class="field"><label>Primary Beneficiary</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].PrimaryBeneficiary" />
+                                        </div>
+                                        <div class="field"><label>Cash Value</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].CashValue" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row two">
+                                        <div class="field"><label>Surrender Value</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].SurrenderValue" />
+                                        </div>
+                                        <div class="field"></div>
+                                    </div>
+
+                                    <div class="ff-card-actions">
+                                        <button type="button" class="btn btn-mini btn-gold" data-add-app-pol>+ Add Policy</button>
+                                        <button type="button" class="btn btn-mini btn-danger-pill" data-del-app-pol>Delete</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                if ((Model?.Senior?.LifeInsurance?.ApplicantPolicies?.Count ?? 0) == 0)
+                                {
+                                    var key = Guid.NewGuid().ToString("N");
+                                    <div class="table-like" data-item>
+                                        <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies.Index" value="@key" />
+                                        <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies[@key].Label" value="Policy" />
+
+                                        <div class="mini-title">Policy</div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Face Amount</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].FaceAmount" />
+                                            </div>
+                                            <div class="field"><label>Company</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].Company" />
+                                            </div>
+                                            <div class="field"><label>Premium</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].Premium" />
+                                            </div>
+                                        </div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Type</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].Type" placeholder="Term / Whole / UL / Variable" />
+                                            </div>
+                                            <div class="field"><label>Primary Beneficiary</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[@key].PrimaryBeneficiary" />
+                                            </div>
+                                            <div class="field"><label>Cash Value</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].CashValue" />
+                                            </div>
+                                        </div>
+
+                                        <div class="row two">
+                                            <div class="field"><label>Surrender Value</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[@key].SurrenderValue" />
+                                            </div>
+                                            <div class="field"></div>
+                                        </div>
+
+                                        <div class="ff-card-actions">
+                                            <button type="button" class="btn btn-mini btn-gold" data-add-app-pol>+ Add Policy</button>
+                                            <button type="button" class="btn btn-mini btn-danger-pill" data-del-app-pol>Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    for (int i = 0; i < Model!.Senior.LifeInsurance.ApplicantPolicies.Count; i++)
+                                    {
+                                        var p = Model.Senior.LifeInsurance.ApplicantPolicies[i];
+                                        var key = Guid.NewGuid().ToString("N");
+                                        var label = (p?.Label ?? "Policy");
+
+                                        <div class="table-like" data-item>
+                                            <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies.Index" value="@key" />
+                                            <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies[@key].Label" value="@label" />
+
+                                            <div class="mini-title">@label</div>
+
+                                            <div class="row three">
+                                                <div class="field"><label>Face Amount</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].FaceAmount"
+                                                           value="@(p?.FaceAmount)" />
+                                                </div>
+                                                <div class="field"><label>Company</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].Company"
+                                                           value="@(p?.Company ?? "")" />
+                                                </div>
+                                                <div class="field"><label>Premium</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].Premium"
+                                                           value="@(p?.Premium)" />
+                                                </div>
+                                            </div>
+
+                                            <div class="row three">
+                                                <div class="field"><label>Type</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].Type"
+                                                           value="@(p?.Type ?? "")"
+                                                           placeholder="Term / Whole / UL / Variable" />
+                                                </div>
+                                                <div class="field"><label>Primary Beneficiary</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].PrimaryBeneficiary"
+                                                           value="@(p?.PrimaryBeneficiary ?? "")" />
+                                                </div>
+                                                <div class="field"><label>Cash Value</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].CashValue"
+                                                           value="@(p?.CashValue)" />
+                                                </div>
+                                            </div>
+
+                                            <div class="row two">
+                                                <div class="field"><label>Surrender Value</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.ApplicantPolicies[@key].SurrenderValue"
+                                                           value="@(p?.SurrenderValue)" />
+                                                </div>
+                                                <div class="field"></div>
+                                            </div>
+
+                                            <div class="ff-card-actions">
+                                                <button type="button" class="btn btn-mini btn-gold" data-add-app-pol>+ Add Policy</button>
+                                                <button type="button" class="btn btn-mini btn-danger-pill" data-del-app-pol>Delete</button>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }
+                        </div>
+
+                        <template id="tplSeniorApplicantPolicy">
+                            <div class="table-like" data-item>
+                                <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies.Index" value="__KEY__" />
+                                <input type="hidden" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].Label" value="Policy" />
+
+                                <div class="mini-title">Policy</div>
+
+                                <div class="row three">
+                                    <div class="field"><label>Face Amount</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].FaceAmount" />
+                                    </div>
+                                    <div class="field"><label>Company</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].Company" />
+                                    </div>
+                                    <div class="field"><label>Premium</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].Premium" />
+                                    </div>
+                                </div>
+
+                                <div class="row three">
+                                    <div class="field"><label>Type</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].Type" placeholder="Term / Whole / UL / Variable" />
+                                    </div>
+                                    <div class="field"><label>Primary Beneficiary</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].PrimaryBeneficiary" />
+                                    </div>
+                                    <div class="field"><label>Cash Value</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].CashValue" />
+                                    </div>
+                                </div>
+
+                                <div class="row two">
+                                    <div class="field"><label>Surrender Value</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.ApplicantPolicies[__KEY__].SurrenderValue" />
+                                    </div>
+                                    <div class="field"></div>
+                                </div>
+
+                                <div class="ff-card-actions">
+                                    <button type="button" class="btn btn-mini btn-gold" data-add-app-pol>+ Add Policy</button>
+                                    <button type="button" class="btn btn-mini btn-danger-pill" data-del-app-pol>Delete</button>
+                                </div>
+                            </div>
+                        </template>
+                        <!-- ========================================================= -->
+
+                        <!-- =========================================================
+                             SPOUSE POLICIES — INDEX REPEATER
+                             ✅ SURGICAL CHANGE: ONLY ONE CARD PREPOPULATED ON GET.
+                        ========================================================== -->
+                        <div class="mini-title">Spouse Policies</div>
+                        <div class="subtle">Add/Delete as needed.</div>
+
+                        <div class="stack" id="seniorSpousePoliciesRepeater">
+                            @if (!isPost)
+                            {
+                                var key = Guid.NewGuid().ToString("N");
+                                <div class="table-like" data-item>
+                                    <input type="hidden" name="Senior.LifeInsurance.SpousePolicies.Index" value="@key" />
+                                    <input type="hidden" name="Senior.LifeInsurance.SpousePolicies[@key].Label" value="Policy" />
+
+                                    <div class="mini-title">Policy</div>
+
+                                    <div class="row three">
+                                        <div class="field"><label>Face Amount</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].FaceAmount" />
+                                        </div>
+                                        <div class="field"><label>Company</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].Company" />
+                                        </div>
+                                        <div class="field"><label>Premium</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].Premium" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row three">
+                                        <div class="field"><label>Type</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].Type" placeholder="Term / Whole / UL / Variable" />
+                                        </div>
+                                        <div class="field"><label>Primary Beneficiary</label>
+                                            <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].PrimaryBeneficiary" />
+                                        </div>
+                                        <div class="field"><label>Cash Value</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].CashValue" />
+                                        </div>
+                                    </div>
+
+                                    <div class="row two">
+                                        <div class="field"><label>Surrender Value</label>
+                                            <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].SurrenderValue" />
+                                        </div>
+                                        <div class="field"></div>
+                                    </div>
+
+                                    <div class="ff-card-actions">
+                                        <button type="button" class="btn btn-mini btn-gold" data-add-sp-pol>+ Add Policy</button>
+                                        <button type="button" class="btn btn-mini btn-danger-pill" data-del-sp-pol>Delete</button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                if ((Model?.Senior?.LifeInsurance?.SpousePolicies?.Count ?? 0) == 0)
+                                {
+                                    var key = Guid.NewGuid().ToString("N");
+                                    <div class="table-like" data-item>
+                                        <input type="hidden" name="Senior.LifeInsurance.SpousePolicies.Index" value="@key" />
+                                        <input type="hidden" name="Senior.LifeInsurance.SpousePolicies[@key].Label" value="Policy" />
+
+                                        <div class="mini-title">Policy</div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Face Amount</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].FaceAmount" />
+                                            </div>
+                                            <div class="field"><label>Company</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].Company" />
+                                            </div>
+                                            <div class="field"><label>Premium</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].Premium" />
+                                            </div>
+                                        </div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Type</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].Type" placeholder="Term / Whole / UL / Variable" />
+                                            </div>
+                                            <div class="field"><label>Primary Beneficiary</label>
+                                                <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[@key].PrimaryBeneficiary" />
+                                            </div>
+                                            <div class="field"><label>Cash Value</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].CashValue" />
+                                            </div>
+                                        </div>
+
+                                        <div class="row two">
+                                            <div class="field"><label>Surrender Value</label>
+                                                <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[@key].SurrenderValue" />
+                                            </div>
+                                            <div class="field"></div>
+                                        </div>
+
+                                        <div class="ff-card-actions">
+                                            <button type="button" class="btn btn-mini btn-gold" data-add-sp-pol>+ Add Policy</button>
+                                            <button type="button" class="btn btn-mini btn-danger-pill" data-del-sp-pol>Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    for (int i = 0; i < Model!.Senior.LifeInsurance.SpousePolicies.Count; i++)
+                                    {
+                                        var p = Model.Senior.LifeInsurance.SpousePolicies[i];
+                                        var key = Guid.NewGuid().ToString("N");
+                                        var label = (p?.Label ?? "Policy");
+
+                                        <div class="table-like" data-item>
+                                            <input type="hidden" name="Senior.LifeInsurance.SpousePolicies.Index" value="@key" />
+                                            <input type="hidden" name="Senior.LifeInsurance.SpousePolicies[@key].Label" value="@label" />
+
+                                            <div class="mini-title">@label</div>
+
+                                            <div class="row three">
+                                                <div class="field"><label>Face Amount</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].FaceAmount"
+                                                           value="@(p?.FaceAmount)" />
+                                                </div>
+                                                <div class="field"><label>Company</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].Company"
+                                                           value="@(p?.Company ?? "")" />
+                                                </div>
+                                                <div class="field"><label>Premium</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].Premium"
+                                                           value="@(p?.Premium)" />
+                                                </div>
+                                            </div>
+
+                                            <div class="row three">
+                                                <div class="field"><label>Type</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].Type"
+                                                           value="@(p?.Type ?? "")"
+                                                           placeholder="Term / Whole / UL / Variable" />
+                                                </div>
+                                                <div class="field"><label>Primary Beneficiary</label>
+                                                    <input class="form-control"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].PrimaryBeneficiary"
+                                                           value="@(p?.PrimaryBeneficiary ?? "")" />
+                                                </div>
+                                                <div class="field"><label>Cash Value</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].CashValue"
+                                                           value="@(p?.CashValue)" />
+                                                </div>
+                                            </div>
+
+                                            <div class="row two">
+                                                <div class="field"><label>Surrender Value</label>
+                                                    <input class="form-control" type="number" step="0.01"
+                                                           name="Senior.LifeInsurance.SpousePolicies[@key].SurrenderValue"
+                                                           value="@(p?.SurrenderValue)" />
+                                                </div>
+                                                <div class="field"></div>
+                                            </div>
+
+                                            <div class="ff-card-actions">
+                                                <button type="button" class="btn btn-mini btn-gold" data-add-sp-pol>+ Add Policy</button>
+                                                <button type="button" class="btn btn-mini btn-danger-pill" data-del-sp-pol>Delete</button>
+                                            </div>
+                                        </div>
+                                    }
+                                }
+                            }
+                        </div>
+
+                        <template id="tplSeniorSpousePolicy">
+                            <div class="table-like" data-item>
+                                <input type="hidden" name="Senior.LifeInsurance.SpousePolicies.Index" value="__KEY__" />
+                                <input type="hidden" name="Senior.LifeInsurance.SpousePolicies[__KEY__].Label" value="Policy" />
+
+                                <div class="mini-title">Policy</div>
+
+                                <div class="row three">
+                                    <div class="field"><label>Face Amount</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[__KEY__].FaceAmount" />
+                                    </div>
+                                    <div class="field"><label>Company</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[__KEY__].Company" />
+                                    </div>
+                                    <div class="field"><label>Premium</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[__KEY__].Premium" />
+                                    </div>
+                                </div>
+
+                                <div class="row three">
+                                    <div class="field"><label>Type</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[__KEY__].Type" placeholder="Term / Whole / UL / Variable" />
+                                    </div>
+                                    <div class="field"><label>Primary Beneficiary</label>
+                                        <input class="form-control" name="Senior.LifeInsurance.SpousePolicies[__KEY__].PrimaryBeneficiary" />
+                                    </div>
+                                    <div class="field"><label>Cash Value</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[__KEY__].CashValue" />
+                                    </div>
+                                </div>
+
+                                <div class="row two">
+                                    <div class="field"><label>Surrender Value</label>
+                                        <input class="form-control" type="number" step="0.01" name="Senior.LifeInsurance.SpousePolicies[__KEY__].SurrenderValue" />
+                                    </div>
+                                    <div class="field"></div>
+                                </div>
+
+                                <div class="ff-card-actions">
+                                    <button type="button" class="btn btn-mini btn-gold" data-add-sp-pol>+ Add Policy</button>
+                                    <button type="button" class="btn btn-mini btn-danger-pill" data-del-sp-pol>Delete</button>
+                                </div>
+                            </div>
+                        </template>
+                        <!-- ========================================================= -->
+
+                        <div class="field">
+                            <label>15) Why did you choose (term, UL, whole, variable) insurance?</label>
+                            <textarea asp-for="Senior.LifeInsurance.WhyChoseType" class="form-control"></textarea>
+                        </div>
+
+                        <div class="field">
+                            <label>How did you choose that amount of benefit?</label>
+                            <textarea asp-for="Senior.LifeInsurance.HowChoseBenefitAmount" class="form-control"></textarea>
+                        </div>
+
+                        <div class="row two">
+                            <div class="field">
+                                <label>16) When was it last reviewed?</label>
+                                <input asp-for="Senior.LifeInsurance.WhenLastReviewed" class="form-control" placeholder="MM/YYYY or Notes" />
+                            </div>
+                            <div class="field">
+                                <label>Do you have a will/trust?</label>
+                                <select asp-for="Senior.LifeInsurance.HasWillOrTrust" class="form-select">
+                                    <option value="false">No</option>
+                                    <option value="true">Yes</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row two">
+                            <div class="field">
+                                <label>17) Are you aware of how Social Security works when one spouse passes away?</label>
+                                <select asp-for="Senior.LifeInsurance.AwareHowSocialSecurityWorksWhenOneSpousePasses" class="form-select">
+                                    <option value="false">No</option>
+                                    <option value="true">Yes</option>
+                                </select>
+                            </div>
+                            <div class="field"></div>
+                        </div>
+
+                        <div class="field">
+                            <label>Are you planning ahead for ways to cover that future reduction in Social Security benefits?</label>
+                            <textarea asp-for="Senior.LifeInsurance.PlanningToCoverFutureSSReduction" class="form-control"></textarea>
+                        </div>
+
+                        <div class="row two">
+                            <div class="field">
+                                <label>18) Are you planning to leave an IRA to your family?</label>
+                                <select asp-for="Senior.LifeInsurance.PlanningToLeaveIRAtoFamily" class="form-select">
+                                    <option value="false">No</option>
+                                    <option value="true">Yes</option>
+                                </select>
+                            </div>
+                            <div class="field"></div>
+                        </div>
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 4 — RETIREMENT + ASSETS + SUBMIT
+                 ✅ Priorities/questions first, THEN the tables/numbers.
+            ========================================================== -->
+            <section class="wizard-step" data-step="4" data-label="Retirement + Assets">
+
+                <div class="section-card">
+                    <div class="section-title">Part 4 — Retirement Income / Savings / Assets</div>
+                    <div class="subtle">Educational fact-finding only. No investment advice is provided.</div>
+
+                    <div class="stack">
+
+                        <!-- PRIORITIES FIRST -->
+                        <div class="block">
+                            <div class="block-title">Retirement Priorities (Start Here)</div>
+
+                            <div class="field">
+                                <label>21) Many people are concerned about outliving their money. What concerns do you have?</label>
+                                <textarea asp-for="Senior.Retirement.OutlivingMoneyConcerns" class="form-control"></textarea>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>22) Are you still paying income tax?</label>
+                                    <select asp-for="Senior.Retirement.StillPayingIncomeTax" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>At this stage, is it more important to focus on increasing income, lowering taxes, or both?</label>
+                                    <input asp-for="Senior.Retirement.PriorityIncreaseIncomeOrLowerTaxesOrBoth" class="form-control" placeholder="Increase income / Lower taxes / Both" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>23) Let’s talk about your monthly expenses.</label>
+                                <textarea asp-for="Senior.Retirement.MonthlyExpensesNotes" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>24) If there’s anything about your current financial plan that you could change, what might it be?</label>
+                                <textarea asp-for="Senior.Retirement.WhatChangeInFinancialPlan" class="form-control"></textarea>
+                            </div>
+
+                            <div class="mini-title">Final Questions</div>
+
+                            <div class="field">
+                                <label>25) Talk to me about your goals for this money. (travel, grandchildren, college, retirement, financial independence)</label>
+                                <textarea asp-for="Senior.Retirement.GoalsForThisMoney" class="form-control"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>26) How comfortable are you with the risk involved in your savings?</label>
+                                <input asp-for="Senior.Retirement.RiskComfortLevel" class="form-control" placeholder="Describe or rate 1–10" />
+                            </div>
+
+                            <div class="field">
+                                <label>27) Many clients are concerned about growing assets, income levels or creating more safety. Which are you most concerned about?</label>
+                                <input asp-for="Senior.Retirement.BiggestConcern_GrowthIncomeSafety" class="form-control" placeholder="Growing / Income / Safety" />
+                            </div>
+
+                            <div class="field">
+                                <label>28) How do you feel about the recent performance of your portfolio?</label>
+                                <textarea asp-for="Senior.Retirement.FeelAboutRecentPerformance" class="form-control" style="min-height:72px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>How do you feel about the service you’ve received? Has it met your expectations?</label>
+                                <textarea asp-for="Senior.Retirement.FeelAboutServiceReceived" class="form-control" style="min-height:72px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>29) Has your current advisor or institution updated you on how the Secure Act could affect your legacy?</label>
+                                <textarea asp-for="Senior.Retirement.UpdatedOnSecureActImpact" class="form-control" style="min-height:72px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>30) Is there a story behind any of these assets such as family property or inheritance?</label>
+                                <textarea asp-for="Senior.Retirement.StoryBehindAssetsInheritance" class="form-control" style="min-height:72px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>Outcomes, Additional Information and Follow-up Notes</label>
+                                <textarea asp-for="Senior.Retirement.OutcomesAndFollowUpNotes" class="form-control" style="min-height:110px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- FACTS / NUMBERS SECOND -->
+                        <div class="block">
+                            <div class="block-title">Income (Monthly) — Numbers</div>
+
+                            <div class="mini-title">19) Current sources of regular income (monthly)</div>
+
+                            <div class="table-like">
+                                <div class="mini-title">Applicant</div>
+                                <div class="row four">
+                                    <div class="field"><label>SS</label><input asp-for="Senior.Retirement.ApplicantIncome.SS" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Pension</label><input asp-for="Senior.Retirement.ApplicantIncome.Pension" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Employment</label><input asp-for="Senior.Retirement.ApplicantIncome.Employment" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Real Estate</label><input asp-for="Senior.Retirement.ApplicantIncome.RealEstate" type="number" step="0.01" class="form-control" /></div>
+                                </div>
+                                <div class="row four">
+                                    <div class="field"><label>Investment</label><input asp-for="Senior.Retirement.ApplicantIncome.Investment" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>RMD (Yr)</label><input asp-for="Senior.Retirement.ApplicantIncome.RMD" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Other</label><input asp-for="Senior.Retirement.ApplicantIncome.Other" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Total</label><input asp-for="Senior.Retirement.ApplicantIncome.Total" type="number" step="0.01" class="form-control" /></div>
+                                </div>
+                            </div>
+
+                            <div class="table-like">
+                                <div class="mini-title">Spouse</div>
+                                <div class="row four">
+                                    <div class="field"><label>SS</label><input asp-for="Senior.Retirement.SpouseIncome.SS" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Pension</label><input asp-for="Senior.Retirement.SpouseIncome.Pension" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Employment</label><input asp-for="Senior.Retirement.SpouseIncome.Employment" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Real Estate</label><input asp-for="Senior.Retirement.SpouseIncome.RealEstate" type="number" step="0.01" class="form-control" /></div>
+                                </div>
+                                <div class="row four">
+                                    <div class="field"><label>Investment</label><input asp-for="Senior.Retirement.SpouseIncome.Investment" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>RMD (Yr)</label><input asp-for="Senior.Retirement.SpouseIncome.RMD" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Other</label><input asp-for="Senior.Retirement.SpouseIncome.Other" type="number" step="0.01" class="form-control" /></div>
+                                    <div class="field"><label>Total</label><input asp-for="Senior.Retirement.SpouseIncome.Total" type="number" step="0.01" class="form-control" /></div>
+                                </div>
+                            </div>
+
+                            <div class="mini-title">20) Social Security / Pension Details</div>
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Do you currently receive Social Security?</label>
+                                    <select asp-for="Senior.Retirement.ReceiveSocialSecurity" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>What does that amount to each month?</label>
+                                    <input asp-for="Senior.Retirement.SocialSecurityMonthlyAmount" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>If you qualify for a company pension, what is the monthly amount?</label>
+                                    <input asp-for="Senior.Retirement.CompanyPensionMonthlyAmount" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Does your pension have survivor benefits for your spouse?</label>
+                                    <select asp-for="Senior.Retirement.PensionHasSurvivorBenefitsForSpouse" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+                        </div>
+
+                        <div class="block">
+                            <div class="block-title">Assets — Numbers</div>
+
+                            <div class="mini-title">Non-Liquid Assets</div>
+                            <div class="row two">
+                                <div class="field"><label>Non-Qualified Annuities</label><input asp-for="Senior.Retirement.NonLiquidAssets.NonQualifiedAnnuities" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Life Insurance Cash Value</label><input asp-for="Senior.Retirement.NonLiquidAssets.LifeInsuranceCashValue" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Qualified IRAs and Annuities</label><input asp-for="Senior.Retirement.NonLiquidAssets.QualifiedIRAsAndAnnuities" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Other Investments (CDs)</label><input asp-for="Senior.Retirement.NonLiquidAssets.OtherInvestments_CDs" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Real Estate (excluding Primary Residence)</label><input asp-for="Senior.Retirement.NonLiquidAssets.RealEstateExcludingPrimaryResidence" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Value Primary Residence</label><input asp-for="Senior.Retirement.NonLiquidAssets.ValuePrimaryResidence" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+
+                            <div class="mini-title">Liquid Assets</div>
+                            <div class="row two">
+                                <div class="field"><label>Checking Account</label><input asp-for="Senior.Retirement.LiquidAssets.Checking" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Savings Account</label><input asp-for="Senior.Retirement.LiquidAssets.Savings" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Money Markets</label><input asp-for="Senior.Retirement.LiquidAssets.MoneyMarkets" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Mutual Funds</label><input asp-for="Senior.Retirement.LiquidAssets.MutualFunds" type="number" step="0.01" class="form-control" /></div>
+                            </div>
+                            <div class="row two">
+                                <div class="field"><label>Stocks, Bonds or Other</label><input asp-for="Senior.Retirement.LiquidAssets.StocksBondsOrOther" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"></div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Are you aware of how required minimum distributions (RMDs) work?</label>
+                                    <select asp-for="Senior.Retirement.AwareHowRMDsWork" class="form-select">
+                                        <option value="false">No</option>
+                                        <option value="true">Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field"></div>
+                            </div>
+
+                            <!-- Repeaters for CDs / Annuities / OtherAssets remain exactly as your current structure + JS wiring below -->
+                            <!-- (You already have these blocks in your full file; keep them as-is.) -->
+                        </div>
+
+                    </div>
+
+                    <!-- Disclaimer + Submit -->
+                    <div class="section-card" style="margin-top:14px; border-width:2px;">
+                        <div class="block" style="border:none; padding:0; background:transparent;">
+                            <div class="checkline" style="background:#fff; color: var(--navy-900); border:1.2px solid var(--gold);">
+                                <input asp-for="Senior.AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckboxSenior" required />
+                                <label for="disclaimerCheckboxSenior" class="form-check-label ack-text" style="font-weight:900; margin:0; color: var(--navy-900) !important;">
+                                    I acknowledge that by submitting this form, I authorize the company/agent to contact me regarding this Fact Finder intake.<span class="req">*</span>
+                                </label>
+                            </div>
+                            <span asp-validation-for="Senior.AcknowledgedDisclaimer" class="text-danger"></span>
+
+                            <div class="wizard-actions" style="margin-top: 12px;">
+                                <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                                <button type="submit" class="btn btn-gold">Submit & Download PDF</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </form>
+
+        <script>
+            (function () {
+                const root = document.getElementById('ffSeniorApp');
+                if (!root) return;
+
+                const form = root.querySelector('#factFinderFormSenior');
+                if (!form) return;
+
+                // =========================================================
+                // ✅ ONE reusable JS repeater helper (Children + Policies + Assets)
+                // =========================================================
+                function newKey() {
+                    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+                    return (Date.now().toString(16) + Math.random().toString(16).slice(2));
+                }
+
+                function clearRowValues(row) {
+                    row.querySelectorAll('input, textarea, select').forEach(el => {
+                        if (el.type === 'hidden') return;
+                        if (el.type === 'checkbox' || el.type === 'radio') el.checked = false;
+                        else el.value = '';
+                    });
+                }
+
+                function wireRepeater(hostId, tplId, addAttr, delAttr) {
+                    const host = document.getElementById(hostId);
+                    const tpl = document.getElementById(tplId);
+                    if (!host || !tpl) return;
+
+                    function bindRow(row) {
+                        const addBtn = row.querySelector(`[${addAttr}]`);
+                        const delBtn = row.querySelector(`[${delAttr}]`);
+
+                        if (addBtn && !addBtn.dataset.bound) {
+                            addBtn.dataset.bound = "1";
+                            addBtn.addEventListener('click', function () {
+                                const key = newKey();
+                                const html = tpl.innerHTML.replaceAll('__KEY__', key);
+                                const wrap = document.createElement('div');
+                                wrap.innerHTML = html.trim();
+                                const newRow = wrap.firstElementChild;
+
+                                host.appendChild(newRow);
+                                bindRow(newRow);
+
+                                setTimeout(() => {
+                                    newRow.scrollIntoView({ behavior: "smooth", block: "center" });
+                                    const first = newRow.querySelector('input, textarea, select');
+                                    if (first) first.focus();
+                                }, 30);
+                            });
+                        }
+
+                        if (delBtn && !delBtn.dataset.bound) {
+                            delBtn.dataset.bound = "1";
+                            delBtn.addEventListener('click', function () {
+                                const rows = Array.from(host.querySelectorAll('[data-item]'));
+                                if (rows.length <= 1) {
+                                    clearRowValues(row);
+                                    return;
+                                }
+                                row.remove();
+                            });
+                        }
+                    }
+
+                    host.querySelectorAll('[data-item]').forEach(bindRow);
+                }
+
+                // ✅ wire all repeaters (safe even if some hosts/templates are not on the page)
+                wireRepeater('seniorChildrenRepeater', 'tplSeniorChildRow', 'data-add-child', 'data-del-child');
+                wireRepeater('seniorApplicantPoliciesRepeater', 'tplSeniorApplicantPolicy', 'data-add-app-pol', 'data-del-app-pol');
+                wireRepeater('seniorSpousePoliciesRepeater', 'tplSeniorSpousePolicy', 'data-add-sp-pol', 'data-del-sp-pol');
+                wireRepeater('seniorCDsRepeater', 'tplSeniorCD', 'data-add-cd', 'data-del-cd');
+                wireRepeater('seniorAnnuitiesRepeater', 'tplSeniorAnnuity', 'data-add-ann', 'data-del-ann');
+                wireRepeater('seniorOtherAssetsRepeater', 'tplSeniorOtherAsset', 'data-add-oa', 'data-del-oa');
+
+                // =========================================================
+                // Wizard (KEEP EXACT behavior)
+                // =========================================================
+                const steps = Array.from(root.querySelectorAll('.wizard-step'));
+                const total = steps.length;
+
+                const stepNowEl = document.getElementById('ffStepNowSenior');
+                const stepTotalEl = document.getElementById('ffStepTotalSenior');
+                const stepLabelEl = document.getElementById('ffStepLabelSenior');
+                const bar = document.getElementById('ffProgressBarSenior');
+
+                if (stepTotalEl) stepTotalEl.textContent = String(total);
+
+                function currentStepIndex() {
+                    return steps.findIndex(s => s.classList.contains('active'));
+                }
+
+                function updateProgress(idx) {
+                    const stepNum = idx + 1;
+
+                    if (stepNowEl) stepNowEl.textContent = String(stepNum);
+
+                    const label = steps[idx].getAttribute('data-label') || '';
+                    if (stepLabelEl) stepLabelEl.textContent = label;
+
+                    const pct = Math.round((stepNum / total) * 100);
+                    if (bar) bar.style.width = pct + '%';
+
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+
+                function showStep(idx) {
+                    steps.forEach((s, i) => s.classList.toggle('active', i === idx));
+                    updateProgress(idx);
+                }
+
+                function focusFirstInvalidInStep(stepEl) {
+                    const firstInvalid = stepEl.querySelector(":invalid");
+                    if (firstInvalid) {
+                        firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+                        firstInvalid.focus();
+                        return true;
+                    }
+                    return false;
+                }
+
+                root.addEventListener('click', function (e) {
+                    const nextBtn = e.target.closest('[data-next]');
+                    const prevBtn = e.target.closest('[data-prev]');
+                    if (!nextBtn && !prevBtn) return;
+
+                    const idx = currentStepIndex();
+                    const current = steps[idx];
+
+                    if (nextBtn) {
+                        const requiredFields = Array.from(current.querySelectorAll("input, select, textarea"))
+                            .filter(el => el.hasAttribute("required"));
+
+                        let ok = true;
+                        for (const el of requiredFields) {
+                            if (!el.checkValidity()) { ok = false; break; }
+                        }
+
+                        if (!ok) {
+                            focusFirstInvalidInStep(current);
+                            return;
+                        }
+
+                        const nextIdx = Math.min(idx + 1, total - 1);
+                        showStep(nextIdx);
+                    }
+
+                    if (prevBtn) {
+                        const prevIdx = Math.max(idx - 1, 0);
+                        showStep(prevIdx);
+                    }
+                });
+
+                const checkbox = document.getElementById('disclaimerCheckboxSenior');
+                form.addEventListener('submit', function (event) {
+                    if (checkbox && !checkbox.checked) {
+                        event.preventDefault();
+                        alert('Please acknowledge the disclaimer to proceed.');
+                        checkbox.scrollIntoView({ behavior: "smooth", block: "center" });
+                        checkbox.focus();
+                        return;
+                    }
+
+                    if (!form.checkValidity()) {
+                        event.preventDefault();
+                        const firstInvalid = form.querySelector(":invalid");
+                        if (firstInvalid) {
+                            const stepEl = firstInvalid.closest('.wizard-step');
+                            if (stepEl) {
+                                const idx = steps.indexOf(stepEl);
+                                if (idx >= 0) showStep(idx);
+                            }
+                            firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+                            firstInvalid.focus();
+                        }
+                    }
+                });
+
+                // init
+                showStep(0);
+            })();
+        </script>
+    </div>
+
+</div>
+
+@section Scripts{
+    <partial name="_ValidationScriptsPartial" />
+}

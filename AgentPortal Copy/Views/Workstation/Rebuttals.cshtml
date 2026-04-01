@@ -1,0 +1,959 @@
+@{
+    ViewData["Title"] = "Workstation — Mortgage Protection Rebuttals";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+}
+
+
+<div id="rbShell" class="theme-mp">
+    <div class="rb-wrap">
+        <div class="rb-hero">
+            <div class="rb-hero-top">
+                <div class="hero-left">
+                    <h1>Workstation — Mortgage Protection</h1>
+                    <p class="hero-sub">Work your next lead, connect, handle objections, and launch tools without leaving this page.</p>
+                    <span id="rbCount" style="display:none">0</span>
+                </div>
+                <div class="hero-actions">
+                    <div class="hero-action-group">
+                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
+                        <div class="proposal-menu" id="proposalMenu" hidden>
+                            <div class="proposal-menu-head">
+                                <span>Saved Proposals</span>
+                                <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
+                            </div>
+                            <div class="proposal-menu-list" id="proposalMenuList"></div>
+                        </div>
+                    </div>
+                    <div class="hero-action-group">
+                        <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
+                        <div class="proposal-menu" id="uwMenu" hidden>
+                            <div class="proposal-menu-head">
+                                <span>Saved Underwriting</span>
+                                <button type="button" class="btn-mini" id="btnUwNew">+ New</button>
+                            </div>
+                            <div class="proposal-menu-list" id="uwMenuList"></div>
+                        </div>
+                    </div>
+                    <div class="hero-action-group">
+                        <details class="quick-links">
+                            <summary class="btn gold hero-quick-links">Quick Links ▾</summary>
+                            <div class="proposal-menu quick-links-menu">
+                                <div class="proposal-menu-head"><span>Quick Links</span></div>
+                                <div class="proposal-menu-list">
+                                    <a class="btn gold rb-link" href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true" target="_blank" rel="noopener noreferrer">Book Appointment</a>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    @await Html.PartialAsync("_ScriptSwitcher", "mp")
+                </div>
+            </div>
+        </div>
+
+        <div class="rb-link-bar">
+            <a class="btn gold rb-link" href="https://hq-whl.us.auth0.com/login?state=hKFo2SAtbGV5NkRzX1BpSW1MaE52Qy1uOTdidkNuMm5MXzV0MqFupWxvZ2luo3RpZNkgODF2NXpTdHBMeGcxU0VmSVF5Y1ppOVhwWGhOTlo0SzajY2lk2SBjQ3FEb2dNbHNoUlhQWEpvck1EWmdLZEFRUGVCczlJSA&amp;client=cCqDogMlshRXPXJorMDZgKdAQPeBs9IH&amp;protocol=oauth2&amp;audience=http%3A%2F%2Fapi-whl.quility.com&amp;redirect_uri=https%3A%2F%2Fb2b-hq.quility.com&amp;scope=openid%20profile%20email&amp;response_type=code&amp;response_mode=query&amp;nonce=MGhlT1ZOcXVQcC44UlNRZER5NWFUNU1lMEgwfkR2MzlHTXVqeGpkZGlXWA%3D%3D&amp;code_challenge=mmd1hG_9XoAkIByduyMmB1n6fai45wDlZghr5abcNYw&amp;code_challenge_method=S256&amp;auth0Client=eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjIuNiJ9" target="_blank" rel="noopener noreferrer">Quility</a>
+            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">Integrity Marketing</a>
+            <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
+        </div>
+
+        @await Html.PartialAsync("_LeadBridge", "MortgageProtection")
+
+        <div class="shell">
+            <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
+            <section class="nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Categories</p>
+                        <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+                    </div>
+                    <div class="count-pill"><span id="catCount">0</span> groups</div>
+                </div>
+                <div class="nav-body" id="rbNav"></div>
+            </section>
+
+            <section class="content-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Scripts</p>
+                        <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                    </div>
+                    <div class="count-pill" id="contentCount">0 scripts</div>
+                </div>
+                <div class="content-body" id="rbContent">
+                    <div class="content-empty">
+                        Click a category on the left and all objections for that category will load here.
+                    </div>
+                </div>
+            </section>
+
+            <section class="nav-card prosper-nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Prosper Guide</p>
+                        <p class="card-sub">Mirror rail for the full mortgage protection flow.</p>
+                    </div>
+                    <div class="count-pill"><span id="prosperCount">0</span> steps</div>
+                </div>
+                <div class="nav-body" id="prosperNav">
+                    <div class="content-empty small">
+                        Loading Prosper script steps…
+                    </div>
+                </div>
+            </section>
+            <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+</div>
+</div>
+</div>
+
+@await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Mortgage Protection" } })
+
+<div class="proposal-overlay" id="proposalOverlay" hidden>
+    <div class="proposal-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+        <div class="uw-head">
+            <div class="uw-brand">
+                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
+                <div>
+                    <div class="uw-name" id="proposalTitle">Proposal Builder</div>
+                    <div class="uw-sub">Compare side-by-side options</div>
+                </div>
+            </div>
+            <button type="button" class="uw-close" data-proposal-close aria-label="Close proposal builder">×</button>
+        </div>
+
+        <form id="proposalForm" class="proposal-form">
+            <div class="proposal-meta">
+                <label class="uw-field uw-span-2">Proposal Name
+                    <input id="propName" name="propName" placeholder="Client name or label" />
+                </label>
+                <div class="proposal-actions-inline">
+                    <button type="submit" class="btn gold" id="btnSaveProposal">Save Proposal</button>
+                    <button type="button" class="btn btn-ghost" data-proposal-close>Cancel</button>
+                </div>
+            </div>
+
+            <div class="proposal-buckets">
+                @for (var i = 1; i <= 3; i++)
+                {
+                    <div class="proposal-bucket" data-bucket="@i">
+                        <div class="pb-head">Option @i</div>
+                        <label class="uw-field">Insurance Carrier
+                            <select class="prop-carrier" id="propCarrier@i">
+                                <option value="">Select carrier</option>
+                                <option>Banner Life</option>
+                                <option>Protective</option>
+                                <option>Pacific Life</option>
+                                <option>Symetra</option>
+                                <option>Lincoln Financial</option>
+                                <option>John Hancock</option>
+                                <option>Prudential</option>
+                                <option>Nationwide</option>
+                                <option>Mutual of Omaha</option>
+                                <option>Foresters Financial</option>
+                                <option>American General (AIG/Corebridge)</option>
+                                <option>Brighthouse</option>
+                                <option>North American</option>
+                                <option>Other</option>
+                            </select>
+                        </label>
+                        <label class="uw-field">Type
+                            <select class="prop-type" id="propType@i">
+                                <option value="">Select</option>
+                                <option value="Term">Term</option>
+                                <option value="Whole Life">Whole Life</option>
+                                <option value="Universal Life">Universal Life</option>
+                                <option value="Indexed UL">IUL</option>
+                                <option value="Final Expense">Final Expense</option>
+                            </select>
+                        </label>
+                        @for (var r = 1; r <= 3; r++)
+                        {
+                            <div class="pb-row">
+                                <label class="uw-field">Death Benefit @r
+                                    <div class="currency-wrap">
+                                        <span>$</span>
+                                        <input class="prop-benefit currency-input" id="propBenefit@i@r" inputmode="decimal" />
+                                    </div>
+                                </label>
+                                <label class="uw-field">Premium @r
+                                    <div class="currency-wrap">
+                                        <span>$</span>
+                                        <input class="prop-premium currency-input" id="propPremium@i@r" inputmode="decimal" />
+                                        <span class="suffix">/mo</span>
+                                    </div>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function(){
+    const categories = [
+        {
+            key: "opening-pushback",
+            rank: 1,
+            navSignal: "bad",
+            name: "Opening Pushback",
+            note: "Top priority. These are the fast shut-down objections you hear the most right away.",
+            items: [
+                {
+                    id: "not-interested-before",
+                    title: "I’m not interested (before explaining anything)",
+                    signal: "bad",
+                    script: `<Client first name>, this is not a spam or sales call, like I said before my name is <your full name>, senior medical underwriter within the state of <state>, license number <license number>.`
+                },
+                {
+                    id: "hang-up",
+                    title: "If they hang up",
+                    signal: "bad",
+                    script: `<Client first name>, this is not a spam or sales call, my name is <your full name>, senior medical underwriter within the state of <state>, license number <license number>.`
+                },
+                {
+                    id: "not-interested-after",
+                    title: "I’m not interested (after explaining)",
+                    signal: "warn",
+                    script: `It looks like our junior underwriter put on the file that it was too expensive, does that sound about right?
+
+If yes:
+Ok that makes sense, it looks like you spoke to one of our junior underwriters who only works for 1 or 2 carriers. If they are not able to help a family they bump it up to us seniors, as we work with all 35.
+
+Just to catch you up to speed, it looks like your file was flagged for what’s called annual review. What that means is there have been some recent law changes in the state of <state>, where folks who looked at coverage in the past are able to get more coverage for way less than what they are paying.
+
+Now obviously <name>, I know that is important to you and every other family in the state of <state>. I'm assuming when you had closed on the home, you were looking for something that would pay off the home or any financial burden for the family if God forbid anything were to happen to you. Does that sound about right?
+
+If no:
+I'm assuming when you had closed on the home, you were looking for something that would pay off the home or any financial burden for the family if God forbid anything were to happen to you. Does that sound about right?`
+                },
+                {
+                    id: "is-this-required",
+                    title: "Is this required?",
+                    signal: "warn",
+                    script: `<Client name>, there are a lot of things in life that are required, and there are a lot of things that are necessary. This would be one of those things that are necessary, as I’m assuming you have a family.`
+                },
+                {
+                    id: "take-me-off-list",
+                    title: "Take me off the list",
+                    signal: "bad",
+                    script: `To be frank with you, there is no list. When you closed with <lender>, they assigned us your case file in regards to the protection for the family.`
+                }
+            ]
+        },
+        {
+            key: "existing-coverage",
+            rank: 2,
+            navSignal: "warn",
+            name: "Existing Coverage",
+            note: "Everything tied to already having coverage or thinking they already handled it.",
+            items: [
+                {
+                    id: "already-taken-care-of",
+                    title: "I already got this taken care of",
+                    signal: "warn",
+                    script: `It looks like here one of our junior underwriters was able to help you out.
+
+Now it is <state> state law that you would have received a policy packet in the mail. I’m assuming you received that, right?
+
+Ok, you would have also gone through a series of medical questions and been placed with one of our 35 carriers with one of our underwriters. Did that end up happening?`
+                },
+                {
+                    id: "dont-remember",
+                    title: "I don’t remember",
+                    signal: "warn",
+                    script: `Now it is <state> state law that you would have received a policy packet in the mail. I’m assuming you received that, right?
+
+Ok, you would have also gone through a series of medical questions and been placed with one of our 35 carriers with one of our underwriters. Did that end up happening?`
+                },
+                {
+                    id: "through-work",
+                    title: "Already have coverage through work",
+                    signal: "warn",
+                    script: `That’s great that you have some through work, but after you leave, retire, or change jobs all that coverage goes away. I’m assuming your employer explained that, right?
+
+And in the case you get cancer or some sort of illness and you end up getting laid off, you lose those benefits as well, and then most likely you wouldn’t be able to qualify health-wise for any coverage.
+
+Anyways...`
+                },
+                {
+                    id: "life-insurance-covers-home-1",
+                    title: "We don’t need mortgage protection, our home is covered with our life insurance",
+                    signal: "warn",
+                    script: `Ok, that actually looks like the exact reason why I’m calling.
+
+I'm assuming that you ended up going 3rd party, then is that correct?
+
+Okay, so correct me if I'm wrong. But when you closed on the home you had gotten that life insurance just to make sure that your family is protected if something were to happen, right?
+
+So it does actually look like your file was flagged for what's called annual review.
+
+Just to kind of catch you up to speed here, anyone who had gotten life insurance or any sort of protection in the past, or went 3rd party like yourself, is actually able to qualify for more coverage for way less than what they're paying, as well as take advantage of some benefits where if you don't use that coverage, you can actually utilize the value in it to pay off the mortgage early.
+
+Now obviously, I know that's important to you and every other family in the state.
+
+All my job is today is to take a look at that current policy you have that you went 3rd party with and just make sure, given these recent law changes, that you're in the most comfortable and affordable situation currently.
+
+Does that make sense?`
+                },
+                {
+                    id: "life-insurance-covers-home-2",
+                    title: "Home is covered with life insurance (living benefits version)",
+                    signal: "warn",
+                    script: `Gotcha, has anyone explained the difference between mortgage and life insurance to you before?
+
+So mortgage protection and life insurance actually both pay out as a check directly to your beneficiary when you pass away. The reason that mortgage protection is a bit better than life insurance is because mortgage protection covers you on the living side as well, not just the death side.
+
+What that means is any situation where you get sick, disabled, cancer, heart attack, stroke, disability, or any other sort of critical, chronic, or terminal illness, this policy is paying out as well in order to supplement that loss of income and pay for any medical bills.
+
+I'm not sure if you're aware of this or not, but the biggest cause of bankruptcies and home foreclosures is not due to a death. It's either due to unforeseen medical bills, or being disabled for a period of time and not being able to work.
+
+Does that make sense?`
+                },
+                {
+                    id: "current-policy-no-replacement",
+                    title: "I’m ok with my current policy / don’t want replacement",
+                    signal: "warn",
+                    script: `That's honestly expected. I’m assuming if you ended up not using the policy, if you could use it to pay off the mortgage early, that would be important, correct?
+
+If yes:
+Ok, that is exactly what these law changes offer. This is not adding coverage. This is just understanding what options are available to put you in a better situation than what you currently have.
+
+If no:
+Again this isn’t a sales call, so if new law changes provide something that costs less money with better benefits for exactly what you have, I’m assuming that would be valuable to you, right?`
+                }
+            ]
+        },
+        {
+            key: "trust-identity",
+            rank: 3,
+            navSignal: "bad",
+            name: "Trust / Identity / Verification",
+            note: "All trust walls stay together so you can move fast when they challenge credibility.",
+            items: [
+                {
+                    id: "who-are-you",
+                    title: "What company are you with / who are you?",
+                    signal: "bad",
+                    script: `Do you remember back in 2008 when the housing crisis happened? Back then the mortgage companies were the ones who dealt with the protection for the families. After 08, the state mandated that they offload that responsibility onto underwriters within the state.
+
+So when you guys closed with <lender>, they had assigned us your case file in regards to the protection for the family.
+
+I work for LEGEND LEGACY PROTECTION. We handle the mortgage protection files for various lenders within the state. Does that make sense?`
+                },
+                {
+                    id: "send-email-mail",
+                    title: "Can you just send me an email / send me something in the mail?",
+                    signal: "warn",
+                    script: `So we can’t send it via email or mail because that would be what's called soliciting according to the telecommunication laws.
+
+Everything is based on medical and financial health, as well as our job is actually to customize a plan for your family that not only makes sense now, but makes sense in the future.`
+                },
+                {
+                    id: "social-banking",
+                    title: "Yeah, I’m not giving you my Social / Banking",
+                    signal: "bad",
+                    script: `<Name>, this is insurance...
+
+Pause for 3 seconds and see if they say anything.
+
+SOCIAL:
+Like I said before, this is how they check the Medical Information Bureau report, which is how they know whether or not you're medically approved. These companies insure your life for thousands of dollars. They need to know what your medical situation is.
+
+If still no:
+Completely understood. At this point in the process, standard telecommunication law procedure is to provide you with 2 methods of verification of my identity, so you can trust exactly who you are speaking with. Because obviously we are aware of what happens online these days, and take that extremely seriously.
+
+I’m going to go ahead and share my screen with you so you can see me, then I am going to present 2 forms of identification up to the camera so you can screen capture them for your records.
+
+Show DL to camera.
+Show name on debit/credit card — don’t show your numbers.
+
+BANKING:
+Understood, so how would we fund the policy after approval? This is the most secure method of payment.
+
+If still no:
+Understood, so let me clarify. The reason why they require routing and account number is because you could leave a checkbook on a supermarket floor and nobody could do anything. Every bank has fraud protection, and you have 5 days to dispute any transaction and the bank will not let it go through.
+
+If still no:
+Revert to your extended rebuttal after social.`
+                },
+                {
+                    id: "attorney",
+                    title: "Let me talk to my attorney and I’ll get back to you",
+                    signal: "bad",
+                    script: `Attorney? This has nothing to do with the title or deed of your home.
+
+Is your attorney willing to pay out thousands of dollars to pay off your home if something happens to you?
+
+Exactly, that’s why our job exists.`
+                }
+            ]
+        },
+        {
+            key: "affordability-think",
+            rank: 4,
+            navSignal: "warn",
+            name: "Affordability / Think-It-Over",
+            note: "Money objections and delay objections grouped together.",
+            items: [
+                {
+                    id: "cant-afford",
+                    title: "I can’t afford it",
+                    signal: "warn",
+                    script: `It looks like our junior underwriter put in the notes that it was too expensive. Does that sound about right?
+
+Ok, just to catch you up to speed, there have been a lot of law changes within the state where anyone who had looked at coverage in the past, who is now either on a fixed or budgeted income, is now actually able to get coverage that is comfortable and affordable.
+
+My job is to customize a plan for you and your family, because I’m assuming when you closed on the home you were looking for something that would pay it off if anything were to happen to you, right?`
+                },
+                {
+                    id: "need-think-spouse",
+                    title: "Need to think about it / talk to spouse",
+                    signal: "warn",
+                    script: `Completely understandable.
+
+You want to know what I'd recommend?
+
+Honestly, I'd recommend starting out at the low end for what you know you can afford, because you guys are actually going to see me twice. Once now, of course, but you're also going to talk to me a year from now.
+
+Basically a year from now I'm simply going to check in, re-explain the policy benefits, and if you want to bump up the coverage at that time you certainly have the option to.
+
+Anyway, the address we have on file to mail the policy out to is ____ right?`
+                }
+            ]
+        },
+        {
+            key: "appointment-timing",
+            rank: 5,
+            navSignal: "info",
+            name: "Appointment / Timing",
+            note: "When they are busy, working, or driving and you need quick control.",
+            items: [
+                {
+                    id: "busy-call-back",
+                    title: "I’m busy right now. Can you call me back?",
+                    signal: "info",
+                    script: `Ok, perfect, we typically run by appointment only anyways. Just so I can respect your time, let me at least let you know why we are calling so we can set up a time to call back.`
+                },
+                {
+                    id: "im-at-work",
+                    title: "I’m at work",
+                    signal: "info",
+                    script: `Ok, perfect, we typically run by appointment only anyways. I want to respect your time, so what times a day usually work best for you, mornings, evenings or afternoons?
+
+Ok perfect, now I am mandated by the state that you do have some documentation of my credentials. Go ahead and grab a pen and paper and let me know when you're ready.`
+                },
+                {
+                    id: "im-driving",
+                    title: "I’m driving",
+                    signal: "info",
+                    script: `I don’t want you to get in an accident. Go ahead and pull over real quick, I’ll get your information pulled up.`
+                }
+            ]
+        },
+        {
+            key: "home-status",
+            rank: 6,
+            navSignal: "info",
+            name: "Home Status Changes",
+            note: "Every home-status objection stays together so you stop jumping around.",
+            items: [
+                {
+                    id: "paid-off-home",
+                    title: "I paid off the home",
+                    signal: "info",
+                    script: `Ok, that actually looks like the exact reason why I’m calling. Do you remember back in 2008 when the housing crisis happened?
+
+So back then, the mortgage companies were the ones who dealt with the general protection for the families. But after the state realized that they were corrupt, profiting off the foreclosure of people's homes, they actually mandated that it be offloaded onto underwriters within the state to handle that general protection.
+
+Now I work for a company called LEGEND LEGACY PROTECTION and we handle the general asset protection files for various lenders within the state. Does that make sense?
+
+Ok now that you have paid that home off, which congratulations on that, I’m assuming you've gone through the asset protection process before right?
+
+Ok, so no worries. So when you closed on the home initially, our job was to make sure that any assets that you do have, including the home that you paid off, are protected in the event you were to get sick, terminally ill, or pass away.
+
+Now I'm assuming when you had initially gotten your home, you were looking for something to protect that asset in the event something were to happen to you, so your family was not forced to liquidate it, and something could completely replace your income. Is that correct?`
+                },
+                {
+                    id: "sold-home",
+                    title: "We already sold the home",
+                    signal: "info",
+                    script: `If they bought a new home:
+
+Do you remember back in 2008 when the housing crisis happened? Back then the mortgage companies were the ones who dealt with the protection for the families. After 08, the state mandated that they offload that responsibility onto underwriters within the state.
+
+So when you guys closed with <lender>, they had assigned us your case file in regards to the protection for the family.
+
+I work for LEGEND LEGACY PROTECTION, we handle the mortgage protection files for various lenders within the state. Does that make sense?
+
+Now I know that you sold that house, but we were still assigned to your family.
+
+I’m assuming when you closed on that previous house, you were looking for something that would pay off the home or any financial burden if something were to happen to you. Does that sound about right?`
+                },
+                {
+                    id: "new-home-update",
+                    title: "We already sold the home (update new address)",
+                    signal: "info",
+                    script: `Perfect, it looks like that's why your file was flagged here and coming up as incomplete. What's the new updated mortgage address? I'll update your file for you.`
+                },
+                {
+                    id: "not-with-lender",
+                    title: "I’m not with that lender anymore",
+                    signal: "info",
+                    script: `Do you remember back in 2008 when the housing crisis happened? Back then the mortgage companies were the ones who dealt with the protection for the families. After 08, the state mandated that they offload that responsibility onto underwriters within the state.
+
+So when you guys closed with <lender>, they had assigned us your case file in regards to the protection for the family. Does that make sense?`
+                },
+                {
+                    id: "going-to-sell-home",
+                    title: "We’re going to sell the home",
+                    signal: "info",
+                    script: `This coverage actually sticks with you and transfers with you when you buy a new home. Do you plan on staying local or are you moving out of state?`
+                },
+                {
+                    id: "now-renting",
+                    title: "I am now renting",
+                    signal: "info",
+                    script: `Perfect, it looks like that's why your file was flagged here and coming up as incomplete. We also handle the general protection that covers you if God forbid you were to become sick, disabled, or pass away. Have you guys gotten that set up yet?`
+                }
+            ]
+        },
+        {
+            key: "lead-clarification",
+            rank: 7,
+            navSignal: "info",
+            name: "Lead Clarification",
+            note: "Less common. Keep it at the bottom.",
+            items: [
+                {
+                    id: "saw-ad",
+                    title: "I saw an ad",
+                    signal: "info",
+                    script: `Yes, that is for accidental coverage, so it only covers you if you were to die in an accident. Were you looking for accidental only, or did you want something that would cover you for any cause of death?`
+                }
+            ]
+        }
+    ];
+
+    const rbNav = document.getElementById("rbNav");
+    const prosperNav = document.getElementById("prosperNav");
+    const rbContent = document.getElementById("rbContent");
+    const rbSearch = { value: "" };
+    const rbTone = { value: "" };
+    const rbCount = document.getElementById("rbCount");
+    const catCount = document.getElementById("catCount");
+    const prosperCount = document.getElementById("prosperCount");
+    const contentCount = document.getElementById("contentCount");
+    const contentSub = document.getElementById("contentSub");
+    const btnClearAll = null;
+    const shellEl = document.querySelector("#rbShell .shell");
+    const rbNavArrow = document.getElementById("rbNavArrow");
+    const prosperNavArrow = document.getElementById("prosperNavArrow");
+    const prosperUrl = '@Url.Action("ProsperAgedMortgageProtection", "Workstation")';
+    const defaultProsperId = "sec-aged";
+
+    let activeCategoryKey = null;
+    let activeProsperId = defaultProsperId;
+    let activePane = "prosper";
+    let initializedDefaultProsper = false;
+    let prosperSections = [];
+    let prosperLoaded = false;
+    let prosperLoadFailed = false;
+
+    function escapeHtml(v){
+        return String(v || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function highlightText(text, search){
+        const safe = escapeHtml(text);
+        if(!search) return safe;
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp("(" + escapedSearch + ")", "ig");
+        return safe.replace(regex, '<mark class="hit">$1</mark>');
+    }
+
+    function stripHtml(html){
+        const el = document.createElement("div");
+        el.innerHTML = html || "";
+        return (el.textContent || el.innerText || "").trim();
+    }
+
+    function getSignalLabel(signal){
+        if(signal === "good") return "GO";
+        if(signal === "warn") return "CLARIFY";
+        if(signal === "bad") return "STOP";
+        return "INFO";
+    }
+
+    function getFilteredCategories(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return categories
+            .map(cat => {
+                const filteredItems = cat.items.filter(item => {
+                    const hay = [cat.name, cat.note, item.title, item.script].join(" ").toLowerCase();
+                    const matchesSearch = !searchVal || hay.includes(searchVal);
+                    const matchesTone = !toneVal || item.signal === toneVal;
+                    return matchesSearch && matchesTone;
+                });
+
+                return {
+                    ...cat,
+                    items: filteredItems
+                };
+            })
+            .filter(cat => cat.items.length > 0)
+            .sort((a,b) => a.rank - b.rank);
+    }
+
+    function getFilteredProsperSections(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return prosperSections.filter(section => {
+            const hay = [section.stepLabel, section.flowLabel, section.title, section.sub, section.searchText]
+                .join(" ")
+                .toLowerCase();
+            const matchesSearch = !searchVal || hay.includes(searchVal);
+            const matchesTone = !toneVal || section.signal === toneVal;
+            return matchesSearch && matchesTone;
+        });
+    }
+
+    function ensureActiveSelection(){
+        const filteredCategories = getFilteredCategories();
+        const filteredProsper = getFilteredProsperSections();
+
+        if(!activeCategoryKey || !filteredCategories.some(x => x.key === activeCategoryKey)){
+            activeCategoryKey = filteredCategories[0]?.key || null;
+        }
+
+        if(filteredProsper.some(x => x.id === defaultProsperId)){
+            if(!initializedDefaultProsper){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            } else if(activePane === "prosper" && (!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId))){
+                activeProsperId = defaultProsperId;
+            }
+        }
+
+        if(!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId)){
+            activeProsperId = filteredProsper[0]?.id || null;
+        }
+
+        if(activePane === "rebuttal" && !activeCategoryKey && activeProsperId){
+            activePane = "prosper";
+        } else if(activePane === "prosper" && !activeProsperId && activeCategoryKey){
+            activePane = "rebuttal";
+        }
+    }
+
+    function renderNav(){
+        const filteredCategories = getFilteredCategories();
+
+        rbNav.innerHTML = "";
+        catCount.textContent = String(filteredCategories.length);
+
+        if(!filteredCategories.length){
+            rbNav.innerHTML = `<div class="content-empty small">No rebuttal categories matched your search.</div>`;
+            return;
+        }
+
+        filteredCategories.forEach(cat => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${cat.navSignal}${cat.key === activeCategoryKey ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div class="cat-rank">${cat.rank}</div>
+                        <div class="cat-name">${highlightText(cat.name, (rbSearch.value || "").trim())}</div>
+                    </div>
+                    <span class="cat-count">${cat.items.length}</span>
+                </div>
+                <div class="cat-note">${highlightText(cat.note, (rbSearch.value || "").trim())}</div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "rebuttal";
+                activeCategoryKey = cat.key;
+                rerenderAll();
+            });
+            rbNav.appendChild(btn);
+        });
+    }
+
+    function renderProsperNav(){
+        prosperNav.innerHTML = "";
+        prosperCount.textContent = "0";
+
+        if(!prosperLoaded && !prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Loading Prosper script steps…</div>`;
+            return;
+        }
+
+        if(prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Prosper script steps could not be loaded right now.</div>`;
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        prosperCount.textContent = String(filteredProsper.length);
+
+        if(!filteredProsper.length){
+            prosperNav.innerHTML = `<div class="content-empty small">No Prosper steps matched your search.</div>`;
+            return;
+        }
+
+        filteredProsper.forEach(section => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top">
+                    <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
+                </div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "prosper";
+                activeProsperId = section.id;
+                rerenderAll();
+            });
+            prosperNav.appendChild(btn);
+        });
+    }
+
+    function renderRebuttalContent(){
+        const filteredCategories = getFilteredCategories();
+        const activeCategory = filteredCategories.find(x => x.key === activeCategoryKey);
+
+        if(!activeCategory){
+            rbContent.innerHTML = `<div class="content-empty">Pick a rebuttal category on the left or a Prosper step on the right.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 scripts";
+            contentSub.textContent = "No category selected.";
+            return;
+        }
+
+        const searchVal = (rbSearch.value || "").trim();
+        rbCount.textContent = String(activeCategory.items.length);
+        contentCount.textContent = `${activeCategory.items.length} scripts`;
+        contentSub.textContent = activeCategory.name;
+
+        let html = `
+            <div class="section-head">
+                <h2 class="section-title">${highlightText(activeCategory.name, searchVal)}</h2>
+                <p class="section-copy">${highlightText(activeCategory.note, searchVal)}</p>
+            </div>
+        `;
+
+        activeCategory.items.forEach(item => {
+            html += `
+                <div class="objection ${item.signal}">
+                    <div class="objection-head">
+                        <h3 class="objection-title">${highlightText(item.title, searchVal)}</h3>
+                        <span class="mini-tag ${item.signal}">${getSignalLabel(item.signal)}</span>
+                    </div>
+                    <div class="objection-body">
+                        <pre class="script">${highlightText(item.script, searchVal)}</pre>
+                    </div>
+                </div>
+            `;
+        });
+
+        rbContent.innerHTML = html;
+    }
+
+    function renderProsperContent(){
+        if(!prosperLoaded && !prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Loading Prosper mortgage protection steps…</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            return;
+        }
+
+        if(prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Prosper mortgage protection steps could not be loaded.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        const activeSection = filteredProsper.find(x => x.id === activeProsperId);
+
+        if(!activeSection){
+            rbContent.innerHTML = `<div class="content-empty">Pick a Prosper step on the right to load it here.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            return;
+        }
+
+        rbCount.textContent = "1";
+        contentCount.textContent = `Step ${activeSection.step}`;
+        contentSub.textContent = "Prosper Aged Mortgage Protection";
+
+        rbContent.innerHTML = `
+            <div class="prosper-stage ${activeSection.signal}">
+                <div class="prosper-stage-head">
+                    <div>
+                        <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
+                        <h2 class="prosper-title">${highlightText(activeSection.title, (rbSearch.value || "").trim())}</h2>
+                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the Prosper mortgage protection guide.", (rbSearch.value || "").trim())}</p>
+                    </div>
+                    <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
+                </div>
+                <div class="prosper-body">${activeSection.bodyHtml}</div>
+            </div>
+        `;
+    }
+
+    function renderContent(){
+        if(activePane === "prosper"){
+            renderProsperContent();
+            return;
+        }
+
+        renderRebuttalContent();
+    }
+
+    function positionRailArrow(navEl, arrowEl, side){
+        if(!navEl || !arrowEl || !shellEl){
+            return;
+        }
+
+        const activeBtn = navEl.querySelector(".cat-btn.active");
+        const navCard = navEl.closest(".nav-card");
+
+        if(!activeBtn || !navCard){
+            arrowEl.style.opacity = "0";
+            return;
+        }
+
+        const shellRect = shellEl.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        const cardRect = navCard.getBoundingClientRect();
+        const arrowSize = arrowEl.offsetHeight || 42;
+        const top = btnRect.top - shellRect.top + ((btnRect.height - arrowSize) / 2);
+
+        if(side === "left"){
+            const left = cardRect.left - shellRect.left - 52;
+            arrowEl.style.left = `${left}px`;
+        } else {
+            const left = cardRect.right - shellRect.left + 10;
+            arrowEl.style.left = `${left}px`;
+        }
+
+        arrowEl.style.top = `${top}px`;
+        arrowEl.style.opacity = "1";
+    }
+
+    function updateRailArrows(){
+        positionRailArrow(rbNav, rbNavArrow, "left");
+        positionRailArrow(prosperNav, prosperNavArrow, "right");
+    }
+
+    function rerenderAll(){
+        ensureActiveSelection();
+        renderNav();
+        renderProsperNav();
+        renderContent();
+        updateRailArrows();
+    }
+
+    async function loadProsperSections(){
+        try{
+            const response = await fetch(prosperUrl, {
+                credentials: "same-origin"
+            });
+
+            if(!response.ok){
+                throw new Error("Unable to load Prosper guide.");
+            }
+
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const nodes = Array.from(doc.querySelectorAll("#mpCard > details.section"));
+
+            prosperSections = nodes.map((node, index) => {
+                const step = (node.getAttribute("data-step") || String(index + 1)).trim();
+                const signal = (node.getAttribute("data-signal") || "good").trim();
+                const flow = (node.getAttribute("data-flow") || "").trim();
+                const title = (node.querySelector(".title")?.textContent || `Step ${step}`).trim();
+                const sub = (node.querySelector(".sub")?.textContent || "").trim();
+                const bodyHtml = node.querySelector(".body")?.innerHTML || "";
+
+                return {
+                    id: node.id || `prosper-step-${index + 1}`,
+                    step,
+                    stepLabel: `Step ${step}${flow ? " · " + flow.replace(/-/g, " ") : ""}`,
+                    signal,
+                    flowLabel: flow ? flow.replace(/-/g, " ") : "",
+                    title,
+                    sub,
+                    bodyHtml,
+                    searchText: stripHtml(bodyHtml)
+                };
+            });
+
+            prosperLoaded = true;
+            prosperLoadFailed = false;
+            if(prosperSections.some(section => section.id === defaultProsperId)){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            }
+        } catch (error){
+            prosperSections = [];
+            prosperLoaded = false;
+            prosperLoadFailed = true;
+        }
+
+        rerenderAll();
+    }
+
+    // Toolbar removed; keep search/tone empty and still allow arrows to update.
+    prosperNav.addEventListener("scroll", updateRailArrows);
+    window.addEventListener("resize", updateRailArrows);
+
+    // No clear button anymore.
+
+    rbContent.addEventListener("click", function(event){
+        const jumpBtn = event.target.closest("[data-jump]");
+        if(!jumpBtn) return;
+
+        const target = jumpBtn.getAttribute("data-jump") || "";
+        if(!target.startsWith("#")) return;
+
+        const targetId = target.slice(1);
+        if(!prosperSections.some(section => section.id === targetId)) return;
+
+        event.preventDefault();
+        activePane = "prosper";
+        activeProsperId = targetId;
+        rerenderAll();
+        rbContent.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    rerenderAll();
+    loadProsperSections();
+})();
+</script>
+
+@section Scripts {
+<script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
+<script src="~/js/uw-intake.js" asp-append-version="true"></script>
+<script src="~/js/proposal-uw.js" asp-append-version="true"></script>
+}

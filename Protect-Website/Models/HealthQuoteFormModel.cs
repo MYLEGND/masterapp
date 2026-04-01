@@ -1,0 +1,52 @@
+using System.ComponentModel.DataAnnotations;
+
+namespace Protect_Website.Models
+{
+    public class HealthQuoteFormModel
+    {
+        // ===================== PERSONAL INFO =====================
+        [Required(ErrorMessage = "First Name is required")]
+        public string FirstName { get; set; } = "";
+
+        [Required(ErrorMessage = "Last Name is required")]
+        public string LastName { get; set; } = "";
+
+        [Required(ErrorMessage = "Email is required"), EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Phone is required"), Phone]
+        public string Phone { get; set; } = "";
+
+        [Required(ErrorMessage = "Age is required")]
+        [Range(0, 120, ErrorMessage = "Age must be between 0 and 120")]
+        public int? Age { get; set; }
+
+        // ===================== COVERAGE CONTEXT =====================
+        [Required(ErrorMessage = "Coverage Type is required")]
+        public string CoverageType { get; set; } = "";
+
+        [Required(ErrorMessage = "Current Coverage is required")]
+        public string CurrentCoverage { get; set; } = "";
+
+        [Required(ErrorMessage = "Primary Concern is required")]
+        public string PrimaryConcern { get; set; } = "";
+
+        [Required(ErrorMessage = "Household Size is required")]
+        public string HouseholdSize { get; set; } = "";
+
+        [Required(ErrorMessage = "Timeline is required")]
+        public string Timeline { get; set; } = "";
+
+        // ===================== CONTACT =====================
+        [Required(ErrorMessage = "Contact Method is required")]
+        public string ContactMethod { get; set; } = "";
+
+        [Required(ErrorMessage = "Best Time to Contact is required")]
+        public string BestTimeToContact { get; set; } = "";
+
+        // ===================== DISCLAIMER =====================
+                [Display(Name = "Acknowledged Disclaimer")]
+        [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
+        public bool AcknowledgedDisclaimer { get; set; } = false;
+    }
+}

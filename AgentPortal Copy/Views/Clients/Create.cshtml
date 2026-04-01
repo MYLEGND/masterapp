@@ -1,0 +1,468 @@
+@model AgentPortal.Models.CreateClientViewModel
+
+@{
+    ViewData["Title"] = "Create Pipeline Record";
+
+    // allows controller to redirect back to index with a target client
+    var returnUrl = (string)(ViewBag.ReturnUrl ?? Context.Request.Query["returnUrl"].ToString() ?? Url.Action("Index", "Clients") ?? "/Clients");
+    var emailErrors = ViewData.ModelState[nameof(Model.Email)]?.Errors;
+    var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
+}
+
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-deep:#8f6b14;
+        --gold-bright:#ddb85d;
+        --ink:#161616;
+        --muted:#666;
+        --line:rgba(143,107,20,.28);
+        --line-strong:rgba(143,107,20,.62);
+        --panel:#fff;
+        --soft:#f8f3e7;
+        --soft-gold:rgba(166,128,35,.10);
+        --danger:#b42318;
+    }
+
+    .page-wrap{
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 20px 16px 32px;
+        color: var(--ink);
+        background:
+            linear-gradient(180deg, rgba(143,107,20,.06), rgba(143,107,20,0) 180px),
+            #fff;
+    }
+
+    .card{
+        background: var(--panel);
+        border: 2px solid var(--gold-deep);
+        border-radius: 20px;
+        box-shadow: 0 24px 52px rgba(92,67,10,.14);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .card::before{
+        content:"";
+        position:absolute;
+        top:0;
+        left:0;
+        right:0;
+        height: 5px;
+        background: linear-gradient(90deg, var(--gold-deep), var(--gold) 34%, var(--gold-bright) 58%, var(--gold) 78%, var(--gold-deep));
+    }
+
+    .card-header,
+    .card-body{
+        padding: 18px;
+    }
+
+    .card-header{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--line-strong);
+        background: linear-gradient(180deg, rgba(143,107,20,.14), rgba(255,255,255,.98));
+    }
+
+    .title{
+        margin:0;
+        font-size: 1.35rem;
+        font-weight: 900;
+        color: var(--gold-deep);
+        letter-spacing: .02em;
+    }
+
+    .label{
+        display:block;
+        margin-bottom: 6px;
+        font-size: .92rem;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .required-chip{
+        display:none;
+        margin-left: 8px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--gold-deep);
+        background: #fff4d2;
+        color: var(--gold-deep);
+        font-size: .72rem;
+        font-weight: 900;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        vertical-align: middle;
+    }
+
+    .required-chip.is-on{
+        display:inline-flex;
+        align-items:center;
+    }
+
+    .input{
+        width: 100%;
+        min-height: 42px;
+        border: 1px solid #c59a37;
+        border-radius: 14px;
+        padding: .7rem .8rem;
+        background: #fff;
+        outline: none;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
+    }
+
+    .input:focus{
+        border-color: var(--gold-deep);
+        box-shadow: 0 0 0 3px rgba(166,128,35,.14);
+    }
+
+    .grid{
+        display:grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .full{ grid-column: 1 / -1; }
+
+    .section{
+        padding-top: 14px;
+        margin-top: 14px;
+        border-top: 1px solid rgba(143,107,20,.18);
+    }
+
+    .section-title{
+        margin: 0 0 12px;
+        font-size: 1rem;
+        font-weight: 900;
+        color: var(--gold-deep);
+        letter-spacing: .03em;
+        text-transform: uppercase;
+    }
+
+    .record-types{
+        display:grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 4px;
+    }
+
+    .record-option{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        min-height: 48px;
+        padding: 0 14px;
+        border: 1px solid #c59a37;
+        border-radius: 14px;
+        background: linear-gradient(180deg, #fffdf8, #ffffff);
+        font-weight: 800;
+        cursor: pointer;
+        transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
+    }
+
+    .record-option:has(input:checked){
+        border-color: var(--gold-deep);
+        box-shadow: 0 0 0 2px rgba(166,128,35,.14);
+        background: linear-gradient(180deg, #fff3cf, #fffaf0);
+    }
+
+    .record-option input{
+        accent-color: var(--gold);
+    }
+
+    .summary,
+    .blocked{
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        font-weight: 600;
+    }
+
+    .summary{
+        border: 1px solid rgba(180,35,24,.2);
+        background: rgba(180,35,24,.06);
+    }
+
+    .blocked{
+        border: 1px solid rgba(180,35,24,.25);
+        background: rgba(180,35,24,.08);
+    }
+
+    .validation{
+        display:block;
+        margin-top: 4px;
+        font-size: .84rem;
+        font-weight: 600;
+        color: var(--danger);
+    }
+
+    .actions{
+        display:flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }
+
+    .btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height: 42px;
+        padding: 0 14px;
+        border-radius: 14px;
+        border: 1px solid var(--gold-deep);
+        background: #fff;
+        color: var(--gold-deep);
+        font-weight: 800;
+        text-decoration: none;
+        cursor: pointer;
+        transition: border-color .14s ease, box-shadow .14s ease, transform .14s ease;
+    }
+
+    .btn:hover{
+        transform: translateY(-1px);
+        border-color: var(--gold-deep);
+        box-shadow: 0 12px 24px rgba(92,67,10,.12);
+    }
+
+    .btn-solid{
+        border-color: var(--gold-deep);
+        background: linear-gradient(180deg, #f2d891, #ddb457);
+        color: #fff;
+        text-shadow: 0 1px 0 rgba(92,67,10,.2);
+        box-shadow: 0 14px 26px rgba(143,107,20,.18);
+    }
+
+    @@media (max-width: 720px){
+        .grid,
+        .record-types{
+            grid-template-columns: 1fr;
+        }
+
+        .card-header{
+            align-items:flex-start;
+        }
+    }
+</style>
+
+<div class="page-wrap">
+    <div class="card">
+        <div class="card-header">
+            <h2 class="title">Create Lead, Client, or Business Client</h2>
+            <a asp-action="Index" class="btn">Back</a>
+        </div>
+
+        <div class="card-body">
+            <form asp-action="Create" method="post" novalidate id="createClientForm">
+                @Html.AntiForgeryToken()
+
+                <input type="hidden" name="returnUrl" id="returnUrl" value="@returnUrl" />
+
+                <div asp-validation-summary="ModelOnly" class="summary text-danger"></div>
+
+                @if (blocked)
+                {
+                    <div class="blocked text-danger" role="alert">
+                        Blocked for privacy: this email is already tied to an existing client profile.
+                    </div>
+                }
+
+                <div>
+                    <div class="section-title">Type</div>
+                    <div class="record-types">
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Lead" />
+                            <span>Lead</span>
+                        </label>
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Client" />
+                            <span>Client</span>
+                        </label>
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="BusinessClient" />
+                            <span>Business Client</span>
+                        </label>
+                    </div>
+                    <span asp-validation-for="RecordType" class="text-danger validation"></span>
+                </div>
+
+                <div class="section">
+                    <div class="grid">
+                    <div>
+                        <label asp-for="FirstName" class="label"></label>
+                        <span class="required-chip" data-client-chip>Required</span>
+                        <input asp-for="FirstName" class="input" autocomplete="given-name" data-client-required />
+                        <span asp-validation-for="FirstName" class="text-danger validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="LastName" class="label"></label>
+                        <span class="required-chip" data-client-chip>Required</span>
+                        <input asp-for="LastName" class="input" autocomplete="family-name" data-client-required />
+                        <span asp-validation-for="LastName" class="text-danger validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="Email" class="label"></label>
+                        <span class="required-chip" data-client-chip>Required</span>
+                        <input asp-for="Email" class="input" autocomplete="email" inputmode="email" id="Email" data-client-required />
+                        <span asp-validation-for="Email" class="text-danger validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="Phone" class="label"></label>
+                        <input asp-for="Phone" class="input" autocomplete="tel" inputmode="tel" />
+                        <span asp-validation-for="Phone" class="text-danger validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="DOB" class="label">Date of Birth</label>
+                        <input asp-for="DOB" type="date" class="input" />
+                        <span asp-validation-for="DOB" class="text-danger validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="MaritalStatus" class="label">Marital Status</label>
+                        <select asp-for="MaritalStatus" class="input" id="MaritalStatus">
+                            <option value=""></option>
+                            <option>Single</option>
+                            <option>Married</option>
+                            <option>Domestic Partnership</option>
+                            <option>Divorced</option>
+                            <option>Widowed</option>
+                        </select>
+                        <span asp-validation-for="MaritalStatus" class="text-danger validation"></span>
+                    </div>
+                </div>
+                </div>
+
+                <div id="soCard" class="section" style="display:none;">
+                    <div class="section-title">Significant Other</div>
+
+                    <div class="grid">
+                        <div>
+                            <label asp-for="SignificantOtherFirstName" class="label">First Name</label>
+                            <span class="required-chip" data-so-chip>Required</span>
+                            <input asp-for="SignificantOtherFirstName" class="input" id="SignificantOtherFirstName" autocomplete="given-name" />
+                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger validation"></span>
+                        </div>
+
+                        <div>
+                            <label asp-for="SignificantOtherLastName" class="label">Last Name</label>
+                            <span class="required-chip" data-so-chip>Required</span>
+                            <input asp-for="SignificantOtherLastName" class="input" id="SignificantOtherLastName" autocomplete="family-name" />
+                            <span asp-validation-for="SignificantOtherLastName" class="text-danger validation"></span>
+                        </div>
+
+                        <div>
+                            <label asp-for="SignificantOtherDOB" class="label">Date of Birth</label>
+                            <span class="required-chip" data-so-chip>Required</span>
+                            <input asp-for="SignificantOtherDOB" type="date" class="input" id="SignificantOtherDOB" />
+                            <span asp-validation-for="SignificantOtherDOB" class="text-danger validation"></span>
+                        </div>
+
+                        <div>
+                            <label asp-for="SignificantOtherPhone" class="label">Phone</label>
+                            <input asp-for="SignificantOtherPhone" class="input" autocomplete="tel" inputmode="tel" />
+                            <span asp-validation-for="SignificantOtherPhone" class="text-danger validation"></span>
+                        </div>
+
+                        <div class="full">
+                            <label asp-for="SignificantOtherEmail" class="label">Email</label>
+                            <input asp-for="SignificantOtherEmail" class="input" autocomplete="email" inputmode="email" />
+                            <span asp-validation-for="SignificantOtherEmail" class="text-danger validation"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section" id="crmSeed">
+                    <div class="section-title">CRM</div>
+
+                    <div class="grid">
+                        <div>
+                            <label class="label" for="CrmStatus">CRM Status</label>
+                            <select asp-for="CrmStatus" class="input" id="CrmStatus">
+                                <option value="Lead">Lead</option>
+                                <option value="Prospect">Prospect</option>
+                                <option value="Active">Active Client</option>
+                                <option value="Dormant">Inactive</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="label" for="PipelineStage">Pipeline Stage</label>
+                            <select asp-for="PipelineStage" class="input" id="PipelineStage">
+                                <option value="NewLead">Lead</option>
+                                <option value="Opportunities">Opportunities</option>
+                                <option value="Contacted">Contacted</option>
+                                <option value="Qualified">Qualified</option>
+                                <option value="Client">Clients</option>
+                                <option value="BusinessClient">Business Clients</option>
+                                <option value="MeetingScheduled">Meeting Scheduled</option>
+                                <option value="ProposalSent">Proposal Sent</option>
+                                <option value="ApplicationStarted">Application Started</option>
+                                <option value="Submitted">Submitted</option>
+                                <option value="ClosedLost">Not Moving Forward</option>
+                                <option value="Nurture">Nurture</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="label" for="CrmPriority">Priority</label>
+                            <select asp-for="CrmPriority" class="input" id="CrmPriority">
+                                <option value="Low">Low</option>
+                                <option value="Normal">Normal</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label class="label" for="CrmLastTouch">Last Touch</label>
+                            <input type="date" class="input" id="CrmLastTouch" name="CrmLastTouch" />
+                        </div>
+
+                        <div>
+                            <label class="label" for="CrmNextDate">Next Action Date</label>
+                            <input type="date" class="input" id="CrmNextDate" name="CrmNextDate" />
+                        </div>
+
+                        <div class="full">
+                            <label class="label" for="CrmNextText">Next Action (what will you do?)</label>
+                            <input type="text" class="input" id="CrmNextText" name="CrmNextText" />
+                        </div>
+
+                        <div class="full">
+                            <label class="label" for="CrmTags">Tags (comma separated)</label>
+                            <input type="text" class="input" id="CrmTags" name="CrmTags" />
+                        </div>
+
+                        <div class="full">
+                            <label class="label" for="CrmNotes">Relationship Notes</label>
+                            <textarea class="input" id="CrmNotes" name="CrmNotes" style="min-height:96px; resize:vertical;"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="actions">
+                        <button type="button" class="btn" id="btnCrmTouchToday">Today for Last Touch</button>
+                        <button type="button" class="btn" id="btnCrmNextToday">Today for Next Action</button>
+                        <button type="button" class="btn" id="btnCrmClear">Clear CRM</button>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button type="submit" class="btn btn-solid" id="submitCreateBtn">Create Lead</button>
+                    <a asp-action="Index" class="btn">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script src="~/js/clients-create.js" asp-append-version="true"></script>
+}

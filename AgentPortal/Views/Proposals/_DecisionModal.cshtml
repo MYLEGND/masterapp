@@ -1,0 +1,37 @@
+<div class="modal fade legend-popout-modal" id="captureDecisionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Capture Decision</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-muted small mb-2">Decisions explain the “why” behind a proposal. They’re not Actions (your tasks) or Commitments (promises to the client).</div>
+        <form id="decisionForm">
+          <input type="hidden" name="proposalId" id="decisionProposalId" />
+          <div class="mb-2">
+            <label class="form-label">Title</label>
+            <input name="title" class="form-control" required />
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Rationale</label>
+            <textarea name="rationale" class="form-control" rows="3"></textarea>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Recommendation Type</label>
+            <select name="recommendationType" class="form-select">
+              <option value="ProposalRecommendation">Proposal Recommendation</option>
+              <option value="UnderwritingDirection">Underwriting Direction</option>
+              <option value="FinancialPlanStep">Financial Plan Step</option>
+            </select>
+          </div>
+          <small class="text-muted">Submit sends to /api/proposals/{id}/decision</small>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="submit" class="btn btn-primary">Save Decision</button>
+      </div>
+    </div>
+  </div>
+</div>

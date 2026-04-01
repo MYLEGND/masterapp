@@ -1,0 +1,476 @@
+@{
+    ViewData["Title"] = "Home";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    var firstRowTools = new[]
+    {
+        new { Name = "Spiritual Health", Icon = "faith.png", Description = "When your spirit is nourished, everything else has room to grow. Whether you connect through prayer, meditation, nature, or community, anchoring to something bigger than yourself can soften anxiety, sharpen purpose, and make room for hope on hard days." },
+        new { Name = "Mental Health", Icon = "mind.png", Description = "Your mind sets the tone for your day and how you show up for the people you love. Small, consistent practices—sleep, movement, honest conversations, and asking for help when you need it—create resilience. You are not meant to carry the heavy things alone." },
+        new { Name = "Physical Health", Icon = "health.png", Description = "Treat your body like a trusted teammate. Gentle routines like stretching, walking, and fueling up with real food build steady energy. When you move with intention, you prove to yourself that you’re worth investing in—one habit, one rep, one choice at a time." },
+        new { Name = "Financial Health", Icon = "finance.png", Description = "Money touches nearly every decision, so confidence here brings real peace. A clear budget, a simple plan for saving, and protection against surprises all work together. Stewardship isn’t about perfection—it’s about knowing your numbers and making the next right move." }
+    };
+
+    var secondRowTools = new[]
+    {
+        new { Name = "Legal Risk", Icon = "legal.png", Description = "Put your wishes in writing before life gets noisy. Simple documents—wills, powers of attorney, beneficiary reviews—keep decisions in your hands and reduce stress for the people you love. It’s an act of care, not just a stack of paperwork." },
+        new { Name = "Health Risk", Icon = "health-risk.png", Description = "Health can change quickly. Planning for care, costs, and who speaks for you when you can’t makes tough moments calmer. Clear directives turn guesswork into guidance for family, caregivers, and your medical team." },
+        new { Name = "Life Risk", Icon = "life-event.jpg", Description = "Life throws curveballs—job shifts, accidents, or the loss of income. Protecting your paycheck and your family’s needs with the right coverage and cash buffers keeps a hard season from becoming a crisis." },
+        new { Name = "Legacy Transfer", Icon = "legacy.png", Description = "Legacy is more than assets; it’s values, stories, and intentional gifts. With a plan, you decide how resources support people and causes you care about, and you leave clarity instead of confusion." }
+    };
+}
+
+<div class="home-container">
+
+    <div class="text-center mb-5 home-hero">
+        <h1 class="display-4 fw-bold">Legend™ Legacy Protection</h1>
+        <p class="lead mb-2">
+            Your Personal Access to Life, Wellness, and Financial Clarity
+        </p>
+        <hr class="my-3 hero-hr" />
+    </div>
+
+    <section class="home-tools mb-4">
+        <div class="home-tools-head">
+            <div class="home-tools-copy">
+                <h3 class="mb-2 fw-bold">Build & Protect Your Legacy</h3>
+                <p class="home-tools-sub mb-0">Select any category to view a focused planning blurb in the center of the screen.</p>
+            </div>
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-center home-tools-row">
+            @foreach (var tool in firstRowTools)
+            {
+                <button type="button"
+                        class="dashboard-tool category-trigger d-flex flex-column align-items-center justify-content-center"
+                        data-title="@tool.Name"
+                        data-description="@tool.Description">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
+                         alt="@tool.Name"
+                         width="60"
+                         height="60"
+                         class="mb-2" />
+                    <div class="fw-bold text-center mt-1">@tool.Name</div>
+                </button>
+            }
+        </div>
+
+        <div class="d-flex flex-wrap justify-content-center home-tools-row">
+            @foreach (var tool in secondRowTools)
+            {
+                <button type="button"
+                        class="dashboard-tool category-trigger d-flex flex-column align-items-center justify-content-center"
+                        data-title="@tool.Name"
+                        data-description="@tool.Description">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
+                         alt="@tool.Name"
+                         width="60"
+                         height="60"
+                         class="mb-2" />
+                    <div class="fw-bold text-center mt-1">@tool.Name</div>
+                </button>
+            }
+        </div>
+    </section>
+
+    <section class="home-tools snapshot-cta-shell mt-4">
+        <div class="snapshot-cta-copy">
+            <div class="category-modal-kicker mb-2">Shared client + agent view</div>
+            <h3 class="mb-2 fw-bold">Open your Protection Snapshot</h3>
+            <p class="home-tools-sub mb-3">
+                Track readiness, legal and beneficiary reviews, life events, and follow-up focus in one premium shared workspace.
+            </p>
+            <a class="snapshot-cta-btn" asp-controller="ProtectionSnapshot" asp-action="Index">Launch Protection Snapshot</a>
+        </div>
+    </section>
+
+</div>
+
+<div id="categoryModal" class="category-modal" aria-hidden="true">
+    <div class="category-modal-backdrop" data-close="true"></div>
+    <div class="category-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="categoryModalTitle">
+        <button type="button" class="category-modal-close" id="categoryModalClose" aria-label="Close">×</button>
+        <div class="category-modal-kicker">Build &amp; Protect Your Legacy</div>
+        <h2 id="categoryModalTitle" class="category-modal-title"></h2>
+        <p id="categoryModalBody" class="category-modal-body mb-0"></p>
+    </div>
+</div>
+
+<style>
+:root {
+    --gold-color: #6f4f0f;
+    --gold-color-strong: #8f6615;
+    --gold-color-soft: rgba(111,79,15,0.16);
+    --gold-shadow: rgba(111,79,15,0.24);
+    --ink: #111111;
+    --muted: rgba(17,17,17,.66);
+}
+
+.home-container {
+    padding-top: 2rem;
+    padding-bottom: 2rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.home-hero {
+    padding: 0 1rem;
+}
+
+.hero-hr {
+    border-color: var(--gold-color);
+    border-width: 2px;
+    max-width: 800px;
+    margin: 1rem auto 0;
+}
+
+.home-tools {
+    padding: 1.55rem 1.35rem 1.7rem;
+    border: 1px solid rgba(111,79,15,.28);
+    border-radius: 20px;
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,243,232,.78));
+    box-shadow: 0 14px 32px rgba(17,17,17,.08);
+}
+
+.home-tools-head {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.7rem;
+}
+
+.home-tools-copy {
+    grid-column: 2;
+    display: grid;
+    justify-items: center;
+    text-align: center;
+}
+
+.home-tools-sub {
+    max-width: 660px;
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.home-support-links {
+    margin-top: 14px;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    background: rgba(111,79,15,0.08);
+    border: 1px solid rgba(111,79,15,0.25);
+    border-radius: 999px;
+    padding: 10px 14px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.home-support-label {
+    font-weight: 900;
+    letter-spacing: .04em;
+    color: #6f4f0f;
+}
+
+.home-support-links a {
+    font-weight: 800;
+    color: #0b1529;
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid rgba(111,79,15,0.18);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.home-support-links a:hover,
+.home-support-links a:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(111,79,15,0.38);
+    box-shadow: 0 10px 20px rgba(17,17,17,.08);
+    outline: none;
+}
+
+.home-tools-row {
+    gap: 1.2rem;
+}
+
+.home-tools-row + .home-tools-row {
+    margin-top: 1.55rem;
+}
+
+.dashboard-tool {
+    width: 220px;
+    height: 180px;
+    border: 1.5px solid rgba(111,79,15,.82);
+    border-radius: 18px;
+    padding: 1.25rem;
+    color: var(--ink);
+    font-weight: 700;
+    background: linear-gradient(180deg, #ffffff, #fbf7ec);
+    box-shadow: 0 10px 24px rgba(17,17,17,.08);
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.2s ease;
+    cursor: pointer;
+}
+
+.dashboard-tool:hover,
+.dashboard-tool:focus {
+    transform: translateY(-5px);
+    box-shadow: 0 16px 30px var(--gold-shadow);
+    border-color: var(--gold-color-strong);
+    outline: none;
+}
+
+.category-modal {
+    position: fixed;
+    inset: 0;
+    display: none;
+    z-index: 1080;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+}
+
+.category-modal.is-open {
+    display: flex;
+}
+
+.category-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(10,10,10,.55);
+    backdrop-filter: blur(3px);
+}
+
+.category-modal-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(680px, calc(100vw - 32px));
+    margin: 0;
+    padding: 24px 24px 22px;
+    border-radius: 22px;
+    border: 1px solid rgba(111,79,15,.34);
+    background: linear-gradient(180deg, #ffffff, #faf5e8);
+    box-shadow: 0 30px 80px rgba(0,0,0,.28);
+}
+
+.category-modal-close {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: 1px solid rgba(111,79,15,.22);
+    background: #fff;
+    color: var(--gold-color);
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.category-modal-kicker {
+    display: inline-block;
+    margin-bottom: 12px;
+    font-size: .74rem;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(17,17,17,.62);
+}
+
+.category-modal-title {
+    font-weight: 950;
+    letter-spacing: -.02em;
+    color: var(--gold-color);
+    margin-bottom: 10px;
+}
+
+.category-modal-body {
+    color: rgba(17,17,17,.78);
+    line-height: 1.85;
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.category-support-links {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+    background: rgba(111,79,15,0.08);
+    border: 1px solid rgba(111,79,15,0.25);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8);
+}
+
+.category-support-label {
+    font-weight: 900;
+    letter-spacing: .04em;
+    color: #6f4f0f;
+    text-transform: uppercase;
+    font-size: .8rem;
+}
+
+.category-support-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+}
+
+.category-support-actions a {
+    font-weight: 800;
+    color: #0b1529;
+    text-decoration: none;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: #ffffff;
+    border: 1px solid rgba(111,79,15,0.18);
+    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+
+.category-support-actions a:hover,
+.category-support-actions a:focus-visible {
+    transform: translateY(-2px);
+    border-color: rgba(111,79,15,0.38);
+    box-shadow: 0 10px 20px rgba(17,17,17,.08);
+    outline: none;
+}
+
+.snapshot-cta-shell {
+    display: flex;
+    justify-content: center;
+    text-align: center;
+}
+
+.snapshot-cta-copy {
+    max-width: 720px;
+}
+
+.snapshot-cta-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 240px;
+    padding: .92rem 1.35rem;
+    border-radius: 999px;
+    border: 1px solid rgba(111,79,15,.9);
+    background: linear-gradient(180deg, #8f6615, #6f4f0f);
+    color: #fff;
+    font-weight: 900;
+    letter-spacing: .02em;
+    text-decoration: none;
+    box-shadow: 0 14px 28px rgba(111,79,15,.22);
+}
+
+.snapshot-cta-btn:hover {
+    color: #fff;
+    transform: translateY(-1px);
+}
+
+@@media (max-width: 992px) {
+    .home-tools {
+        padding: 1.25rem 1rem 1.35rem;
+    }
+
+    .home-tools-head {
+        grid-template-columns: 1fr;
+    }
+
+    .home-tools-copy {
+        grid-column: auto;
+    }
+
+    .dashboard-tool {
+        width: 200px;
+        height: 160px;
+    }
+}
+
+@@media (max-width: 576px) {
+    .home-tools {
+        padding: 1rem .9rem 1.15rem;
+    }
+
+    .home-tools-row {
+        gap: .9rem;
+    }
+
+    .home-tools-row + .home-tools-row {
+        margin-top: 1rem;
+    }
+
+    .dashboard-tool {
+        width: 100%;
+        max-width: 320px;
+        height: 142px;
+    }
+
+    .category-modal-dialog {
+        padding: 22px 18px 18px;
+    }
+}
+</style>
+
+@section Scripts {
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const modal = document.getElementById("categoryModal");
+    const title = document.getElementById("categoryModalTitle");
+    const body = document.getElementById("categoryModalBody");
+    const closeButton = document.getElementById("categoryModalClose");
+    const triggers = document.querySelectorAll(".category-trigger");
+
+    function openModal(modalTitle, modalBody, modalHtmlBody) {
+        title.textContent = modalTitle || "";
+        const supportHtml = `
+            <div class='category-support-links' aria-label='Crisis and support resources'>
+                <div class='category-support-label'>Need Support?</div>
+                <div class='category-support-actions'>
+                    <a href='tel:988'>988 Suicide &amp; Crisis Lifeline</a>
+                    <a href='tel:800-799-7233'>Domestic Violence Hotline</a>
+                    <a href='https://www.samhsa.gov/' target='_blank' rel='noopener'>SAMHSA</a>
+                </div>
+            </div>`;
+
+        if (modalTitle === "Mental Health") {
+            const safeBody = modalBody || "";
+            body.innerHTML = `${safeBody} ${supportHtml}`;
+        } else if (modalHtmlBody) {
+            body.innerHTML = modalHtmlBody;
+        } else {
+            body.textContent = modalBody || "";
+        }
+        modal.classList.add("is-open");
+        modal.setAttribute("aria-hidden", "false");
+        document.body.style.overflow = "hidden";
+    }
+
+    function closeModal() {
+        modal.classList.remove("is-open");
+        modal.setAttribute("aria-hidden", "true");
+        document.body.style.overflow = "";
+    }
+
+    triggers.forEach(trigger => {
+        trigger.addEventListener("click", function () {
+            openModal(this.dataset.title, this.dataset.description, this.dataset.htmlDescription);
+        });
+    });
+
+    closeButton.addEventListener("click", closeModal);
+    modal.addEventListener("click", function (e) {
+        if (e.target && e.target.dataset && e.target.dataset.close === "true") {
+            closeModal();
+        }
+    });
+
+    document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && modal.classList.contains("is-open")) {
+            closeModal();
+        }
+    });
+});
+</script>
+}

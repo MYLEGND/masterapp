@@ -1,0 +1,37 @@
+@model IEnumerable<Domain.Entities.Blocker>
+@{
+    var emptyMessage = ViewData["EmptyMessage"] as string ?? "No blockers. Keep momentum by clearing risks early.";
+}
+<table class="table table-sm table-striped mb-0">
+    <thead>
+        <tr>
+            <th>Reason</th>
+            <th>Type</th>
+            <th>Related</th>
+            <th>Status</th>
+            <th>Unblock By</th>
+        </tr>
+    </thead>
+    <tbody>
+    @if (Model == null || !Model.Any())
+    {
+        <tr><td colspan="5" class="text-muted">@emptyMessage</td></tr>
+    }
+    else
+    {
+        foreach (var b in Model)
+        {
+            <tr>
+                <td>@b.BlockerReason</td>
+                <td>@b.BlockerType</td>
+                <td>
+                    <div>@b.RelatedEntityType</div>
+                    <div class="text-muted small">@b.RelatedEntityId</div>
+                </td>
+                <td>@b.Status</td>
+                <td>@(b.UnblockDueDateUtc?.ToLocalTime().ToString("MM/dd"))</td>
+            </tr>
+        }
+    }
+    </tbody>
+</table>

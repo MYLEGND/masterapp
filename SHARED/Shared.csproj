@@ -1,0 +1,18 @@
+﻿<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>/tmp/masterapp/obj/Shared/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/Shared/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>/tmp/masterapp/bin/Shared/</BaseOutputPath>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

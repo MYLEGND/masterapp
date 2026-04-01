@@ -1,0 +1,118 @@
+@{
+    ViewData["Title"] = "Calendar Connected";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-dark:#8f6f1e;
+        --ink:#111;
+        --muted: rgba(0,0,0,.66);
+        --line: rgba(166,128,35,.35);
+        --bg:#ffffff;
+        --soft:#fcfbf7;
+        --shadow: 0 12px 34px rgba(0,0,0,.08);
+        --radius: 18px;
+        --good:#1f8a3b;
+    }
+
+    body { background: var(--bg); }
+
+    .cal-shell{
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 18px 14px 46px 14px;
+    }
+
+    .cal-card{
+        background: linear-gradient(180deg, var(--soft), #fff);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 18px 18px;
+    }
+
+    .cal-title{
+        margin: 0 0 6px 0;
+        font-weight: 900;
+        letter-spacing: .2px;
+        color: var(--ink);
+        font-size: 28px;
+    }
+
+    .cal-sub{
+        margin: 0 0 14px 0;
+        color: var(--muted);
+    }
+
+    .cal-ok{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding: 12px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(31,138,59,.28);
+        background: rgba(31,138,59,.08);
+        color: #0f5f25;
+        font-weight: 700;
+        margin-bottom: 14px;
+    }
+
+    .btn-row{
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-top: 10px;
+    }
+
+    .btn-legend{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:8px;
+        padding: 10px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(166,128,35,.52);
+        background: linear-gradient(180deg, rgba(166,128,35,.18), rgba(166,128,35,.10));
+        color: var(--ink);
+        font-weight: 800;
+        text-decoration:none;
+        transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .btn-legend:hover{
+        transform: translateY(-1px);
+        box-shadow: 0 10px 24px rgba(0,0,0,.08);
+        text-decoration:none;
+        color: var(--ink);
+    }
+
+    .btn-ghost{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        padding: 10px 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(0,0,0,.12);
+        background: #fff;
+        color: var(--ink);
+        font-weight: 800;
+        text-decoration:none;
+    }
+</style>
+
+<div class="cal-shell">
+    <div class="cal-card">
+        <h1 class="cal-title">Calendar Connected</h1>
+        <p class="cal-sub">
+            Your Microsoft account has granted access to Calendar for this portal.
+        </p>
+
+        <div class="cal-ok">✅ Connected. Delegated Graph tokens are now available for calendar actions.</div>
+
+        <div class="btn-row">
+            <a class="btn-legend" href="/Clients">Back to CRM</a>
+            <a class="btn-ghost" href="/calendar/connect">Reconnect / Re-consent</a>
+        </div>
+    </div>
+</div>

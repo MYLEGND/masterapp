@@ -1,0 +1,458 @@
+@using Shared.Auth
+@model AgentPortal.Models.ClientQueuePageViewModel
+
+@{
+    ViewData["Title"] = $"{Model.QueueTitle} Queue";
+    var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://localhost:5221")).TrimEnd('/');
+    var backToClientsUrl = Url.Action("Index", "Clients") ?? "/Clients";
+
+    bool IsPlaceholderEmail(string? email)
+    {
+        var normalized = (email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized)) return false;
+
+        return (normalized.StartsWith("no-email@", StringComparison.OrdinalIgnoreCase) && normalized.EndsWith(".com", StringComparison.OrdinalIgnoreCase))
+            || (normalized.StartsWith("lead-", StringComparison.OrdinalIgnoreCase) && normalized.EndsWith("@scripts.local", StringComparison.OrdinalIgnoreCase))
+            || normalized.EndsWith("@leads.local", StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+<link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
+
+<div class="wrap density-comfort" id="legendWrap">
+    <div class="head">
+        <div>
+            <h2 class="title">@Model.QueueTitle</h2>
+            <div class="subtitle">@Model.QueueDescription</div>
+        </div>
+        <div class="pill">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
+    </div>
+
+    @if (TempData["Created"] != null)
+    {
+        <div class="flash">@TempData["Created"]</div>
+    }
+
+    <section class="crm-card" style="margin-bottom:14px;">
+        <div class="crm-card-head">
+            <div>
+                <h3 class="crm-card-title">Queue Workspace</h3>
+                <p class="crm-card-sub">@Model.QueueRule</p>
+            </div>
+        </div>
+        <div class="crm-card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <a class="btn btn-ghost" asp-action="Index">← Back To Clients</a>
+            <a class="btn btn-gold" asp-action="Create">+ Add Lead / Client / Business Client</a>
+            @if (string.Equals(Model.QueueKey, "callsnow", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(Model.QueueKey, "overdue", StringComparison.OrdinalIgnoreCase))
+            {
+                <span class="pill">Use the forms below to schedule the next follow-up call directly from this queue.</span>
+            }
+        </div>
+    </section>
+
+    @if (Model.Items.Count == 0)
+    {
+        <div class="empty">No records are currently in this queue.</div>
+    }
+    else
+    {
+        <div class="queue-grid">
+            @foreach (var c in Model.Items)
+            {
+                var portalEnabled = Guid.TryParse(c.ClientUserId, out _);
+                var portalUrl = $"{portalBase}/support/view-as-client/{c.Id}";
+                var isFakeEmail = IsPlaceholderEmail(c.Email);
+
+                <section class="call-task"
+                         data-client-name="@($"{c.FirstName} {c.LastName}".Trim())"
+                         data-client-email="@c.Email"
+                         data-client-phone="@c.Phone">
+                    <div class="call-task-head">
+                        <div>
+                            <div class="call-task-name">@c.FirstName @c.LastName</div>
+                            <div class="call-task-sub"><span class="@(isFakeEmail ? "crm-email-fake" : "")">@c.Email</span> • @c.Phone</div>
+                            <div class="tiny" style="margin-top:6px;">
+                                Stage: @c.PipelineStage • Priority: @c.CrmPriority • Waiting On: @c.WaitingOn
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(c.PinnedBrief))
+                            {
+                                <div class="tiny" style="margin-top:6px;">@c.PinnedBrief</div>
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <a class="btn btn-ghost" asp-action="Edit" asp-route-clientUserId="@c.ClientUserId">Edit Full Record</a>
+                            @if (portalEnabled)
+                            {
+                                <a class="btn btn-gold" href="@portalUrl" target="_blank" rel="noopener noreferrer">Open Client Profile</a>
+                            }
+                        </div>
+                    </div>
+
+                    <form asp-action="QueueUpdate" method="post" class="queue-form" style="margin-top:14px;">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="Queue" value="@Model.QueueKey" />
+                        <input type="hidden" name="ClientUserId" value="@c.ClientUserId" />
+
+                        <div class="grid2">
+                            <div class="f">
+                                <label>Next Action Date</label>
+                                <input type="date" name="CrmNextDate" class="queue-next-date" value="@c.CrmNextDate?.ToString("yyyy-MM-dd")" />
+                            </div>
+                            <div class="f">
+                                <label>Priority</label>
+                                <select name="CrmPriority">
+                                    @if (string.Equals(c.CrmPriority, "Low", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="Low" selected>Low</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="Low">Low</option>
+                                    }
+                                    @if (string.Equals(c.CrmPriority, "Normal", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="Normal" selected>Normal</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="Normal">Normal</option>
+                                    }
+                                    @if (string.Equals(c.CrmPriority, "High", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="High" selected>High</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="High">High</option>
+                                    }
+                                    @if (string.Equals(c.CrmPriority, "Urgent", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="Urgent" selected>Urgent</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="Urgent">Urgent</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="f">
+                                <label>Next Action</label>
+                                <input type="text" name="CrmNextText" class="queue-next-text" value="@c.CrmNextText" placeholder="Follow-up call, email, meeting prep..." />
+                            </div>
+                            <div class="f">
+                                <label>Waiting On</label>
+                                <select name="WaitingOn">
+                                    @if (string.Equals(c.WaitingOn, "WaitingOnAgent", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="WaitingOnAgent" selected>Waiting On Agent</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="WaitingOnAgent">Waiting On Agent</option>
+                                    }
+                                    @if (string.Equals(c.WaitingOn, "WaitingOnClient", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="WaitingOnClient" selected>Waiting On Client</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="WaitingOnClient">Waiting On Client</option>
+                                    }
+                                    @if (string.Equals(c.WaitingOn, "WaitingOnCarrier", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="WaitingOnCarrier" selected>Waiting On Carrier</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="WaitingOnCarrier">Waiting On Carrier</option>
+                                    }
+                                    @if (string.Equals(c.WaitingOn, "WaitingOnUnderwriting", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="WaitingOnUnderwriting" selected>Waiting On Underwriting</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="WaitingOnUnderwriting">Waiting On Underwriting</option>
+                                    }
+                                    @if (string.Equals(c.WaitingOn, "WaitingOnDocs", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <option value="WaitingOnDocs" selected>Waiting On Docs</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="WaitingOnDocs">Waiting On Docs</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="section section-blue" style="margin-top:14px;">
+                            <h4>Schedule Appointment</h4>
+                            <div class="grid2">
+                                <div class="f">
+                                    <label>Meeting Type</label>
+                                    <select class="queue-meeting-type">
+                                        @if (!string.IsNullOrWhiteSpace(c.ZoomJoinUrl) || c.UsePersonalZoomLink)
+                                        {
+                                            <option value="Phone">Phone Call</option>
+                                            <option value="Zoom" selected>Zoom Call</option>
+                                            <option value="InPerson">In Person</option>
+                                        }
+                                        else if (!string.IsNullOrWhiteSpace(c.MeetingLocation) &&
+                                                 !string.Equals(c.MeetingLocation, "Zoom Call", StringComparison.OrdinalIgnoreCase) &&
+                                                 !c.MeetingLocation.StartsWith("Phone Call", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <option value="Phone">Phone Call</option>
+                                            <option value="Zoom">Zoom Call</option>
+                                            <option value="InPerson" selected>In Person</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="Phone" selected>Phone Call</option>
+                                            <option value="Zoom">Zoom Call</option>
+                                            <option value="InPerson">In Person</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="f">
+                                    <label>Meeting Time</label>
+                                    <input type="time" name="MeetingTime" class="queue-meeting-time" value="@(string.IsNullOrWhiteSpace(c.MeetingTime) ? "09:00" : c.MeetingTime)" />
+                                </div>
+                                <div class="f">
+                                    <label>Duration</label>
+                                    <select name="MeetingDurationMinutes" class="queue-meeting-duration">
+                                        @foreach (var minutes in new[] { 15, 30, 45, 60, 90 })
+                                        {
+                                            if (c.MeetingDurationMinutes == minutes)
+                                            {
+                                                <option value="@minutes" selected>@minutes min</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@minutes">@minutes min</option>
+                                            }
+                                        }
+                                    </select>
+                                </div>
+                                <div class="f">
+                                    <label>Location</label>
+                                    <input type="text"
+                                           name="MeetingLocation"
+                                           class="queue-meeting-location"
+                                           value="@c.MeetingLocation"
+                                           placeholder="Office, Phone, Zoom, Client Home..." />
+                                </div>
+                            </div>
+
+                            <div class="f queue-zoom-wrap" style="margin-top:10px;">
+                                <label>Zoom</label>
+                                <label style="display:flex; gap:8px; align-items:center; margin:6px 0 8px;">
+                                    <input type="checkbox" name="UsePersonalZoomLink" class="queue-use-personal-zoom" @(c.UsePersonalZoomLink ? "checked" : null) />
+                                    <span>Use my saved personal Zoom link automatically</span>
+                                </label>
+                                <input type="url"
+                                       name="ZoomJoinUrl"
+                                       class="queue-zoom-link"
+                                       value="@c.ZoomJoinUrl"
+                                       placeholder="Leave blank to use your saved personal Zoom link" />
+                            </div>
+
+                            <div class="scheduler-row" style="margin-top:10px;">
+                                <button type="button" class="preset-chip" data-queue-schedulepreset="today3">Today 3pm</button>
+                                <button type="button" class="preset-chip" data-queue-schedulepreset="tomorrow10">Tomorrow 10am</button>
+                                <button type="button" class="preset-chip" data-queue-schedulepreset="nextbiz">Next business day</button>
+                                <button type="button" class="preset-chip" data-queue-schedulepreset="week">1 week follow-up</button>
+                            </div>
+
+                            <div class="tiny" style="margin-top:10px;">Schedule an appointment directly from this queue card and create the Outlook event without opening Quick View.</div>
+                            <div class="queue-calendar-status tiny" style="margin-top:8px;"></div>
+                        </div>
+
+                        <div class="f" style="margin-top:10px;">
+                            <label>Queue Note</label>
+                            <textarea name="QueueNote" placeholder="Add a follow-up note, update, or manual action from this queue."></textarea>
+                        </div>
+
+                        <div class="call-task-actions">
+                            <button type="button" class="btn btn-ghost queue-create-event">Create Calendar Event</button>
+                            <button type="submit" class="btn btn-gold">Save Queue Update</button>
+                            <a class="btn btn-ghost" href="@backToClientsUrl">Back To Clients</a>
+                        </div>
+                    </form>
+                </section>
+            }
+        </div>
+    }
+</div>
+
+<script>
+(() => {
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+    const zoomStorageKey = "legend_agent_zoom_v1";
+
+    function norm(value) {
+        return (value || "").toString().trim();
+    }
+
+    function pad(value) {
+        return String(value).padStart(2, "0");
+    }
+
+    function plusDaysIso(days) {
+        const now = new Date();
+        now.setDate(now.getDate() + days);
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    }
+
+    function nextBusinessDayIso() {
+        const now = new Date();
+        do {
+            now.setDate(now.getDate() + 1);
+        } while (now.getDay() === 0 || now.getDay() === 6);
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    }
+
+    function setMeetingTypeState(form) {
+        const type = form.querySelector(".queue-meeting-type")?.value || "Phone";
+        const location = form.querySelector(".queue-meeting-location");
+        const zoomWrap = form.querySelector(".queue-zoom-wrap");
+        if (!location || !zoomWrap) return;
+
+        if (type === "Phone") {
+            location.readOnly = true;
+            location.value = `Phone Call`;
+            zoomWrap.style.display = "none";
+            return;
+        }
+
+        if (type === "Zoom") {
+            location.readOnly = true;
+            location.value = "Zoom Call";
+            zoomWrap.style.display = "";
+            return;
+        }
+
+        location.readOnly = false;
+        if (location.value === "Phone Call" || location.value === "Zoom Call") {
+            location.value = "";
+        }
+        location.placeholder = "Office, client home, coffee shop...";
+        zoomWrap.style.display = "none";
+    }
+
+    function applyPreset(form, preset) {
+        const nextDate = form.querySelector(".queue-next-date");
+        const meetingTime = form.querySelector(".queue-meeting-time");
+        const nextText = form.querySelector(".queue-next-text");
+        if (!nextDate || !meetingTime || !nextText) return;
+
+        if (preset === "today3") {
+            nextDate.value = plusDaysIso(0);
+            meetingTime.value = "15:00";
+            nextText.value = nextText.value || "Same-day follow-up";
+        } else if (preset === "tomorrow10") {
+            nextDate.value = plusDaysIso(1);
+            meetingTime.value = "10:00";
+            nextText.value = nextText.value || "Tomorrow morning follow-up";
+        } else if (preset === "nextbiz") {
+            nextDate.value = nextBusinessDayIso();
+            meetingTime.value = "09:00";
+            nextText.value = nextText.value || "Next business day touch";
+        } else if (preset === "week") {
+            nextDate.value = plusDaysIso(7);
+            meetingTime.value = "09:00";
+            nextText.value = nextText.value || "1 week follow-up";
+        }
+    }
+
+    async function createCalendarEvent(button) {
+        const form = button.closest("form");
+        const card = button.closest(".call-task");
+        const status = form?.querySelector(".queue-calendar-status");
+        if (!form || !card || !status) return;
+
+        const nextDate = norm(form.querySelector(".queue-next-date")?.value);
+        const nextText = norm(form.querySelector(".queue-next-text")?.value);
+        const meetingTime = norm(form.querySelector(".queue-meeting-time")?.value || "09:00");
+        const duration = parseInt(form.querySelector(".queue-meeting-duration")?.value || "30", 10) || 30;
+        const meetingType = form.querySelector(".queue-meeting-type")?.value || "Phone";
+        const locationValue = norm(form.querySelector(".queue-meeting-location")?.value);
+        const zoomLink = norm(form.querySelector(".queue-zoom-link")?.value);
+        const usePersonalZoom = !!form.querySelector(".queue-use-personal-zoom")?.checked;
+        const savedZoom = usePersonalZoom ? (JSON.parse(localStorage.getItem(zoomStorageKey) || "{}")?.personalZoomLink || "") : "";
+        const effectiveZoom = zoomLink || savedZoom;
+
+        if (!nextDate) {
+            status.textContent = "Set a Next Action Date first.";
+            status.style.color = "#b42323";
+            return;
+        }
+
+        if (!nextText) {
+            status.textContent = "Add Next Action text first.";
+            status.style.color = "#b42323";
+            return;
+        }
+
+        const [hours, minutes] = meetingTime.split(":").map(Number);
+        const start = new Date(nextDate + "T00:00:00");
+        start.setHours(hours || 9, minutes || 0, 0, 0);
+        const end = new Date(start.getTime() + duration * 60000);
+        const startIso = `${nextDate}T${pad(start.getHours())}:${pad(start.getMinutes())}:00`;
+        const endIso = `${nextDate}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
+
+        status.textContent = "Creating calendar event...";
+        status.style.color = "#6a4a0d";
+        button.disabled = true;
+
+        try {
+            const response = await fetch("/calendar/create-event", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    "RequestVerificationToken": token
+                },
+                body: JSON.stringify({
+                    clientUserId: form.querySelector('input[name="ClientUserId"]')?.value,
+                    subject: `Client Follow-up: ${card.dataset.clientName || "Client"}`,
+                    startISO: startIso,
+                    endISO: endIso,
+                    body: `Next Action: ${nextText}\n\nClient: ${card.dataset.clientName || "Client"}\nEmail: ${card.dataset.clientEmail || ""}\nPhone: ${card.dataset.clientPhone || ""}`,
+                    location: meetingType === "Phone" ? `Phone Call • ${card.dataset.clientPhone || "No phone on file"}` : locationValue,
+                    zoomJoinUrl: meetingType === "Zoom" ? effectiveZoom : "",
+                    activityNote: `Calendar event created: ${nextText}`
+                })
+            });
+
+            if (!response.ok) {
+                const text = await response.text();
+                throw new Error(text || "Calendar create failed.");
+            }
+
+            status.textContent = "Calendar event created. Save Queue Update to keep the scheduling details on the record.";
+            status.style.color = "#1f7c5c";
+        } catch (error) {
+            status.textContent = error?.message || "Calendar create failed.";
+            status.style.color = "#b42323";
+        } finally {
+            button.disabled = false;
+        }
+    }
+
+    document.querySelectorAll(".queue-form").forEach((form) => {
+        setMeetingTypeState(form);
+
+        form.querySelector(".queue-meeting-type")?.addEventListener("change", () => setMeetingTypeState(form));
+
+        form.querySelectorAll("[data-queue-schedulepreset]").forEach((btn) => {
+            btn.addEventListener("click", () => applyPreset(form, btn.getAttribute("data-queue-schedulepreset")));
+        });
+
+        form.querySelector(".queue-create-event")?.addEventListener("click", (event) => {
+            createCalendarEvent(event.currentTarget);
+        });
+    });
+})();
+</script>

@@ -1,0 +1,238 @@
+@model AgentPortal.Models.AssistantDetailViewModel
+@{
+    ViewData["Title"] = "Assistant Profile";
+}
+
+<link rel="stylesheet" href="~/css/legend-forms.css" asp-append-version="true" />
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-strong:#c79931;
+        --navy:#0b1529;
+        --navy-2:#0f1d38;
+    }
+    body { background:#ffffff; color:#0f172a; }
+    .assistant-profile .legend-hero-body { gap: 1.25rem; }
+    .assistant-profile .legend-title { margin-bottom: 0; color: var(--gold-strong); }
+    .assistant-profile .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: 0.9rem;
+        letter-spacing: 0.01em;
+        border:1px solid rgba(166,128,35,.45);
+        background: rgba(166,128,35,.14);
+        color:#0b1529;
+    }
+    .assistant-profile .pill.success { background: rgba(14,172,84,.16); color:#0e7d3a; border-color: rgba(14,172,84,.35); }
+    .assistant-profile .pill.muted { background: rgba(203,213,225,.35); color:#0f172a; border-color: rgba(148,163,184,.6); }
+    .assistant-profile .pill.info { background: rgba(59,130,246,.16); color:#0b3f8a; border-color: rgba(59,130,246,.35); }
+    .assistant-profile .pill.warn { background: rgba(255,196,122,.22); color:#7a4300; border-color: rgba(255,196,122,.45); }
+
+    .assistant-profile .section-card {
+        padding: 1.25rem 1.5rem;
+        border: 1.6px solid var(--gold);
+        border-radius: 16px;
+        box-shadow: 0 20px 42px rgba(0,0,0,.14), inset 0 0 0 1px rgba(255,255,255,.08);
+        background: var(--navy);
+        color: #f8fafc;
+    }
+    .assistant-profile .section-card .card-header { padding: 0 0 0.5rem; border: 0; background: transparent; }
+    .assistant-profile .section-card h5 { color: var(--gold-strong); font-size: 1.15rem; font-weight: 900; letter-spacing: 0.01em; }
+    .assistant-profile .section-card .legend-kicker { color: var(--gold-strong); font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+    .assistant-profile dl { row-gap: 0.75rem; }
+    .assistant-profile dt { color: #cbd5e1; font-weight: 800; font-size: 0.95rem; }
+    .assistant-profile dd { margin-bottom: 0; color: #f8fafc; font-size: 1rem; word-break: break-word; font-weight: 900; }
+    .assistant-profile .section-actions { gap: 0.65rem; }
+    .assistant-profile .action-buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .assistant-profile .action-buttons form { flex: 1 1 180px; }
+    .assistant-profile .action-buttons .btn { width: 100%; }
+
+    .assistant-profile .legend-hero {
+        border:1.6px solid var(--gold);
+        border-radius:16px;
+        background: var(--navy);
+        box-shadow:0 20px 42px rgba(0,0,0,.14), inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .assistant-profile .legend-hero-bar{
+        background: linear-gradient(90deg, #a68023, #c79931 24%, #ddb457 52%, #c79931 80%, #a68023);
+        height:4px;
+        border-top-left-radius:14px;
+        border-top-right-radius:14px;
+    }
+    .assistant-profile .legend-sub{ color:#cbd5e1; }
+
+    .assistant-profile .btn-outline-secondary,
+    .assistant-profile .btn-outline-primary,
+    .assistant-profile .btn-outline-warning,
+    .assistant-profile .btn-outline-danger{
+        font-weight:800;
+        border-radius:10px;
+    }
+    .assistant-profile .legend-btn-primary{
+        background: var(--gold);
+        border:1px solid var(--gold-strong);
+        color:#0b1529;
+        border-radius:10px;
+        font-weight:900;
+        padding:10px 14px;
+        box-shadow:0 14px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.12);
+    }
+    .assistant-profile .legend-btn-primary:hover{ background:#ddb457; border-color:#ddb457; color:#0b1529; }
+
+    .assistant-profile .badge.bg-success,
+    .assistant-profile .badge.bg-secondary,
+    .assistant-profile .badge.bg-info,
+    .assistant-profile .badge.bg-warning{
+        border-radius:10px;
+        font-weight:800;
+        padding:6px 10px;
+    }
+</style>
+
+<div class="legend-shell legend-form assistant-profile">
+    <div class="legend-hero mb-4">
+        <div class="legend-hero-bar"></div>
+        <div class="legend-hero-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div class="d-flex flex-column gap-2">
+                    <span class="legend-kicker">Assistant Profile</span>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        <h2 class="legend-title mb-0">@Model.FullName</h2>
+                        <span class="pill @(Model.IsActive ? "success" : "muted")">@Model.StatusLabel</span>
+                        @if (Model.HasLoggedIn)
+                        {
+                            <span class="pill info">Accepted Invite</span>
+                        }
+                        else
+                        {
+                            <span class="pill warn">Invite Pending</span>
+                        }
+                    </div>
+                    <p class="legend-sub mb-0">Full assistant profile with status, IDs, invite history, and access controls.</p>
+                </div>
+                <div class="d-flex flex-wrap align-items-center section-actions">
+                    <a asp-action="Index" class="btn btn-outline-secondary">← Back to Assistants</a>
+                    <a asp-controller="AssistantWorkspace" asp-action="Profile" asp-route-id="@Model.Id" class="btn btn-outline-primary">Open Workspace</a>
+                    <form asp-action="Toggle" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <button type="submit" class="legend-btn-primary">
+                            @(Model.IsActive ? "Disable" : "Enable") Access
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="section-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <p class="legend-kicker mb-1">Profile</p>
+                        <h5 class="m-0">Identity</h5>
+                    </div>
+                </div>
+                <dl class="row mb-0">
+                    <dt class="col-5 col-sm-4">Name</dt>
+                    <dd class="col-7 col-sm-8 fw-bold" style="color:var(--legend-navy);">@Model.FullName</dd>
+
+                    <dt class="col-5 col-sm-4">Email</dt>
+                    <dd class="col-7 col-sm-8">@Model.Email</dd>
+
+                    <dt class="col-5 col-sm-4">Status</dt>
+                    <dd class="col-7 col-sm-8">
+                        <span class="badge @(Model.IsActive ? "bg-success" : "bg-secondary")">@Model.StatusLabel</span>
+                        @if (Model.HasLoggedIn)
+                        {
+                            <span class="badge bg-info text-dark ms-2">Accepted Invite</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-warning text-dark ms-2">Invite Pending</span>
+                        }
+                    </dd>
+
+                    <dt class="col-5 col-sm-4">Assistant User Id</dt>
+                    <dd class="col-7 col-sm-8">@((string.IsNullOrWhiteSpace(Model.AssistantUserId) ? "—" : Model.AssistantUserId))</dd>
+
+                    <dt class="col-5 col-sm-4">Parent Agent OID</dt>
+                    <dd class="col-7 col-sm-8">@Model.ParentAgentUserId</dd>
+                </dl>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="section-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <p class="legend-kicker mb-1">History</p>
+                        <h5 class="m-0">Timeline</h5>
+                    </div>
+                </div>
+                <dl class="row mb-0">
+                    <dt class="col-5 col-sm-4">Invited</dt>
+                    <dd class="col-7 col-sm-8">@Model.InvitedAt.ToString("MMM d, yyyy h:mm tt") UTC</dd>
+
+                    <dt class="col-5 col-sm-4">Created</dt>
+                    <dd class="col-7 col-sm-8">@Model.CreatedUtc.ToString("MMM d, yyyy h:mm tt") UTC</dd>
+                </dl>
+                <p class="text-muted mt-3 mb-0">Assistants are restricted to Leads and Workstation. Use disable/remove to control access.</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+            <div class="section-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <p class="legend-kicker mb-1">Permissions</p>
+                        <h5 class="m-0">Access Scope</h5>
+                    </div>
+                </div>
+                <ul class="list-unstyled d-flex flex-column gap-2 mb-3">
+                    <li><strong>Visible areas:</strong> Leads and Workstation only.</li>
+                    <li><strong>Blocked:</strong> Admin, Finance, Bookkeeping, Settings, Client Portal management.</li>
+                    <li><strong>Assistant resolution:</strong> Non-whitelisted routes redirect to Restricted.</li>
+                </ul>
+                <div class="alert alert-info mb-0" style="font-weight:700;">
+                    Use Disable to temporarily suspend access; Remove to revoke and delete the B2B user.
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="section-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <p class="legend-kicker mb-1">Controls</p>
+                        <h5 class="m-0">Actions</h5>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <form asp-action="ResendInvite" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <button type="submit" class="btn btn-outline-primary w-100">Resend Invite</button>
+                    </form>
+                    <form asp-action="Toggle" method="post" class="d-inline">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <button type="submit" class="btn btn-outline-warning w-100">@(Model.IsActive ? "Disable" : "Enable") Access</button>
+                    </form>
+                    <form asp-action="Remove" method="post" class="d-inline" onsubmit="return confirm('Remove this assistant and delete their access in Entra?');">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <button type="submit" class="btn btn-outline-danger w-100">Remove Assistant</button>
+                    </form>
+                </div>
+                <p class="text-muted mb-0 mt-3">Removing will attempt to delete the B2B user in Azure/Entra and then drop local records.</p>
+            </div>
+        </div>
+    </div>
+</div>

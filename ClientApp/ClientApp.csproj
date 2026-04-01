@@ -1,0 +1,95 @@
+﻿<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>/tmp/masterapp/obj/ClientApp/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ClientApp/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>/tmp/masterapp/bin/ClientApp/</BaseOutputPath>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>b6e2beb7-fc73-4454-8616-2aa0fb25034a</UserSecretsId>
+    <UseRazorSourceGenerator>false</UseRazorSourceGenerator>
+
+    <!-- Prevent SDK.Web default content globs from publishing build/deploy artifact folders -->
+    <DefaultItemExcludes>
+      $(DefaultItemExcludes);
+      publish/**;
+      publish-client/**;
+      publish-azure-client/**;
+      bin/**;
+      obj/**;
+      App_Data/**;
+      Views_backup/**;
+      wwwroot_backup/**;
+      **/*.zip;
+      **/*.bak;
+      **/*.db;
+    </DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />
+
+  <!-- Belt + suspenders: explicitly remove any accidental inclusion of these artifacts -->
+  <ItemGroup>
+    <RazorGenerate Remove="Views_backup/**" />
+    <RazorGenerate Remove="wwwroot_backup/**" />
+    <RazorGenerate Remove="publish/**" />
+    <RazorGenerate Remove="publish-client/**" />
+    <RazorGenerate Remove="publish-azure-client/**" />
+    <RazorGenerate Remove="App_Data/**" />
+
+    <Content Remove="publish/**" />
+    <Content Remove="publish-client/**" />
+    <Content Remove="publish-azure-client/**" />
+    <Content Remove="bin/**" />
+    <Content Remove="obj/**" />
+    <Content Remove="App_Data/**" />
+    <Content Remove="Views_backup/**" />
+    <Content Remove="wwwroot_backup/**" />
+    <Content Remove="**/*.zip" />
+    <Content Remove="**/*.bak" />
+    <Content Remove="**/*.db" />
+
+    <None Remove="publish/**" />
+    <None Remove="publish-client/**" />
+    <None Remove="publish-azure-client/**" />
+    <None Remove="bin/**" />
+    <None Remove="obj/**" />
+    <None Remove="App_Data/**" />
+    <None Remove="Views_backup/**" />
+    <None Remove="wwwroot_backup/**" />
+    <None Remove="**/*.zip" />
+    <None Remove="**/*.bak" />
+    <None Remove="**/*.db" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+    <ProjectReference Include="..\SHARED\Shared.csproj" />
+  </ItemGroup>
+
+  <Target Name="PrunePublishArtifacts" AfterTargets="ComputeFilesToPublish">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)"
+        Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('bin/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('obj/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('publish/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('publish-client/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('publish-azure-client/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('App_Data/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('Views_backup/')) Or
+                   $([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').StartsWith('wwwroot_backup/'))" />
+    </ItemGroup>
+  </Target>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
+</Project>

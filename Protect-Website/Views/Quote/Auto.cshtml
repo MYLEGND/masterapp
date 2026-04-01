@@ -1,0 +1,2100 @@
+@using System.Text.Json
+@model Protect_Website.Models.AutoQuoteFormModel
+@{
+    ViewData["Title"] = "Auto Insurance Quote";
+    ViewData["PageKey"] = "quote_auto";
+
+    Model.Drivers ??= new List<Protect_Website.Models.Driver>();
+    if (Model.Drivers.Count == 0) Model.Drivers.Add(new Protect_Website.Models.Driver());
+
+    Model.Vehicles ??= new List<Protect_Website.Models.Vehicle>();
+    if (Model.Vehicles.Count == 0) Model.Vehicles.Add(new Protect_Website.Models.Vehicle());
+
+    Model.Accidents ??= new List<Protect_Website.Models.Accident>();
+    Model.Violations ??= new List<Protect_Website.Models.Violation>();
+    Model.CompLosses ??= new List<Protect_Website.Models.CompLoss>();
+}
+
+<div class="container-narrow">
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Auto Insurance Quote
+        </h1>
+    </div>
+
+    <p class="required-note text-center">
+        <strong>
+            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+        </strong>
+    </p>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div class="alert alert-danger fw-bold">
+        @Html.ValidationSummary(excludePropertyErrors: false)
+    </div>
+}
+
+<style>
+    body { background-color: #0f172a; color: #f8fafc; }
+
+    form.container { max-width: 1200px; padding-bottom: 40px; }
+
+    .section-card {
+        background-color: #0f172a;
+        border: 1.6px solid #c79931;
+        padding: 26px;
+        border-radius: 12px;
+        margin: 18px auto 26px;
+        box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+        color: #f8fafc;
+    }
+
+    .section-title {
+        font-size: 1.45rem;
+        font-weight: 900;
+        color: #c79931;
+        margin-bottom: 18px;
+        letter-spacing: 0.2px;
+    }
+
+    .section-card h5 { font-weight: 900; margin-top: 10px; margin-bottom: 10px; color: #c79931; }
+
+    label { font-weight: 800; color: #f8fafc; }
+
+    .form-control, .form-select, textarea {
+        border: 1.6px solid #c79931;
+        margin-bottom: 12px;
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    .form-control::placeholder,
+    textarea::placeholder{
+        color: rgba(15,23,42,0.55);
+    }
+
+    .form-control:focus, .form-select:focus, textarea:focus {
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
+        border-color: #c79931;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    .btn-gold {
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+        font-weight: 900;
+        padding: 12px 26px;
+        border-radius: 10px;
+        font-size: 1.05rem;
+        border: 1.4px solid #c79931;
+        letter-spacing: 0.2px;
+        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
+    }
+
+    .btn-gold:hover { background-color: #8f6f1e; color: #fff; }
+
+    .mini-card {
+        border: 1.2px solid #c79931;
+        padding: 18px;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        background: #111c32;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
+        color: #f8fafc;
+    }
+
+    .mini-card h5 { color: #c79931; margin-bottom: 12px; font-weight: 900; }
+
+    .wizard-steps {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin: 10px auto 18px;
+        justify-content: center;
+        max-width: 1200px;
+        padding: 0 12px;
+    }
+
+    .wizard-pill {
+        border: 1.4px solid #c79931;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: 0.95rem;
+        color: #f8fafc;
+        opacity: 0.65;
+        background: #111c32;
+        user-select: none;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.12);
+    }
+
+    .wizard-pill.active { opacity: 1; background: rgba(199,153,49,0.18); color: #f8fafc; border-color: #c79931; }
+
+    .wizard-step { display: none; }
+    .wizard-step.active { display: block; }
+
+    @@media (max-width: 768px) {
+        .section-card { padding: 18px; }
+        .btn-gold { width: 100%; }
+    }
+</style>
+
+<div class="wizard-steps">
+    <div class="wizard-pill" data-pill="1">Section 1 — Policy</div>
+    <div class="wizard-pill" data-pill="2">Section 2 — Drivers</div>
+    <div class="wizard-pill" data-pill="3">Section 3 — Vehicles</div>
+    <div class="wizard-pill" data-pill="4">Section 4 — Incidents</div>
+    <div class="wizard-pill" data-pill="5">Section 5 — Coverage</div>
+</div>
+
+<form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="quote_auto_form">
+    @Html.AntiForgeryToken()
+
+    <!-- ===================== SECTION 1 ===================== -->
+    <div class="section-card wizard-step active" data-step="1">
+        <div class="section-title">Policy Information — Auto Insurance</div>
+
+        <!-- ===================== NEW: APPLICANT INFO (FIRST CARD CONTENT) ===================== -->
+        <div class="mini-card" id="applicantInfoCard">
+            <h5>Applicant Info</h5>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>First Name<span class="text-danger">*</span></label>
+                    <input asp-for="FirstName" class="form-control" required data-original-required="1" id="Applicant_FirstName" />
+                    <span asp-validation-for="FirstName" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Last Name<span class="text-danger">*</span></label>
+                    <input asp-for="LastName" class="form-control" required data-original-required="1" id="Applicant_LastName" />
+                    <span asp-validation-for="LastName" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Nickname</label>
+                    <input asp-for="Nickname" class="form-control" id="Applicant_Nickname" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Address State<span class="text-danger">*</span></label>
+                    <select asp-for="AddressState" class="form-select" required data-original-required="1" id="Applicant_AddressState">
+                        <option value="">--Select--</option>
+                        <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
+                    </select>
+                    <span asp-validation-for="AddressState" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>Postal Code<span class="text-danger">*</span></label>
+                    <input asp-for="PostalCode" class="form-control" required data-original-required="1" id="Applicant_PostalCode" />
+                    <span asp-validation-for="PostalCode" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>Gender<span class="text-danger">*</span></label>
+                    <select asp-for="Gender" class="form-select" required data-original-required="1" id="Applicant_Gender">
+                        <option value="">--Select--</option>
+                        <option>Female</option>
+                        <option>Male</option>
+                        <option>Not Specified</option>
+                    </select>
+                    <span asp-validation-for="Gender" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>DOB<span class="text-danger">*</span></label>
+                    <input asp-for="DOB" type="date" class="form-control" required data-original-required="1" id="Applicant_DOB" />
+                    <span asp-validation-for="DOB" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>Marital Status<span class="text-danger">*</span></label>
+                    <select asp-for="MaritalStatus" class="form-select" required data-original-required="1" id="Applicant_MaritalStatus">
+                        <option value="">--Select--</option>
+                        <option>Single</option>
+                        <option>Married</option>
+                        <option>Domestic Partner</option>
+                        <option>Widowed</option>
+                        <option>Separated</option>
+                        <option>Divorced</option>
+                    </select>
+                    <span asp-validation-for="MaritalStatus" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>Driver’s License #<span class="text-danger">*</span></label>
+                    <input asp-for="DriversLicenseNumber" class="form-control" required data-original-required="1" id="Applicant_DriversLicenseNumber" />
+                    <span asp-validation-for="DriversLicenseNumber" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>DL Status<span class="text-danger">*</span></label>
+                    <select asp-for="DLStatus" class="form-select" required data-original-required="1" id="Applicant_DLStatus">
+                        <option value="">--Select--</option>
+                        <option>Valid</option>
+                        <option>Permit</option>
+                        <option>Expired</option>
+                        <option>Suspended</option>
+                        <option>Cancelled</option>
+                        <option>Not Licensed</option>
+                        <option>Permanently Revoked</option>
+                    </select>
+                    <span asp-validation-for="DLStatus" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>DL State<span class="text-danger">*</span></label>
+                    <select asp-for="DLState" class="form-select" required data-original-required="1" id="Applicant_DLState">
+                        <option value="">--Select--</option>
+                        <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
+                    </select>
+                    <span asp-validation-for="DLState" class="text-danger"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label>Education</label>
+                    <select asp-for="Education" class="form-select" id="Applicant_Education">
+                        <option value="">--Select--</option>
+                        <option>No High School Diploma</option>
+                        <option>Some College - No Degree</option>
+                        <option>Vocational/Technical Degree</option>
+                        <option>Associates Degree</option>
+                        <option>Bachelors</option>
+                        <option>Masters</option>
+                        <option>Phd</option>
+                        <option>Medical Degree</option>
+                        <option>Law Degree</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-12">
+                    <label>Industry<span class="text-danger">*</span></label>
+                    <select asp-for="Industry" class="form-select" required data-original-required="1" id="Applicant_Industry">
+                        <option value="">--Select--</option>
+                        <option>Homemaker/House Person</option>
+                        <option>Retired</option>
+                        <option>Disabled</option>
+                        <option>Unemployed</option>
+                        <option>Student</option>
+                        <option>Agriculture/Forestry/Fishing</option>
+                        <option>Art/Design/Media</option>
+                        <option>Banking/Finance/Real Estate</option>
+                        <option>Business/Sales/Office</option>
+                        <option>Construction/Energy/Trades</option>
+                        <option>Education/Library</option>
+                        <option>Engineer/Architect/Science/Math</option>
+                        <option>Government/Military</option>
+                        <option>Information Technology</option>
+                        <option>Insurance</option>
+                        <option>Legal/Law Enforcement/Security</option>
+                        <option>Maintenance/Repair/Housekeeping</option>
+                        <option>Manufacturing/Production</option>
+                        <option>Medical/Social Services/Religion</option>
+                        <option>Personal Care/Service</option>
+                        <option>Restaurant/Hotel Services</option>
+                        <option>Sports/Recreation</option>
+                        <option>Travel/Transportation/Warehousing</option>
+                        <option>Other</option>
+                    </select>
+                    <span asp-validation-for="Industry" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== NEW: ADDRESS (REQUIRED) ===================== -->
+        <div class="mini-card" id="addressCard">
+            <h5>Primary Address</h5>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label>Address<span class="text-danger">*</span></label>
+                    <input asp-for="PrimaryAddress" class="form-control" required data-original-required="1" />
+                    <span asp-validation-for="PrimaryAddress" class="text-danger"></span>
+                </div>
+                <div class="col-md-2">
+                    <label>Unit</label>
+                    <input asp-for="PrimaryUnit" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                    <label>Address Line 2</label>
+                    <input asp-for="PrimaryAddressLine2" class="form-control" />
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>City<span class="text-danger">*</span></label>
+                    <input asp-for="PrimaryCity" class="form-control" required data-original-required="1" />
+                    <span asp-validation-for="PrimaryCity" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>State<span class="text-danger">*</span></label>
+                    <select asp-for="PrimaryState" class="form-select" required data-original-required="1" id="PrimaryState">
+                        <option value="">--Select--</option>
+                        <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
+                    </select>
+                    <span asp-validation-for="PrimaryState" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Country<span class="text-danger">*</span></label>
+                    <select asp-for="PrimaryCountry" class="form-select" required data-original-required="1" id="PrimaryCountry">
+                        <option value="">--Select--</option>
+                        <option>United States</option>
+                        <option>Canada</option>
+                        <option>Mexico</option>
+                        <option>Other</option>
+                    </select>
+                    <span asp-validation-for="PrimaryCountry" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Postal Code<span class="text-danger">*</span></label>
+                    <input asp-for="PrimaryPostalCode" class="form-control" required data-original-required="1" />
+                    <span asp-validation-for="PrimaryPostalCode" class="text-danger"></span>
+                </div>
+                <div class="col-md-4">
+                    <label>Years At Address<span class="text-danger">*</span></label>
+                    <input asp-for="PrimaryYearsAtAddress" class="form-control" required data-original-required="1" id="PrimaryYearsAtAddress" />
+                    <span asp-validation-for="PrimaryYearsAtAddress" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div id="previousAddressBlock" style="display:none;">
+                <hr />
+                <h5 class="mb-2">Previous Address</h5>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label>Address<span class="text-danger">*</span></label>
+                        <input asp-for="PreviousAddress" class="form-control" id="PreviousAddress" />
+                        <span asp-validation-for="PreviousAddress" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-2">
+                        <label>Unit</label>
+                        <input asp-for="PreviousUnit" class="form-control" id="PreviousUnit" />
+                    </div>
+                    <div class="col-md-4">
+                        <label>Address Line 2</label>
+                        <input asp-for="PreviousAddressLine2" class="form-control" id="PreviousAddressLine2" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>City<span class="text-danger">*</span></label>
+                        <input asp-for="PreviousCity" class="form-control" id="PreviousCity" />
+                        <span asp-validation-for="PreviousCity" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>State<span class="text-danger">*</span></label>
+                        <select asp-for="PreviousState" class="form-select" id="PreviousState">
+                            <option value="">--Select--</option>
+                            <option>AZ</option><option>CA</option><option>IA</option><option>KS</option><option>LA</option><option>MD</option><option>MS</option><option>OH</option><option>SC</option><option>SD</option><option>TX</option><option>WA</option>
+                        </select>
+                        <span asp-validation-for="PreviousState" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Country<span class="text-danger">*</span></label>
+                        <select asp-for="PreviousCountry" class="form-select" id="PreviousCountry">
+                            <option value="">--Select--</option>
+                            <option>United States</option>
+                            <option>Canada</option>
+                            <option>Mexico</option>
+                            <option>Other</option>
+                        </select>
+                        <span asp-validation-for="PreviousCountry" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Postal Code<span class="text-danger">*</span></label>
+                        <input asp-for="PreviousPostalCode" class="form-control" id="PreviousPostalCode" />
+                        <span asp-validation-for="PreviousPostalCode" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Years At Address<span class="text-danger">*</span></label>
+                        <input asp-for="PreviousYearsAtAddress" class="form-control" id="PreviousYearsAtAddress" />
+                        <span asp-validation-for="PreviousYearsAtAddress" class="text-danger"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== NEW: CONTACT INFO (REQUIRED) ===================== -->
+        <div class="mini-card" id="contactInfoCard">
+            <h5>Contact Info</h5>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Phone Type<span class="text-danger">*</span></label>
+                    <select asp-for="PhoneType" class="form-select" required data-original-required="1">
+                        <option value="">--Select--</option>
+                        <option>Home</option>
+                        <option>Work</option>
+                        <option>Mobile</option>
+                        <option>Fax</option>
+                    </select>
+                    <span asp-validation-for="PhoneType" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <label>Phone Number<span class="text-danger">*</span></label>
+                    <input asp-for="PhoneNumber" class="form-control" required data-original-required="1" />
+                    <span asp-validation-for="PhoneNumber" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-4">
+                    <label>Email Type<span class="text-danger">*</span></label>
+                    <select asp-for="EmailType" class="form-select" required data-original-required="1">
+                        <option value="">--Select--</option>
+                        <option>Primary</option>
+                        <option>Secondary</option>
+                    </select>
+                    <span asp-validation-for="EmailType" class="text-danger"></span>
+                </div>
+                <div class="col-md-8">
+                    <label>Email Address<span class="text-danger">*</span></label>
+                    <input asp-for="EmailAddress" type="email" class="form-control" required data-original-required="1" />
+                    <span asp-validation-for="EmailAddress" class="text-danger"></span>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <label>Preferred Contact Method<span class="text-danger">*</span></label>
+                    <select asp-for="PreferredContactMethod" class="form-select" required data-original-required="1">
+                        <option value="">--Select--</option>
+                        <option>Phone</option>
+                        <option>Email</option>
+                        <option>Text</option>
+                    </select>
+                    <span asp-validation-for="PreferredContactMethod" class="text-danger"></span>
+                </div>
+                <div class="col-md-6">
+                    <label>Best Time to Contact<span class="text-danger">*</span></label>
+                    <select asp-for="BestTimeToContact" class="form-select" required data-original-required="1">
+                        <option value="">--Select--</option>
+                        <option>Morning</option>
+                        <option>Afternoon</option>
+                        <option>Evening</option>
+                    </select>
+                    <span asp-validation-for="BestTimeToContact" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== EXISTING POLICY HTML (UNCHANGED) ===================== -->
+        <div class="row">
+            <div class="col-md-4">
+                <label>Prior Carrier<span class="text-danger">*</span></label>
+                <input asp-for="PriorCarrier" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="PriorCarrier" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Prior Policy Expiration Date<span class="text-danger">*</span></label>
+                <input asp-for="PriorPolicyExpirationDate" type="date" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="PriorPolicyExpirationDate" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Prior Liability Limits<span class="text-danger">*</span></label>
+                <select asp-for="PriorLiabilityLimits" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>State Minimum</option>
+                    <option>15/30</option>
+                    <option>25/25</option>
+                    <option>25/50</option>
+                    <option>50/50</option>
+                    <option>50/100</option>
+                    <option>100/100</option>
+                    <option>100/300</option>
+                    <option>300/300</option>
+                    <option>500/500</option>
+                    <option>1000/1000</option>
+                    <option>55CSL</option>
+                    <option>100CSL</option>
+                    <option>300CSL</option>
+                    <option>500CSL</option>
+                    <option>None</option>
+                </select>
+                <span asp-validation-for="PriorLiabilityLimits" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <label>Prior Policy Term<span class="text-danger">*</span></label>
+                <select asp-for="PriorPolicyTerm" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>6 Month</option>
+                    <option>12 Month</option>
+                </select>
+                <span asp-validation-for="PriorPolicyTerm" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Prior Policy Premium</label>
+                <input asp-for="PriorPolicyPremium" class="form-control" />
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-2">
+                <label>Years with Prior Carrier<span class="text-danger">*</span></label>
+                <input asp-for="YearsWithPriorCarrier" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="YearsWithPriorCarrier" class="text-danger"></span>
+            </div>
+            <div class="col-md-2">
+                <label>Months<span class="text-danger">*</span></label>
+                <input asp-for="MonthsWithPriorCarrier" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="MonthsWithPriorCarrier" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-2">
+                <label>Years Continuous Coverage<span class="text-danger">*</span></label>
+                <input asp-for="YearsContinuousCoverage" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="YearsContinuousCoverage" class="text-danger"></span>
+            </div>
+            <div class="col-md-2">
+                <label>Months<span class="text-danger">*</span></label>
+                <input asp-for="MonthsContinuousCoverage" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="MonthsContinuousCoverage" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Credit Check & Underwriting Reports Authorized<span class="text-danger">*</span></label>
+                <select asp-for="CreditCheckAuthorized" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Yes</option>
+                    <option>No</option>
+                </select>
+                <span asp-validation-for="CreditCheckAuthorized" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <label>New Policy Term<span class="text-danger">*</span></label>
+                <select asp-for="NewPolicyTerm" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>6 Month</option>
+                    <option>12 Month</option>
+                </select>
+                <span asp-validation-for="NewPolicyTerm" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Package<span class="text-danger">*</span></label>
+                <select asp-for="PackagePolicy" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Yes</option>
+                    <option>No</option>
+                </select>
+                <span asp-validation-for="PackagePolicy" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-4">
+                <label>Effective Date (New Policy)<span class="text-danger">*</span></label>
+                <input asp-for="NewPolicyEffectiveDate" type="date" class="form-control" required data-original-required="1" />
+                <span asp-validation-for="NewPolicyEffectiveDate" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <label>Paperless<span class="text-danger">*</span></label>
+                <select asp-for="Paperless" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Yes</option>
+                    <option>No</option>
+                </select>
+                <span asp-validation-for="Paperless" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6">
+                <label>
+                    Multi-Policy Discount? <small class="text-muted">(Active policies or policies written within 60 days qualify)</small>
+                    <span class="text-danger">*</span>
+                </label>
+                <select asp-for="MultiPolicyDiscount" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Home (Largest Discount)</option>
+                    <option>Condo</option>
+                    <option>Dwelling Fire</option>
+                    <option>BOP</option>
+                    <option>Umbrella</option>
+                    <option>Renters (Smallest Discount)</option>
+                    <option>None</option>
+                </select>
+                <span asp-validation-for="MultiPolicyDiscount" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <label>Additional Carrier Questions<span class="text-danger">*</span></label>
+                <textarea asp-for="AdditionalCarrierQuestions" class="form-control" rows="3" required data-original-required="1"></textarea>
+                <span asp-validation-for="AdditionalCarrierQuestions" class="text-danger"></span>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-end mt-2">
+            <button type="button" class="btn btn-gold" onclick="goNext()">Next — Drivers</button>
+        </div>
+    </div>
+
+    <!-- ===================== SECTION 2: DRIVERS ===================== -->
+    <div class="section-card wizard-step" data-step="2">
+        <div class="section-title">Drivers</div>
+
+        <div id="driversContainer">
+            <div class="mini-card driver-card" data-driver="0">
+                <h5 class="driver-title">Primary Insured</h5>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>First Name<span class="text-danger">*</span></label>
+                        <input asp-for="Drivers[0].FirstName" class="form-control" required data-original-required="1" id="Driver0_FirstName" />
+                        <span asp-validation-for="Drivers[0].FirstName" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Last Name<span class="text-danger">*</span></label>
+                        <input asp-for="Drivers[0].LastName" class="form-control" required data-original-required="1" id="Driver0_LastName" />
+                        <span asp-validation-for="Drivers[0].LastName" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>DOB<span class="text-danger">*</span></label>
+                        <input asp-for="Drivers[0].DOB" type="date" class="form-control" required data-original-required="1" id="Driver0_DOB" />
+                        <span asp-validation-for="Drivers[0].DOB" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Gender<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].Gender" class="form-select" required data-original-required="1" id="Driver0_Gender">
+                            <option value="">--Select--</option>
+                            <option>Male</option>
+                            <option>Female</option>
+                            <option>Not Specified</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].Gender" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Marital Status<span class="text-danger">*</span></label>
+                            <select asp-for="Drivers[0].MaritalStatus" class="form-select" required data-original-required="1" id="Driver0_MaritalStatus">
+                                <option value="">--Select--</option>
+                                <option>Single</option>
+                                <option>Married</option>
+                                <option>Domestic Partner</option>
+                                <option>Widowed</option>
+                                <option>Separated</option>
+                                <option>Divorced</option>
+                            </select>
+                        <span asp-validation-for="Drivers[0].MaritalStatus" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Occupation Industry<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].OccupationIndustry" class="form-select" required data-original-required="1" id="Driver0_OccupationIndustry">
+                            <option value="">--Select--</option>
+                            <option>Homemaker/House Person</option>
+                            <option>Retired</option>
+                            <option>Disabled</option>
+                            <option>Unemployed</option>
+                            <option>Student</option>
+                            <option>Agriculture/Forestry/Fishing</option>
+                            <option>Art/Design/Media</option>
+                            <option>Banking/Finance/Real Estate</option>
+                            <option>Business/Sales/Office</option>
+                            <option>Construction/Energy Trades</option>
+                            <option>Education/Library</option>
+                            <option>Engineer/Architect/Science/Math</option>
+                            <option>Government/Military</option>
+                            <option>Information Technology</option>
+                            <option>Insurance</option>
+                            <option>Legal/Law Enforcement/Security</option>
+                            <option>Maintenance/Repair/Housekeeping</option>
+                            <option>Manufacturing/Production</option>
+                            <option>Medical/Social Services/Religion</option>
+                            <option>Personal Care/Service</option>
+                            <option>Restaurant/Hotel Services</option>
+                            <option>Sports/Recreation</option>
+                            <option>Travel/Transportation/Warehousing</option>
+                            <option>Other</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].OccupationIndustry" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label>Occupation Title<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].OccupationTitle" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Accountant/Auditor</option>
+                            <option>Actuarial Clerk</option>
+                            <option>Actuary</option>
+                            <option>Administrative Assistant</option>
+                            <option>Agent/Broker</option>
+                            <option>Analyst</option>
+                            <option>Attorney</option>
+                            <option>Claims Adjuster</option>
+                            <option>Clerk</option>
+                            <option>Commisioner</option>
+                            <option>Customer Service Represantative</option>
+                            <option>Director/Administrator</option>
+                            <option>Executive</option>
+                            <option>Product Manager</option>
+                            <option>Receptionist/Secretary</option>
+                            <option>Sales Representative</option>
+                            <option>Underwriter</option>
+                            <option>Other</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].OccupationTitle" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-3">
+                        <label>DL Status<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].DLStatus" class="form-select" required data-original-required="1" id="Driver0_DLStatus">
+                            <option value="">--Select--</option>
+                            <option>Valid</option>
+                            <option>Permit</option>
+                            <option>Expired</option>
+                            <option>Suspended</option>
+                            <option>Cancelled</option>
+                            <option>Permanently Revoked</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].DLStatus" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-3">
+                        <label>Age Licensed<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].AgeLicensed" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21+</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].AgeLicensed" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>DL #<span class="text-danger">*</span></label>
+                        <input asp-for="Drivers[0].DLNumber" class="form-control" required data-original-required="1" id="Driver0_DLNumber" />
+                        <span asp-validation-for="Drivers[0].DLNumber" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>DL State<span class="text-danger">*</span></label>
+                        <input asp-for="Drivers[0].DLState" class="form-control" required data-original-required="1" id="Driver0_DLState" />
+                        <span asp-validation-for="Drivers[0].DLState" class="text-danger"></span>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Defensive Driver Course Date</label>
+                        <input asp-for="Drivers[0].DefensiveDriverCourseDate" type="date" class="form-control" />
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>License Suspended/Revocated (Last 5 years)<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].LicenseSuspendedLast5Years" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].LicenseSuspendedLast5Years" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Driver Education</label>
+                        <select asp-for="Drivers[0].DriverEducation" class="form-select">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Mature Driver</label>
+                        <select asp-for="Drivers[0].MatureDriver" class="form-select">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Good Driver</label>
+                        <select asp-for="Drivers[0].GoodDriver" class="form-select">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Telematics Discount (Smartride/Right Track)<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].TelematicsDiscount" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].TelematicsDiscount" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Military Service (current or prior)<span class="text-danger">*</span></label>
+                        <select asp-for="Drivers[0].MilitaryService" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                        <span asp-validation-for="Drivers[0].MilitaryService" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-gold" onclick="addDriver()">+ Add Driver</button>
+                </div>
+            </div>
+        </div>
+
+        <template id="driverTemplate">
+            <div class="mini-card driver-card" data-driver="__i__">
+                <h5 class="driver-title">Additional Driver __i__</h5>
+
+                <div class="row">
+                    <div class="col-md-4"><label>First Name<span class="text-danger">*</span></label><input name="Drivers[__i__].FirstName" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-4"><label>Last Name<span class="text-danger">*</span></label><input name="Drivers[__i__].LastName" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-4"><label>DOB<span class="text-danger">*</span></label><input name="Drivers[__i__].DOB" type="date" class="form-control" required data-original-required="1" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Gender<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].Gender" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Male</option><option>Female</option><option>Not Specified</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Marital Status<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].MaritalStatus" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Domestic Partner</option><option>Widowed</option><option>Separated</option><option>Divorced</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Occupation Industry<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].OccupationIndustry" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Homemaker/House Person</option><option>Retired</option><option>Disabled</option><option>Unemployed</option><option>Student</option>
+                            <option>Agriculture/Forestry/Fishing</option><option>Art/Design/Media</option><option>Banking/Finance/Real Estate</option>
+                            <option>Business/Sales/Office</option><option>Construction/Energy Trades</option><option>Education/Library</option>
+                            <option>Engineer/Architect/Science/Math</option><option>Government/Military</option><option>Information Technology</option><option>Insurance</option>
+                            <option>Legal/Law Enforcement/Security</option><option>Maintenance/Repair/Housekeeping</option><option>Manufacturing/Production</option>
+                            <option>Medical/Social Services/Religion</option><option>Personal Care/Service</option><option>Restaurant/Hotel Services</option>
+                            <option>Sports/Recreation</option><option>Travel/Transportation/Warehousing</option><option>Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <label>Occupation Title<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].OccupationTitle" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Accountant/Auditor</option><option>Actuarial Clerk</option><option>Actuary</option><option>Administrative Assistant</option>
+                            <option>Agent/Broker</option><option>Analyst</option><option>Attorney</option><option>Claims Adjuster</option><option>Clerk</option>
+                            <option>Commisioner</option><option>Customer Service Represantative</option><option>Director/Administrator</option><option>Executive</option>
+                            <option>Product Manager</option><option>Receptionist/Secretary</option><option>Sales Representative</option><option>Underwriter</option><option>Other</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label>DL Status<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].DLStatus" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Valid</option><option>Permit</option><option>Expired</option><option>Suspended</option><option>Cancelled</option><option>Permanently Revoked</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label>Age Licensed<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].AgeLicensed" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>16</option><option>17</option><option>18</option><option>19</option><option>20</option><option>21+</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>DL #<span class="text-danger">*</span></label><input name="Drivers[__i__].DLNumber" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-4"><label>DL State<span class="text-danger">*</span></label><input name="Drivers[__i__].DLState" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-4"><label>Defensive Driver Course Date</label><input name="Drivers[__i__].DefensiveDriverCourseDate" type="date" class="form-control" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>License Suspended/Revocated (Last 5 years)<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].LicenseSuspendedLast5Years" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Telematics Discount<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].TelematicsDiscount" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Military Service<span class="text-danger">*</span></label>
+                        <select name="Drivers[__i__].MilitaryService" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>Driver Education</label><select name="Drivers[__i__].DriverEducation" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-4"><label>Mature Driver</label><select name="Drivers[__i__].MatureDriver" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-4"><label>Good Driver</label><select name="Drivers[__i__].GoodDriver" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                </div>
+
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-gold" onclick="addDriver()">+ Add Driver</button>
+                    <button type="button" class="btn btn-danger fw-bold" onclick="removeCard(this,'driver')">Delete Driver</button>
+                </div>
+            </div>
+        </template>
+
+        <div class="d-flex justify-content-between mt-2">
+            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns();">Next — Vehicles</button>
+        </div>
+    </div>
+
+    <!-- ===================== SECTION 3: VEHICLES ===================== -->
+    <div class="section-card wizard-step" data-step="3">
+        <div class="section-title">Vehicles</div>
+
+        <div id="vehiclesContainer">
+            <div class="mini-card vehicle-card" data-vehicle="0">
+                <h5 class="vehicle-title">Primary Vehicle</h5>
+
+                <div class="row">
+                    <div class="col-md-4"><label>VIN<span class="text-danger">*</span></label><input asp-for="Vehicles[0].VIN" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-2"><label>Year<span class="text-danger">*</span></label><input asp-for="Vehicles[0].Year" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-3"><label>Make<span class="text-danger">*</span></label><input asp-for="Vehicles[0].Make" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-3"><label>Model<span class="text-danger">*</span></label><input asp-for="Vehicles[0].Model" class="form-control" required data-original-required="1" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>Purchase Date<span class="text-danger">*</span></label><input asp-for="Vehicles[0].PurchaseDate" type="date" class="form-control" required data-original-required="1" /></div>
+
+                    <div class="col-md-4">
+                        <label>Passive Restraints</label>
+                        <select asp-for="Vehicles[0].PassiveRestraints" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>None</option>
+                            <option>Automatic Seatbelts</option>
+                            <option>Airbag (Driver Side)</option>
+                            <option>Auto Seatbelts / Driver Airbag</option>
+                            <option>Airbag Both Sides</option>
+                            <option>Auto Seatbelts/Airbag Both</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Anti-Theft</label>
+                        <select asp-for="Vehicles[0].AntiTheft" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>None</option>
+                            <option>Active</option>
+                            <option>Alarm Only</option>
+                            <option>Passive</option>
+                            <option>Vehicle Recovery System</option>
+                            <option>Both Active and Passive</option>
+                            <option>VIN# Etching</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Vehicle Use<span class="text-danger">*</span></label>
+                        <select asp-for="Vehicles[0].Use" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Business</option>
+                            <option>Farming</option>
+                            <option>Pleasure</option>
+                            <option>To/From Work</option>
+                            <option>To/From School</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4"><label>Annual Miles<span class="text-danger">*</span></label><input asp-for="Vehicles[0].AnnualMiles" class="form-control" required data-original-required="1" /></div>
+
+                    <div class="col-md-4">
+                        <label>Performance<span class="text-danger">*</span></label>
+                        <select asp-for="Vehicles[0].Performance" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Standard</option>
+                            <option>Sports</option>
+                            <option>Intermediate</option>
+                            <option>High Performance</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Ownership Type<span class="text-danger">*</span></label>
+                        <select asp-for="Vehicles[0].OwnershipType" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Owned</option>
+                            <option>Leased</option>
+                            <option>Lien</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Vehicle Assignment (100%)<span class="text-danger">*</span></label>
+                        <select asp-for="Vehicles[0].AssignedDriverIndex" class="form-select driverPick" required data-original-required="1" id="Vehicle0_AssignedDriverIndex"></select>
+                        <span asp-validation-for="Vehicles[0].AssignedDriverIndex" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4"><label>Cost New Value</label><input asp-for="Vehicles[0].CostNewValue" class="form-control" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>Anti-Lock Brakes</label>
+                        <select asp-for="Vehicles[0].AntiLockBrakes" class="form-select">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4"><label>Daytime Running Lights</label>
+                        <select asp-for="Vehicles[0].DaytimeRunningLights" class="form-select">
+                            <option value="">--Select--</option><option>Yes</option><option>No</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4"><label>Modification Value</label><input asp-for="Vehicles[0].ModificationValue" class="form-control" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3"><label>Was the car new?</label>
+                        <select asp-for="Vehicles[0].WasNew" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select>
+                    </div>
+                    <div class="col-md-3"><label>Carpool</label>
+                        <select asp-for="Vehicles[0].Carpool" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select>
+                    </div>
+                    <div class="col-md-3"><label>Telematics</label>
+                        <select asp-for="Vehicles[0].Telematics" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select>
+                    </div>
+                    <div class="col-md-3"><label>Transportation Network Company</label>
+                        <select asp-for="Vehicles[0].TNC" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-gold" onclick="addVehicle()">+ Add Vehicle</button>
+                </div>
+            </div>
+        </div>
+
+        <template id="vehicleTemplate">
+            <div class="mini-card vehicle-card" data-vehicle="__i__">
+                <h5 class="vehicle-title">Additional Vehicle __i__</h5>
+
+                <div class="row">
+                    <div class="col-md-4"><label>VIN<span class="text-danger">*</span></label><input name="Vehicles[__i__].VIN" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-2"><label>Year<span class="text-danger">*</span></label><input name="Vehicles[__i__].Year" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-3"><label>Make<span class="text-danger">*</span></label><input name="Vehicles[__i__].Make" class="form-control" required data-original-required="1" /></div>
+                    <div class="col-md-3"><label>Model<span class="text-danger">*</span></label><input name="Vehicles[__i__].Model" class="form-control" required data-original-required="1" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>Purchase Date<span class="text-danger">*</span></label><input name="Vehicles[__i__].PurchaseDate" type="date" class="form-control" required data-original-required="1" /></div>
+
+                    <div class="col-md-4">
+                        <label>Passive Restraints</label>
+                        <select name="Vehicles[__i__].PassiveRestraints" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>None</option>
+                            <option>Automatic Seatbelts</option>
+                            <option>Airbag (Driver Side)</option>
+                            <option>Auto Seatbelts / Driver Airbag</option>
+                            <option>Airbag Both Sides</option>
+                            <option>Auto Seatbelts/Airbag Both</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Anti-Theft</label>
+                        <select name="Vehicles[__i__].AntiTheft" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>None</option>
+                            <option>Active</option>
+                            <option>Alarm Only</option>
+                            <option>Passive</option>
+                            <option>Vehicle Recovery System</option>
+                            <option>Both Active and Passive</option>
+                            <option>VIN# Etching</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Vehicle Use<span class="text-danger">*</span></label>
+                        <select name="Vehicles[__i__].Use" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Business</option><option>Farming</option><option>Pleasure</option><option>To/From Work</option><option>To/From School</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4"><label>Annual Miles<span class="text-danger">*</span></label><input name="Vehicles[__i__].AnnualMiles" class="form-control" required data-original-required="1" /></div>
+
+                    <div class="col-md-4">
+                        <label>Performance<span class="text-danger">*</span></label>
+                        <select name="Vehicles[__i__].Performance" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Standard</option><option>Sports</option><option>Intermediate</option><option>High Performance</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Ownership Type<span class="text-danger">*</span></label>
+                        <select name="Vehicles[__i__].OwnershipType" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option><option>Owned</option><option>Leased</option><option>Lien</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Vehicle Assignment (100%)<span class="text-danger">*</span></label>
+                        <select name="Vehicles[__i__].AssignedDriverIndex" class="form-select driverPick" required data-original-required="1"></select>
+                    </div>
+
+                    <div class="col-md-4"><label>Cost New Value</label><input name="Vehicles[__i__].CostNewValue" class="form-control" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4"><label>Anti-Lock Brakes</label><select name="Vehicles[__i__].AntiLockBrakes" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-4"><label>Daytime Running Lights</label><select name="Vehicles[__i__].DaytimeRunningLights" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-4"><label>Modification Value</label><input name="Vehicles[__i__].ModificationValue" class="form-control" /></div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-3"><label>Was the car new?</label><select name="Vehicles[__i__].WasNew" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-3"><label>Carpool</label><select name="Vehicles[__i__].Carpool" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-3"><label>Telematics</label><select name="Vehicles[__i__].Telematics" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                    <div class="col-md-3"><label>TNC</label><select name="Vehicles[__i__].TNC" class="form-select"><option value="">--Select--</option><option>Yes</option><option>No</option></select></div>
+                </div>
+
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="btn btn-gold" onclick="addVehicle()">+ Add Vehicle</button>
+                    <button type="button" class="btn btn-danger fw-bold" onclick="removeCard(this,'vehicle')">Delete Vehicle</button>
+                </div>
+            </div>
+        </template>
+
+        <div class="d-flex justify-content-between mt-2">
+            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); syncAllDriverDropdowns(); buildVehicleCoverageCards(); syncIncidentDropdowns();">Next — Incidents</button>
+        </div>
+    </div>
+
+    <!-- ===================== SECTION 4: INCIDENTS ===================== -->
+    <div class="section-card wizard-step" data-step="4">
+        <div class="section-title">Incidents</div>
+
+        <div class="mb-4">
+            <h5 class="mb-2">Accidents</h5>
+            <div id="accidentsContainer"></div>
+            <button type="button" class="btn btn-gold fw-bold mt-2" onclick="addAccident()">+ Add Accident</button>
+        </div>
+
+        <div class="mb-4">
+            <h5 class="mb-2">Violations</h5>
+            <div id="violationsContainer"></div>
+            <button type="button" class="btn btn-gold fw-bold mt-2" onclick="addViolation()">+ Add Violation</button>
+        </div>
+
+        <div class="mb-4">
+            <h5 class="mb-2">Comp Losses</h5>
+            <div id="compLossesContainer"></div>
+            <button type="button" class="btn btn-gold fw-bold mt-2" onclick="addCompLoss()">+ Add Comp Loss</button>
+        </div>
+
+        <template id="accidentTemplate">
+            <div class="mini-card accident-card">
+                <h5>Accident</h5>
+                <div class="row g-3">
+                    <div class="col-md-4"><label>Date of Accident</label><input type="date" name="Accidents[__i__].Date" class="form-control" /></div>
+
+                    <div class="col-md-4">
+                        <label>Driver</label>
+                        <select name="Accidents[__i__].DriverIndex" class="form-select incidentDriverSelect">
+                            <option value="">--Select Driver--</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Accident Description</label>
+                        <select name="Accidents[__i__].Description" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>At Fault with Injury</option>
+                            <option>At Fualty With No Injury</option>
+                            <option>Not At Fault</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4"><label>Personal Damage Amount</label><input type="text" name="Accidents[__i__].PropertyDamageAmount" class="form-control" /></div>
+                    <div class="col-md-4"><label>Bodily Injury Amount</label><input type="text" name="Accidents[__i__].BodilyInjuryAmount" class="form-control" /></div>
+                    <div class="col-md-4"><label>Collision Amount</label><input type="text" name="Accidents[__i__].CollisionAmount" class="form-control" /></div>
+                    <div class="col-md-4"><label>Medical Payment Amount</label><input type="text" name="Accidents[__i__].MedicalPaymentAmount" class="form-control" /></div>
+
+                    <div class="col-md-8">
+                        <label>Vehicle Involved</label>
+                        <select name="Accidents[__i__].VehicleIndex" class="form-select incidentVehicleSelect">
+                            <option value="">--Select Vehicle--</option>
+                        </select>
+                        <small class="text-muted">If the vehicle isn’t listed, type it below.</small>
+                        <input type="text" name="Accidents[__i__].VehicleInvolvedText" class="form-control" placeholder="Optional text override" />
+                    </div>
+                </div>
+                <button type="button" class="btn btn-danger fw-bold mt-3" onclick="removeCard(this,'accident')">Delete Accident</button>
+            </div>
+        </template>
+
+        <template id="violationTemplate">
+            <div class="mini-card violation-card">
+                <h5>Violation</h5>
+                <div class="row g-3">
+                    <div class="col-md-4"><label>Date of Violation</label><input type="date" name="Violations[__i__].Date" class="form-control" /></div>
+                    <div class="col-md-4">
+                        <label>Driver</label>
+                        <select name="Violations[__i__].DriverIndex" class="form-select incidentDriverSelect">
+                            <option value="">--Select Driver--</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4"><label>Violation Description</label><input type="text" name="Violations[__i__].Description" class="form-control" /></div>
+                </div>
+                <button type="button" class="btn btn-danger fw-bold mt-3" onclick="removeCard(this,'violation')">Delete Violation</button>
+            </div>
+        </template>
+
+        <template id="compLossTemplate">
+            <div class="mini-card comp-card">
+                <h5>Comp Loss</h5>
+                <div class="row g-3">
+                    <div class="col-md-4"><label>Date of Loss</label><input type="date" name="CompLosses[__i__].Date" class="form-control" /></div>
+                    <div class="col-md-4">
+                        <label>Driver</label>
+                        <select name="CompLosses[__i__].DriverIndex" class="form-select incidentDriverSelect">
+                            <option value="">--Select Driver--</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Loss Description</label>
+                        <select name="CompLosses[__i__].LossDescription" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>Fire</option>
+                            <option>Hit animal</option>
+                            <option>Theft</option>
+                            <option>towing</option>
+                            <option>vandalism</option>
+                            <option>glass</option>
+                            <option>tornado/hurricane</option>
+                            <option>flood</option>
+                            <option>wind/hail</option>
+                            <option>all other</option>
+                        </select>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-danger fw-bold mt-3" onclick="removeCard(this,'comp')">Delete Comp Loss</button>
+            </div>
+        </template>
+
+        <div class="d-flex justify-content-between mt-2">
+            <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
+            <button type="button" class="btn btn-gold" onclick="goNext(); buildVehicleCoverageCards();">Next — General Coverage</button>
+        </div>
+    </div>
+
+    <!-- ===================== SECTION 5: COVERAGE ===================== -->
+    <div class="section-card wizard-step" data-step="5">
+        <div class="section-title">General Coverage</div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <label>Bodily Injury<span class="text-danger">*</span></label>
+                <select asp-for="BodilyInjury" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>State minimum</option>
+                    <option>25/50</option>
+                    <option>50/50</option>
+                    <option>50/100</option>
+                    <option>100/100</option>
+                    <option>100/300</option>
+                    <option>250/300</option>
+                    <option>300/300</option>
+                    <option>500/500</option>
+                    <option>1000/1000</option>
+                    <option>55 CSL -or- 50/50/50</option>
+                    <option>100 CSL -or- 100/100/100</option>
+                    <option>300 CSL -or- 300/300/300</option>
+                    <option>500 CSL -or- 500/500/500</option>
+                </select>
+                <span asp-validation-for="BodilyInjury" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6">
+                <label>Medical Payments<span class="text-danger">*</span></label>
+                <select asp-for="MedicalPayments" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>None</option>
+                    <option>500</option><option>1000</option><option>2000</option><option>2500</option><option>5000</option><option>10000</option>
+                    <option>15000</option><option>25000</option><option>50000</option><option>100000</option>
+                </select>
+                <span asp-validation-for="MedicalPayments" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6">
+                <label>Uninsured Motorist<span class="text-danger">*</span></label>
+                <select asp-for="UninsuredMotorist" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Reject</option>
+                    <option>State Minimum</option>
+                    <option>25/50</option>
+                </select>
+                <span asp-validation-for="UninsuredMotorist" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6">
+                <label>Underinsured Motorist<span class="text-danger">*</span></label>
+                <select asp-for="UnderinsuredMotorist" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Reject</option>
+                    <option>State Minimum</option>
+                    <option>25/50</option>
+                </select>
+                <span asp-validation-for="UnderinsuredMotorist" class="text-danger"></span>
+            </div>
+
+            <div class="col-md-6">
+                <label>Residence is<span class="text-danger">*</span></label>
+                <select asp-for="ResidenceType" class="form-select" required data-original-required="1">
+                    <option value="">--Select--</option>
+                    <option>Home (owned)</option>
+                    <option>Condo (owned)</option>
+                    <option>Apartment</option>
+                    <option>Rental Home/Condo</option>
+                    <option>Mobile Home</option>
+                    <option>Live With Parents</option>
+                    <option>Other</option>
+                </select>
+                <span asp-validation-for="ResidenceType" class="text-danger"></span>
+            </div>
+        </div>
+
+        <hr />
+
+        <h5 class="mt-2">Vehicle Coverages (pulled from Section 3)</h5>
+        <div id="vehicleCoverageContainer"></div>
+
+        <hr />
+
+        <div class="section-card mt-3">
+            <style>
+                .disclaimer-check{
+                    display:flex;
+                    align-items:flex-start;
+                    gap:10px;
+                    padding:10px 0;
+                }
+                .disclaimer-check .form-check-input{
+                    width:18px;
+                    height:18px;
+                    margin-top:2px;
+                    margin-left:0;
+                    margin-right:0;
+                    position:static;
+                    flex-shrink:0;
+                }
+                .disclaimer-check .form-check-label{
+                    line-height:1.5;
+                    white-space:normal;
+                    color:#0f172a;
+                    font-weight:600;
+                }
+            </style>
+            <div class="form-check disclaimer-check">
+                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
+                <label class="form-check-label" for="AcknowledgedDisclaimer">
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my auto insurance quote request.<span class="text-danger">*</span>
+                </label>
+            </div>
+            <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
+
+            <div class="d-flex justify-content-between mt-3">
+                <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
+                <button type="submit" class="btn btn-gold">Submit Auto Quote Request</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+    let currentStep = 1;
+
+    function setStep(step) {
+        currentStep = step;
+
+        document.querySelectorAll(".wizard-step").forEach(s => {
+            const isActive = parseInt(s.getAttribute("data-step")) === step;
+            s.classList.toggle("active", isActive);
+
+            s.querySelectorAll("input, select, textarea").forEach(el => {
+                el.disabled = !isActive;
+            });
+        });
+
+        document.querySelectorAll(".wizard-pill").forEach(p => {
+            p.classList.toggle("active", parseInt(p.getAttribute("data-pill")) === step);
+        });
+
+        if (step === 3 || step === 4 || step === 5) {
+            syncAllDriverDropdowns();
+            syncIncidentDropdowns();
+            applyPendingIncidentSelections();
+        }
+        if (step === 5) {
+            buildVehicleCoverageCards();
+        }
+    }
+
+    function validateCurrentStep() {
+        const stepEl = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
+        if (!stepEl) return true;
+
+        const inputs = stepEl.querySelectorAll("input, select, textarea");
+        for (const el of inputs) {
+            if (el.disabled) continue;
+            if (!el.checkValidity()) {
+                el.reportValidity();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function goNext() {
+        if (!validateCurrentStep()) return;
+        if (currentStep < 5) setStep(currentStep + 1);
+    }
+
+    function goBack() {
+        if (currentStep > 1) setStep(currentStep - 1);
+    }
+
+    function removeCard(btn, type) {
+        const card = btn.closest(".mini-card");
+        if (!card) return;
+
+        if (type === "driver" && card.getAttribute("data-driver") === "0") return;
+        if (type === "vehicle" && card.getAttribute("data-vehicle") === "0") return;
+
+        card.remove();
+
+        if (type === "driver") reindexCards("driversContainer", "driver-card", "Drivers", "data-driver");
+        if (type === "vehicle") reindexCards("vehiclesContainer", "vehicle-card", "Vehicles", "data-vehicle");
+
+        if (type === "accident") reindexMini("accidentsContainer", "Accidents");
+        if (type === "violation") reindexMini("violationsContainer", "Violations");
+        if (type === "comp") reindexMini("compLossesContainer", "CompLosses");
+
+        syncAllDriverDropdowns();
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+        buildVehicleCoverageCards();
+    }
+
+    function reindexCards(containerId, cardClass, prefix, dataAttr) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const cards = container.querySelectorAll("." + cardClass);
+        cards.forEach((card, index) => {
+            card.setAttribute(dataAttr, index);
+
+            const title = card.querySelector(".driver-title") || card.querySelector(".vehicle-title");
+            if (title) {
+                if (prefix === "Drivers") title.innerText = index === 0 ? "Primary Insured" : "Additional Driver " + index;
+                if (prefix === "Vehicles") title.innerText = index === 0 ? "Primary Vehicle" : "Additional Vehicle " + index;
+            }
+
+            card.querySelectorAll("input, select, textarea").forEach(el => {
+                if (!el.name) return;
+                el.name = el.name.replace(new RegExp(prefix + "\\[\\d+\\]", "g"), prefix + "[" + index + "]");
+            });
+        });
+    }
+
+    function reindexMini(containerId, prefix) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const cards = container.querySelectorAll(".mini-card");
+        cards.forEach((card, index) => {
+            card.querySelectorAll("input, select, textarea").forEach(el => {
+                if (!el.name) return;
+                el.name = el.name.replace(new RegExp(prefix + "\\[\\d+\\]", "g"), prefix + "[" + index + "]");
+            });
+        });
+    }
+
+    function addDriver() {
+        const container = document.getElementById("driversContainer");
+        const tpl = document.getElementById("driverTemplate");
+        if (!container || !tpl) return;
+
+        const idx = container.querySelectorAll(".driver-card").length;
+        const fragment = tpl.content.cloneNode(true);
+
+        fragment.querySelectorAll("[name]").forEach(el => {
+            el.name = el.name.replace(/__i__/g, idx);
+            if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") el.value = "";
+            if (el.tagName === "SELECT") el.value = "";
+        });
+
+        container.appendChild(fragment);
+
+        reindexCards("driversContainer", "driver-card", "Drivers", "data-driver");
+        syncAllDriverDropdowns();
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+    }
+
+    function addVehicle() {
+        const container = document.getElementById("vehiclesContainer");
+        const tpl = document.getElementById("vehicleTemplate");
+        if (!container || !tpl) return;
+
+        const idx = container.querySelectorAll(".vehicle-card").length;
+        const fragment = tpl.content.cloneNode(true);
+
+        fragment.querySelectorAll("[name]").forEach(el => {
+            el.name = el.name.replace(/__i__/g, idx);
+            if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") el.value = "";
+            if (el.tagName === "SELECT") el.value = "";
+        });
+
+        container.appendChild(fragment);
+
+        reindexCards("vehiclesContainer", "vehicle-card", "Vehicles", "data-vehicle");
+        syncAllDriverDropdowns();
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+        buildVehicleCoverageCards();
+    }
+
+    function addAccident() {
+        const container = document.getElementById("accidentsContainer");
+        const tpl = document.getElementById("accidentTemplate");
+        if (!container || !tpl) return;
+
+        const idx = container.querySelectorAll(".accident-card").length;
+        const fragment = tpl.content.cloneNode(true);
+        fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+
+        container.appendChild(fragment);
+        reindexMini("accidentsContainer", "Accidents");
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+    }
+
+    function addViolation() {
+        const container = document.getElementById("violationsContainer");
+        const tpl = document.getElementById("violationTemplate");
+        if (!container || !tpl) return;
+
+        const idx = container.querySelectorAll(".violation-card").length;
+        const fragment = tpl.content.cloneNode(true);
+        fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+
+        container.appendChild(fragment);
+        reindexMini("violationsContainer", "Violations");
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+    }
+
+    function addCompLoss() {
+        const container = document.getElementById("compLossesContainer");
+        const tpl = document.getElementById("compLossTemplate");
+        if (!container || !tpl) return;
+
+        const idx = container.querySelectorAll(".comp-card").length;
+        const fragment = tpl.content.cloneNode(true);
+        fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+
+        container.appendChild(fragment);
+        reindexMini("compLossesContainer", "CompLosses");
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+    }
+
+    function getDriverDisplayNames() {
+        const names = [];
+        document.querySelectorAll(".driver-card").forEach((card, idx) => {
+            const first = card.querySelector(`[name="Drivers[${idx}].FirstName"]`)?.value?.trim() || "";
+            const last = card.querySelector(`[name="Drivers[${idx}].LastName"]`)?.value?.trim() || "";
+            const label = (first || last) ? `${first} ${last}`.trim() : (idx === 0 ? "Primary Insured" : `Driver ${idx}`);
+            names.push({ value: idx.toString(), text: label });
+        });
+        return names;
+    }
+
+    function getVehicleDisplayNames() {
+        const vehicles = [];
+        document.querySelectorAll(".vehicle-card").forEach((card, idx) => {
+            const year = card.querySelector(`[name="Vehicles[${idx}].Year"]`)?.value?.trim() || "";
+            const make = card.querySelector(`[name="Vehicles[${idx}].Make"]`)?.value?.trim() || "";
+            const model = card.querySelector(`[name="Vehicles[${idx}].Model"]`)?.value?.trim() || "";
+            const vin = card.querySelector(`[name="Vehicles[${idx}].VIN"]`)?.value?.trim() || "";
+            const label = `${(year + " " + make + " " + model).trim()}${vin ? " — " + vin : ""}`.trim() || `Vehicle ${idx + 1}`;
+            vehicles.push({ value: idx.toString(), text: label });
+        });
+        return vehicles;
+    }
+
+    function fillSelect(sel, options, placeholderText) {
+        const current = sel.value;
+        sel.innerHTML = "";
+
+        const opt0 = document.createElement("option");
+        opt0.value = "";
+        opt0.textContent = placeholderText;
+        sel.appendChild(opt0);
+
+        options.forEach(o => {
+            const opt = document.createElement("option");
+            opt.value = o.value;
+            opt.textContent = o.text;
+            sel.appendChild(opt);
+        });
+
+        if (options.some(o => o.value === current)) sel.value = current;
+    }
+
+    function syncAllDriverDropdowns() {
+        const drivers = getDriverDisplayNames();
+        document.querySelectorAll(".driverPick").forEach(sel => fillSelect(sel, drivers, "--Select Driver (100%)--"));
+    }
+
+    function syncIncidentDropdowns() {
+        const drivers = getDriverDisplayNames();
+        const vehicles = getVehicleDisplayNames();
+
+        document.querySelectorAll(".incidentDriverSelect").forEach(sel => fillSelect(sel, drivers, "--Select Driver--"));
+        document.querySelectorAll(".incidentVehicleSelect").forEach(sel => fillSelect(sel, vehicles, "--Select Vehicle--"));
+    }
+
+    function snapshotValues(rootEl) {
+        const map = new Map();
+        if (!rootEl) return map;
+
+        rootEl.querySelectorAll("input[name], select[name], textarea[name]").forEach(el => {
+            if (!el.name) return;
+            if (el.type === "checkbox") map.set(el.name, el.checked ? "true" : "false");
+            else map.set(el.name, el.value ?? "");
+        });
+
+        return map;
+    }
+
+    function restoreValues(rootEl, map) {
+        if (!rootEl || !map) return;
+
+        rootEl.querySelectorAll("input[name], select[name], textarea[name]").forEach(el => {
+            if (!map.has(el.name)) return;
+            const v = map.get(el.name) ?? "";
+            if (el.type === "checkbox") el.checked = (v === "true");
+            else el.value = v;
+        });
+    }
+
+    function buildVehicleCoverageCards() {
+        const container = document.getElementById("vehicleCoverageContainer");
+        if (!container) return;
+
+        const saved = snapshotValues(container);
+        container.innerHTML = "";
+
+        const vehicleCards = document.querySelectorAll(".vehicle-card");
+        vehicleCards.forEach((card, i) => {
+            const year = card.querySelector(`[name="Vehicles[${i}].Year"]`)?.value?.trim() || "";
+            const make = card.querySelector(`[name="Vehicles[${i}].Make"]`)?.value?.trim() || "";
+            const model = card.querySelector(`[name="Vehicles[${i}].Model"]`)?.value?.trim() || "";
+            const vin = card.querySelector(`[name="Vehicles[${i}].VIN"]`)?.value?.trim() || "";
+
+            const title = `${(year + " " + make + " " + model).trim()}${vin ? " — " + vin : ""}`.trim() || ("Vehicle " + (i + 1));
+
+            const div = document.createElement("div");
+            div.className = "mini-card";
+            div.innerHTML = `
+                <h5>Vehicle ${i + 1} Coverage — ${title}</h5>
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label>Comprehensive<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].Comprehensive" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>No Coverage</option>
+                            <option>0</option><option>50</option><option>100</option><option>200</option><option>250</option>
+                            <option>500</option><option>1000</option><option>2000</option><option>2500</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Collision<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].Collision" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>No Coverage</option>
+                            <option>0</option><option>50</option><option>100</option><option>200</option><option>250</option>
+                            <option>500</option><option>1000</option><option>2000</option><option>2500</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Towing & Labor<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].Towing" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>No Coverage</option>
+                            <option>25</option><option>50</option><option>75</option><option>100</option><option>200</option>
+                            <option>Unlimited</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Rental Expense<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].Rental" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>No Coverage</option>
+                            <option>20/600</option>
+                            <option>30/900</option>
+                            <option>40/1200</option>
+                            <option>50/1500</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Loan / Lease Coverage (Stated Amount)</label>
+                        <input name="Vehicles[${i}].LoanLease" class="form-control" />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label>Liability</label>
+                        <select name="Vehicles[${i}].Liability" class="form-select">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+                </div>
+
+                <hr />
+
+                <h5 class="mt-2">Carrier Questions</h5>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label>Special Equipment<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].SpecialEquipment" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Reject</option>
+                            ${Array.from({ length: 30 }, (_, k) => (k + 1) * 100).map(v => `<option>$${v}</option>`).join("")}
+                        </select>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label>Branded Title?<span class="text-danger">*</span></label>
+                        <select name="Vehicles[${i}].BrandedTitle" class="form-select" required data-original-required="1">
+                            <option value="">--Select--</option>
+                            <option>Yes</option>
+                            <option>No</option>
+                        </select>
+                    </div>
+
+                    <div class="col-md-12">
+                        <label>Custom or Additional Equipment</label>
+                        <input name="Vehicles[${i}].CustomEquipment" class="form-control" />
+                    </div>
+                </div>
+            `;
+
+            container.appendChild(div);
+        });
+
+        restoreValues(container, saved);
+    }
+
+    function enableAllInputsForSubmit() {
+        document.querySelectorAll("input, select, textarea").forEach(el => el.disabled = false);
+    }
+
+    // ---------------------- NEW: Persist incident cards after failed submit ----------------------
+
+    function rebuildAccidentsFromModel(items) {
+        const container = document.getElementById("accidentsContainer");
+        const tpl = document.getElementById("accidentTemplate");
+        if (!container || !tpl) return;
+
+        container.innerHTML = "";
+
+        (items || []).forEach((a, idx) => {
+            const fragment = tpl.content.cloneNode(true);
+            fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+            container.appendChild(fragment);
+
+            const root = container.lastElementChild;
+
+            root.querySelector(`[name="Accidents[${idx}].Date"]`).value = a.Date ?? "";
+            root.querySelector(`[name="Accidents[${idx}].Description"]`).value = a.Description ?? "";
+            root.querySelector(`[name="Accidents[${idx}].PropertyDamageAmount"]`).value = a.PropertyDamageAmount ?? "";
+            root.querySelector(`[name="Accidents[${idx}].BodilyInjuryAmount"]`).value = a.BodilyInjuryAmount ?? "";
+            root.querySelector(`[name="Accidents[${idx}].CollisionAmount"]`).value = a.CollisionAmount ?? "";
+            root.querySelector(`[name="Accidents[${idx}].MedicalPaymentAmount"]`).value = a.MedicalPaymentAmount ?? "";
+            root.querySelector(`[name="Accidents[${idx}].VehicleInvolvedText"]`).value = a.VehicleInvolvedText ?? "";
+
+            // saved selections applied after dropdown options exist
+            root.querySelector(`[name="Accidents[${idx}].DriverIndex"]`).setAttribute("data-pending", (a.DriverIndex ?? "").toString());
+            root.querySelector(`[name="Accidents[${idx}].VehicleIndex"]`).setAttribute("data-pending", (a.VehicleIndex ?? "").toString());
+        });
+
+        reindexMini("accidentsContainer", "Accidents");
+    }
+
+    function rebuildViolationsFromModel(items) {
+        const container = document.getElementById("violationsContainer");
+        const tpl = document.getElementById("violationTemplate");
+        if (!container || !tpl) return;
+
+        container.innerHTML = "";
+
+        (items || []).forEach((v, idx) => {
+            const fragment = tpl.content.cloneNode(true);
+            fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+            container.appendChild(fragment);
+
+            const root = container.lastElementChild;
+
+            root.querySelector(`[name="Violations[${idx}].Date"]`).value = v.Date ?? "";
+            root.querySelector(`[name="Violations[${idx}].Description"]`).value = v.Description ?? "";
+
+            root.querySelector(`[name="Violations[${idx}].DriverIndex"]`).setAttribute("data-pending", (v.DriverIndex ?? "").toString());
+        });
+
+        reindexMini("violationsContainer", "Violations");
+    }
+
+    function rebuildCompLossesFromModel(items) {
+        const container = document.getElementById("compLossesContainer");
+        const tpl = document.getElementById("compLossTemplate");
+        if (!container || !tpl) return;
+
+        container.innerHTML = "";
+
+        (items || []).forEach((c, idx) => {
+            const fragment = tpl.content.cloneNode(true);
+            fragment.querySelectorAll("[name]").forEach(el => el.name = el.name.replace(/__i__/g, idx));
+            container.appendChild(fragment);
+
+            const root = container.lastElementChild;
+
+            root.querySelector(`[name="CompLosses[${idx}].Date"]`).value = c.Date ?? "";
+            root.querySelector(`[name="CompLosses[${idx}].LossDescription"]`).value = c.LossDescription ?? "";
+
+            root.querySelector(`[name="CompLosses[${idx}].DriverIndex"]`).setAttribute("data-pending", (c.DriverIndex ?? "").toString());
+        });
+
+        reindexMini("compLossesContainer", "CompLosses");
+    }
+
+    function applyPendingIncidentSelections() {
+        document.querySelectorAll(".incidentDriverSelect").forEach(sel => {
+            const pending = sel.getAttribute("data-pending");
+            if (pending !== null && pending !== "" && pending !== "null") sel.value = pending;
+            sel.removeAttribute("data-pending");
+        });
+
+        document.querySelectorAll(".incidentVehicleSelect").forEach(sel => {
+            const pending = sel.getAttribute("data-pending");
+            if (pending !== null && pending !== "" && pending !== "null") sel.value = pending;
+            sel.removeAttribute("data-pending");
+        });
+    }
+
+    // ------------------------------------------------------------------------------------------------
+
+    // ===================== NEW: Applicant -> Primary Driver autofill + Primary Vehicle assignment =====================
+
+    function safeSet(el, val) {
+        if (!el) return;
+        const v = (val ?? "").toString();
+        const canOverwrite = (el.value ?? "") === "" || el.getAttribute("data-autofilled") === "1";
+        if (!canOverwrite) return;
+        el.value = v;
+        el.setAttribute("data-autofilled", "1");
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    function applyApplicantToPrimaryDriver() {
+        const aFirst = document.getElementById("Applicant_FirstName")?.value ?? "";
+        const aLast = document.getElementById("Applicant_LastName")?.value ?? "";
+        const aDob = document.getElementById("Applicant_DOB")?.value ?? "";
+        const aGender = document.getElementById("Applicant_Gender")?.value ?? "";
+        const aMarital = document.getElementById("Applicant_MaritalStatus")?.value ?? "";
+        const aDLNum = document.getElementById("Applicant_DriversLicenseNumber")?.value ?? "";
+        const aDLStatus = document.getElementById("Applicant_DLStatus")?.value ?? "";
+        const aDLState = document.getElementById("Applicant_DLState")?.value ?? "";
+        const aIndustry = document.getElementById("Applicant_Industry")?.value ?? "";
+
+        safeSet(document.getElementById("Driver0_FirstName"), aFirst);
+        safeSet(document.getElementById("Driver0_LastName"), aLast);
+        safeSet(document.getElementById("Driver0_DOB"), aDob);
+
+        // Driver dropdown list is Male/Female/Not Specified. Applicant is Female/Male/Not Specified.
+        safeSet(document.getElementById("Driver0_Gender"), aGender);
+
+        // Driver marital list in your HTML is missing Single/Married; we only set if option exists.
+        const maritalEl = document.getElementById("Driver0_MaritalStatus");
+        if (maritalEl && (maritalEl.value === "" || maritalEl.getAttribute("data-autofilled") === "1")) {
+            const exists = Array.from(maritalEl.options).some(o => o.value === aMarital || o.text === aMarital);
+            if (exists) {
+                maritalEl.value = aMarital;
+                maritalEl.setAttribute("data-autofilled", "1");
+                maritalEl.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }
+
+        safeSet(document.getElementById("Driver0_DLNumber"), aDLNum);
+        safeSet(document.getElementById("Driver0_DLStatus"), aDLStatus);
+        safeSet(document.getElementById("Driver0_DLState"), aDLState);
+
+        // Industry -> OccupationIndustry
+        safeSet(document.getElementById("Driver0_OccupationIndustry"), aIndustry);
+
+        // Keep vehicle assignment dropdowns fresh
+        syncAllDriverDropdowns();
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+    }
+
+    function defaultPrimaryVehicleToPrimaryDriver() {
+        const sel = document.getElementById("Vehicle0_AssignedDriverIndex");
+        if (!sel) return;
+
+        // If empty (or previously auto-set), lock it to driver 0
+        const canOverwrite = (sel.value ?? "") === "" || sel.getAttribute("data-autofilled") === "1";
+        if (!canOverwrite) return;
+
+        // Ensure the options exist before setting
+        const has0 = Array.from(sel.options).some(o => o.value === "0");
+        if (has0) {
+            sel.value = "0";
+            sel.setAttribute("data-autofilled", "1");
+            sel.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+    }
+
+    function togglePreviousAddress() {
+        const yrsRaw = (document.getElementById("PrimaryYearsAtAddress")?.value ?? "").trim();
+        const yrs = parseFloat(yrsRaw);
+        const show = !isNaN(yrs) && yrs < 3;
+
+        const block = document.getElementById("previousAddressBlock");
+        if (!block) return;
+
+        block.style.display = show ? "" : "none";
+
+        // Disable inputs when hidden so they don't interfere with UX
+        block.querySelectorAll("input, select, textarea").forEach(el => {
+            el.disabled = !show;
+        });
+    }
+
+    // ------------------------------------------------------------------------------------------------
+
+    document.addEventListener("DOMContentLoaded", function () {
+        const startStep = parseInt("@(ViewData["StartStep"] ?? 1)") || 1;
+
+        // ✅ rebuild incident cards from server model so they persist after validation errors
+        const initialAccidents = @Html.Raw(JsonSerializer.Serialize(Model.Accidents ?? new List<Protect_Website.Models.Accident>()));
+        const initialViolations = @Html.Raw(JsonSerializer.Serialize(Model.Violations ?? new List<Protect_Website.Models.Violation>()));
+        const initialCompLosses = @Html.Raw(JsonSerializer.Serialize(Model.CompLosses ?? new List<Protect_Website.Models.CompLoss>()));
+
+        rebuildAccidentsFromModel(initialAccidents);
+        rebuildViolationsFromModel(initialViolations);
+        rebuildCompLossesFromModel(initialCompLosses);
+
+        setStep(startStep);
+
+        syncAllDriverDropdowns();
+        syncIncidentDropdowns();
+        applyPendingIncidentSelections();
+        buildVehicleCoverageCards();
+
+        // Default Primary Country to United States if empty (doesn't overwrite user choice)
+        const pc = document.getElementById("PrimaryCountry");
+        if (pc && (pc.value ?? "") === "") pc.value = "United States";
+
+        // Wire Applicant -> Primary Driver autofill
+        const applicantFields = [
+            "Applicant_FirstName","Applicant_LastName","Applicant_DOB","Applicant_Gender","Applicant_MaritalStatus",
+            "Applicant_DriversLicenseNumber","Applicant_DLStatus","Applicant_DLState","Applicant_Industry"
+        ];
+
+        applicantFields.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener("input", applyApplicantToPrimaryDriver);
+            el.addEventListener("change", applyApplicantToPrimaryDriver);
+        });
+
+        // PrimaryYearsAtAddress drives Previous Address visibility
+        const yearsEl = document.getElementById("PrimaryYearsAtAddress");
+        if (yearsEl) {
+            yearsEl.addEventListener("input", togglePreviousAddress);
+            yearsEl.addEventListener("change", togglePreviousAddress);
+        }
+        togglePreviousAddress();
+
+        // Keep primary vehicle assigned to primary driver (if not manually changed)
+        defaultPrimaryVehicleToPrimaryDriver();
+        document.querySelectorAll(".driverPick").forEach(sel => {
+            sel.addEventListener("change", defaultPrimaryVehicleToPrimaryDriver);
+        });
+
+        // First load: apply autofill immediately if model has values or user starts step 2
+        applyApplicantToPrimaryDriver();
+        defaultPrimaryVehicleToPrimaryDriver();
+
+        const form = document.getElementById("autoQuoteForm");
+        if (form) {
+            form.addEventListener("submit", function () {
+                buildVehicleCoverageCards();
+                enableAllInputsForSubmit();
+            });
+        }
+    });
+</script>
+}

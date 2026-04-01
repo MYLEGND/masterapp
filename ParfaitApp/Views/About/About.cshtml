@@ -1,0 +1,119 @@
+@{
+    ViewData["Title"] = "About";
+}
+
+<style>
+    /* ================= ABOUT SECTION ================= */
+    .about-card {
+        position: relative;
+        padding: 2rem;
+        border: 3px solid #926950;
+        border-radius: 20px;
+        background: #fff;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        font-family: 'Georgia', serif;
+        line-height: 1.8;
+        color: #2b2b2b;
+    }
+
+    .about-badge {
+        position: absolute;
+        top: -16px;
+        left: 30px;
+        background: #926950;
+        color: #fff;
+        padding: 6px 18px;
+        border-radius: 30px;
+        font-size: 16px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+
+    .about-card p {
+        margin-top: 1rem;
+    }
+
+    .accent {
+        color: #926950;
+        font-weight: bold;
+    }
+
+    /* ================= IMAGE COLUMN ================= */
+    .image-column {
+        display: flex;
+        flex-direction: row;       /* SIDE BY SIDE */
+        gap: 1.5rem;               /* space between images */
+        justify-content: center;   /* center in column */
+        align-items: flex-start;
+        flex-wrap: wrap;           /* wrap on small screens */
+    }
+
+    .image-column img {
+        width: calc(50% - 0.75rem); /* two images side by side with gap */
+        object-fit: cover;
+        border-radius: 16px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    }
+
+    /* ================= RESPONSIVE ================= */
+    @@media (max-width: 991px) {
+        .image-column {
+            width: 100%;
+            flex-direction: row;      /* still side by side if possible */
+            gap: 1rem;
+        }
+
+        .image-column img {
+            width: 48%;               /* adjust to fit smaller screens */
+        }
+    }
+
+    @@media (max-width: 576px) {
+        .image-column {
+            flex-direction: column;   /* stack vertically on tiny screens */
+            gap: 1rem;
+        }
+
+        .image-column img {
+            width: 100%;
+        }
+    }
+</style>
+
+<div class="container my-5">
+    <div class="row align-items-start g-5">
+
+        <!-- LEFT: ABOUT CONTENT -->
+        <div class="col-lg-6 col-md-12">
+            <div class="about-card">
+                <div class="about-badge">About Me</div>
+
+                <p>
+                    My name is <span class="accent">Daphlie Hawkins</span>, and my journey began in Haiti, where I grew up facing malnutrition—not by choice, but by circumstance. At 14, I was adopted and brought to America, a blessing I give all glory to God for, as He reminds us that His plans are to give us hope and a future.
+                </p>
+
+                <p>
+                    In my first years here, I struggled with binge eating and weight gain, but my turning point came when I stepped into the gym with my church youth leader. What started as a simple act of moving my body quickly became a lifestyle that transformed me—physically, mentally, and spiritually.
+                </p>
+
+                <p>
+                    Through fitness, I’ve learned that <span class="accent">consistency, motivation, and faith</span> are key to real growth. That’s why I created <span class="accent">Parfait</span>—more than a clothing brand, it’s a reminder that our bodies are God’s temple, created in His image, and already perfect.
+                </p>
+
+                <p class="mb-0">
+                    My mission is to inspire women to honor their health, embrace their strength, and walk confidently in the truth that they are <span class="accent">Parfait</span> at every stage of their journey.
+                </p>
+            </div>
+        </div>
+
+        <!-- RIGHT: TWO IMAGES SIDE BY SIDE -->
+        <div class="col-lg-6 col-md-12">
+            <div class="image-column">
+                <img src="~/images/company-icons/daph-one.png" alt="Parfait Image 1" />
+                <img src="~/images/company-icons/daph-two.png" alt="Parfait Image 2" />
+            </div>
+        </div>
+
+    </div>
+</div>

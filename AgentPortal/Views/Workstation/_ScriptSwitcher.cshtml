@@ -1,0 +1,38 @@
+@model string
+@{
+    var current = (Model ?? "mp").ToLowerInvariant();
+}
+
+<div class="hero-action-group script-switcher">
+    <div class="switcher-select-wrap">
+        <span class="switcher-ico" aria-hidden="true">⇄</span>
+        <select id="scriptSwitcher" class="btn gold hero-underwrite" data-current="@current" aria-label="Switch script">
+            <option data-key="mp" value="@Url.Action("Rebuttals", "Workstation")">Mortgage Protection Rebuttals</option>
+            <option data-key="fe" value="@Url.Action("FinalExpenseRebuttals", "Workstation")">Final Expense Rebuttals</option>
+            <option data-key="med" value="@Url.Action("MedicareRebuttals", "Workstation")">Medicare Rebuttals</option>
+            <option data-key="life" value="@Url.Action("LifeInsuranceRebuttals", "Workstation")">Life Insurance Rebuttals</option>
+            <option data-key="di" value="@Url.Action("DisabilityInsuranceRebuttals", "Workstation")">Disability Insurance Rebuttals</option>
+        </select>
+    </div>
+</div>
+
+<script>
+(function(){
+    const ddl = document.getElementById('scriptSwitcher');
+    if (!ddl) return;
+
+    const current = (ddl.dataset.current || '').toLowerCase();
+    if (current) {
+        Array.from(ddl.options).forEach(o => {
+            if ((o.dataset.key || '').toLowerCase() === current) {
+                o.selected = true;
+            }
+        });
+    }
+
+    ddl.addEventListener('change', () => {
+        const target = ddl.value;
+        if (target) window.location.href = target;
+    });
+})();
+</script>

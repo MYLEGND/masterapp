@@ -1,0 +1,175 @@
+using Domain.Entities;
+using Domain.Enums;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
+
+namespace AgentPortal.Services;
+
+    public class ExecutionEngine : IExecutionEngine
+    {
+        private readonly MasterAppDbContext _db;
+
+        public ExecutionEngine(MasterAppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<ActionItem> CreateActionAsync(ActionItem action, CancellationToken ct = default)
+    {
+        if (action.ActionSurface == default)
+        {
+            action.ActionSurface = ActionSurface.CrmOnly;
+        }
+        if (action.ActionCategory == default)
+        {
+            action.ActionCategory = ActionCategory.Other;
+        }
+        action.CreatedUtc = action.CreatedUtc == default ? DateTime.UtcNow : action.CreatedUtc;
+        _db.ActionItems.Add(action);
+        _db.ActionLogs.Add(new ActionLog
+        {
+            ActionId = action.Id,
+            ActorId = action.CreatedBy,
+            Verb = "created",
+            OccurredUtc = action.CreatedUtc,
+            PayloadJson = null
+        });
+        await _db.SaveChangesAsync(ct);
+        return action;
+    }
+
+    public async Task<ActionItem?> CompleteActionAsync(Guid actionId, string actorId, CancellationToken ct = default)
+    {
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        if (action == null) return null;
+        if (!string.Equals(action.OwnerId, actorId, StringComparison.OrdinalIgnoreCase)) return null;
+        action.Status = ActionStatus.Completed;
+        action.CompletedAtUtc = DateTime.UtcNow;
+        action.UpdatedUtc = action.CompletedAtUtc;
+        _db.ActionLogs.Add(new ActionLog
+        {
+            ActionId = actionId,
+            ActorId = actorId,
+            Verb = "completed",
+            OccurredUtc = action.CompletedAtUtc.Value
+        });
+        await _db.SaveChangesAsync(ct);
+        return action;
+    }
+
+    public async Task<ActionItem?> DismissActionAsync(Guid actionId, string actorId, string reason, CancellationToken ct = default)
+    {
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        if (action == null) return null;
+        action.Status = ActionStatus.Dismissed;
+        action.DismissedReason = reason;
+        action.UpdatedUtc = DateTime.UtcNow;
+        _db.ActionLogs.Add(new ActionLog
+        {
+            ActionId = actionId,
+            ActorId = actorId,
+            Verb = "dismissed",
+            PayloadJson = reason,
+            OccurredUtc = action.UpdatedUtc.Value
+        });
+        await _db.SaveChangesAsync(ct);
+        return action;
+    }
+
+    public async Task<ActionItem?> ReassignAsync(Guid actionId, ActionOwnerType newOwnerType, string newOwnerId, CancellationToken ct = default)
+    {
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
+        if (action == null) return null;
+        action.OwnerType = newOwnerType;
+        action.OwnerId = newOwnerId;
+        action.UpdatedUtc = DateTime.UtcNow;
+        _db.ActionLogs.Add(new ActionLog
+        {
+            ActionId = actionId,
+            ActorId = newOwnerId,
+            Verb = "reassigned",
+            PayloadJson = newOwnerType.ToString(),
+            OccurredUtc = action.UpdatedUtc.Value
+        });
+        await _db.SaveChangesAsync(ct);
+        return action;
+    }
+
+    public Task<IReadOnlyList<ActionItem>> GetTodayAsync(string ownerId, CancellationToken ct = default)
+    {
+        var todayUtc = DateTime.UtcNow.Date;
+        return _db.ActionItems
+            .AsNoTracking()
+            .Where(x => x.OwnerId == ownerId
+                        && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
+                        && (x.DueDateUtc == null ||
+                            (x.DueDateUtc >= todayUtc && x.DueDateUtc < todayUtc.AddDays(1)))
+                        && x.Status != ActionStatus.Completed && x.Status != ActionStatus.Dismissed)
+            .OrderBy(x => x.DueDateUtc)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<ActionItem>)t.Result, ct);
+    }
+
+    public Task<IReadOnlyList<ActionItem>> GetOverdueAsync(string ownerId, CancellationToken ct = default)
+    {
+        var nowUtc = DateTime.UtcNow;
+        return _db.ActionItems
+            .AsNoTracking()
+            .Where(x => x.OwnerId == ownerId
+                        && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
+                        && x.DueDateUtc < nowUtc
+                        && x.Status != ActionStatus.Completed && x.Status != ActionStatus.Dismissed)
+            .OrderBy(x => x.DueDateUtc)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<ActionItem>)t.Result, ct);
+    }
+
+    public Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, CancellationToken ct = default)
+    {
+        return _db.ActionItems
+            .AsNoTracking()
+            .Where(x => x.RelatedEntityType == relatedEntityType && x.RelatedEntityId == relatedEntityId && x.Status != ActionStatus.Dismissed)
+            .OrderByDescending(x => x.CreatedUtc)
+            .ToListAsync(ct)
+            .ContinueWith(t => (IReadOnlyList<ActionItem>)t.Result, ct);
+    }
+
+    public Task<ActionItem?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        return _db.ActionItems.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+    }
+
+    public async Task<ActionItem?> UpdateActionAsync(Guid id, string title, string? description, DateTime? dueDateUtc, ActionPriority priority, CancellationToken ct = default)
+    {
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (action == null) return null;
+
+        action.Title = title.Trim();
+        action.Description = description?.Trim() ?? string.Empty;
+        action.DueDateUtc = dueDateUtc;
+        action.Priority = priority;
+        action.UpdatedUtc = DateTime.UtcNow;
+
+        _db.ActionLogs.Add(new ActionLog
+        {
+            ActionId = id,
+            ActorId = action.OwnerId,
+            Verb = "updated",
+            PayloadJson = $"{title}|{priority}|{dueDateUtc}",
+            OccurredUtc = action.UpdatedUtc.Value
+        });
+
+        await _db.SaveChangesAsync(ct);
+        return action;
+    }
+
+    public async Task<bool> DeleteActionAsync(Guid id, CancellationToken ct = default)
+    {
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == id, ct);
+        if (action == null) return false;
+
+        _db.ActionItems.Remove(action);
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+}

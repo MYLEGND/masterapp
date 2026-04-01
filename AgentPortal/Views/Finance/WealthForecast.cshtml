@@ -1,0 +1,24 @@
+@{
+    ViewData["Title"] = "Wealth Forecast";
+}
+
+<div class="container d-flex flex-column align-items-center mt-5">
+
+    <h2 class="fw-bold mb-3" style="color:#a68023;">
+        Wealth Forecast
+    </h2>
+
+    <p class="text-muted text-center mb-4">
+        Discover your long-term earning power, savings capacity, and true wealth trajectory.
+    </p>
+
+    <!-- Embed container for dynamic tools -->
+    <div id="budget-embed" class="w-100" style="max-width:100%;"></div>
+
+</div>
+
+<!-- Chart.js library -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<!-- Finance tools JS -->
+<script src="~/js/finance-tools.js"></script>

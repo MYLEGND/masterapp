@@ -1,0 +1,228 @@
+@model AgentPortal.Models.AdvancedMarketsPageViewModel
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ViewData["Title"] = "Advanced Markets Planner";
+}
+
+<link rel="stylesheet" href="~/css/workstation/advanced-markets.css" asp-append-version="true" />
+
+<div class="amp-shell">
+    <header class="amp-hero">
+        <div>
+            <p class="amp-kicker">Workstation</p>
+            <h1 class="amp-title">Advanced Markets Planner</h1>
+            <p class="amp-sub">Tax Strategy | Executive Planning | Legacy Structuring — for educational illustration only.</p>
+            <div class="amp-disclaimer">Hypothetical, not tax/legal/actuarial advice. Final design requires CPA, ERISA counsel, TPA, actuary, and carrier review.</div>
+        </div>
+    </header>
+
+    <div class="amp-views">
+        <section id="ampStrategyView" class="view-active">
+            <div class="stage-header">
+                <div>
+                    <p class="amp-step">Step 1 · Choose Strategy</p>
+                    <h2 class="stage-title">Select the illustration focus</h2>
+                </div>
+                <div class="stage-actions">
+                    <button type="button" class="btn gold" id="ampContinueToInputs">Continue to Inputs</button>
+                    <button type="button" class="btn ghost" id="ampOpenGuide">Open Training Guide</button>
+                </div>
+            </div>
+            <div class="amp-client-select card">
+                <div class="card-head">
+                    <h3>Business Client Prefill</h3>
+                    <p>Search a saved business client to prefill the shared Advanced Markets inputs before calculation.</p>
+                </div>
+                <div class="card-body">
+                    <div class="amp-client-select-row">
+                        <label class="amp-client-search-field">
+                            <span>Search business client</span>
+                            <input type="search" id="ampClientSearch" placeholder="Search by client name, email, phone, city, or state" autocomplete="off" />
+                        </label>
+                        <button type="button" class="btn ghost" id="ampClearClientSelection">Clear Selection</button>
+                    </div>
+                    <div class="amp-client-selection" id="ampClientSelection">
+                        <span class="amp-client-selection-label">No business client selected.</span>
+                    </div>
+                    <div class="amp-client-search-results" id="ampClientSearchResults"></div>
+                </div>
+            </div>
+            <div class="strategy-select-grid">
+                @{ var labels = new Dictionary<AgentPortal.Models.StrategyKind,(string subtitle,string desc)> {
+                        { AgentPortal.Models.StrategyKind.DefinedBenefit, ("Large deductible", "Actuarial-style defined benefit funding") },
+                        { AgentPortal.Models.StrategyKind.CashBalance, ("Hybrid DB/CB", "Cash balance with pay/interest credits") },
+                        { AgentPortal.Models.StrategyKind.ComboDb401k, ("Layered DB + 401(k)", "Combo of DB with 401(k)/profit sharing") },
+                        { AgentPortal.Models.StrategyKind.ExecutiveBonus162, ("Executive benefit", "162 bonus using life chassis") },
+                        { AgentPortal.Models.StrategyKind.DeferredComp, ("Nonqualified deferral", "Deferred comp with employer credit risk") },
+                        { AgentPortal.Models.StrategyKind.SplitDollar, ("Split-dollar concept", "Shared premium / collateral structure") },
+                        { AgentPortal.Models.StrategyKind.TaxDiversification, ("Tax bucket balance", "Optimize qualified / taxable / tax-free mix") }
+                    }; }
+                @foreach (var s in Enum.GetValues(typeof(AgentPortal.Models.StrategyKind)))
+                {
+                    var val = (AgentPortal.Models.StrategyKind)s;
+                    var meta = labels[val];
+                    <button type="button" class="strategy-card proxy" data-strategy="@val">
+                        <div class="strategy-card-text">
+                            <span class="strategy-name">@AgentPortal.Models.AdvancedMarketsLabels.Display(val)</span>
+                            <span class="strategy-sub">@meta.subtitle</span>
+                            <span class="strategy-desc">@meta.desc</span>
+                        </div>
+                    </button>
+                }
+            </div>
+        <div class="card strategy-intro">
+            <div class="card-head">
+                <h3 data-strategy-field="title">Strategy Overview</h3>
+                <p data-strategy-field="tagline">Select a strategy to see fit, focus, and tradeoffs.</p>
+            </div>
+            <div class="card-body">
+                <div class="intro-grid">
+                    <div>
+                        <div class="intro-label">What it is</div>
+                        <div class="intro-text" data-strategy-field="what">Concise description of the illustration.</div>
+                    </div>
+                    <div>
+                        <div class="intro-label">Best for</div>
+                        <div class="intro-text" data-strategy-field="bestFor">High-income owners seeking deductible acceleration.</div>
+                    </div>
+                    <div>
+                        <div class="intro-label">Why use it</div>
+                        <div class="intro-text" data-strategy-field="why">Shows why this strategy solves a specific client problem.</div>
+                    </div>
+                    <div>
+                        <div class="intro-label">Tradeoff</div>
+                        <div class="intro-text" data-strategy-field="tradeoff">Employer commitment, testing, and admin complexity.</div>
+                    </div>
+                    <div>
+                        <div class="intro-label">When not to use</div>
+                        <div class="intro-text" data-strategy-field="noFit">Quick no-fit guidance.</div>
+                    </div>
+                    <div>
+                        <div class="intro-label">Notes</div>
+                        <div class="intro-text" data-strategy-field="notes">Illustrative only — requires CPA/ERISA/actuarial and carrier review.</div>
+                    </div>
+                </div>
+                    <div class="sensitivity-proxy">
+                        <label>Sensitivity
+                            <select id="ampSensitivityProxy">
+                                <option value="Conservative">Conservative</option>
+                                <option value="Base">Base</option>
+                                <option value="Optimistic">Optimistic</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="ampGuideView" class="is-hidden">
+            <div class="stage-header">
+                <div>
+                    <p class="amp-step">Step 1A · Strategy Training Guide</p>
+                    <h2 class="stage-title" id="ampGuideTitle">Strategy Guide</h2>
+                    <p class="amp-sub" id="ampGuideTagline">Understand the illustration before presenting.</p>
+                </div>
+                <div class="stage-actions">
+                    <button type="button" class="btn ghost" id="ampGuideBack">← Back to Strategies</button>
+                    <button type="button" class="btn gold" id="ampGuideToInputs">Continue to Inputs</button>
+                </div>
+            </div>
+            <div class="guide-layout">
+                <div class="guide-panel">
+                    <h3>Strategy Overview</h3>
+                    <p id="ampGuideOverview"></p>
+                </div>
+                <div class="guide-grid">
+                    <div class="guide-card">
+                        <h4>Best Fit Profile</h4>
+                        <ul id="ampGuideFit"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Poor Fit / Cautions</h4>
+                        <ul id="ampGuidePoorFit"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Key Inputs</h4>
+                        <ul id="ampGuideInputs"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Input Sections Guide</h4>
+                        <ul id="ampGuideInputsGuide"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Field-by-Field Guidance</h4>
+                        <ul id="ampGuideFields"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>How This Tool Estimates</h4>
+                        <ul id="ampGuideMath"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Key Outputs</h4>
+                        <ul id="ampGuideOutputs"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Results Page Coaching</h4>
+                        <ul id="ampGuideResults"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Tradeoffs & Risks</h4>
+                        <ul id="ampGuideRisks"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Guardrails</h4>
+                        <ul id="ampGuideGuardrails"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Common Questions</h4>
+                        <ul id="ampGuideQuestions"></ul>
+                    </div>
+                    <div class="guide-card">
+                        <h4>Next Steps</h4>
+                        <ul id="ampGuideNext"></ul>
+                    </div>
+                </div>
+                <div class="guide-panel">
+                    <h3>Talking Track</h3>
+                    <ul id="ampGuideTalking"></ul>
+                </div>
+            </div>
+        </section>
+
+        <section id="ampInputView" class="is-hidden">
+            <div class="stage-header">
+                <div>
+                    <p class="amp-step">Step 2 · Enter Inputs</p>
+                    <h2 class="stage-title">Strategy inputs & assumptions</h2>
+                </div>
+                <div class="stage-actions">
+                    <button type="button" class="btn ghost" id="ampBackToStrategies">← Back to Strategies</button>
+                    <button type="button" class="btn gold" id="ampCalc">Calculate</button>
+                    <button type="button" class="btn ghost" id="ampReset">Reset</button>
+                </div>
+            </div>
+            @await Html.PartialAsync("_AdvancedMarketsInputPanel", Model)
+        </section>
+
+        <section id="ampResultsView" class="is-hidden">
+            <div class="results-topbar">
+                <div class="left">
+                    <button type="button" class="btn ghost" id="ampBackToEdit">← Back to Edit Inputs</button>
+                    <button type="button" class="btn gold" id="ampRecalc">Recalculate</button>
+                </div>
+                <div class="right">
+                    <button type="button" class="btn ghost" id="ampResetFromResults">Start New Calculation</button>
+                </div>
+            </div>
+            <div class="amp-results" id="ampResults">
+                @await Html.PartialAsync("_AdvancedMarketsResultsSummary", Model)
+            </div>
+        </section>
+    </div>
+
+    <section class="amp-disclaimer-block">
+        @await Html.PartialAsync("_AdvancedMarketsDisclaimer")
+    </section>
+</div>
+
+<script src="~/js/workstation/advanced-markets.js" asp-append-version="true"></script>

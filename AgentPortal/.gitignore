@@ -1,0 +1,48 @@
+# =========================
+# .NET build artifacts
+# =========================
+bin/
+obj/
+publish/
+publish-azure/
+publish-azure-agentportal/
+
+# =========================
+# Secrets — NEVER commit
+# =========================
+appsettings.Development.json
+appsettings.Production.json
+secrets.json
+
+# =========================
+# Local database & keys
+# =========================
+App_Data/
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+
+# =========================
+# Deployment packages
+# =========================
+*.zip
+*.exe
+*.dll
+*.pdb
+*.binlog
+*.pp.xml
+
+# =========================
+# Logs & temp files
+# =========================
+*.log
+*.cache
+clientlogs/
+
+# =========================
+# OS / Editor
+# =========================
+.DS_Store
+.vscode/
+.idea/

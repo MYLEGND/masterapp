@@ -1,0 +1,167 @@
+﻿@{
+    ViewData["Title"] = "Home";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="home-container">
+
+    <!-- HERO -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold">Legend™ Core Platform</h1>
+        <p class="lead mb-2">
+            Your central hub for all tools, resources, and training
+        </p>
+        <hr class="my-3 hero-hr" />
+    </div>
+
+    <!-- FREQUENTLY USED TOOLS -->
+    <section class="home-tools mb-5">
+        <h3 class="text-center mb-4 fw-bold">Frequently Used Tools</h3>
+
+        <div class="d-flex flex-wrap justify-content-center home-tools-row">
+
+            @{
+                var tools = new[]
+                {
+                    new { Name = "Term Life Quote", Url = "https://quote.ipipeline.com/LTsearch.aspx?GAID=5889", Icon = "ipipeline.png" },
+                    new { Name = "Integrity Marketing (L&H CRM)", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png" },
+                    new { Name = "Exlynx AMS (P&C CRM)", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png" },
+                    new { Name = "SureLC (L&H Contracting)", Url = "https://accounts.surancebay.com/oauth/authorize?redirect_uri=https:%2F%2Fsurelc.surancebay.com%2Fproducer%2Foauth%3FreturnUrl%3D%252F%253FgaId%253D239&gaId=239&client_id=surecrmweb&response_type=code", Icon = "surelc.png" }
+                };
+            }
+
+            @foreach (var tool in tools)
+            {
+                <a href="@tool.Url"
+                   target="_blank"
+                   class="dashboard-tool d-flex flex-column align-items-center justify-content-center">
+
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
+                         alt="@tool.Name"
+                         width="60"
+                         height="60"
+                         class="mb-2" />
+
+                    <div class="fw-bold text-center mt-1">@tool.Name</div>
+                </a>
+            }
+        </div>
+    </section>
+
+    <!-- LEGEND STORE CTA -->
+    <div class="text-center my-5">
+        <a href="https://www.mylegnd.com/store"
+           target="_blank"
+           class="btn-legend-store">
+            Visit the Legend™ Store
+        </a>
+    </div>
+
+    <!-- SECOND ROW OF TOOLS -->
+    <section class="home-tools">
+        <div class="d-flex flex-wrap justify-content-center home-tools-row">
+
+            @{
+                var secondRowTools = new[]
+                {
+                    new { Name = "Final Expense Quote", Url = "https://fexquotes.com/wqt/v1/webrate.pl?id=126&fn=1&vrt=m&tgt=1&style=blue", Icon = "fex.png" },
+                    new { Name = "Smart Choice (P&C)", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png" },
+                    new { Name = "Carrier Website (L&H)", Url = "https://www.wmacorp.com/CarrierWebsites", Icon = "carrierweb.png" },
+                    new { Name = "Western Marketing", Url = "https://www.wmacorp.com/", Icon = "westernmarketing.png" },
+                };
+            }
+
+            @foreach (var tool in secondRowTools)
+            {
+                <a href="@tool.Url"
+                   target="_blank"
+                   class="dashboard-tool d-flex flex-column align-items-center justify-content-center">
+
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
+                         alt="@tool.Name"
+                         width="60"
+                         height="60"
+                         class="mb-2" />
+
+                    <div class="fw-bold text-center mt-1">@tool.Name</div>
+                </a>
+            }
+        </div>
+    </section>
+
+</div>
+
+<style>
+:root {
+    --gold-color: #a68023;
+    --gold-color-light: rgba(166,128,35,0.3);
+}
+
+.home-container {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    font-family: 'Inter', sans-serif;
+}
+
+.hero-hr {
+    border-color: var(--gold-color);
+    border-width: 2px;
+    max-width: 800px;
+    margin: 1rem auto 0;
+}
+
+.home-tools-row {
+    gap: 1rem;
+}
+
+.dashboard-tool {
+    width: 220px;
+    height: 180px;
+    border: 1px solid var(--gold-color);
+    border-radius: 16px;
+    padding: 1.25rem;
+    text-decoration: none;
+    color: #111;
+    font-weight: 600;
+    background: linear-gradient(145deg, #fff, #fff);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+}
+
+.dashboard-tool:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 12px 28px var(--gold-color-light);
+    background: linear-gradient(145deg, #fff, #fff);
+}
+
+.btn-legend-store {
+    font-size: 1.4rem;
+    font-weight: 700;
+    padding: 1rem 2.5rem;
+    border: 2px solid var(--gold-color);
+    border-radius: 16px;
+    background: #fff;
+    color: #111;
+    text-decoration: none;
+    box-shadow: 0 8px 22px var(--gold-color-light);
+    transition: all 0.3s ease;
+}
+
+.btn-legend-store:hover {
+    transform: translateY(-3px) scale(1.04);
+    box-shadow: 0 12px 28px var(--gold-color-light);
+    background: linear-gradient(135deg, #fff8e0, #fff);
+}
+
+@@media (max-width: 992px) {
+    .dashboard-tool { width: 200px; height: 160px; }
+}
+
+@@media (max-width: 576px) {
+    .dashboard-tool { width: 190px; height: 140px; }
+}
+</style>
+
+@section Scripts {
+    <!-- No scripts required -->
+}

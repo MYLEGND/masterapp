@@ -1,0 +1,1544 @@
+﻿@using Microsoft.AspNetCore.Http
+@using System.Security.Claims
+@using System.Text.Json
+@using Domain.Entities
+@using System.IO
+@inject IHttpContextAccessor HttpContextAccessor
+@inject ClientApp.Services.EffectiveClientContextService ClientContextService
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@Html.Raw(ViewData["Title"]) - Legend™</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
+
+    <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+
+    <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
+
+    <style>
+        :root{
+            --client-gold:#a68023;
+            --client-gold-bright:#ddb457;
+            --client-line:rgba(166,128,35,.42);
+            --client-line-strong:rgba(166,128,35,.88);
+        }
+
+        body { background: #fff; color: #000; font-family: 'Inter', sans-serif; }
+
+        .navbar {
+            background: #0b1529 !important;
+            border: 1.5px solid rgba(166,128,35,.86) !important;
+            padding: 2rem 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            max-height: none; /* IMPORTANT: max-height was clipping on mobile */
+            position: relative;
+            box-shadow:
+                0 18px 38px rgba(0,0,0,.28),
+                inset 0 0 0 1px rgba(255,255,255,.08);
+            border-radius: 18px;
+            overflow: visible; /* allow dropdown menus to escape container */
+            z-index: 1030;
+        }
+
+        .navbar::before{
+            content:"";
+            position:absolute;
+            left:0;
+            right:0;
+            top:0;
+            height:4px;
+            background: linear-gradient(90deg, #a68023, #c79931 24%, #ddb457 52%, #c79931 80%, #a68023);
+            border-top-left-radius: 16px;
+            border-top-right-radius: 16px;
+        }
+
+        .navbar-brand img {
+            height: 82px;
+            width: auto;
+            max-height: 82px;
+            padding: 10px;
+            border: 1.5px solid rgba(166,128,35,.62);
+            border-radius: 14px;
+            background: #0f1d38;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 22px rgba(0,0,0,.24);
+            filter: drop-shadow(0 8px 16px rgba(0,0,0,.18));
+        }
+
+        /* =========================================================
+           CRITICAL OVERRIDE: site.css sets .navbar-left to display:grid
+           which stacks things. We force flex with higher specificity.
+           ========================================================= */
+        header .navbar .navbar-left {
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            margin-left: 1.5rem;
+            height: 100%;
+        }
+
+        .navbar-left .nav-rows-grid {
+            display: grid;
+            row-gap: 0.5rem;
+        }
+
+        .nav-context-row {
+            display: flex;
+            align-items: center;
+            min-height: 34px;
+        }
+
+        .nav-context-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            max-width: min(100%, 430px);
+            padding: 0.48rem 0.9rem;
+            border-radius: 999px;
+            border: 1.5px solid rgba(166,128,35,.62);
+            background: #0f1d38;
+            color: #f8fafc;
+            font-weight: 850;
+            letter-spacing: .02em;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+
+        .nav-context-pill strong {
+            font-weight: 950;
+            color: #f8fafc;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .navbar-left .nav-row {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+            flex-wrap: wrap; /* wrap when needed, but keep horizontal row behavior */
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar-left li { list-style: none; }
+
+        .navbar-left .nav-link {
+            font-weight: 900;
+            color: #f8fafc !important;
+            white-space: nowrap;
+            padding: 0.7rem 1.35rem;
+            border-radius: 50px;
+            transition: all 0.25s ease;
+            letter-spacing: 0.55px;
+            border: 1.5px solid rgba(166,128,35,.62);
+            background: transparent;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+        }
+
+        .navbar-left .nav-link:hover,
+        .navbar-left .nav-link.active {
+            color: var(--client-gold-bright) !important;
+            background: rgba(166,128,35,0.14);
+            border-color: rgba(166,128,35,.82);
+            transform: translateY(-2px);
+            box-shadow:
+                0 14px 24px rgba(0,0,0,.22),
+                inset 0 1px 0 rgba(255,255,255,.12);
+        }
+
+        .dropdown { position: relative; }
+
+        .dropdown-menu-centered {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: #ffffff;
+            border: 1.5px solid rgba(166,128,35,.74);
+            border-radius: 16px;
+            padding: 0.5rem 0;
+            display: none;
+            flex-direction: column;
+            min-width: 200px;
+            z-index: 999;
+            box-shadow: 0 20px 40px rgba(64,47,11,.12);
+            backdrop-filter: blur(4px);
+        }
+
+        .dropdown-menu-centered .dropdown-item {
+            padding: 0.65rem 1.25rem;
+            color: #1a1a1a;
+            font-weight: 800;
+            text-decoration: none;
+            border-radius: 14px;
+            transition: all 0.25s ease;
+            margin: 0 6px;
+        }
+
+        .dropdown-menu-centered .dropdown-item:hover {
+            color: #a68023;
+            background: #fffdf8;
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(64,47,11,.10);
+        }
+
+        .dropdown:hover .dropdown-menu-centered { display: flex; }
+
+        .navbar-right {
+            display: flex;
+            width: auto;
+            min-width: 360px;
+            justify-content: flex-end;
+            gap: 8px;
+            align-items: center;
+            position: relative;
+            flex-wrap: wrap;
+            overflow: visible;
+            z-index: 1031;
+        }
+
+        .agent-pill-shell {
+            order: 2;
+            flex: 0 0 100%;
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 6px;
+        }
+
+        .agent-pill-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.45rem 0.85rem;
+            border-radius: 12px;
+            border: 1.5px solid #8f6b14;
+            background: #0f172a;
+            color: #ffffff;
+            font-weight: 850;
+            letter-spacing: .02em;
+            box-shadow: 0 10px 20px rgba(0,0,0,.12);
+            white-space: nowrap;
+            max-width: none;
+            cursor: pointer;
+        }
+
+        .navbar-right .nav-link,
+        .navbar-right .btn-link,
+        .navbar-right .profile-chip {
+            order: 1;
+        }
+
+        .agent-pill .npn-chip {
+            padding: 0.2rem 0.6rem;
+            border-left: 1px solid #8f6b14;
+            color: #f8f9fb;
+            font-weight: 900;
+        }
+        .agent-pill-menu a { font-weight: 800; }
+        .agent-pill-menu .disabled { opacity: .6; }
+        .agent-pill-menu {
+            z-index: 9999;
+            background: #0b1529;
+            border: 1.6px solid #c5921f;
+            border-radius: 12px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+        }
+        .agent-pill-menu .dropdown-item {
+            color: #f8fafc;
+            font-weight: 800;
+        }
+        .agent-pill-menu .dropdown-item:hover {
+            background: rgba(197,146,31,0.18);
+            color: #f8fafc;
+        }
+        .agent-pill-menu .dropdown-divider {
+            border-color: rgba(197,146,31,0.45);
+        }
+
+        /* Theme any nav dropdowns navy/white/gold so nothing renders white */
+        header .navbar .dropdown-menu {
+            background: #0b1529 !important;
+            border: 1.6px solid #c5921f !important;
+            color: #f8fafc !important;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+            border-radius: 12px;
+        }
+        header .navbar .dropdown-menu .dropdown-item {
+            color: #f8fafc !important;
+            font-weight: 800;
+        }
+        header .navbar .dropdown-menu .dropdown-item:hover,
+        header .navbar .dropdown-menu .dropdown-item:focus {
+            background: rgba(197,146,31,0.18) !important;
+            color: #f8fafc !important;
+        }
+        header .navbar .dropdown-menu .dropdown-divider {
+            border-color: rgba(197,146,31,0.45) !important;
+        }
+
+        /* ensure any dropdown in the nav layers above everything */
+        header .dropdown-menu {
+            z-index: 12000;
+            position: absolute;
+        }
+
+        .navbar-right .nav-link,
+        .navbar-right .btn-link {
+            color: #f8fafc !important;
+            font-weight: 900;
+            transition: all 0.25s ease;
+            white-space: nowrap;
+            padding: .65rem 1.1rem;
+            border-radius: 30px;
+            border: 1.5px solid rgba(166,128,35,.62);
+            background: transparent;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+        }
+
+        .navbar-right .nav-link:hover,
+        .navbar-right .btn-link:hover {
+            color: var(--client-gold-bright) !important;
+            background: rgba(166,128,35,0.14);
+            border-color: rgba(166,128,35,.82);
+            transform: translateY(-2px);
+            box-shadow:
+                0 14px 24px rgba(0,0,0,.22),
+                inset 0 1px 0 rgba(255,255,255,.12);
+        }
+
+        .profile-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 0.4rem 0.85rem;
+            border-radius: 999px;
+            border: 1.5px solid rgba(166,128,35,.82);
+            background: #ffffff;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.86), 0 10px 20px rgba(64,47,11,.12);
+            text-decoration: none;
+            color: #1a1a1a;
+            font-weight: 900;
+            min-width: 150px;
+        }
+
+        .profile-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 1.5px solid rgba(166,128,35,.45);
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            display: grid;
+            place-items: center;
+            color: #f8fafc;
+            font-weight: 900;
+            letter-spacing: .5px;
+        }
+
+        .profile-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .profile-meta {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .profile-name { color: #0f172a; font-weight: 900; }
+        .profile-note { color: #4b5563; font-size: 0.8rem; font-weight: 800; }
+
+        .header-psalms {
+            position: absolute;
+            top: 102px; /* pulled upward to sit fully inside the nav */
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.32rem;
+            font-weight: 900;
+            color: #a68023;
+            letter-spacing: 1.8px;
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+            max-width: calc(100% - 3rem);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            padding: .48rem 1.1rem;
+            border-radius: 999px;
+            border: 1.5px solid rgba(166,128,35,.30);
+            background: #ffffff;
+            box-shadow:
+                0 10px 22px rgba(64,47,11,.08),
+                inset 0 1px 0 rgba(255,255,255,.84);
+            line-height: 1.05;
+            z-index: 1200;
+            cursor: pointer;
+            transition: transform .15s ease, box-shadow .18s ease, background .18s ease;
+        }
+
+        .header-psalms:hover,
+        .header-psalms:focus-visible {
+            transform: translateX(-50%) translateY(-1px);
+            box-shadow:
+                0 14px 30px rgba(64,47,11,.14),
+                inset 0 1px 0 rgba(255,255,255,.94);
+            background: #f8fafc;
+            outline: none;
+        }
+
+        .header-psalms:active {
+            transform: translateX(-50%) translateY(0);
+            box-shadow:
+                0 8px 16px rgba(64,47,11,.12),
+                inset 0 1px 0 rgba(255,255,255,.84);
+            background: #f4f6fb;
+        }
+
+        .no-scroll { overflow: hidden; }
+
+        .scripture-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(8, 12, 24, 0.72);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .18s ease;
+            z-index: 1400;
+            padding: 16px;
+        }
+
+        .scripture-modal.open { opacity: 1; pointer-events: auto; }
+
+        .scripture-card {
+            width: min(760px, 96vw);
+            background: #0b1529;
+            color: #f8fafc;
+            border-radius: 18px;
+            border: 1.6px solid var(--legend-gold-deep, rgba(166,128,35,.85));
+            box-shadow: 0 28px 60px rgba(0,0,0,.44);
+            padding: 20px 22px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .scripture-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .scripture-day {
+            font-size: .82rem;
+            letter-spacing: 0.08em;
+            color: rgba(255,255,255,.72);
+            text-transform: uppercase;
+        }
+
+        .scripture-reference {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--legend-gold-bright, #f2c573);
+            letter-spacing: 0.04em;
+        }
+
+        .scripture-translation {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(166,128,35,.60);
+            background: rgba(255,255,255,.06);
+            font-size: .85rem;
+            color: #f8fafc;
+            white-space: nowrap;
+        }
+
+        .scripture-close {
+            background: transparent;
+            color: #f8fafc;
+            border: 1px solid rgba(255,255,255,.18);
+            border-radius: 10px;
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            line-height: 1;
+            transition: background .15s ease, transform .15s ease;
+        }
+
+        .scripture-close:hover,
+        .scripture-close:focus-visible {
+            background: rgba(255,255,255,.12);
+            transform: translateY(-1px);
+            outline: none;
+        }
+
+        .scripture-text {
+            max-height: 60vh;
+            overflow: auto;
+            padding-right: 6px;
+            line-height: 1.6;
+            letter-spacing: 0.01em;
+        }
+
+        .scripture-text p { margin-bottom: 10px; color: #e2e8f0; }
+        .scripture-text p:last-child { margin-bottom: 0; }
+
+        .scripture-streak-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px dashed rgba(166,128,35,.55);
+            background: rgba(255,255,255,.04);
+        }
+
+        .scripture-streak-label {
+            color: rgba(255,255,255,.76);
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            font-size: .8rem;
+        }
+
+        .scripture-streak-value {
+            font-size: 1.3rem;
+            font-weight: 900;
+            letter-spacing: 0.04em;
+        }
+
+        .scripture-streak-note {
+            color: rgba(255,255,255,.64);
+            font-weight: 700;
+            font-size: .85rem;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+        }
+
+        .explore-overlay{
+            position: fixed;
+            inset: 0;
+            z-index: 1098;
+            background: transparent;
+            display: none;
+        }
+        .explore-overlay.open{ display:block; }
+
+        .explore-trigger{
+            position: fixed;
+            left: 18px;
+            top: 185px;
+            z-index: 1100;
+            width: 54px;
+            height: 54px;
+            border-radius: 16px;
+            border: 1.6px solid rgba(166,128,35,.86);
+            background: #0b1529;
+            box-shadow:
+                0 16px 34px rgba(0,0,0,.26),
+                inset 0 0 0 1px rgba(255,255,255,.10);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all .2s ease;
+        }
+
+        .explore-trigger:hover{
+            transform: translateY(-2px) scale(1.01);
+            border-color: rgba(166,128,35,.94);
+            box-shadow:
+                0 20px 42px rgba(0,0,0,.32),
+                inset 0 0 0 1px rgba(255,255,255,.14);
+        }
+
+        .explore-bars{
+            width: 18px;
+            height: 14px;
+            display: grid;
+            gap: 3px;
+        }
+
+        .explore-bars span{
+            display:block;
+            height: 2.5px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #f8fafc, #ddb457);
+            transition: all .2s ease;
+            opacity: 1;
+        }
+
+        .explore-trigger:hover .explore-bars span{
+            background: linear-gradient(90deg, #f8fafc, #efc866);
+        }
+
+        .explore-drawer{
+            position: fixed;
+            left: 78px;
+            top: 185px;
+            z-index: 1099;
+            width: 320px;
+            max-width: calc(100vw - 36px);
+            transform: translateX(-140%);
+            transition: transform .25s ease;
+            pointer-events: none;
+        }
+
+        .explore-drawer.open{
+            transform: translateX(0);
+            pointer-events: auto;
+        }
+
+        .explore-drawer:not(.open) .explore-card{
+            box-shadow:none;
+        }
+
+        .explore-card{
+            background: #0b1529;
+            border: 1.5px solid rgba(166,128,35,.86);
+            border-radius: 18px;
+            box-shadow:
+                0 22px 48px rgba(0,0,0,.30),
+                inset 0 0 0 1px rgba(255,255,255,.08);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .explore-card::before{
+            content:"";
+            position:absolute;
+            left:0;
+            right:0;
+            top:0;
+            height:4px;
+            background: linear-gradient(90deg, #a68023, #c79931 26%, #efc866 54%, #c79931 80%, #a68023);
+        }
+
+        .explore-header{
+            padding: 18px 18px 12px 18px;
+            border-bottom: 1px solid rgba(166,128,35,.32);
+            display:flex;
+            align-items:center;
+            justify-content: space-between;
+            gap: 10px;
+            background: #0b1529;
+        }
+
+        .explore-title{
+            font-weight: 1000;
+            letter-spacing: 1.2px;
+            color: #ddb457;
+            font-size: 1rem;
+            white-space: nowrap;
+        }
+
+        .explore-pill{
+            font-size: .74rem;
+            font-weight: 900;
+            color: #ddb457;
+            background: #0f1d38;
+            border: 1px solid rgba(166,128,35,.42);
+            padding: 6px 11px;
+            border-radius: 999px;
+            white-space: nowrap;
+            box-shadow: inset 0 0 0 1px rgba(255,255,255,.72);
+        }
+
+        .explore-search{
+            padding: 14px 18px 10px 18px;
+        }
+
+        .explore-search input{
+            width:100%;
+            border-radius:999px;
+            border:1.5px solid rgba(166,128,35,.42);
+            padding:11px 15px;
+            outline:none;
+            font-weight:800;
+            transition:all .2s ease;
+            background: #0f1d38;
+            color:#f8fafc;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+        }
+
+        .explore-search input:focus{
+            border-color: rgba(166,128,35,.94);
+            box-shadow: 0 0 0 4px rgba(166,128,35,.14), 0 12px 24px rgba(64,47,11,.08);
+        }
+
+        .explore-list{
+            max-height: calc(100vh - 330px);
+            overflow:auto;
+            padding: 8px 12px 16px 12px;
+        }
+
+        .explore-item{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:10px;
+            padding:10px 12px;
+            border-radius:12px;
+            text-decoration:none;
+            color:#f8fafc;
+            font-weight:900;
+            transition:all .2s ease;
+            margin:6px 6px;
+            border:1px solid rgba(166,128,35,.38);
+            background: #0f1d38;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+        }
+
+        .explore-item:hover{
+            color:#ddb457;
+            background: rgba(166,128,35,.14);
+            transform: translateY(-2px);
+            border-color: rgba(166,128,35,.56);
+            box-shadow: 0 14px 28px rgba(0,0,0,.24);
+        }
+
+        .explore-item span{
+            display:block;
+            font-size:.98rem;
+            letter-spacing:.18px;
+        }
+
+        .explore-item small{
+            font-weight: 900;
+            white-space: nowrap;
+            padding: 5px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,.16);
+            background: rgba(255,255,255,.06);
+            color: #e2e8f0;
+            letter-spacing: .35px;
+            text-transform: uppercase;
+            font-size: .67rem;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+        }
+
+        .explore-item[data-tone="home"] small{
+            color:#2457c5;
+            border-color:rgba(36,87,197,.28);
+            background:linear-gradient(180deg, #f4f8ff, #e9f1ff);
+        }
+
+        .explore-item[data-tone="finance"] small{
+            color:#0d7d73;
+            border-color:rgba(13,125,115,.24);
+            background:linear-gradient(180deg, #f1fcfa, #e7f8f5);
+        }
+
+        .explore-item[data-tone="ops"] small{
+            color:#1f8b49;
+            border-color:rgba(31,139,73,.24);
+            background:linear-gradient(180deg, #f3fbf6, #e8f7ed);
+        }
+
+        .explore-item[data-tone="quote"] small{
+            color:#a05d12;
+            border-color:rgba(160,93,18,.24);
+            background:linear-gradient(180deg, #fff8ef, #fff0dd);
+        }
+
+        .explore-item[data-tone="library"] small{
+            color:#7a3fe0;
+            border-color:rgba(122,63,224,.24);
+            background:linear-gradient(180deg, #f7f4ff, #efe9ff);
+        }
+
+        .explore-item[data-tone="growth"] small{
+            color:#9d4edd;
+            border-color:rgba(157,78,221,.24);
+            background:linear-gradient(180deg, #faf4ff, #f1e6ff);
+        }
+
+        footer.footer {
+            background: #ffffff !important;
+            color: #1a1a1a !important;
+            border-top: 1.5px solid rgba(166,128,35,.30) !important;
+            font-weight: 700;
+            font-size: 0.95rem;
+        }
+
+        .footer-shell{
+            display:grid;
+            grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+            align-items:center;
+            gap: 1rem;
+            padding: .45rem 0;
+        }
+
+        .footer-left,
+        .footer-center,
+        .footer-right{
+            min-width: 0;
+        }
+
+        .footer-left{
+            justify-self:start;
+            text-align:left;
+        }
+
+        .footer-center{
+            justify-self:center;
+            text-align:center;
+        }
+
+        .footer-right{
+            justify-self:end;
+        }
+
+        .footer-support{
+            display:flex;
+            flex-wrap:wrap;
+            align-items:center;
+            justify-content:flex-start;
+            gap: .35rem 1rem;
+            max-width: 100%;
+        }
+
+        .footer-support-label{
+            color:#6f4f0f;
+            font-weight: 900;
+            letter-spacing: .02em;
+        }
+
+        .footer-support a{
+            color:#5f4710;
+            text-decoration:none;
+            font-weight:800;
+        }
+
+        .footer-support a:hover{
+            color:#8f6615;
+            text-decoration:underline;
+        }
+
+        .footer-meta{
+            display:flex;
+            flex-wrap:wrap;
+            align-items:center;
+            justify-content:center;
+            gap: .35rem .8rem;
+        }
+
+        .footer-spacer{
+            min-height: 1px;
+        }
+
+        /* ====================== FOOTER LINKS ====================== */
+        .footer-link{
+            color: #a68023;              /* your theme color */
+            font-weight: 600;
+            text-decoration: none;
+            transition: all .2s ease;
+        }
+
+        .footer-link:hover{
+            color: #a68023;              /* slightly darker on hover */
+            text-decoration: underline;
+        }
+
+
+        .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
+
+        /* =========================
+           MOBILE: stay inside border,
+           keep nav items horizontal (wrap allowed),
+           and move Psalms into flow.
+           ========================= */
+        @@media (max-width: 576px) {
+            .navbar {
+                padding: 1rem 1rem;
+                align-items: flex-start;
+            }
+
+            .navbar-brand img { height: 70px; max-height: 70px; }
+
+            /* container stacks sections cleanly */
+            header .navbar .container-fluid {
+                display: flex !important;
+                flex-direction: column;
+                align-items: stretch !important;
+                gap: .75rem;
+            }
+
+            /* Left tabs: STILL HORIZONTAL, just wrap to new line if needed */
+            header .navbar .navbar-left {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            header .navbar .navbar-left .nav-row {
+                justify-content: center;
+                gap: .5rem;
+                flex-wrap: wrap; /* wraps, but remains side-by-side */
+            }
+
+            /* Psalms line MUST be inside border on mobile */
+            .header-psalms {
+                position: static;
+                transform: none;
+                top: auto;
+                left: auto;
+                width: 100%;
+                max-width: 100%;
+                margin-top: .25rem;
+                text-align: center;
+                font-size: 1.05rem;
+                white-space: normal;
+            }
+
+            .navbar-right {
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+                min-width: 0;
+            }
+
+            .explore-trigger{
+                top: 215px;
+                left: 12px;
+            }
+
+            .explore-drawer{
+                top: 215px;
+                left: 70px;
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .footer-shell{
+                grid-template-columns: 1fr;
+                justify-items:center;
+            }
+
+            .footer-left,
+            .footer-center,
+            .footer-right{
+                justify-self:center;
+                text-align:center;
+            }
+
+            .footer-support{
+                flex-direction: column;
+                justify-content:center;
+                gap: .45rem;
+            }
+
+            .footer-meta{
+                flex-direction: column;
+            }
+        }
+
+        /* =========================
+           iPad/Tablets: keep desktop vibe,
+           but prevent overflow + keep Psalms inside.
+           ========================= */
+        @@media (min-width: 577px) and (max-width: 992px) {
+            .navbar { max-height: none; }
+
+            /* allow wrap but keep layout clean */
+            header .navbar .container-fluid {
+                gap: .75rem;
+            }
+
+            /* Psalms inside border */
+            .header-psalms {
+                position: static;
+                transform: none;
+                width: 100%;
+                max-width: 100%;
+                text-align: center;
+                margin-top: .25rem;
+                white-space: normal;
+                font-size: 1.2rem;
+            }
+
+            header .navbar .navbar-left {
+                margin-left: 0.75rem;
+                flex: 1 1 520px;
+            }
+
+            header .navbar .navbar-left .nav-row {
+                flex-wrap: wrap;
+            }
+
+            .nav-context-pill {
+                max-width: 100%;
+            }
+
+            .navbar-right {
+                flex: 0 0 auto;
+            }
+        }
+
+        @@media (max-width: 576px) {
+            .nav-context-row {
+                width: 100%;
+            }
+
+            .nav-context-pill {
+                max-width: 100%;
+            }
+        }
+    </style>
+</head>
+
+<body class="d-flex flex-column min-vh-100">
+
+<header>
+    <nav class="navbar navbar-expand-sm navbar-light">
+        <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
+
+            <a class="navbar-brand" asp-controller="Home" asp-action="Index">
+                <img src="~/images/company-icons/legend.png" asp-append-version="true" alt="Legend™" />
+            </a>
+
+            <div class="navbar-left">
+                <div class="nav-rows-grid">
+                    <ul class="navbar-nav nav-row">
+                        @{
+                            var currentController =
+                                (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName;
+                            string Active(string c) => c == currentController ? "active" : "";
+                        }
+
+                        @{
+                            var ctx = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
+                            bool isBusinessClient = false;
+                            string managedClientName = "Client";
+                            if (ctx?.Profile != null)
+                            {
+                                isBusinessClient = string.Equals(ResolveRecordType(ctx.Profile), "BusinessClient", StringComparison.OrdinalIgnoreCase);
+                                managedClientName = $"{ctx.Profile.FirstName} {ctx.Profile.LastName}".Trim();
+                                if (string.IsNullOrWhiteSpace(managedClientName))
+                                {
+                                    managedClientName = "Client";
+                                }
+                            }
+                        }
+
+                        <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
+                        <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
+                        @if (isBusinessClient)
+                        {
+                            <li class="nav-item"><a class="nav-link @Active("BookKeeping")" asp-controller="BookKeeping" asp-action="Index">Book Keeping</a></li>
+                        }
+                        <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
+                    </ul>
+                    @if (ctx?.IsAgentView == true)
+                    {
+                        <div class="nav-context-row">
+                            <span class="nav-context-pill">Managing <strong>@managedClientName</strong></span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Center Psalms 23 | Proverbs 3:5-6 -->
+            <button type="button"
+                    class="header-psalms"
+                    id="psalmsTrigger"
+                    aria-haspopup="dialog"
+                    aria-controls="psalmsModal">
+                LIFE HAC | GOD ABOVE ALL
+            </button>
+
+            <div class="navbar-right">
+            @{
+                    var user = HttpContextAccessor.HttpContext?.User;
+                    var clientContext = ctx; // from earlier resolution
+                    var agentPillName = string.IsNullOrWhiteSpace(clientContext?.AgentDisplayName)
+                        ? "Your Agent"
+                        : clientContext.AgentDisplayName;
+                    var agentPillNpn = clientContext?.AgentNpn;
+                    var showAgentPill = clientContext != null && (!string.IsNullOrWhiteSpace(agentPillName) || !string.IsNullOrWhiteSpace(agentPillNpn));
+                    string? CleanToken(string? s)
+                    {
+                        if (string.IsNullOrWhiteSpace(s)) return null;
+                        var t = s.Trim();
+                        if (t.Contains("@")) return null;
+                        if (t.Contains(".")) return null;
+                        var parts = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                        return parts.Length > 0 ? parts[0] : null;
+                    }
+                    string? Initial(string? s)
+                    {
+                        if (string.IsNullOrWhiteSpace(s)) return null;
+                        var t = s.Trim();
+                        return t.Length > 0 ? t.Substring(0, 1).ToUpperInvariant() : null;
+                    }
+
+                    var displayName = "Agent";
+                    string? first = null;
+                    string? last = null;
+                    string? avatarUrl = null;
+                    string? userId = null;
+
+                    if (user?.Identity != null && user.Identity.IsAuthenticated)
+                    {
+                        first =
+                            CleanToken(user.FindFirst("given_name")?.Value)
+                            ?? CleanToken(user.FindFirst(ClaimTypes.GivenName)?.Value)
+                            ?? CleanToken(user.FindFirst("name")?.Value);
+
+                        last =
+                            CleanToken(user.FindFirst("family_name")?.Value)
+                            ?? CleanToken(user.FindFirst(ClaimTypes.Surname)?.Value);
+
+                        displayName =
+                            (!string.IsNullOrWhiteSpace(first) || !string.IsNullOrWhiteSpace(last))
+                                ? string.Join(" ", new[] { first, last }.Where(x => !string.IsNullOrWhiteSpace(x)))
+                                : user.FindFirst("name")?.Value
+                                  ?? user.FindFirst(ClaimTypes.Name)?.Value
+                                  ?? first
+                                  ?? "Agent";
+
+                        userId =
+                            user.FindFirst("oid")?.Value
+                            ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                            ?? user.Identity?.Name;
+
+                        avatarUrl =
+                            user.FindFirst("picture")?.Value
+                            ?? user.FindFirst("photo")?.Value
+                            ?? user.FindFirst("avatar")?.Value
+                            ?? user.FindFirst("avatar_url")?.Value
+                            ?? user.FindFirst("profile_image")?.Value
+                            ?? user.FindFirst("image")?.Value;
+
+                    }
+
+                    var initials = (Initial(first) ?? "") + (Initial(last) ?? "");
+                    if (string.IsNullOrWhiteSpace(initials))
+                    {
+                        initials = Initial(displayName) ?? "A";
+                    }
+
+                    if (avatarUrl == null && !string.IsNullOrWhiteSpace(userId))
+                    {
+                        avatarUrl = Url.Action("Current", "Avatar");
+                    }
+                }
+
+                @if (showAgentPill)
+                {
+                    var agentPhone = clientContext?.AgentPhone;
+                    var agentEmail = clientContext?.AgentEmail;
+                    <div class="dropdown agent-pill-shell" aria-label="Assigned agent">
+                        <button class="agent-pill-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                            <span class="agent-name">@agentPillName</span>
+                            @if (!string.IsNullOrWhiteSpace(agentPillNpn))
+                            {
+                                <span class="npn-chip">NPN - @agentPillNpn</span>
+                            }
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end agent-pill-menu">
+                            @if (!string.IsNullOrWhiteSpace(agentPhone))
+                            {
+                                <li><a class="dropdown-item" href="tel:@agentPhone">Call @agentPhone</a></li>
+                                <li><a class="dropdown-item" href="sms:@agentPhone">Text @agentPhone</a></li>
+                            }
+                            else
+                            {
+                                <li><span class="dropdown-item disabled">No phone on file</span></li>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(agentEmail))
+                            {
+                                <li><a class="dropdown-item" href="mailto:@agentEmail">Email @agentEmail</a></li>
+                            }
+                            else
+                            {
+                                <li><span class="dropdown-item disabled">No email on file</span></li>
+                            }
+                        </ul>
+                    </div>
+                }
+
+                <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
+                <div class="dropdown">
+                    <button class="profile-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="@displayName">
+                        <div class="profile-avatar">
+                            @if (!string.IsNullOrWhiteSpace(avatarUrl))
+                            {
+                                <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span>@initials</span>
+                            }
+                        </div>
+                        <div class="profile-meta">
+                            <span class="profile-name" style="color:#0f172a;">@displayName</span>
+                            <span class="visually-hidden">Profile menu</span>
+                        </div>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
+                        <li><a class="dropdown-item" href="/profile/edit">Edit Profile</a></li>
+                        <li><a class="dropdown-item" href="/profile">View Profile</a></li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li>
+                            <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
+                                @Html.AntiForgeryToken()
+                                <button type="submit" class="dropdown-item">Logout</button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </nav>
+</header>
+
+<div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
+
+<button id="exploreTrigger"
+        type="button"
+        class="explore-trigger"
+        aria-label="Open Explore"
+        aria-controls="exploreDrawer"
+        aria-expanded="false">
+    <div class="explore-bars" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+</button>
+
+<aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
+    <div class="explore-card">
+        <div class="explore-header">
+            <div class="explore-title">EXPLORE</div>
+            <div class="explore-pill">Quick Find</div>
+        </div>
+
+        <div class="explore-search">
+            <input id="exploreSearch"
+                   type="text"
+                   placeholder="Search Explore..."
+                   autocomplete="off"
+                   aria-label="Search Explore" />
+        </div>
+
+        <div id="exploreList" class="explore-list">
+            <a class="explore-item" data-tone="protection" asp-controller="ProtectionSnapshot" asp-action="Index">
+                <span>Protection Snapshot</span>
+                <small>Planning</small>
+            </a>
+
+            <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index">
+                <span>Resources</span>
+                <small>Library</small>
+            </a>
+
+            <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index">
+                <span>Trainings</span>
+                <small>Growth</small>
+            </a>
+        </div>
+    </div>
+</aside>
+
+<div id="psalmsModal" class="scripture-modal" aria-hidden="true">
+    <div class="scripture-card" role="dialog" aria-modal="true" aria-labelledby="psalmsReference" tabindex="-1">
+        <div class="scripture-card-header">
+            <div>
+                <div class="scripture-day" id="psalmsDay"></div>
+                <div class="scripture-reference" id="psalmsReference"></div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="scripture-translation" id="psalmsTranslation"></span>
+                <button type="button" class="scripture-close" id="psalmsClose" aria-label="Close scripture dialog">&times;</button>
+            </div>
+        </div>
+        <div class="scripture-streak-row">
+            <span class="scripture-streak-label">Streak</span>
+            <span class="scripture-streak-value" id="psalmsStreak"></span>
+            <span class="scripture-streak-note" id="psalmsStreakNote"></span>
+        </div>
+        <div class="scripture-text" id="psalmsText"></div>
+    </div>
+</div>
+
+<div class="container layout-content flex-grow-1">
+    <main role="main">
+        @RenderBody()
+    </main>
+</div>
+
+<footer class="footer mt-auto py-3">
+    <div class="container text-center footer-shell">
+        <div class="footer-left">
+            <div class="footer-support">
+                <span class="footer-support-label">Need Support?</span>
+                <a href="tel:988">988 Suicide &amp; Crisis Lifeline</a>
+                <a href="tel:800-799-7233">Domestic Violence Hotline</a>
+                <a href="https://www.samhsa.gov/" target="_blank" rel="noopener">SAMHSA</a>
+            </div>
+        </div>
+
+        <div class="footer-center">
+            <div class="footer-meta">
+                <span>&copy; 2025 - MYLEGND, LLC. All rights reserved.</span>
+                <a href="https://www.mylegnd.com/privacy-terms" target="_blank" class="footer-link">Terms &amp; Privacy</a>
+            </div>
+        </div>
+
+        <div class="footer-right" aria-hidden="true">
+            <div class="footer-spacer">&nbsp;</div>
+        </div>
+    </div>
+</footer>
+
+<script src="~/js/number-format.js" asp-append-version="true"></script>
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function () {
+        const trigger = document.getElementById('exploreTrigger');
+        const drawer = document.getElementById('exploreDrawer');
+        const overlay = document.getElementById('exploreOverlay');
+        const search = document.getElementById('exploreSearch');
+        const list = document.getElementById('exploreList');
+
+        if (!trigger || !drawer || !overlay || !search || !list) return;
+
+        function openDrawer() {
+            drawer.classList.add('open');
+            overlay.classList.add('open');
+            trigger.setAttribute('aria-expanded', 'true');
+            window.setTimeout(() => search.focus(), 80);
+        }
+
+        function closeDrawer() {
+            drawer.classList.remove('open');
+            overlay.classList.remove('open');
+            trigger.setAttribute('aria-expanded', 'false');
+        }
+
+        trigger.addEventListener('click', function () {
+            if (drawer.classList.contains('open')) closeDrawer();
+            else openDrawer();
+        });
+
+        overlay.addEventListener('click', closeDrawer);
+
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeDrawer();
+        });
+
+        search.addEventListener('input', function () {
+            const q = (search.value || '').trim().toLowerCase();
+            list.querySelectorAll('.explore-item').forEach(function (item) {
+                const txt = item.textContent.toLowerCase();
+                item.style.display = txt.includes(q) ? '' : 'none';
+            });
+        });
+    })();
+</script>
+
+<script>
+    (function () {
+        const trigger = document.getElementById('psalmsTrigger');
+        const modal = document.getElementById('psalmsModal');
+        if (!trigger || !modal) return;
+
+        const textEl = document.getElementById('psalmsText');
+        const refEl = document.getElementById('psalmsReference');
+        const translationEl = document.getElementById('psalmsTranslation');
+        const dayEl = document.getElementById('psalmsDay');
+        const closeEl = document.getElementById('psalmsClose');
+        const cardEl = modal.querySelector('.scripture-card');
+        const streakEl = document.getElementById('psalmsStreak');
+        const streakNoteEl = document.getElementById('psalmsStreakNote');
+
+        const chapters = [
+            {
+                reference: 'Psalm 23',
+                translation: 'KJV (public domain fallback)',
+                verses: [
+                    'The LORD is my shepherd; I shall not want.',
+                    'He maketh me to lie down in green pastures: he leadeth me beside the still waters.',
+                    'He restoreth my soul: he leadeth me in the paths of righteousness for his name\'s sake.',
+                    'Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me.',
+                    'Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over.',
+                    'Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the LORD for ever.'
+                ]
+            },
+            {
+                reference: 'Psalm 121',
+                translation: 'KJV (public domain fallback)',
+                verses: [
+                    'I will lift up mine eyes unto the hills, from whence cometh my help.',
+                    'My help cometh from the LORD, which made heaven and earth.',
+                    'He will not suffer thy foot to be moved: he that keepeth thee will not slumber.',
+                    'Behold, he that keepeth Israel shall neither slumber nor sleep.',
+                    'The LORD is thy keeper: the LORD is thy shade upon thy right hand.',
+                    'The sun shall not smite thee by day, nor the moon by night.',
+                    'The LORD shall preserve thee from all evil: he shall preserve thy soul.',
+                    'The LORD shall preserve thy going out and thy coming in from this time forth, and even for evermore.'
+                ]
+            },
+            {
+                reference: 'Psalm 1',
+                translation: 'KJV (public domain fallback)',
+                verses: [
+                    'Blessed is the man that walketh not in the counsel of the ungodly, nor standeth in the way of sinners, nor sitteth in the seat of the scornful.',
+                    'But his delight is in the law of the LORD; and in his law doth he meditate day and night.',
+                    'And he shall be like a tree planted by the rivers of water, that bringeth forth his fruit in his season; his leaf also shall not wither; and whatsoever he doeth shall prosper.',
+                    'The ungodly are not so: but are like the chaff which the wind driveth away.',
+                    'Therefore the ungodly shall not stand in the judgment, nor sinners in the congregation of the righteous.',
+                    'For the LORD knoweth the way of the righteous: but the way of the ungodly shall perish.'
+                ]
+            },
+            {
+                reference: 'Psalm 100',
+                translation: 'KJV (public domain fallback)',
+                verses: [
+                    'Make a joyful noise unto the LORD, all ye lands.',
+                    'Serve the LORD with gladness: come before his presence with singing.',
+                    'Know ye that the LORD he is God: it is he that hath made us, and not we ourselves; we are his people, and the sheep of his pasture.',
+                    'Enter into his gates with thanksgiving, and into his courts with praise: be thankful unto him, and bless his name.',
+                    'For the LORD is good; his mercy is everlasting; and his truth endureth to all generations.'
+                ]
+            }
+        ];
+
+        function selectChapter(date) {
+            const dayKey = date.toISOString().slice(0, 10);
+            let hash = 0;
+            for (let i = 0; i < dayKey.length; i++) {
+                hash = (hash * 31 + dayKey.charCodeAt(i)) >>> 0;
+            }
+            const chapter = chapters[hash % chapters.length];
+            return { dayKey, chapter };
+        }
+
+        function computeStreak(dayKey) {
+            const todayTs = Date.parse(dayKey + 'T00:00:00Z');
+            let lastDay = null;
+            let lastStreak = 0;
+            try {
+                lastDay = localStorage.getItem('psalmsLastDay');
+                const stored = parseInt(localStorage.getItem('psalmsStreak') || '0', 10);
+                if (!Number.isNaN(stored)) lastStreak = stored;
+            } catch (e) { /* ignore */ }
+
+            let nextStreak = 1;
+            if (lastDay) {
+                const lastTs = Date.parse(lastDay + 'T00:00:00Z');
+                const diffDays = Math.floor((todayTs - lastTs) / 86400000);
+                if (diffDays === 0) {
+                    nextStreak = Math.max(lastStreak, 1);
+                } else if (diffDays === 1) {
+                    nextStreak = Math.max(lastStreak, 0) + 1;
+                } else {
+                    nextStreak = 1;
+                }
+            }
+
+            try {
+                localStorage.setItem('psalmsLastDay', dayKey);
+                localStorage.setItem('psalmsStreak', String(nextStreak));
+            } catch (e) { /* ignore */ }
+
+            return nextStreak;
+        }
+
+        function applyStreakVisual(streak) {
+            const hue = Math.min(120, Math.max(0, streak * 6));
+            const color = `hsl(${hue}, 76%, 54%)`;
+            if (streakEl) {
+                streakEl.textContent = `${streak} day${streak === 1 ? '' : 's'}`;
+                streakEl.style.color = color;
+            }
+            if (streakNoteEl) {
+                let note = 'Day one — let\'s roll';
+                if (streak >= 7) note = 'On fire!';
+                else if (streak >= 3) note = 'Keep it going';
+                streakNoteEl.textContent = note;
+            }
+        }
+
+        function openModal() {
+            const { dayKey, chapter } = selectChapter(new Date());
+            dayEl.textContent = dayKey;
+            refEl.textContent = chapter.reference;
+            translationEl.textContent = chapter.translation;
+            textEl.innerHTML = chapter.verses.map(v => `<p>${v}</p>`).join('');
+            const streak = computeStreak(dayKey);
+            applyStreakVisual(streak);
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.classList.add('no-scroll');
+            cardEl?.focus({ preventScroll: true });
+        }
+
+        function closeModal() {
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.classList.remove('no-scroll');
+            trigger.focus({ preventScroll: true });
+        }
+
+        trigger.addEventListener('click', openModal);
+        closeEl?.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+        });
+    })();
+</script>
+@await RenderSectionAsync("Scripts", required:false)
+</body>
+</html>
+
+@functions {
+    private string ResolveRecordType(ClientProfile profile)
+    {
+        var raw = profile?.CrmNotes;
+        if (string.IsNullOrWhiteSpace(raw)) return "Lead";
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("recordType", out var prop) &&
+                prop.ValueKind == JsonValueKind.String)
+            {
+                var value = (prop.GetString() ?? "").Trim();
+                if (value.Equals("Business Client", StringComparison.OrdinalIgnoreCase))
+                    return "BusinessClient";
+                if (value.Equals("BusinessClient", StringComparison.OrdinalIgnoreCase) ||
+                    value.Equals("Client", StringComparison.OrdinalIgnoreCase) ||
+                    value.Equals("Lead", StringComparison.OrdinalIgnoreCase))
+                    return value;
+            }
+        }
+        catch { /* ignore parse errors */ }
+        return "Lead";
+    }
+}

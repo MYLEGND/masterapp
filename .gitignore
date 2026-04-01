@@ -1,0 +1,81 @@
+# =========================
+# .NET build artifacts
+# =========================
+**/bin/
+**/obj/
+
+# =========================
+# Publish output — NEVER commit publish artifacts
+# =========================
+**/publish/
+**/publish-azure/
+**/publish-azure-*/
+**/publish-macos/
+**/publish-client/
+**/publish-client-*/
+_publish_agentportal/
+publish/
+publish-azure-agentportal/
+publish-azure-client/
+
+# =========================
+# Secrets — NEVER commit these
+# =========================
+appsettings.Development.json
+appsettings.Production.json
+**/appsettings.Development.json
+**/appsettings.Production.json
+secrets.json
+usersecrets.json
+.env
+.env.*
+
+# =========================
+# Local SQLite databases
+# =========================
+*.db
+*.db-shm
+*.db-wal
+*.db.bak
+App_Data/
+
+# =========================
+# Deployment artifacts
+# =========================
+*.zip
+*.exe
+*.dll
+*.pdb
+*.binlog
+*.pp.xml
+agentportal.binlog
+agentportal.pp.xml
+infra.pp.xml
+pp.xml
+web.config
+
+# =========================
+# Logs & diagnostics
+# =========================
+*.log
+*.cache
+clientlogs/
+webapp_logs.zip
+delete_candidates.csv
+
+# =========================
+# Azure / editor artifacts
+# =========================
+.azure/
+.DS_Store
+.vscode/
+.idea/
+dotnet-tools.json
+
+# =========================
+# MSAL / auth caches
+# =========================
+msal_token_cache.json
+
+# Local dev launch settings (may contain secrets)
+**/Properties/launchSettings.json

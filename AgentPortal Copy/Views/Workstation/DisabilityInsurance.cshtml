@@ -1,0 +1,1241 @@
+@{
+    ViewData["Title"] = "Workstation — Disability Insurance";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+}
+
+
+<div id="mpShell">
+    <div class="mp-shell">
+        <aside class="mp-side">
+            <div class="side-card">
+                <div class="side-head">
+                    <p class="side-title">Elite Call Guide</p>
+                    <p class="side-sub">Follow the path. Control the call. Close clean.</p>
+                </div>
+
+                <div class="side-tools">
+                    <input id="mpSearch" class="side-search" placeholder="Search + highlight… (equity, IUL, ROP, voicemail)" />
+
+                    <div class="side-actions">
+                        <button class="btn gold" type="button" id="btnNext">Next Step</button>
+                        <button class="btn" type="button" id="btnExpand">Expand All</button>
+                        <button class="btn" type="button" id="btnCollapse">Collapse All</button>
+                        <button class="btn dark" type="button" id="btnClear">Clear Search</button>
+                    </div>
+                </div>
+
+                <div class="side-progress">
+                    <div class="prog-row">
+                        <div class="prog-label">Progress</div>
+                        <div class="prog-pill"><span id="progDone">0</span>/<span id="progTotal">0</span></div>
+                    </div>
+                    <div class="prog-bar"><div class="prog-fill" id="progFill"></div></div>
+                </div>
+
+                <nav class="side-nav" id="sideNav" aria-label="Script steps"></nav>
+            </div>
+        </aside>
+
+        <main class="mp-main">
+            <div class="mp-hero">
+                <div class="mp-hero-top">
+                    <div>
+                        <h1>Workstation — Disability Insurance</h1>
+                        <p>Zero guessing. This page guides the agent from contact → qualify → present → e-app → close out.</p>
+                    </div>
+                </div>
+
+                <div class="top-row">
+                    <span class="pill"><span class="dot good"></span> Proceed / next</span>
+                    <span class="pill"><span class="dot warn"></span> Clarify / slow down</span>
+                    <span class="pill"><span class="dot bad"></span> Objection / unsure</span>
+                </div>
+
+                <div class="script-legend">
+                    <span class="legend-chip say"><span class="swatch"></span> Say this</span>
+                    <span class="legend-chip fill"><span class="swatch"></span> Fill this in</span>
+                    <span class="legend-chip silent"><span class="swatch"></span> Do NOT read this out loud</span>
+                    <span class="legend-chip note"><span class="swatch"></span> Agent direction</span>
+                </div>
+            </div>
+
+            <div class="focus-banner" id="focusBanner">
+                <div class="left">
+                    <div class="t1">Focus Mode is ON</div>
+                    <div class="t2">You’re viewing one step only. Keep the call clean.</div>
+                </div>
+                <div class="right">
+                    <button class="btn-ghost" type="button" id="btnExitFocus">Exit Focus</button>
+                    <button class="btn-ghost" type="button" id="btnNextFocus">Next Step</button>
+                </div>
+            </div>
+
+            <div class="card" id="mpCard">
+
+                <details class="section" data-step="0" data-flow="verify" data-signal="bad" id="sec-hub">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">⚠️ Unsure / Objection Hub</span>
+                                <span class="sub">Stop. Clarify. Then route.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini bad" type="button" data-back>Back</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> Don’t push. Clarify the obstacle.
+                                <div class="hint">Ask one clean question that forces truth.</div>
+                            </div>
+                        </div>
+
+                        <div id="hubStop" class="script"><span class="say">Totally fair — quick question so I don’t waste your time:
+Is it the price, the timing, or are you just unsure what this even is?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="keyline"><strong>ROUTE BUTTONS</strong> (tap to jump)</div>
+                        <div class="side-actions" style="grid-template-columns:1fr 1fr;">
+                            <button class="btn" type="button" data-jump="#sec-threeins">“What is this?”</button>
+                            <button class="btn" type="button" data-jump="#sec-equity">Need meaning / emotion</button>
+                            <button class="btn" type="button" data-jump="#sec-options-choose">Choosing options</button>
+                            <button class="btn dark" type="button" data-jump="#sec-closeout">Close out / tie-down</button>
+                        </div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">RULE</span> After you answer, ask for a micro-yes.
+                                <div class="hint">“That make sense?” then move immediately to the next step.</div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="1" data-flow="start" data-signal="good" id="sec-voicemail">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Voicemail Script</span>
+                                <span class="sub">Authority + urgency. No rambling.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-voicemail">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> Drop the message like you’re correcting paperwork.
+                                <div class="hint">Goal: callback. Not a conversation.</div>
+                            </div>
+                        </div>
+
+                        <div id="vm" class="script"><span class="say">This message is for </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. I manage the brokerage that handles the disability insurance reviews for families in your area. We do have pending paperwork to get back to you regarding the disability coverage request. Give me a call back at </span><span class="fill">&lt;YOUR PHONE NUMBER&gt;</span><span class="say">. Talk to you soon.</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">STOP</span> If they call back angry: don’t explain yet.
+                                <div class="hint">First line: “Totally fair — let me pull up your file.” Then verify identity.</div>
+                            </div>
+                        </div>
+
+                        <div class="side-actions" style="grid-template-columns:1fr 1fr;">
+                            <button class="btn" type="button" data-jump="#sec-aged">Go to Aged Lead Opener</button>
+                            <button class="btn dark" type="button" data-jump="#sec-verify">Verify Coverage Lane</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="2" data-flow="start" data-signal="warn" id="sec-texts">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Text Scripts</span>
+                                <span class="sub">Direction only. No debate.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-texts">Focus</button>
+                        </div>
+                    </summary>
+
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">RULE</span> If they respond with questions → move to call.
+                                <div class="hint">Text ends with “What time today works?”</div>
+                            </div>
+                        </div>
+
+                        <div class="keyline"><strong>TEXT (1)</strong> Quick “pending paperwork” text.</div>
+                        <div id="txt1" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> regarding the disability insurance request you submitted. Give me a call back when you get this, we have some pending paperwork to get out to you. The office number is </span><span class="fill">&lt;OFFICE NUMBER&gt;</span><span class="say">. Thanks.</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="keyline"><strong>TEXT (2)</strong> Underwriter assigned + book a call.</div>
+                        <div id="txt2" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, it’s </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> following up with you on the request you filled out and mailed in to us regarding disability insurance coverage. This is the coverage that helps protect your income and keep the bills paid if you get hurt or can’t work.
+
+I'm the field underwriter assigned to help you take care of this for your family. What time are you available for me to give you a call today or tomorrow?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="keyline"><strong>APPT CONFIRM</strong> Set expectation + get acknowledgement.</div>
+                        <div id="txtConfirm" class="script"><span class="say">Hey </span><span class="fill">&lt;NAME&gt;</span><span class="say">, </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> here, medical underwriter. Confirming our appointment at </span><span class="fill">&lt;TIME&gt;</span><span class="say">. If there is any reason you can’t make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!
+
+Reply “Yes” or give me a “👍🏻” to let me know you received this message.</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="keyline"><strong>HAIL MARY</strong> Reschedule + last attempt language.</div>
+                        <div id="txtHail" class="script"><span class="say">Hey, just gave a call for our appointment. Do you need a few minutes?
+
+Just need to get this rescheduled — will later today or tomorrow work better for you?
+I have some availability this evening. If not, I can try to squeeze you in for tomorrow. I know this is important to you. Give me a call back when you get this.
+
+Tried to reach out a few times and haven't heard back…
+Where should we go from here?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they reply “What is this?” → don’t type a paragraph.
+                                <div class="hint">Jump to the 3-insurance explanation and bring them to a call.</div>
+                            </div>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-threeins">Go to “3 Insurances”</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" open data-step="3" data-flow="verify" data-signal="good" id="sec-aged">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Mail-In Aged Leads</span>
+                                <span class="sub">Purple chill / Red concerned.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-aged">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">PURPLE</span> Chill tone
+                                <span class="cue bad">RED</span> Concerned / confused tone
+                                <div class="hint">Goal: “file correction” not “sales pitch”.</div>
+                            </div>
+                        </div>
+
+                        <div id="agedOpen" class="script"><span class="say">Yeah, </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">? This is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. Had to give you a quick call here... I manage the brokerage that handles the disability insurance reviews for families in your area.</span>
+Your file came across my desk… still showing me as incomplete… you probably remember… sometime back you requested information and we sent you several documents in the mail about disability insurance coverage. Right… where it helps protect your income and monthly bills if you get sick, hurt, or cannot work. Do you remember that?
+
+It looks like you actually did the right thing. You filled out the form and mailed it back to us, but for whatever reason on our end, we still haven't got that completed. I'm the senior underwriter, so it’s my job to see what’s going on so we can get this taken care of. By chance, do you remember one of our junior underwriters reaching out to take care of you?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they say “Yeah I already have something” → verify, don’t accept.
+                                <div class="hint">Route: “Figure Out What They Have”.</div>
+                            </div>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-verify">Go Verify Lane</button>
+                        </div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">IF IMMEDIATE YES</span> Clarify and confirm the process.
+                                <div class="hint">Goal: catch lies gently and route correctly.</div>
+                            </div>
+                        </div>
+
+                        <div id="clarify" class="script"><span class="say">So it is </span><span class="fill">&lt;STATE&gt;</span><span class="say"> state law that you would have received a policy packet in the mail — I’m assuming you received that, right? Okay, now you would have been assigned a carrier and gone through a series of medical questions with one of our underwriters. I’m assuming you did that too, right?</span></div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="4" data-flow="verify" data-signal="bad" id="sec-verify">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Figure Out What They Have</span>
+                                <span class="sub">People lie — verify fast.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-verify">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+
+                    <div class="body">
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> Do NOT go “options” yet.
+                                <div class="hint">You must establish the lane: Replacement vs One-Call-Close.</div>
+                            </div>
+                        </div>
+
+                        <div class="keyline"><strong>IF HAVE COVERAGE</strong> Update file → replacement path.</div>
+                        <div id="haveCoverage" class="script"><span class="say">Okay, perfect. It looks like one of our junior underwriters was able to help you out, but for some reason they did not update your file here. Just so I can update the policy on my end, what did you get set up with?</span>
+<span class="silent">GO INTO POLICY REPLACEMENT</span></div>
+
+                        <div style="height:10px"></div>
+                        <button class="btn gold" type="button" data-jump="#sec-replace">➡️ Jump to Policy Replacement</button>
+
+                        <div style="height:16px"></div>
+
+                        <div class="keyline"><strong>IF NO COVERAGE</strong> Reframe → protect the home → start FI.</div>
+                        <div id="noCoverage" class="script"><span class="say">Okay, perfect — that’s probably why your file is flagged here. It looks like our junior medical underwriter wasn’t able to get ahold of you.
+
+Now </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, correct me if I’m wrong… I’m assuming when you filled out the form that you were looking for something that would pay off the home or any financial burden if, God forbid, you were to pass away... does that sound about right?
+
+Okay, and who are we looking to protect in this situation?...
+
+If yes: Okay perfect, I’m the senior underwriter, like I said, and it’s my job to ask a couple questions to see what you are able to qualify for.</span>
+<span class="silent">START FILLING OUT FINANCIAL INVENTORY</span>
+<span class="silent">GO INTO ONE CALL CLOSE SCRIPT</span></div>
+
+                        <div style="height:10px"></div>
+                        <button class="btn gold" type="button" data-jump="#sec-occ">➡️ Jump to One Call Close</button>
+                    </div>
+                </details>
+
+                <details class="section" data-step="5" data-flow="verify" data-signal="warn" id="sec-replace">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Policy Replacement</span>
+                                <span class="sub">Annual review → better class → better price.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-replace">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">RULE</span> Never say “replace” first. Say “review”.
+                                <div class="hint">You’re the fixer. Not the seller.</div>
+                            </div>
+                        </div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they get defensive → ask why they picked that policy.
+                                <div class="hint">Then route into “options that match your real goal”.</div>
+                            </div>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-options-choose">Go to Options Choice</button>
+                        </div>
+
+                        <div id="prKnown" class="script"><span class="note">If client knows carrier:</span>
+<span class="silent">ACT CONFUSED</span>
+<span class="say">Okay </span><span class="fill">&lt;NAME&gt;</span><span class="say">, was there a certain reason they put you with that carrier? Do you have any serious medical history? I’m just a little confused here since </span><span class="fill">&lt;CARRIER NAME&gt;</span><span class="say"> is one of our more expensive carriers.</span>
+<span class="silent">GO TO REPLACEMENT</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div id="prUnknown" class="script"><span class="note">If client doesn’t know carrier:</span>
+<span class="say">Okay, did you get that policy packet in the mail? Okay, perfect.</span>
+<span class="silent">GO TO REPLACEMENT</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div id="prReplace" class="script"><span class="say">So </span><span class="fill">&lt;NAME&gt;</span><span class="say">, it looks like your file was flagged for annual review. What that means is there have been some recent changes in the state of </span><span class="fill">&lt;STATE&gt;</span><span class="say"> where folks who looked at coverage in the past are able to get more coverage for way less than what they are paying.
+
+Now obviously </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, I know that is important to you, and every other family in the state of </span><span class="fill">&lt;STATE&gt;</span><span class="say">.
+
+Now, what my job is today is to take a look at the policies you currently have and make sure that you are in the most comfortable and affordable situation currently, given those changes, in addition to looking at whether you may have been placed in the wrong risk class. Does that make sense?</span>
+
+<span class="note">If they don’t have the policy info:</span>
+<span class="say">Do you get monthly bank statements? Because in the statement it will state the name of the company.</span>
+
+<span class="note">Once name found:</span>
+<span class="say">Okay, we do work with all 35 carriers within the state. Do you know the amount of coverage?</span>
+
+<span class="silent">IF CANNOT FIND IT, CALL THE CARRIER WITH THEM OR FIND MONTHLY PAYMENT AND QUOTE</span>
+<span class="silent">IF THEY HAVE IT, GET FINANCIAL INVENTORY AND FIND BETTER COVERAGE</span></div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="6" data-flow="start" data-signal="warn" id="sec-book">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Booking the Appointment</span>
+                                <span class="sub">Two times. Require spouse.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-book">Focus</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">RULE</span> Don’t ask “what works?” — give two options.
+                                <div class="hint">Control the calendar = control the close.</div>
+                            </div>
+                        </div>
+
+                        <div id="book" class="script"><span class="say">Perfect, I typically do run appointments only anyway.
+
+If they have a spouse:
+Okay, we’ll want to make sure your spouse is on the call with us as well. Do you both typically work a 9–5, or are you retired? What does that look like for you?
+
+They have me seeing about 10–12 families a day, let me look to see where we can squeeze you in.
+
+Would sometime later today or tomorrow be better for you?
+If tomorrow, is morning, afternoon, or evening best for you?</span>
+<span class="silent">FINALIZE TIME</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they avoid committing: don’t negotiate.
+                                <div class="hint">Route to Hub and clarify the real objection.</div>
+                            </div>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Go to Objection Hub</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="7" data-flow="close" data-signal="good" id="sec-occ">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Start One Call Close</span>
+                                <span class="sub">Frame → health → financial → options.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-occ">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> Calm certainty. This is process, not pitch.
+                                <div class="hint">Get permission + set honesty expectation.</div>
+                            </div>
+                        </div>
+
+                        <div id="occ" class="script"><span class="say">Okay great, is this your first time going through the mortgage protection process?
+
+Gotcha, and I am recording this call for quality assurance and training purposes. That’s okay with you?
+
+Perfect, and just so you understand everything, I’ll explain the entire process.
+
+It’s really simple. Again, I am an underwriter for an insurance brokerage, so it’s my job first to get you approved for coverage, and next get you approved at the best rate with one of our 40+ carriers.
+
+So I’m going to spend 2 minutes asking you some basic health questions so I can understand what coverage you may qualify for. So as I go through the medical questions and ask if you have COPD or smoke and you tell me you don't, but you do, this will flag that insurance carrier and will decline the coverage… so just be honest with me as we go through this process.
+
+Next, I’ll ask some basic financial questions so I can understand how much coverage you need and find something that will fit your budget.
+
+Does that make sense?
+
+Based on that information, it’s my job as the medical underwriter to run it through all the carriers in the state of </span><span class="fill">&lt;STATE&gt;</span><span class="say"> that offer mortgage protection.
+
+I’ll present those various options to you. After we decide what option is the most comfortable and affordable, I basically become the paperwork guy, helping you submit the request for coverage to the insurance carrier to make sure we can get you approved.
+
+</span><span class="fill">&lt;NAME&gt;</span><span class="say">, who are we looking to protect here?</span>
+
+<span class="note">If spouse is beneficiary:</span>
+<span class="say">And are we looking for protection for your wife if you pass and for yourself if your wife passes, or are we looking for both?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <details class="section" data-step="7A" data-flow="verify" data-signal="warn" id="sec-threeins">
+                            <summary>
+                                <div class="sum-left">
+                                    <div class="chev">›</div>
+                                    <div>
+                                        <span class="title">3 Insurances on the Home (Client Unsure)</span>
+                                        <span class="sub">20 seconds. Then move.</span>
+                                    </div>
+                                </div>
+                                <div class="sum-actions">
+                                    <button class="btn-mini bad" type="button" data-back>Back</button>
+                                    <button class="btn-mini gold" type="button" data-jump="#sec-options-choose">Go Options</button>
+                                </div>
+                            </summary>
+                            <div class="body">
+                                <div class="callout warn">
+                                    <div>
+                                        <span class="cue warn">IF CLIENT IS UNSURE</span> Answer + immediately route forward.
+                                        <div class="hint">Do not lecture. Do not ramble. “Make sense?” then FI.</div>
+                                    </div>
+                                </div>
+                                <div id="threeIns" class="script"><span class="say">Now, the first part of my job is finding protection for the family, but secondly is education. Okay?
+
+So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when you go to buy a home there are 3 types of insurance on the home:
+
+1. Private mortgage insurance, or PMI — this is something the bank requires on their end if you put less than 20% down, but it does nothing for you or your family. It’s simply put in place to protect the bank.
+2. Homeowners insurance — protects the physical property of the home in the event of a flood, fire, etc.
+3. Mortgage protection — the third and most important type of coverage. This is the coverage that protects you and your family in the event you were to become sick, disabled, or pass away, to ensure your family is able to stay in the home and it’s taken care of. Make sense?</span>
+
+<span class="silent">BOOM — GO INTO THE FINANCIAL INVENTORY AND START FILLING IT OUT</span></div>
+                            </div>
+                        </details>
+                    </div>
+                </details>
+
+                <details class="section" data-step="8" data-flow="close" data-signal="good" id="sec-equity">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Equity Protection</span>
+                                <span class="sub">Meaning + logic bridge.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-equity">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> Slow down here — this is where they feel it.
+                                <div class="hint">Goal: make “months of payments” land as protection.</div>
+                            </div>
+                        </div>
+
+                        <div id="equity" class="script"><span class="say"> </span><span class="fill">&lt;NAME&gt;</span><span class="say">, still with me?
+
+As I’m sure you’re already aware, if you wanted to cover the entire mortgage, that would be close to another mortgage payment… which don’t worry, none of the families we help do in your situation. What the families do in your situation is put together an equity protection plan.
+
+Has anyone walked you through how the equity protection process works?
+
+Gotcha, well basically it’s a much more practical, much more affordable approach to protecting the mortgage. My goal with you and all of my families is to solve the maximum amount of your needs with the least amount of insurance possible.
+
+Now, this plan is different for every family and their situation, so let’s run you through a realistic hypothetical here.
+
+Now, if you were to God forbid pass away, the bank would be watching your house like a hawk. Now what does that mean?
+
+That means if </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> misses even 1 or 2 mortgage payments during that transition process, the bank is going to completely take all the equity in the home. Which obviously we don’t want, right?
+
+Now, what equity protection does is buy time. Now what does that mean?
+
+It means when </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> is not only going through the hardest part of their life emotionally, but also financially, it provides </span><span class="fill">&lt;LOWEST MONTH OPTION&gt;</span><span class="say"> to </span><span class="fill">&lt;HIGHEST MONTH OPTION&gt;</span><span class="say"> months of mortgage payments, so that way in that time of passing, they have enough time to properly mourn, grieve, and recover — but also have time to plan financially for the future without having to fork out thousands of dollars in mortgage payments.
+
+Now correct me if I’m wrong, but protecting the family and avoiding that situation would be important to you, correct?</span>
+
+<span class="note">If they plan on selling:</span>
+<span class="say">As well as get the house cleaned up, cleaned out, fixed up, listed, and eventually sold. And what this policy allows for is to give </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> that grace period of time to get things figured out and get the home sold so he or she isn’t forced to fire sale the home for 20, 40, 80k less than what it’s fully worth because they couldn’t afford to keep it.
+
+Gotcha, the main goal of this policy is to provide </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> enough time just to get things figured out and move forward in a healthy manner, as well as protect the </span><span class="fill">&lt;EQUITY AMOUNT&gt;</span><span class="say"> in your home. Does that make sense?
+
+Gotcha, so we’re going to be looking at </span><span class="fill">&lt;MONTHS OPTION 1&gt;</span><span class="say"> months, </span><span class="fill">&lt;MONTHS OPTION 2&gt;</span><span class="say"> months, and </span><span class="fill">&lt;MONTHS OPTION 3&gt;</span><span class="say"> months of mortgage payments.</span>
+
+<span class="note">Write at the top of the paper:</span>
+<span class="silent">WHOLE LIFE / NEVER EXPIRES</span>
+<span class="say">Essentially, you’re covered for life.</span>
+
+<span class="note">Write under that:</span>
+<span class="silent">BUILDS CASH VALUE</span>
+<span class="say">So let’s say you decided to surrender the policy in 15–20 years for whatever reason, you’d be able to claim all the money back that you paid into the policy plus interest, acting as a high-interest savings account.</span>
+
+<span class="say">And the way that this pays out is in the form of a lump sum tax-free check, which is obviously designed to protect the home and the equity, but can also be used toward any sort of final expenses and double as supplemental life insurance.</span>
+
+<span class="note">Then write:</span>
+<span class="silent">&lt;MONTHS OPTION 1&gt;, &lt;MONTHS OPTION 2&gt;, &lt;MONTHS OPTION 3&gt;</span>
+
+<span class="silent">NOW GIVE PRICES FOR EACH OPTION</span>
+
+<span class="say">So out of those 3 options, basically just let me know what seems the most practical and affordable for you, and then we’ll go from there.</span>
+
+<span class="note">After they pick an option:</span>
+<span class="say">Okay. If I go quiet on you, I’m just clicking away on the computer making sure we can get you approved.</span>
+
+<span class="silent">GO INTO APPLICATION</span>
+
+<span class="note">After showing numbers if they say:</span>
+<span class="silent">“I need to think about it” / “I’ll call you back” / “I need to talk to my wife, husband, son, financial advisor, parents”</span>
+
+<span class="say">Gotcha, were you wanting to talk to </span><span class="fill">&lt;PERSON&gt;</span><span class="say"> about which option you wanted to go with, or whether or not you wanted the coverage at all?
+
+Gotcha, were you wanting to think about which option you wanted to go with, or whether or not you wanted the coverage at all?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they say “I need to think” → clarify what decision.
+                                <div class="hint">Route to Hub so you don’t freestyle.</div>
+                            </div>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Go to Objection Hub</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="9" data-flow="options" data-signal="warn" id="sec-living">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Mortgage Protection + Living Benefits</span>
+                                <span class="sub">Keep it simple. Then present.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-living">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">CLARIFY</span> “Access funds while living.”
+                                <div class="hint">Goal: reduce confusion, don’t teach medicine.</div>
+                            </div>
+                        </div>
+
+                        <div id="living" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, still with me?
+
+Okay, I have some options here ready for you — let me know when you are ready to write them down.</span>
+
+<span class="note">If term has living benefits:</span>
+<span class="say">Gotcha, I’m assuming you were looking for coverage on the living side as well? So God forbid any situation where you become sick, disabled, have cancer, a heart attack, stroke, or any other critical, terminal, or chronic illness, that your mortgage is taken care of?
+
+So the number one and most common reason for foreclosures on a home is death. Number 2 is becoming ill and not being able to work and continue making the mortgage payments. So with the living benefits in this policy, you will be able to access a portion of the face amount, assuming you qualify for the coverage, which would pay out if you ever had any sort of major critical, terminal, or chronic illness.
+
+So for example, if you were ever told you had 2 years or less to live from a terminal illness, ever have any chronic illness or a serious illness for over 90 days, or if you ever have a heart attack, stroke, cancer, organ failure, blindness, ALS, or essentially anything that turns your world upside down where you can’t work, you would be able to claim </span><span class="fill">&lt;XX%&gt;</span><span class="say"> of the total coverage amount, which would be paid in a lump sum tax-free check while you’re still living. Does that make sense?</span>
+
+<span class="note">If they want more info:</span>
+<span class="say">Terminal illness means 2 years or less to live.
+Chronic illness means serious illness for over 90 days.
+Critical illness means heart attack, stroke, invasive cancer, major organ failure, blindness, ALS — or essentially anything that turns your world upside down and you can’t work.</span>
+
+<span class="note">If they ask for more examples:</span>
+<span class="say">Cancer, heart attack, stroke, paralysis, a major organ transplant, kidney failure, blindness, ALS, coma, major burns, traumatic brain injury, sudden cardiac arrest, heart valve replacement, cystic fibrosis, aplastic anemia, or being told you only had 2 years left to live.</span>
+
+<span class="say">Perfect, write down </span><span class="fill">&lt;LENGTH OF TERM&gt;</span><span class="say"> year term.</span>
+<span class="note">If it has living benefits, write:</span>
+<span class="silent">&lt;___ PERCENT LIVING BENEFITS&gt;</span>
+<span class="say">So if you have any critical, chronic, or terminal illness, </span><span class="fill">&lt;___%&gt;</span><span class="say"> will pay out in a tax-free check while you are still living. So if you had 100k of insurance, </span><span class="fill">&lt;___ AMOUNT&gt;</span><span class="say"> would pay out to you in a tax-free check.</span>
+
+<span class="say">Perfect, now write down </span><span class="fill">&lt;HIGHEST OPTION&gt;</span><span class="say">, then </span><span class="fill">&lt;MIDDLE / NEXT OPTION&gt;</span><span class="say"> below that, then </span><span class="fill">&lt;LOWEST OPTION&gt;</span><span class="say"> below that.</span>
+
+<span class="silent">NOW GIVE PRICES FOR EACH OPTION</span>
+
+<span class="say">So out of those 2 options, basically just let me know what seems the most practical and affordable for you, and then we’ll go from there.</span>
+
+<span class="note">After they pick an option:</span>
+<span class="say">Okay. If I go quiet on you, I’m just clicking away on the computer making sure we can get you approved.</span>
+
+<span class="silent">GO INTO APPLICATION</span>
+
+<span class="note">After showing numbers if they say:</span>
+<span class="silent">“I need to think about it” / “I’ll call you back” / “I need to talk to my wife, husband, son, financial advisor, parents”</span>
+
+<span class="say">Gotcha, were you wanting to talk to </span><span class="fill">&lt;PERSON&gt;</span><span class="say"> about which option you wanted to go with, or whether or not you wanted the coverage at all?
+
+Gotcha, were you wanting to think about which option you wanted to go with, or whether or not you wanted the coverage at all?</span></div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="10" data-flow="options" data-signal="good" id="sec-rop">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Presenting CBO / ROP Option</span>
+                                <span class="sub">Cash-back framing.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-rop">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> Kill “wasted money” objection.
+                                <div class="hint">Either it pays out OR money comes back.</div>
+                            </div>
+                        </div>
+
+                        <div id="rop" class="script"><span class="say">The ROP option is what most of our clients with your health and age tend to go with because it’s a cash-back option… meaning once the policy ends, you get 100% of the premiums you put into it back.
+
+Unlike car or homeowners insurance where you pay monthly and never see any return on that money, the only situation where you come out behind on this policy is if you cancel it early, because that’s actually the only way the insurance companies are able to offer this product — they’re banking on people canceling early.
+
+So as long as you don’t cancel early, there’s no situation where you are going to come out behind, because either A, the policy is paying out, or B, if you don’t have to use it, you’ll be getting all of your money back. Does that make sense?</span></div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="11" data-flow="options" data-signal="warn" id="sec-iul">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">IUL Pitch</span>
+                                <span class="sub">Term vs whole life + cash value.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-iul">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">CLARIFY</span> Calm pace. Certainty. No rush.
+                                <div class="hint">This is persuasion — don’t sound excited, sound sure.</div>
+                            </div>
+                        </div>
+
+                        <div id="iul" class="script"><span class="say">Hey </span><span class="fill">&lt;NAME&gt;</span><span class="say">, I don’t mean to bore you guys, but has anyone explained the difference between a term and whole life to you?
+
+Okay, well term is short for terminate. You know, 10, 20, 30 years — whatever it may be — it expires. And whole life is called whole life because, well, it lasts your whole life.
+
+Are you guys aware of what percentage of term policies actually pay out of people passing away within that term they take out?</span>
+<span class="silent">LET THEM GUESS</span>
+
+<span class="say">Okay </span><span class="fill">&lt;NAME&gt;</span><span class="say">, that’s a good guess, but according to the national insurance association — and feel free to look this up — less than 2% of term policies actually pay out.
+
+So the insurance company knows that, and they’ve done actuarial studies on this, that there’s a 98% chance you’re going to outlive that term. And that’s why term is so cheap, because the insurance company knows that more than likely you’re going to outlive it, and then when you do outlive it and go to reapply for insurance, well it’s 10, 20, 30 times more expensive because you’re 10, 20, 30 years older — and that’s even if you’re eligible at the time.
+
+Versus on whole life, there’s really no situation where you come out behind in a whole life policy, because that policy is paying out. You never have to worry about it expiring or outliving it, because it’s going to last until you are 120 years old.
+
+And </span><span class="fill">&lt;NAME&gt;</span><span class="say">, I still sit down with some clients that tell me, “Hey, whole life sounds great but I really only care about having insurance for the next 25 or 30 years that I have a mortgage, and then after that I’m really not concerned with it.”
+
+And I still tell them to take out a whole life policy because 20–30 years down the road, with this IUL with Mutual of Omaha, if you decide you no longer want it, you can simply go and surrender it and you will get all the money you paid into it back refunded to you, plus interest.
+
+So either A, that policy is paying out because it never expires, or B, 20–30 years from now if you decide down the road you don’t want it, no worries — you simply get all the cash value you’ve paid into it plus interest. Does that make sense?</span>
+
+<span class="note">If they already have a term:</span>
+<span class="say">The only downside here is they are a lot more strict on these whole life policies than they are term, so we don’t want to go canceling anything until we know we can get you approved for this. And if you do, then I will help you get that one switched over.</span>
+
+<span class="note">Write this down:</span>
+<span class="silent">80% LIVING BENEFITS</span>
+<span class="silent">BUILDS CASH VALUE</span>
+
+<span class="say">So God willing, if you’re alive and well at the end of the mortgage, you’ll have two options: you can either continue the coverage as supplemental life coverage, or you can surrender the policy for the cash value.</span>
+
+<span class="say">Perfect, now write down </span><span class="fill">&lt;HIGHEST OPTION&gt;</span><span class="say">, then </span><span class="fill">&lt;NEXT OPTION&gt;</span><span class="say"> below that, then </span><span class="fill">&lt;LOWEST OPTION&gt;</span><span class="say"> below that.</span>
+
+<span class="silent">NOW GIVE PRICES FOR EACH OPTION</span>
+
+<span class="say">So out of those 2 options, basically just let me know what seems the most practical and affordable for you, and then we’ll go from there.</span>
+
+<span class="note">After they pick an option:</span>
+<span class="say">Okay. If I go quiet on you, I’m just clicking away on the computer making sure we can get you approved.</span>
+
+<span class="silent">GO INTO APPLICATION</span></div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="11A" data-flow="options" data-signal="bad" id="sec-options-choose">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">⚠️ Options Choice Moment</span>
+                                <span class="sub">Force clarity. No drifting.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini bad" type="button" data-back>Back</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> They must choose what they’re deciding on.
+                                <div class="hint">This prevents “I’ll think” from hijacking the call.</div>
+                            </div>
+                        </div>
+
+                        <div id="chooseLine" class="script"><span class="say">Perfect — quick question:
+Are you deciding which option fits best, or are you still deciding whether you want coverage at all?</span></div>
+
+                        <div style="height:12px"></div>
+
+                        <div class="side-actions" style="grid-template-columns:1fr 1fr;">
+                            <button class="btn" type="button" data-jump="#sec-eapp">They chose → Start E-App</button>
+                            <button class="btn dark" type="button" data-jump="#sec-hub">Not sure → Hub</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="12" data-flow="eapp" data-signal="good" id="sec-eapp">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">E-App Guidelines</span>
+                                <span class="sub">DLN → SSN → bank info.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-eapp">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> When collecting sensitive info: calm voice, normal tone.
+                                <div class="hint">If you sound weird, they get weird.</div>
+                            </div>
+                        </div>
+
+                        <div class="callout bad">
+                            <div>
+                                <span class="cue bad">STOP</span> If they hesitate on SSN/bank info → explain “precheck + billing”.
+                                <div class="hint">Then ask: “Are you ready?” and proceed.</div>
+                            </div>
+                        </div>
+
+                        <div id="eapp" class="script"><span class="note">Asking for DLN:</span>
+<span class="say">Is your driver’s license from the state of </span><span class="fill">&lt;STATE&gt;</span><span class="say">? Okay, go ahead with that driver’s license number whenever you’re ready.</span>
+
+<span class="note">Asking for SSN:</span>
+<span class="say">For the health history precheck they are going to need your social. Go ahead with that.</span>
+
+<span class="note">Asking for bank info:</span>
+<span class="say">Who do you bank with?</span>
+
+<span class="silent">GOOGLE ROUTING NUMBER</span>
+<span class="say">Okay, it looks like we already have that routing number in our system. Let me know when you have that in front of you and I’ll read out what we have… Okay, it’s </span><span class="fill">&lt;ROUTING NUMBER&gt;</span><span class="say">.</span>
+<span class="silent">WAIT FOR RESPONSE</span>
+
+<span class="say">Okay, and go ahead with that account number.</span></div>
+
+                        <div style="height:12px"></div>
+                        <button class="btn gold" type="button" data-jump="#sec-closeout">➡️ After submit → Close It Out</button>
+                    </div>
+                </details>
+
+                <details class="section" data-step="13" data-flow="closeout" data-signal="good" id="sec-closeout">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Close It Out</span>
+                                <span class="sub">Tie-downs + anti-replacement.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini good" type="button" data-focus="#sec-closeout">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout good">
+                            <div>
+                                <span class="cue good">GO</span> This locks retention. Don’t skip it.
+                                <div class="hint">Make your value undeniable.</div>
+                            </div>
+                        </div>
+
+                        <div id="closeout" class="script"><span class="say">Appreciate your patience, just wrapping up now </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">. Do you still have that pen and paper handy? Perfect, just going to have you write down the details of your coverage so there’s no confusion.</span>
+
+<span class="note">Have them write down:</span>
+<span class="silent">NAME OF THE COMPANY</span>
+<span class="silent">PREMIUM PER MONTH</span>
+<span class="silent">RECURRING BILL DATE</span>
+<span class="silent">THEIR BENEFITS</span>
+<span class="silent">YOUR NAME AND NUMBER</span>
+<span class="silent">MON - SAT HOURS / SUNDAY EMERGENCIES ONLY</span>
+<span class="silent">SECURITY CODE</span>
+
+<span class="say">Make sure you have my contact saved in your phone as well.</span>
+
+<span class="say">Alright </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, those are the details of your coverage. Make sure when you see </span><span class="fill">&lt;COVERAGE AMOUNT&gt;</span><span class="say">, don’t be alarmed — that’s your mortgage protection policy.
+
+You’re also going to be receiving the policy packet in the mail within the next 5 to 10 business days. If you don’t get it within that time, make sure to give me a call and we’ll get another one mailed out to you.
+
+Make sure </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> also has my contact because, God forbid, when something happens to you, I’m the guy that’s going to be putting pressure on the insurance company to make sure your family is taken care of and paid out fast.
+
+Lastly, that security code I gave you — make sure to keep that safe, because if anyone calls you claiming to be me or from my office and they don’t have that code, hang up and block their number because they’re trying to scam you or get information.
+
+Sounds good. I’ll be calling you in a year to check in on your benefits, but for today it was a pleasure helping and serving you, </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">. Give me a call or shoot me a text if you need anything else. Have a blessed day, and talk in a year.</span></div>
+                    </div>
+                </details>
+
+            </div>
+        </main>
+    </div>
+</div>
+
+<div id="toast" class="toast">Copied.</div>
+
+<script>
+(function(){
+    const shell = document.getElementById('mpShell');
+    const card  = document.getElementById('mpCard');
+    const search = document.getElementById('mpSearch');
+    const toastEl = document.getElementById('toast');
+
+    const btnExpand   = document.getElementById('btnExpand');
+    const btnCollapse = document.getElementById('btnCollapse');
+    const btnClear    = document.getElementById('btnClear');
+    const btnNext     = document.getElementById('btnNext');
+
+    const btnExitFocus = document.getElementById('btnExitFocus');
+    const btnNextFocus = document.getElementById('btnNextFocus');
+
+    const sideNav = document.getElementById('sideNav');
+    const progDone = document.getElementById('progDone');
+    const progTotal = document.getElementById('progTotal');
+    const progFill = document.getElementById('progFill');
+
+    if(!shell || !card) return;
+
+    const sections = Array.from(card.querySelectorAll(':scope > details.section'));
+    const navStack = [];
+
+    function toast(msg){
+        if(!toastEl) return;
+        toastEl.textContent = msg || 'Copied.';
+        toastEl.classList.add('show');
+        setTimeout(()=>toastEl.classList.remove('show'), 1100);
+    }
+
+    function signalClass(signal){
+        const s = String(signal || '').toLowerCase().trim();
+        if(s === 'good' || s === 'warn' || s === 'bad' || s === 'info') return s;
+        return 'warn';
+    }
+
+    function applySignalClasses(){
+        sections.forEach(sec=>{
+            sec.classList.remove('good','warn','bad','info');
+            sec.classList.add(signalClass(sec.getAttribute('data-signal')));
+        });
+    }
+
+    function focusSection(id){
+        sections.forEach(s => s.classList.remove('is-focus'));
+        const target = document.querySelector(id);
+        if(!target) return;
+        target.classList.add('is-focus');
+        target.open = true;
+        shell.classList.add('focus-on');
+        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        updateProgress();
+        updateCurrentState();
+    }
+
+    function exitFocus(){
+        shell.classList.remove('focus-on');
+        sections.forEach(s => s.classList.remove('is-focus'));
+        updateCurrentState();
+    }
+
+    document.querySelectorAll('[data-focus]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            focusSection(btn.getAttribute('data-focus'));
+        });
+    });
+
+    if(btnExitFocus){
+        btnExitFocus.addEventListener('click', exitFocus);
+    }
+
+    function currentIndex(){
+        if(shell.classList.contains('focus-on')){
+            const focusIdx = sections.findIndex(s => s.classList.contains('is-focus'));
+            return focusIdx >= 0 ? focusIdx : 0;
+        }
+        const openIdx = sections.findIndex(s => s.open);
+        return openIdx >= 0 ? openIdx : 0;
+    }
+
+    function nextStep(){
+        const idx = currentIndex();
+        const next = sections[idx + 1];
+
+        if(!next){
+            toast('You’re at the last step.');
+            return;
+        }
+
+        next.open = true;
+
+        if(shell.classList.contains('focus-on')){
+            sections.forEach(s => s.classList.remove('is-focus'));
+            next.classList.add('is-focus');
+        }
+
+        next.scrollIntoView({ behavior:'smooth', block:'start' });
+        updateProgress();
+        updateCurrentState();
+    }
+
+    if(btnNext) btnNext.addEventListener('click', nextStep);
+    if(btnNextFocus) btnNextFocus.addEventListener('click', nextStep);
+
+    if(btnExpand){
+        btnExpand.addEventListener('click', ()=>{
+            sections.forEach(s => s.open = true);
+            updateProgress();
+            updateCurrentState();
+        });
+    }
+
+    if(btnCollapse){
+        btnCollapse.addEventListener('click', ()=>{
+            sections.forEach(s => s.open = false);
+
+            const aged = document.getElementById('sec-aged');
+            if(aged){
+                aged.open = true;
+                if(shell.classList.contains('focus-on')){
+                    sections.forEach(s => s.classList.remove('is-focus'));
+                    aged.classList.add('is-focus');
+                }
+            }
+
+            updateProgress();
+            updateCurrentState();
+        });
+    }
+
+    function getAnchorSection(){
+        if(shell.classList.contains('focus-on')){
+            return sections.find(s => s.classList.contains('is-focus')) || null;
+        }
+        return sections.find(s => s.open) || sections[0] || null;
+    }
+
+    function goTo(selector, push=true){
+        const target = document.querySelector(selector);
+        if(!target) return;
+
+        const current = getAnchorSection();
+        if(push && current && current.id && ('#' + current.id) !== selector){
+            navStack.push('#' + current.id);
+        }
+
+        target.open = true;
+
+        if(shell.classList.contains('focus-on')){
+            sections.forEach(s => s.classList.remove('is-focus'));
+            if(sections.includes(target)){
+                target.classList.add('is-focus');
+            } else {
+                const topParent = target.closest('#mpCard > details.section');
+                if(topParent){
+                    topParent.classList.add('is-focus');
+                    topParent.open = true;
+                }
+            }
+        }
+
+        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        updateProgress();
+        updateCurrentState();
+    }
+
+    document.querySelectorAll('[data-jump]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            goTo(btn.getAttribute('data-jump'), true);
+        });
+    });
+
+    document.querySelectorAll('[data-back]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            const prev = navStack.pop();
+            if(prev) goTo(prev, false);
+            else toast('No previous step.');
+        });
+    });
+
+    function buildNav(){
+        if(!sideNav) return;
+        sideNav.innerHTML = '';
+
+        sections.forEach((sec, i)=>{
+            const title = sec.querySelector('.title')?.textContent?.trim() || `Step ${i+1}`;
+            const sub = sec.querySelector('.sub')?.textContent?.trim() || '';
+            const id = sec.id || `sec-${i+1}`;
+            const step = sec.getAttribute('data-step') || String(i+1);
+            const signal = signalClass(sec.getAttribute('data-signal'));
+
+            const item = document.createElement('div');
+            item.className = `nav-item ${signal}`;
+            item.setAttribute('data-target', `#${id}`);
+
+            item.innerHTML = `
+                <div class="nav-left">
+                    <div class="nav-badge">${step}</div>
+                    <div class="nav-text">
+                        <div class="nav-title">${title}</div>
+                        <div class="nav-sub">${sub}</div>
+                    </div>
+                </div>
+                <div class="nav-state">
+                    <div class="tick" data-tick="#${id}"></div>
+                </div>
+            `;
+
+            item.addEventListener('click', ()=>{
+                goTo('#' + id, true);
+            });
+
+            sideNav.appendChild(item);
+        });
+
+        if(progTotal) progTotal.textContent = String(sections.length);
+        updateProgress();
+    }
+
+    function updateProgress(){
+        const doneCount = sections.filter(s => s.open).length;
+        if(progDone) progDone.textContent = String(doneCount);
+
+        const pct = sections.length ? Math.round((doneCount / sections.length) * 100) : 0;
+        if(progFill) progFill.style.width = pct + '%';
+
+        document.querySelectorAll('.tick[data-tick]').forEach(t=>{
+            const sel = t.getAttribute('data-tick');
+            const sec = document.querySelector(sel);
+            const signal = sec ? signalClass(sec.getAttribute('data-signal')) : '';
+
+            t.classList.remove('done','warn','bad');
+
+            if(sec && sec.open){
+                t.classList.add('done');
+            }else if(signal === 'bad'){
+                t.classList.add('bad');
+            }else if(signal === 'warn'){
+                t.classList.add('warn');
+            }
+        });
+    }
+
+    function updateCurrentState(){
+        const current = getAnchorSection();
+
+        sections.forEach(sec => sec.classList.remove('is-current'));
+        document.querySelectorAll('#sideNav .nav-item').forEach(item => item.classList.remove('is-active'));
+
+        if(!current) return;
+
+        current.classList.add('is-current');
+
+        const currentSel = '#' + current.id;
+        const activeNav = sideNav ? sideNav.querySelector(`.nav-item[data-target="${currentSel}"]`) : null;
+        if(activeNav){
+            activeNav.classList.add('is-active');
+        }
+    }
+
+    sections.forEach(sec=>{
+        sec.addEventListener('toggle', ()=>{
+            updateProgress();
+            updateCurrentState();
+        });
+    });
+
+    function clearHighlights(){
+        document.querySelectorAll('.script').forEach(block=>{
+            if(block.dataset.raw){
+                block.innerHTML = block.dataset.raw;
+                delete block.dataset.raw;
+            }
+        });
+        sections.forEach(s => s.style.display = '');
+    }
+
+    function highlightHTMLPreservingTags(html, q){
+        const safe = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(safe, 'gi');
+
+        return html.replace(/>([^<]+)</g, (m, text) => {
+            const replaced = text.replace(re, hit => `<mark class="hit">${hit}</mark>`);
+            return '>' + replaced + '<';
+        });
+    }
+
+    function highlightQuery(q){
+        if(!q) return;
+
+        let anyVisible = false;
+
+        sections.forEach(sec=>{
+            const text = (sec.innerText || '').toLowerCase();
+            const hit = text.includes(q.toLowerCase());
+            sec.style.display = hit ? '' : 'none';
+            if(hit) anyVisible = true;
+
+            if(hit){
+                sec.querySelectorAll('.script').forEach(block=>{
+                    if(!block.dataset.raw) block.dataset.raw = block.innerHTML;
+                    block.innerHTML = highlightHTMLPreservingTags(block.dataset.raw, q);
+                });
+            }
+        });
+
+        if(!anyVisible){
+            sections.forEach(s => s.style.display = '');
+        }
+    }
+
+    if(search){
+        search.addEventListener('input', ()=>{
+            const q = (search.value || '').trim();
+            clearHighlights();
+            if(q.length >= 2) highlightQuery(q);
+            updateCurrentState();
+        });
+    }
+
+    if(btnClear){
+        btnClear.addEventListener('click', ()=>{
+            if(search) search.value = '';
+            clearHighlights();
+            toast('Search cleared.');
+            updateCurrentState();
+        });
+    }
+
+    applySignalClasses();
+    buildNav();
+    updateProgress();
+    updateCurrentState();
+})();
+</script>

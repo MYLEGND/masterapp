@@ -1,0 +1,143 @@
+@{
+    ViewData["Title"] = "Trainings";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="training-page container mt-4 training-container">
+    <h1 class="mb-3">@ViewData["Title"]</h1>
+    <p class="lead mb-4">
+        Access training modules, certifications, and learning materials to level up your team.
+    </p>
+
+    <div class="row">
+        <!-- LEFT: Dropdown browse -->
+        <div class="col-md-6 d-flex flex-column align-items-center mb-3">
+            <label for="training-dropdown" class="mb-2"><strong>Browse Trainings</strong></label>
+            <select id="training-dropdown" class="form-select" style="width:80%;">
+                <option value="">-- Select a training --</option>
+                @if (ViewBag.Trainings != null)
+                {
+                    foreach (var tr in ViewBag.Trainings)
+                    {
+                        <option value="@tr.File">@tr.Name</option>
+                    }
+                }
+            </select>
+        </div>
+
+        <!-- RIGHT: Search input -->
+        <div class="col-md-6 d-flex flex-column align-items-center mb-3">
+            <label for="training-search" class="mb-2"><strong>Search Trainings</strong></label>
+            <input type="text" id="training-search" class="form-control" placeholder="Search training..." style="width:80%;">
+            <ul id="training-search-results" class="list-group mt-2" style="width:80%; display:none;"></ul>
+        </div>
+    </div>
+
+    <!-- Embed container -->
+    <div id="training-embed" style="margin-top:2rem; display:none;">
+        <hr />
+        <h3 id="training-title"></h3>
+        <iframe id="training-frame" 
+                src="" 
+                width="100%" 
+                height="850px" 
+                style="border:1px solid #ccc;"
+                oncontextmenu="return false;">
+        </iframe>
+    </div>
+</div>
+
+<style>
+    .training-container {
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+    .training-page h1 {
+        font-weight: 700;
+        border-bottom: 2px solid #926950;
+        padding-bottom: 0.5rem;
+        color: #926950;
+    }
+    .form-select, .form-control {
+        border: 1px solid #f0e6d2;
+        border-radius: 6px;
+        padding: 0.5rem;
+        font-weight: 500;
+        color: #333;
+    }
+    .form-select:focus, .form-control:focus {
+        border-color: #926950;
+        box-shadow: 0 0 0 0.2rem rgba(146, 105, 80, 0.18);
+        outline: none;
+    }
+    @@media (max-width: 576px) {
+        .training-page h1 { font-size: 1.5rem; }
+        .form-select, .form-control { font-size: 0.95rem; }
+    }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    // Dropdown
+    const dropdown = document.getElementById('training-dropdown');
+    const embedContainer = document.getElementById('training-embed');
+    const iframe = document.getElementById('training-frame');
+    const title = document.getElementById('training-title');
+
+    dropdown.addEventListener('change', function() {
+        const file = this.value;
+        if (!file) {
+            embedContainer.style.display = 'none';
+            iframe.src = '';
+            title.textContent = '';
+            return;
+        }
+        embedContainer.style.display = 'block';
+        title.textContent = this.options[this.selectedIndex].text;
+        iframe.src = `/training/${file}`;
+    });
+
+    // Search
+    const searchInput = document.getElementById('training-search');
+    const searchResults = document.getElementById('training-search-results');
+
+    // Gather all trainings
+    const allTrainings = [];
+    @if(ViewBag.Trainings != null)
+    {
+        foreach(var tr in ViewBag.Trainings)
+        {
+            <text>
+                allTrainings.push({name:"@tr.Name", file:"@tr.File"});
+            </text>
+        }
+    }
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.toLowerCase();
+        searchResults.innerHTML = '';
+        if (!query) {
+            searchResults.style.display = 'none';
+            return;
+        }
+        const matches = allTrainings.filter(t => t.name.toLowerCase().includes(query));
+        if(matches.length === 0){
+            searchResults.style.display = 'none';
+            return;
+        }
+        matches.forEach(t => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            li.style.cursor = 'pointer';
+            li.textContent = t.name;
+            li.addEventListener('click', function() {
+                embedContainer.style.display = 'block';
+                title.textContent = t.name;
+                iframe.src = `/training/${t.file}`;
+            });
+            searchResults.appendChild(li);
+        });
+        searchResults.style.display = 'block';
+    });
+});
+</script>

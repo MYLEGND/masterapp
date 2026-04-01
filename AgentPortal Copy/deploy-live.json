@@ -1,0 +1,22 @@
+{
+  "active": true,
+  "author": "N/A",
+  "author_email": "N/A",
+  "complete": true,
+  "deployer": "OneDeploy",
+  "end_time": "2026-03-20T06:04:49.8097362Z",
+  "id": "5a4f765cec0440c5ae17ffa4c6a8fbc9",
+  "is_readonly": true,
+  "is_temp": false,
+  "last_success_end_time": "2026-03-20T06:04:49.8097362Z",
+  "log_url": "https://masterapp-portal.scm.azurewebsites.net/api/deployments/latest/log",
+  "message": "OneDeploy",
+  "progress": "",
+  "provisioningState": "Succeeded",
+  "received_time": "2026-03-20T06:04:41.9556963Z",
+  "site_name": "masterapp-portal",
+  "start_time": "2026-03-20T06:04:42.2474386Z",
+  "status": 4,
+  "status_text": "",
+  "url": "https://masterapp-portal.scm.azurewebsites.net/api/deployments/latest"
+}

@@ -1,0 +1,526 @@
+<div class="backdrop" id="drawerBackdrop"></div>
+
+<aside class="drawer qv-theme-shell" id="drawer" aria-hidden="true" aria-label="Lead quick view" style="overflow-y:auto;">
+    <div class="dhead">
+        <div class="dtitle">
+            <span id="dName">Lead</span>
+            <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
+        </div>
+        <div class="dsub">
+            <span id="dEmail" class="crm-email-display">-</span> • <span id="dPhone">-</span>
+        </div>
+
+        <div class="drawer-statbar">
+            <span class="pill" id="dStageAge">Stage Age: 0d</span>
+            <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
+            <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
+        </div>
+
+        <div class="drawer-top-actions">
+            <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Touched Today</button>
+            <button type="button" class="btn btn-ghost" id="btnSetNextToday">Set Next Action: Today</button>
+            <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
+            <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
+            <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
+            <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queues</a>
+            <span id="dPortalWrap">-</span>
+        </div>
+    </div>
+
+    <div class="dbody" style="overflow:visible;">
+        <div class="section section-teal qv-contact-card">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <h4 style="margin:0;">Contact &amp; Profile</h4>
+                <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open style="display:inline-flex; align-items:center; gap:8px;">
+                    📝 Note to Self
+                </button>
+            </div>
+            <div class="grid2">
+                <div class="f">
+                    <label>First Name</label>
+                    <input type="text" id="dFirst" placeholder="First name" />
+                </div>
+                <div class="f">
+                    <label>Last Name</label>
+                    <input type="text" id="dLast" placeholder="Last name" />
+                </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f">
+                    <label>Phone</label>
+                    <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
+                </div>
+                <div class="f">
+                    <label>Email</label>
+                    <input type="email" id="dEmailInput" placeholder="Primary email" />
+                </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f">
+                    <label>Phone #2</label>
+                    <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
+                </div>
+                <div class="f">
+                    <label>BTC</label>
+                    <input type="text" id="dBtc" placeholder="BTC" />
+                </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f">
+                    <label>DOB</label>
+                    <input type="date" id="dDob" />
+                </div>
+                <div class="f">
+                    <label>M / F</label>
+                    <select id="dGender">
+                        <option value="">-</option>
+                        <option value="M">M</option>
+                        <option value="F">F</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+            </div>
+            <div class="f" style="margin-top:10px;">
+                <label>Street Address</label>
+                <input type="text" id="dAddress" placeholder="123 Main St" />
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f">
+                    <label>City</label>
+                    <input type="text" id="dCity" placeholder="City" />
+                </div>
+                <div class="f">
+                    <label>State</label>
+                    <input type="text" id="dState" placeholder="State" />
+                </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f">
+                    <label>County</label>
+                    <input type="text" id="dCounty" placeholder="County / Parish" />
+                </div>
+                <div class="f">
+                    <label>Zip Code</label>
+                    <input type="text" id="dZip" placeholder="Zip" />
+                </div>
+                <div class="f">
+                    <label>Age</label>
+                    <input type="text" id="dAge" placeholder="Age" />
+                </div>
+            </div>
+            <div class="grid2" style="margin-top:10px;">
+                <div class="f" id="dLenderField">
+                    <label id="dLenderLabel">Mortgage Lender</label>
+                    <input type="text" id="dLender" placeholder="Current lender" />
+                </div>
+                <div class="f" id="dLoanField">
+                    <label id="dLoanLabel">Loan Amount</label>
+                    <input type="text" id="dLoanAmount" placeholder="e.g. 250000" />
+                </div>
+            </div>
+        </div>
+
+        <details class="section section-gold qv-disclosure" open>
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Production</div>
+                    <div class="qv-section-copy">Submitted / Issued / Paid — mutually exclusive by status.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="production-history">
+                    <div class="ph-head">
+                        <div>
+                            <div class="ph-title">Lead Production</div>
+                            <div class="ph-sub">Track Submitted / Issued / Paid without changing pipeline stages.</div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span id="phProductionSummary" class="ph-production-summary" style="font-weight:700;font-size:13px;color:#e6b23a;"></span>
+                            <button type="button" class="btn btn-gold" id="phAddFromDrawer">Add Production</button>
+                        </div>
+                    </div>
+                    <div id="phList" class="ph-list">
+                        <div class="ph-empty muted"></div>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-gold qv-disclosure">
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Relationship / CRM</div>
+                    <div class="qv-section-copy">Lead status, stage, notes, outcomes, and next-step tracking.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="qv-subsection">
+                    <h5>Relationship Control</h5>
+                    <div class="grid2">
+                        <div class="f">
+                            <label>Status</label>
+                            <select id="dStatus">
+                                <option value="Lead">Lead</option>
+                                <option value="Prospect">Prospect</option>
+                                <option value="Active">Portal Client</option>
+                                <option value="Dormant">Inactive</option>
+                            </select>
+                        </div>
+                        <div class="f">
+                            <label>Pipeline Stage</label>
+                            <select id="dPipelineStage">
+                                <option value="MortgageProtection">Mortgage Protection</option>
+                                <option value="LifeInsurance">Life Insurance</option>
+                                <option value="FinalExpense">Final Expense</option>
+                                <option value="Medicare">Medicare</option>
+                                <option value="DisabilityInsurance">Disability Insurance</option>
+                                <option value="Contacted">Contacted</option>
+                                <option value="Booked">Booked</option>
+                                <option value="FollowUp">Follow Up</option>
+                                <option value="NeedsDocs">Needs Docs</option>
+                                <option value="PolicyPlaced">Policy Placed</option>
+                                <option value="NotInterested">Not Interested</option>
+                                <option value="Nurture">Nurture</option>
+                            </select>
+                        </div>
+                        <div class="f">
+                            <label>Waiting On</label>
+                            <select id="dWaitingOn">
+                                <option value="WaitingOnAgent">Waiting On Agent</option>
+                                <option value="WaitingOnClient">Waiting On Client</option>
+                                <option value="WaitingOnCarrier">Waiting On Carrier</option>
+                                <option value="WaitingOnUnderwriting">Waiting On Underwriting</option>
+                                <option value="WaitingOnDocs">Waiting On Docs</option>
+                            </select>
+                        </div>
+                        <div class="f">
+                            <label>Last Touch</label>
+                            <input type="date" id="dLastTouch" />
+                        </div>
+                    </div>
+
+                    <div class="grid2" style="margin-top:10px;">
+                        <div class="f">
+                            <label>Next Action Date</label>
+                            <input type="date" id="dNextDate" />
+                        </div>
+                        <div class="f">
+                            <label>Priority</label>
+                            <select id="dPriority">
+                                <option value="Low">Low</option>
+                                <option value="Normal" selected>Normal</option>
+                                <option value="High">High</option>
+                                <option value="Urgent">Urgent</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="f" style="margin-top:10px;">
+                        <label>Next Action (what will you do?)</label>
+                        <input type="text" id="dNextText" placeholder="e.g. Send quote, schedule review, follow up on application..." />
+                    </div>
+
+                    <div class="f" style="margin-top:10px;">
+                        <label>Pinned Client Brief</label>
+                        <textarea id="dPinnedBrief" placeholder="Current situation, objection, and next move in one fast briefing line."></textarea>
+                    </div>
+
+                    <div class="scheduler-row" style="margin-top:10px;">
+                        <button type="button" class="preset-chip" data-schedulepreset="today3">Today 3pm</button>
+                        <button type="button" class="preset-chip" data-schedulepreset="tomorrow10">Tomorrow 10am</button>
+                        <button type="button" class="preset-chip" data-schedulepreset="nextbiz">Next business day</button>
+                        <button type="button" class="preset-chip" data-schedulepreset="week">1 week follow-up</button>
+                    </div>
+
+                    <div class="tiny" style="margin-top:10px;">
+                        Reminders stay browser-local, but lead CRM, bucket progression, and saved workflow fields are still preserved for the agent account.
+                    </div>
+                </div>
+
+                <div class="qv-subsection">
+                    <h5>Outcome Console</h5>
+                    <div class="outcome-grid">
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Contacted">Mark Contacted</button>
+                        <button type="button" class="btn btn-gold outcome-btn" data-outcome="Booked">Booked Meeting</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="FollowUp">Follow Up</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NeedsDocs">Needs Docs</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="PolicyPlaced">Policy Placed</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NotInterested">Not Interested</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Nurture">Nurture</button>
+                    </div>
+                    <div class="tiny" id="dOutcomeSuggestion" style="margin-top:10px;">Use one-click outcomes to move leads into the correct non-lead buckets.</div>
+                </div>
+
+                <div class="qv-subsection">
+                    <h5>Tags</h5>
+                    <div class="f">
+                        <label>Tags (comma separated)</label>
+                        <input type="text" id="dTags" placeholder="Mortgage, Family, Referral, Gym..." />
+                    </div>
+                </div>
+
+                <div class="qv-subsection">
+                    <h5>Notes</h5>
+                    <div class="f">
+                        <label>Relationship Notes</label>
+                        <textarea id="dNotes" placeholder="Values, objections, family, context, follow-up intel..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-blue qv-disclosure">
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Meeting / Calendar</div>
+                    <div class="qv-section-copy">Scheduling helpers for the lead workflow and Outlook event creation.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="grid2">
+                    <div class="f">
+                        <label>Next Action Date</label>
+                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <input type="date" id="dMeetingNextDate" style="flex:1 1 180px;" />
+                            <button type="button" class="btn btn-ghost" id="btnMeetingNextToday">Today</button>
+                        </div>
+                    </div>
+                    <div class="f">
+                        <label>Meeting Type</label>
+                        <select id="dMeetingType">
+                            <option value="Phone">Phone Call</option>
+                            <option value="Zoom">Zoom Call</option>
+                            <option value="InPerson">In Person</option>
+                        </select>
+                    </div>
+                    <div class="f">
+                        <label>Meeting Time</label>
+                        <input type="time" id="dMeetingTime" />
+                    </div>
+                    <div class="f">
+                        <label>Duration (minutes)</label>
+                        <select id="dMeetingDuration">
+                            <option value="15">15 minutes</option>
+                            <option value="30" selected>30 minutes</option>
+                            <option value="45">45 minutes</option>
+                            <option value="60">1 hour</option>
+                            <option value="90">1 hour 30 minutes</option>
+                            <option value="120">2 hours</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid2" style="margin-top:10px;">
+                    <div class="f">
+                        <label>Location</label>
+                        <input type="text" id="dMeetingLocation" placeholder="Office, Phone, Zoom, Client Home..." />
+                        <div class="meeting-address-suggest" id="dMeetingLocationSuggest"></div>
+                    </div>
+                    <div class="f zoom-panel" id="dZoomWrap">
+                        <label>Zoom</label>
+                        <div class="tiny zoom-status" id="dZoomStatus">No saved personal Zoom room link yet.</div>
+                        <div class="zoom-actions">
+                            <button type="button" class="btn btn-ghost" id="btnZoomSavePersonal">Save My Zoom Link</button>
+                            <button type="button" class="btn btn-ghost" id="btnZoomClearPersonal">Clear Saved Zoom Link</button>
+                        </div>
+                        <label class="zoom-toggle">
+                            <input type="checkbox" id="dUsePersonalZoomLink" />
+                            <span>Use my saved personal Zoom link automatically</span>
+                        </label>
+                        <label class="zoom-link-label">Manual Zoom Link Override (optional)</label>
+                        <input type="url" id="dZoomJoinUrl" placeholder="Leave blank to use your saved personal Zoom link" />
+                    </div>
+                </div>
+
+                <div class="tiny" style="margin-top:10px;">Create Outlook calendar events directly from this lead without leaving the workspace. If you save a personal Zoom room link, you can reuse it here instead of pasting it every time.</div>
+                <div class="calendar-busy-panel" id="dCalendarBusyPanel">
+                    <div class="calendar-busy-head">
+                        <span class="calendar-busy-title">My Day Availability</span>
+                        <span class="pill" id="dCalendarBusyDate">Select a date</span>
+                    </div>
+                    <div class="tiny calendar-busy-note" id="dCalendarBusyNote">Choose a Next Action Date to see your Outlook busy blocks for that day.</div>
+                    <div class="calendar-free-wrap">
+                        <div class="calendar-free-head">
+                            <span class="calendar-free-title">Available To Book</span>
+                            <span class="tiny" id="dCalendarWorkHours">Uses your Outlook work hours</span>
+                        </div>
+                        <div class="calendar-free-list" id="dCalendarFreeList"></div>
+                    </div>
+                    <div class="calendar-busy-list" id="dCalendarBusyList"></div>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-green qv-disclosure">
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Document Checklist</div>
+                    <div class="qv-section-copy">Legacy checklist fields remain available here, but lead persistence is still limited.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="doc-grid">
+                    <label><input type="checkbox" id="dDocIdReceived" /> ID Received</label>
+                    <label><input type="checkbox" id="dDocAppSent" /> App Sent</label>
+                    <label><input type="checkbox" id="dDocAppSigned" /> App Signed</label>
+                    <label><input type="checkbox" id="dDocPolicyDelivered" /> Policy Delivered</label>
+                    <label><input type="checkbox" id="dDocReviewBooked" /> Review Booked</label>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-violet qv-disclosure">
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Team / Collaboration</div>
+                    <div class="qv-section-copy">Shown for compatibility with the existing workflow wiring; lead-side persistence is limited.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="grid2">
+                    <div class="f">
+                        <label>Assigned Owner</label>
+                        <input type="text" id="dAssignedOwner" readonly disabled />
+                    </div>
+                    <div class="f">
+                        <label>Watchers</label>
+                        <input type="text" id="dWatchers" placeholder="comma-separated emails or names" />
+                    </div>
+                </div>
+                <div class="f" style="margin-top:10px;">
+                    <label>Mention Note</label>
+                    <textarea id="dMentionNote" placeholder="Add a handoff or mention note with context for the team."></textarea>
+                </div>
+                <div class="timeline mention-list" id="mentionList" style="margin-top:10px;"></div>
+            </div>
+        </details>
+
+        <details class="section section-blue qv-disclosure">
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Activity / Timeline</div>
+                    <div class="qv-section-copy">Timeline controls remain available for compatibility; some lead-only actions stay intentionally limited.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="preset-row" id="timelineFilters">
+                    <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
+                    <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
+                    <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
+                    <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
+                    <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
+                </div>
+                <div class="grid2">
+                    <div class="f">
+                        <label>Type</label>
+                        <select id="dActType">
+                            <option value="Call">Call</option>
+                            <option value="Email">Email</option>
+                            <option value="Meeting">Meeting</option>
+                            <option value="Text">Text</option>
+                            <option value="Note">Note</option>
+                        </select>
+                    </div>
+                    <div class="f">
+                        <label>Date</label>
+                        <input type="date" id="dActDate" />
+                    </div>
+                </div>
+
+                <div class="f" style="margin-top:10px;">
+                    <label>Outcome / Notes</label>
+                    <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
+                </div>
+
+                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
+                    <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
+                    <button type="button" class="btn btn-ghost" id="btnCreateCalendarEvent" title="Create a calendar event from Next Action (requires Connect Calendar)">
+                        Create Calendar Event
+                    </button>
+                </div>
+
+                <div style="margin-top:12px;">
+                    <div class="timeline" id="timeline"></div>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-red qv-disclosure" style="border-color:#dc2626;">
+            <summary>
+                <div>
+                    <span class="qv-section-title">Secondary Controls</span>
+                    <span class="qv-section-copy">Save, reset local state, or delete the lead record.</span>
+                </div>
+            </summary>
+            <div class="qv-section-body" style="text-align:right;">
+                <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-ghost" id="btnResetLocal" title="Reset local Quick View cache">Reset Local CRM</button>
+                    <button type="button" class="btn btn-gold" id="btnSaveLocal">Save</button>
+                    <button type="button" class="btn btn-ghost" id="btnDeleteClient" style="background:#dc2626; color:#fff; border-color:#b91c1c;">
+                        Delete Lead
+                    </button>
+                </div>
+                <div class="tiny" id="dSaved" style="margin-top:6px; text-align:right;">Loaded</div>
+            </div>
+        </details>
+    </div>
+</aside>
+
+<style>
+    .production-history{margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;background:#0f1629;}
+    .ph-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
+    .ph-title{font-weight:900;letter-spacing:.04em;}
+    .ph-sub{color:#94a3b8;font-weight:700;font-size:0.9rem;}
+    .ph-list{display:flex;flex-direction:column;gap:8px;}
+    .ph-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#0c1222;}
+    .ph-left{display:flex;flex-direction:column;gap:2px;}
+    .ph-status.submitted{color:#fbbf24;}
+    .ph-status.issued{color:#60a5fa;}
+    .ph-status.paid{color:#34d399;}
+    .ph-amt{font-weight:900;}
+    .ph-note{color:#cbd5e1;font-size:0.9rem;}
+    .ph-empty{color:#94a3b8;font-weight:700;}
+</style>
+<div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
+    <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">
+        <div class="note-self-head">
+            <div class="note-self-title-wrap">
+                <h3 class="note-self-title">Note to Self</h3>
+                <p class="note-self-sub">Track what went well and what could have been better by date.</p>
+            </div>
+            <button type="button" class="note-self-close" id="noteSelfClose" data-note-self-close aria-label="Close">×</button>
+        </div>
+
+        <div class="note-self-toolbar">
+            <label class="note-self-field note-self-field-lead">
+                <span>Lead</span>
+                <input type="text" id="noteSelfLead" data-note-self-lead readonly />
+            </label>
+            <label class="note-self-field">
+                <span>Date</span>
+                <input type="date" id="noteSelfDate" data-note-self-date />
+            </label>
+            <label class="note-self-field">
+                <span>Saved notes</span>
+                <select id="noteSelfDates" data-note-self-dates>
+                    <option value="">Select lead + date</option>
+                </select>
+            </label>
+            <button type="button" class="btn lb-btn" id="noteSelfSave" data-note-self-save>Save</button>
+        </div>
+
+        <div class="note-self-doc" data-note-self-doc>
+            <section class="note-self-col">
+                <h4>What went well</h4>
+                <textarea id="noteSelfWell" data-note-self-well placeholder="Capture wins, strong moments, and what worked..."></textarea>
+            </section>
+            <section class="note-self-col">
+                <h4>What could have been better</h4>
+                <textarea id="noteSelfBetter" data-note-self-better placeholder="Capture misses, gaps, and adjustments for next time..."></textarea>
+            </section>
+        </div>
+
+        <div class="note-self-foot" id="noteSelfStatus" data-note-self-status>Ready</div>
+    </div>
+</div>

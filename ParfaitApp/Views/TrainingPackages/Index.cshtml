@@ -1,0 +1,591 @@
+@{
+    ViewData["Title"] = "Training Packages";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    var prelaunchLink = (string)(ViewBag.SquarePrelaunchLink ?? "#");
+    var trainingLink  = (string)(ViewBag.SquareTrainingLink ?? "#");
+    var fullLink      = (string)(ViewBag.SquareFullLink ?? "#");
+    var gymLink       = (string)(ViewBag.SquareGymLink ?? "#"); // add payment link in controller later
+}
+
+<div class="home-container training-page">
+
+    <!-- HERO -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold">Training Packages</h1>
+        <p class="lead mb-2">
+            Build your Parfait Body. Own your power.
+        </p>
+        <hr class="my-3 hero-hr" />
+        <p class="hero-subcopy">
+            This isn’t perfection-chasing. This is <span class="accent-text">stewardship</span> —
+            structured training that builds confidence from the inside out.
+        </p>
+    </div>
+
+    <!-- TOP CTA -->
+    <div class="text-center my-5 cta-wrap">
+        <a href="#packages" class="btn-legend-store" aria-label="View packages">
+            View Packages
+        </a>
+        <div class="cta-note">
+            Payments are processed securely through Square.
+        </div>
+    </div>
+
+    <!-- =================== WHAT YOU GET =================== -->
+    <div class="section-card">
+        <div class="section-badge">What You Get</div>
+
+        <p>
+            Step into a
+            <span class="accent-text">guided training experience</span> designed for strength, consistency,
+            and confidence you can actually keep.
+        </p>
+
+        <hr class="section-divider">
+
+        <div class="feature-grid">
+            <div class="feature-item">
+                <div class="feature-title">Structured Training</div>
+                <div class="feature-text">Progressive workouts built to match your level and goals.</div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-title">Accountability Rhythm</div>
+                <div class="feature-text">A simple system that keeps you consistent — not overwhelmed.</div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-title">Confidence + Discipline</div>
+                <div class="feature-text">You won’t rely on motivation. You’ll build real momentum.</div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-title">Parfait Standard</div>
+                <div class="feature-text">Training rooted in intention — honoring your body and your pace.</div>
+            </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <p class="italic-text">
+            Not for show. For growth.
+        </p>
+    </div>
+
+    <!-- =================== PRICING PACKAGES =================== -->
+    <div id="packages" class="section-card section-card--wide">
+        <div class="section-badge">Packages & Pricing</div>
+
+        <p class="pricing-lead">
+            Choose the level of support that fits your season. Every tier is built to help you
+            <span class="accent-text">build your Parfait Body</span> and
+            <span class="accent-text">own your power</span>.
+        </p>
+
+        <!-- Booking note (applies to all training tiers) -->
+        <div class="booking-note">
+            <a class="btn-booking"
+               href="https://outlook.office.com/book/Parfait1@mylegnd.com/"
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label="Book your weekly sessions">
+                CLICK HERE TO BOOK YOUR WEEKLY SESSIONS
+            </a>
+        </div>
+
+        <div class="pricing-grid pricing-grid--wide">
+
+            <!-- Limited Deal -->
+            <div class="price-card featured">
+                <div class="price-top">
+                    <div class="price-tag">Limited Deal</div>
+
+                    <div class="price-amount">
+                        $250<span class="price-mo">/month</span>
+                    </div>
+
+                    <div class="price-was">
+                        <span class="was-label">Regular:</span>
+                        <span class="was-amount">$350/mo</span>
+                        <span class="was-meta">for 2–3 sessions/week</span>
+                    </div>
+
+                    <div class="price-sub">
+                        <strong>2–3 sessions/week</strong> — first <strong>5</strong> members only.
+                    </div>
+                </div>
+
+                <ul class="price-list">
+                    <li>Monthly training programming</li>
+                    <li>Structured progression + guidance</li>
+                    <li>Accountability to keep you consistent</li>
+                    <li>Premium onboarding + plan setup</li>
+                </ul>
+
+                <div class="price-foot">
+                    <a href="@prelaunchLink" target="_blank" rel="noopener noreferrer"
+                       class="btn-price" aria-label="Subscribe to limited-deal">
+                        Subscribe
+                    </a>
+                    <div class="mini-note">
+                        First 5 members get this rate.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Membership -->
+            <div class="price-card">
+                <div class="price-top">
+                    <div class="price-tag">Training Membership</div>
+
+                    <div class="price-amount">
+                        $400<span class="price-mo">/month</span>
+                    </div>
+
+                    <div class="price-was">
+                        <span class="was-label">Regular:</span>
+                        <span class="was-amount">$550/mo</span>
+                        <span class="was-meta">for 3–4 sessions/week</span>
+                    </div>
+
+                    <div class="price-sub">
+                        <strong>3–4 sessions/week</strong> — first <strong>5</strong> members only.
+                    </div>
+                </div>
+
+                <ul class="price-list">
+                    <li>Monthly training programming</li>
+                    <li>Progressive training structure</li>
+                    <li>Accountability built into your routine</li>
+                    <li>Support focused on consistency + confidence</li>
+                </ul>
+
+                <div class="price-foot">
+                    <a href="@trainingLink" target="_blank" rel="noopener noreferrer"
+                       class="btn-price" aria-label="Subscribe to training membership">
+                        Subscribe
+                    </a>
+                    <div class="mini-note">
+                        The standard Parfait training experience.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Full Coaching -->
+            <div class="price-card">
+                <div class="price-top">
+                    <div class="price-tag">Full Coaching</div>
+
+                    <div class="price-amount">
+                        $550<span class="price-mo">/month</span>
+                    </div>
+
+                    <div class="price-was">
+                        <span class="was-label">Regular:</span>
+                        <span class="was-amount">$700/mo</span>
+                        <span class="was-meta">for 4–5 sessions/week</span>
+                    </div>
+
+                    <div class="price-sub">
+                        <strong>4–5 sessions/week</strong> — first <strong>5</strong> members only.
+                        <span class="diet-pill">Diet Plan Included</span>
+                    </div>
+                </div>
+
+                <ul class="price-list">
+                    <li>Full personal training support</li>
+                    <li>Customized diet plan</li>
+                    <li>Training + nutrition alignment</li>
+                    <li>Higher-touch structure for faster clarity</li>
+                </ul>
+
+                <div class="price-foot">
+                    <a href="@fullLink" target="_blank" rel="noopener noreferrer"
+                       class="btn-price" aria-label="Subscribe to full coaching">
+                        Subscribe
+                    </a>
+                    <div class="mini-note">
+                        Best for training + nutrition together.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gym Membership (self-guided) -->
+            <div class="price-card">
+                <div class="price-top">
+                    <div class="price-tag">Gym Membership</div>
+                    <div class="price-amount">$50<span class="price-mo">/month</span></div>
+                    <div class="price-sub">
+                        Self-guided access during <strong>business hours</strong> — train on your own time.
+                    </div>
+                </div>
+
+                <ul class="price-list">
+                    <li>Gym access during business hours</li>
+                    <li>Workout independently at your pace</li>
+                    <li>No coaching sessions included</li>
+                    <li>Perfect for consistency + freedom</li>
+                </ul>
+
+                <div class="price-foot">
+                    <a href="@gymLink" target="_blank" rel="noopener noreferrer"
+                       class="btn-price" aria-label="Subscribe to gym membership">
+                        Subscribe
+                    </a>
+                </div>
+            </div>
+
+        </div>
+
+        <hr class="section-divider">
+
+        <div class="availability-strip">
+            <div class="availability-left">
+                <div class="availability-title">Ready to lock in?</div>
+                <div class="availability-sub">Choose your plan — then commit to the process.</div>
+            </div>
+            <div class="availability-right">
+                <a href="@trainingLink" target="_blank" rel="noopener noreferrer"
+                   class="btn-availability" aria-label="Start training">
+                    Start Now
+                </a>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<style>
+:root {
+    --gold-color: #926950;
+    --gold-color-light: rgba(146, 105, 80, 0.18);
+    --accent-font: 'Georgia', serif;
+    --ink: #111;
+    --soft-ink: #2b2b2b;
+    --muted: #6a6a6a;
+    --card: #fff;
+}
+
+/* iOS polish */
+* { -webkit-tap-highlight-color: transparent; }
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+.home-container { padding: 2rem 1rem; font-family: 'Inter', sans-serif; }
+
+.hero-hr {
+    border-color: var(--gold-color);
+    border-width: 2px;
+    max-width: 800px;
+    margin: 1rem auto 0;
+}
+
+.hero-subcopy {
+    max-width: 820px;
+    margin: 1rem auto 0;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+.btn-legend-store {
+    font-size: 1.2rem;
+    font-weight: 800;
+    padding: 1rem 2.25rem;
+    border: 2px solid var(--gold-color);
+    border-radius: 16px;
+    background: #fff;
+    color: var(--ink);
+    text-decoration: none;
+    box-shadow: 0 8px 22px var(--gold-color-light);
+    transition: all 0.3s ease;
+    display: inline-block;
+}
+
+.btn-legend-store:hover {
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 12px 28px var(--gold-color-light);
+    background: #926950;
+    color: #fff;
+    border-color: #926950;
+}
+
+.cta-wrap { display: grid; gap: 12px; justify-content: center; }
+.cta-note { font-size: 0.95rem; color: var(--muted); }
+
+.section-card {
+    max-width: 980px;
+    margin: 55px auto;
+    padding: clamp(25px, 4vw, 44px);
+    border: 3px solid var(--gold-color);
+    border-radius: 25px;
+    background: var(--card);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.08);
+    font-family: var(--accent-font);
+    line-height: 1.85;
+    color: var(--soft-ink);
+    text-align: center;
+    position: relative;
+}
+
+/* Wider pricing section only */
+.section-card--wide{
+    max-width: 1180px; /* wider so cards don’t feel skinny */
+}
+
+.section-badge {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--gold-color);
+    color: #fff;
+    padding: 8px 22px;
+    border-radius: 40px;
+    font-size: clamp(14px, 1.35vw, 20px);
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.section-card > p:first-of-type { margin-top: 50px; }
+
+.section-divider {
+    border: none;
+    height: 2px;
+    background: var(--gold-color);
+    width: 72%;
+    margin: 26px auto;
+    border-radius: 2px;
+}
+
+.accent-text { color: var(--gold-color); font-weight: 800; }
+.italic-text { font-style: italic; font-weight: 600; color: #444; }
+
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 10px;
+}
+
+.feature-item {
+    border: 2px solid var(--gold-color);
+    border-radius: 18px;
+    padding: 16px;
+    background: #fff;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.06);
+    text-align: left;
+    font-family: 'Inter', sans-serif;
+}
+
+.feature-title { font-weight: 900; color: var(--ink); margin-bottom: 6px; }
+.feature-text { color: var(--muted); line-height: 1.6; }
+
+.pricing-lead {
+    margin-top: 50px;
+    max-width: 980px;
+    margin-left: auto;
+    margin-right: auto;
+    font-family: 'Inter', sans-serif;
+    color: var(--muted);
+}
+
+/* Booking CTA — cleaner + more obvious */
+.booking-note{
+    margin: 18px auto 0;
+    max-width: 980px;
+    font-family: 'Inter', sans-serif;
+    color: var(--muted);
+    font-size: 0.98rem;
+    line-height: 1.6;
+    padding: 14px 14px;
+    border-radius: 16px;
+    border: 1.5px solid rgba(146, 105, 80, 0.45);
+    background: rgba(146, 105, 80, 0.06);
+    display: grid;
+    justify-items: center;
+}
+
+/* HOVER BUTTON BOOKING CTA */
+.btn-booking{
+    display: inline-block;
+    padding: 14px 26px;
+    border-radius: 999px;
+    border: 2px solid var(--gold-color);
+    background: #fff;
+    color: var(--ink);
+    font-family: 'Inter', sans-serif;
+    font-weight: 950;
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    text-decoration: none;
+    box-shadow: 0 10px 26px rgba(146, 105, 80, 0.18);
+    transition: all 0.28s ease;
+}
+.btn-booking:hover{
+    background: var(--gold-color);
+    color: #fff;
+    transform: translateY(-3px) scale(1.03);
+    box-shadow: 0 16px 36px rgba(146, 105, 80, 0.35);
+}
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 22px;
+    text-align: left;
+    font-family: 'Inter', sans-serif;
+}
+
+/* Wider cards feel (without breaking responsiveness) */
+.pricing-grid--wide{
+    gap: 20px;
+}
+
+.price-card {
+    border: 2px solid rgba(146, 105, 80, 0.75);
+    border-radius: 22px;
+    padding: 18px;
+    background: #fff;
+    box-shadow: 0 10px 26px rgba(0,0,0,0.07);
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+}
+
+.price-card.featured {
+    border-width: 3px;
+    box-shadow: 0 14px 34px rgba(146, 105, 80, 0.22);
+    transform: translateY(-2px);
+}
+
+.price-tag {
+    display: inline-block;
+    background: rgba(146, 105, 80, 0.12);
+    color: var(--ink);
+    font-weight: 800;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-size: 0.9rem;
+}
+
+.price-amount {
+    font-size: 2rem;
+    font-weight: 950;
+    color: var(--ink);
+    margin-top: 10px;
+    letter-spacing: -0.5px;
+}
+
+.price-mo { font-size: 1rem; font-weight: 800; color: var(--muted); margin-left: 6px; }
+.price-sub { color: var(--muted); margin-top: 8px; line-height: 1.5; }
+
+.price-was{
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 16px;
+    border: 1.5px solid rgba(146, 105, 80, 0.35);
+    background: rgba(146, 105, 80, 0.06);
+    display: grid;
+    gap: 2px;
+}
+.was-label{ font-weight: 900; color: var(--ink); font-size: 0.92rem; }
+.was-amount{
+    font-weight: 950;
+    color: var(--ink);              /* keeps the price text readable */
+    text-decoration: line-through;
+    text-decoration-color: #e23b3b; /* RED line */
+    text-decoration-thickness: 1.8px; /* thinner line */
+    opacity: 0.95;
+}
+
+.was-meta{ color: var(--muted); font-size: 0.92rem; }
+
+.diet-pill{
+    display: inline-block;
+    margin-left: 8px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1.5px solid rgba(146, 105, 80, 0.55);
+    background: rgba(146, 105, 80, 0.10);
+    color: var(--ink);
+    font-weight: 900;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+.price-list { margin: 14px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.65; }
+.price-list li { margin: 8px 0; }
+
+.price-foot { margin-top: auto; padding-top: 14px; }
+
+.btn-price {
+    display: inline-block;
+    width: 100%;
+    text-align: center;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 2px solid var(--gold-color);
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 900;
+    background: #fff;
+    transition: all 0.25s ease;
+}
+
+.btn-price:hover {
+    background: var(--gold-color);
+    color: #fff;
+    transform: translateY(-2px);
+}
+
+.mini-note { color: var(--muted); font-size: 0.92rem; margin-top: 10px; text-align: center; }
+
+.availability-strip {
+    margin-top: 12px;
+    border: 2px solid rgba(146, 105, 80, 0.55);
+    border-radius: 22px;
+    padding: 16px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    background: rgba(146, 105, 80, 0.06);
+    font-family: 'Inter', sans-serif;
+    text-align: left;
+}
+
+.availability-title { font-weight: 950; color: var(--ink); }
+.availability-sub { color: var(--muted); margin-top: 4px; }
+
+.btn-availability {
+    border: 2px solid var(--gold-color);
+    border-radius: 16px;
+    padding: 10px 14px;
+    text-decoration: none;
+    font-weight: 900;
+    color: var(--ink);
+    background: #fff;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+}
+.btn-availability:hover { background: var(--gold-color); color: #fff; transform: translateY(-2px); }
+
+@@media (max-width: 992px) {
+    .feature-grid { grid-template-columns: 1fr; }
+    .pricing-grid { grid-template-columns: 1fr; }
+    .availability-strip { flex-direction: column; text-align: center; }
+}
+
+@@media (max-width: 576px) {
+    .section-card { margin: 30px 1rem; padding: clamp(15px, 3vw, 26px); }
+    .section-divider { width: 90%; }
+    .section-badge { font-size: clamp(12px, 4vw, 16px); }
+    .hero-subcopy { font-size: 1rem; }
+    .price-amount { font-size: 1.8rem; }
+}
+</style>

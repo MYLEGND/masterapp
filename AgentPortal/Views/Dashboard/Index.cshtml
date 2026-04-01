@@ -1,0 +1,788 @@
+@model AgentPortal.Models.DashboardExecutionViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="home-container">
+
+    <!-- HERO -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold">Legend™ Core Dashboard</h1>
+        <p class="lead mb-3">
+            Command Center for any Actions you flagged “Show in Dashboard” from Leads or Clients.
+        </p>
+        <hr class="my-3 hero-hr" />
+    </div>
+
+    <!-- SEARCH BAR -->
+    <div class="text-center mb-5 search-container">
+        <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+        <button id="clearSearch" class="btn-clear-search">Clear Search</button>
+        <div id="autocompleteList" class="autocomplete-list"></div>
+    </div>
+
+    <!-- EXECUTION SNAPSHOT (Command Center) -->
+    <style>
+        .legend-exec-btn{
+            background:#0f172a;
+            color:#f8fafc;
+            border:2px solid #8b6f1f;
+            border-radius:14px;
+            width:100%;
+            padding:18px 14px;
+            text-align:left;
+            box-shadow: 0 14px 28px rgba(0,0,0,.28);
+            transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .legend-exec-btn:hover{ transform: translateY(-2px); box-shadow:0 18px 32px rgba(0,0,0,.32); }
+        .legend-exec-title{ color:#d5b24d; font-weight:800; letter-spacing:.02em; margin:0; }
+        .legend-exec-sub{ color:#f8fafc; opacity:.78; margin:0; }
+        .legend-exec-btn .chevron{ float:right; color:#d5b24d; font-weight:900; }
+        .legend-badge{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            min-width:26px;
+            padding:2px 8px;
+            margin-left:8px;
+            border-radius:999px;
+            background:#8b6f1f;
+            color:#0b1224;
+            font-weight:800;
+            font-size:.9rem;
+        }
+        .legend-modal .modal-content{
+            background:#0f172a;
+            color:#f8fafc;
+            border:2px solid #8b6f1f;
+            border-radius:16px;
+            box-shadow:0 22px 48px rgba(0,0,0,.45);
+            max-height: calc(100vh - clamp(32px, 8vh, 72px));
+            display:flex;
+            flex-direction:column;
+        }
+        .legend-modal .modal-dialog{
+            margin: clamp(16px, 4vh, 36px) auto;
+        }
+        .legend-modal .modal-header{ border-color:#8b6f1f; }
+        .legend-modal .modal-title{ color:#d5b24d; font-weight:800; letter-spacing:.02em; }
+        .legend-modal .modal-body{
+            overflow-y:auto;
+            min-height:0;
+            overscroll-behavior:contain;
+        }
+        .legend-modal .btn-close{ opacity:.96; }
+        /* Legend-styled action lists inside modals */
+        .legend-modal .action-table-wrap{
+            background:#0b1224;
+            border:1px solid #8b6f1f;
+            padding:10px;
+            border-radius:14px;
+        }
+        .legend-modal .action-table{
+            background:transparent;
+        }
+        .legend-modal .action-table th{
+            color:#d5b24d;
+            border-bottom:1px solid rgba(139,111,31,.45);
+            background:linear-gradient(180deg,#0f172a,#0c1524);
+        }
+        .legend-modal .action-table td{
+            color:#0b1224;
+            border-top:1px solid rgba(15,23,42,.12);
+            background:#ffffff;
+        }
+        .legend-modal .action-table tbody tr:nth-child(odd){
+            background: #f8fafc;
+        }
+        .legend-modal .status-pill{
+            color:#0b1224;
+        }
+        .legend-modal .text-muted{
+            color:#d5b24d !important;
+            opacity:0.7;
+        }
+    </style>
+    <div class="row mb-4">
+        <div class="col-md-4 mb-3">
+            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalToday">
+                <span class="legend-exec-title">Today <span class="legend-badge" id="countToday">@((Model?.Today?.Count() ?? 0))</span></span>
+                <span class="chevron">⇱</span>
+            </button>
+        </div>
+        <div class="col-md-4 mb-3">
+            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalOverdue">
+                <span class="legend-exec-title">Overdue <span class="legend-badge" id="countOverdue">@((Model?.Overdue?.Count() ?? 0))</span></span>
+                <span class="chevron">⇱</span>
+            </button>
+        </div>
+        <div class="col-md-4 mb-3">
+            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalBlockers">
+                <span class="legend-exec-title">Blockers <span class="legend-badge" id="countBlockers">@((Model?.Blockers?.Count() ?? 0))</span></span>
+                <span class="chevron">⇱</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Today Modal -->
+    <div class="modal fade legend-modal" id="modalToday" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Today</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="modalTodayBody">
+            <div class="text-muted">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overdue Modal -->
+    <div class="modal fade legend-modal" id="modalOverdue" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Overdue</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="modalOverdueBody">
+            <div class="text-muted">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Blockers Modal -->
+    <div class="modal fade legend-modal" id="modalBlockers" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Blockers</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="modalBlockersBody">
+            <div class="text-muted">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+<div id="dashboardAf" style="display:none;">
+    @Html.AntiForgeryToken()
+</div>
+<div id="dashboardToast" class="toast" aria-live="polite">Done</div>
+
+<script src="~/js/legend-modal.js" asp-append-version="true"></script>
+<script>
+    (() => {
+        const loadInto = (url, targetId) => {
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            target.innerHTML = '<div class="text-muted">Loading…</div>';
+            fetch(url, { credentials: 'include' })
+                .then(r => r.text())
+                .then(html => { target.innerHTML = html; })
+                .catch(() => { target.innerHTML = '<div class="text-danger">Failed to load.</div>'; });
+        };
+
+        const refreshCounts = () => {
+            fetch("/Dashboard/Counts", { credentials: 'include' })
+                .then(r => r.json())
+                .then(data => {
+                    const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent = val ?? 0; };
+                    set("countToday", data.today);
+                    set("countOverdue", data.overdue);
+                    set("countBlockers", data.blockers);
+                })
+                .catch(() => {});
+        };
+
+        const modals = [
+            { id: 'modalToday', url: '/Dashboard/Today', body: 'modalTodayBody' },
+            { id: 'modalOverdue', url: '/Dashboard/Overdue', body: 'modalOverdueBody' },
+            { id: 'modalBlockers', url: '/Dashboard/Blockers', body: 'modalBlockersBody' }
+        ];
+
+        modals.forEach(m => {
+            const el = document.getElementById(m.id);
+            if (!el) return;
+            const bound = window.LegendModal?.bind?.(m.id, { modalZ: 1050, backdropZ: 1045 });
+            const modalEl = bound || el;
+            modalEl.addEventListener('show.bs.modal', () => {
+                window.LegendModal?.closeLegacyExecutionOverlays?.();
+                loadInto(m.url, m.body);
+            });
+        });
+
+        // Complete/Delete handling (AJAX) to keep counts accurate
+        document.addEventListener("click", (event) => {
+            const btn = event.target.closest(".action-complete-btn");
+            if (!btn) return;
+            event.preventDefault();
+            const id = btn.getAttribute("data-action-id");
+            if (!id) return;
+            fetch("/Dashboard/CompleteAction", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "RequestVerificationToken": document.querySelector('#dashboardAf input[name=\"__RequestVerificationToken\"]')?.value || ""
+                },
+                body: JSON.stringify({ id }),
+                credentials: "include"
+            }).then(r => {
+                if (!r.ok) throw new Error();
+                // reload any open modal bodies
+                modals.forEach(m => {
+                    const el = document.getElementById(m.id);
+                    if (el && el.classList.contains("show")) loadInto(m.url, m.body);
+                });
+                refreshCounts();
+            }).catch(()=>{});
+        });
+
+        document.addEventListener("submit", (event) => {
+            const form = event.target.closest(".action-delete-form");
+            if (!form) return;
+            event.preventDefault();
+            const fd = new FormData(form);
+            fetch(form.action, {
+                method: "POST",
+                body: fd,
+                credentials: "include"
+            }).then(r => {
+                if (!r.ok) throw new Error();
+                modals.forEach(m => {
+                    const el = document.getElementById(m.id);
+                    if (el && el.classList.contains("show")) loadInto(m.url, m.body);
+                });
+                refreshCounts();
+            }).catch(()=>{});
+        });
+
+        refreshCounts();
+    })();
+</script>
+
+<!-- LIFE & HEALTH -->
+<div class="category-container mb-5" data-category="Life & Health">
+    <h3 class="text-center mb-4 fw-bold">Life & Health</h3>
+    <div class="centered-tools">
+        @{
+            var lifeHealthTools = new[]
+            {
+                new { Name = "Integrity Marketing", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
+                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+                new { Name = "United of Omaha", Url = "https://producer.mutualofomaha.com/enterprise/myportal/home", Icon = "united.png", Desc = "Life, Disability, Final Expense" },
+                new { Name = "Americo", Url = "https://account.americoagent.com/Identity/Account/Login/?returnUrl=https%3a%2f%2fportal.americoagent.com%2f", Icon = "americo.png", Desc = "Life, Final Expense" },
+                new { Name = "Banner Life", Url = "https://partner.bannerlife.com/dashboard", Icon = "bannerlife.png", Desc = "Term Life, Univeral Life" },
+                new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+                new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+            };
+        }
+
+        @foreach (var tool in lifeHealthTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- THE PINACLE LIFE GROUP LIFE & HEALTH -->
+<div class="category-container mb-5" data-category="Life & Health">
+    <h3 class="text-center mb-4 fw-bold">The Pinnacle Life Group - Life & Health</h3>
+    <div class="centered-tools">
+        @{
+            var pinnacleLifeHealthTools = new[]
+            {
+                new { Name = "Pinacle Life CRM", Url = "https://www.score.insure/login", Icon = "score.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
+                new { Name = "TransAmerica", Url = "https://secure.transamerica.com/login/sign-in/login.html", Icon = "transamerica.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+                new { Name = "Mutual of Omaha", Url = "https://accounts.mutualofomaha.com/samlAuthnRequest", Icon = "mutualofomaha.png", Desc = "Life, Disability, Final Expense" },
+                new { Name = "Royal Neighbors Of America", Url = "https://royalneighborsims.b2clogin.com/royalneighborsims.onmicrosoft.com/b2c_1_rna.agentportal.unifiedlogin2/oauth2/v2.0/authorize?client_id=6c623a2c-9e5b-4fc5-9cbf-725453a605a4&scope=openid%20profile%20offline_access&redirect_uri=https%3A%2F%2Fagent.royalneighbors.org%2Fsecure&client-request-id=019cbc1e-ef05-7fe1-ae20-32683ff48f18&response_mode=fragment&client_info=1&nonce=019cbc1e-ef07-77e6-8482-f6221dff75cf&state=eyJpZCI6IjAxOWNiYzFlLWVmMDYtNzI3ZC05MGI4LTZhMjUxZGE5MjZmOSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoicmVkaXJlY3QifX0%3D&x-client-SKU=msal.js.browser&x-client-VER=4.20.0&response_type=code&code_challenge=KsutDkEHbFdf410_KzREgsCPNPJg6rKLL0DcfvQ5JJY&code_challenge_method=S256", Icon = "royal.png", Desc = "Life, Final Expense" },
+                new { Name = "Liberty Bankers Life Ins Co", Url = "https://myportal.lbig.com/login.php", Icon = "liberty.png", Desc = "Term Life, Univeral Life" },
+                new { Name = "Kansas City Life Ins Co", Url = "https://www.kclife.com/account/Login.aspx", Icon = "kcl.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+                new { Name = "American General Life Ins Co", Url = "https://www-1p.aig.com/login", Icon = "americangeneral.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+                new { Name = "American Home Life", Url = "https://www.amhomelife.com/ahlcas/login?service=https://www.amhomelife.com/ahlsec2/servlet/mainlogin", Icon = "americanhomelife.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+                new { Name = "Fidelity & Guaranty Life Insurance Company", Url = "https://saleslink.fglife.com/", Icon = "fidelity.png", Desc = "Term Life, Univeral Life" },
+                new { Name = "Banner (Beyond Term)", Url = "https://login.bannerlife.com/login?signin=1c5409709a3c9bd18a8eede7a0c90b94", Icon = "banner.png", Desc = "Term Life, Univeral Life" },
+                new { Name = "Foresters - Independent Order Of", Url = "https://myezbiz.foresters.com/my.policy", Icon = "foresters.png", Desc = "Term Life, Univeral Life" },
+            };
+        }
+
+        @foreach (var tool in pinnacleLifeHealthTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- DISABILITY INSURANCE -->
+<div class="category-container mb-5" data-category="Disability Insurance">
+    <h3 class="text-center mb-4 fw-bold">Disability Insurance</h3>
+    <div class="centered-tools">
+        @{
+            var disabilityTools = new[]
+            {
+                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+                new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+            };
+        }
+
+        @foreach (var tool in disabilityTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- PERSONAL LINES -->
+<div class="category-container mb-5" data-category="Personal Lines">
+    <h3 class="text-center mb-4 fw-bold">Personal Lines</h3>
+    <div class="centered-tools">
+        @{
+            var personalLinesTools = new[]
+            {
+                new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
+                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+                 new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
+                new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
+                new { Name = "Mexico Insurance Online", Url = "https://sb.iigins.com/bts/menu/", Icon = "mexico.png", Desc = "Quote and bind Mexico auto & travel insurance" },
+                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+                new { Name = "Orion180", Url = "https://app.orion180.com/", Icon = "orion180.png", Desc = "Homeowners, Dwelling, Personal Property, Liability, + Endorsements For Specific Needs" },
+                new { Name = "Hagerty", Url = "https://www.hagertyagent.com/Agent/Home", Icon = "hagerty.png", Desc = "Classic Cars, Antique, Collector, Modified Vehicles" },
+                new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
+                new { Name = "EPremium", Url = "https://www.epremiuminsurance.com/DirectToConsumerPartner.aspx?IRISAccountID=PHgYKGChQrc%3d&TopLevelIRISAccountID=pKgVh2ygOEw%3d", Icon = "epremium.png", Desc = "Primarily offers enhanced renters insurance, Personal Property, Liability for Resident Caused damages" },
+                new { Name = "Steadily", Url = "https://agent.steadily.com/policy/start-quote", Icon = "steadily.png", Desc = "Specialized Landlord Insurance | Property Damage (Fire, Water, Wind, Vandalism)" },
+                new { Name = "Common Wealth", Url = "https://agent.commonwealthcasualty.com/dashboard.jsp", Icon = "commonwealth.png", Desc = "Basic Auto Insurance, Liability, Collision, Comprehensive, Uninsured/Underinsured Motorist, Optional Add Ons" },
+                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            };
+        }
+
+        @foreach (var tool in personalLinesTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- COMMERCIAL LINES -->
+<div class="category-container mb-5" data-category="Commercial Lines">
+    <h3 class="text-center mb-4 fw-bold">Commercial Lines</h3>
+    <div class="centered-tools">
+        @{
+            var commercialTools = new[]
+            {
+                new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
+                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+                new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
+                new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
+                new { Name = "Hiscox", Url = "https://portal.hiscox.com/oneshield/sso", Icon = "hiscox.png", Desc = "Small Business General Liability, Professional Liability, E&O, BOP, Cyber Liability, Worker's Comp" },
+                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+                new { Name = "Obie", Url = "https://commissions.smartchoiceagents.com/", Icon = "obie.png", Desc = "Landlords & Property Owners, Real Estate Investors, Lenders, Property Managers, Independent Agents" },
+                new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
+                new { Name = "Adaptive", Url = "https://app.adaptiveinsurance.com/", Icon = "adaptive.png", Desc = "Businesses, Primarily defend against climate change. " },
+            };
+        }
+
+        @foreach (var tool in commercialTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+
+
+</div>
+
+<style>
+/* ==============================
+   THEME VARIABLES
+============================== */
+:root {
+    /* Colors */
+    --gold-color: #a68023;
+    --gold-light: rgba(166,128,35,0.26);
+    --navy-900: #0b1529;
+    --navy-800: #0f1d38;
+    --navy-700: #162445;
+    --text-color: #f8fafc;
+    --muted-text: #cbd5e1;
+    --background-color: #0b1529;
+
+    /* Tool card dimensions */
+    --tool-width: 180px;
+    --tool-height: 150px;
+    --tool-radius: 10px;
+    --tool-gap: 1.5rem;
+
+    /* Search input */
+    --search-width: 400px;
+    --search-radius: 50px;
+
+    /* Hero divider */
+    --divider-color: var(--gold-color);
+    --divider-width: 2px;
+    --divider-margin: 1rem auto 1.5rem;
+
+    /* Tool glow on hover */
+    --tool-glow-color: rgba(166,128,35,0.45);
+}
+
+/* ==============================
+   GENERAL CONTAINER
+============================== */
+.home-container {
+    padding: 2rem 1rem;
+    color: #0b1529;
+    background: #fff;
+}
+
+.category-container{
+    background: var(--navy-800) !important;
+    border: 2.2px solid var(--gold-color) !important;
+    border-radius: 18px;
+    padding: 1.5rem;
+    box-shadow: 0 20px 42px rgba(0,0,0,.36), 0 0 0 2px rgba(166,128,35,.15), inset 0 1px 0 rgba(255,255,255,.06);
+    color: var(--text-color);
+}
+.category-container h3{
+    color: var(--text-color) !important;
+}
+.category-container .tool-desc,
+.category-container .tool-name{
+    color: #0b1529 !important;
+}
+
+/* inside dashboard sections, keep tiles white with gold edges for contrast */
+.category-container .dashboard-tool{
+    background: #fff;
+    color: #0b1529;
+    border-color: var(--gold-color);
+    box-shadow: 0 10px 24px rgba(0,0,0,0.18);
+}
+.category-container .dashboard-tool .tool-name,
+.category-container .dashboard-tool .tool-desc{
+    color: #0b1529;
+}
+.category-container .dashboard-tool:hover{
+    color: #0b1529;
+    box-shadow: 0 14px 30px rgba(0,0,0,0.26), 0 0 0 3px rgba(166,128,35,.18);
+}
+
+/* ==============================
+   HERO / TITLE
+============================== */
+.hero-hr {
+    border-color: var(--divider-color);
+    border-width: var(--divider-width);
+    max-width: 1500px;
+    margin: var(--divider-margin);
+}
+
+/* ==============================
+   SEARCH BAR
+============================== */
+.search-container {
+    display: flex;
+    justify-content: center; /* center input + button */
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.search-input {
+    width: var(--search-width);
+    max-width: 90%;
+    padding: 0.6rem 1rem;
+    border-radius: var(--search-radius);
+    border: 2px solid var(--gold-color);
+    background: #fff;
+    color: #0b1529;
+    caret-color: #0b1529;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+.search-input::placeholder{
+    color: #1f2a44;
+    opacity: 0.95;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #b2882b;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.22);
+}
+
+/* New clear button next to input */
+.btn-clear-search {
+    padding: 0.55rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    border: 2px solid var(--gold-color);
+    background-color: var(--gold-color);
+    color: #0b1529;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-clear-search:hover {
+    background-color: #b2882b;
+    color: #0b1529;
+    box-shadow: 0 0 16px rgba(0,0,0,.28);
+}
+.btn-clear-search:focus-visible {
+    outline: 2px solid #ddb457;
+    outline-offset: 3px;
+    box-shadow: 0 0 18px rgba(0,0,0,.32);
+}
+
+/* ==============================
+   AUTOCOMPLETE
+============================== */
+.autocomplete-list {
+    position: absolute;
+    top: 110%;
+    left: 0;
+    right: 0;
+    background: var(--navy-800);
+    border: 1.5px solid var(--gold-color);
+    border-radius: 12px;
+    box-shadow: 0 14px 30px rgba(0,0,0,0.32);
+    z-index: 999;
+    max-height: 150px;
+    overflow-y: auto;
+    display: none;
+}
+
+.autocomplete-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background 0.2s;
+    color: var(--text-color);
+}
+
+.autocomplete-item img {
+    width: 30px;
+    height: 30px;
+}
+
+.autocomplete-item:hover {
+    background-color: rgba(166,128,35,.16);
+}
+
+/* ==============================
+   TOOL CARD
+============================== */
+.dashboard-tool {
+    width: var(--tool-width);
+    max-width: 180px;
+    height: var(--tool-height);
+    border: 1.6px solid var(--gold-color);
+    border-radius: var(--tool-radius);
+    padding: 0.5rem;
+    text-decoration: none;
+    color: #0b1529;
+    font-weight: 700;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(166,128,35,.14);
+    transition: all 0.3s ease;
+    position: relative; /* added for overlay */
+}
+
+.dashboard-tool:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 16px 32px rgba(0,0,0,.26), inset 0 0 0 1.6px #c79931;
+    color: #0b1529;
+    border-color: #c79931;
+}
+.dashboard-tool:focus-visible {
+    outline: 2px solid #ddb457;
+    outline-offset: 3px;
+    box-shadow: 0 16px 32px rgba(0,0,0,.32), 0 0 0 3px rgba(221,180,87,.32);
+}
+.dashboard-tool:active{
+    transform: translateY(-3px);
+    box-shadow: 0 10px 22px rgba(0,0,0,.26), 0 0 0 2px rgba(166,128,35,.24);
+}
+
+.dashboard-tool img {
+    max-width: 80px;
+    max-height: 60px;
+}
+
+/* ==============================
+   TOOL HOVER DESCRIPTION OVERLAY
+============================== */
+.dashboard-tool .tool-desc {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(12,21,41,0.92);
+    color: #f6e6b4;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+    border-radius: var(--tool-radius);
+    font-weight: 700;
+}
+.dashboard-tool:hover .tool-desc {
+    opacity: 1;
+}
+
+.dashboard-tool:hover img,
+.dashboard-tool:hover .tool-name {
+    opacity: 0.2;
+    transition: opacity 0.25s ease-in-out;
+}
+
+/* ==============================
+   RESPONSIVE
+============================== */
+@@media (max-width: 576px) {
+    .dashboard-tool { width: 160px; height: 130px; }
+    .dashboard-tool img { width: 50px; height: 50px; }
+    .search-input { width: 90%; font-size: 0.95rem; }
+    .btn-clear-search { font-size: 0.9rem; padding: 0.45rem 0.8rem; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    const searchInput = document.getElementById('toolSearch');
+    const autocompleteList = document.getElementById('autocompleteList');
+    const clearBtn = document.getElementById('clearSearch');
+
+    const tools = Array.from(document.querySelectorAll('.dashboard-tool')).map(tool => ({
+        name: tool.dataset.name || tool.querySelector('.tool-name').textContent.trim(),
+        description: tool.querySelector('.tool-desc')?.textContent.toLowerCase() || '',
+        href: tool.href,
+        imgSrc: tool.querySelector('img').src
+    }));
+
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        autocompleteList.style.display = 'none';
+    });
+
+    searchInput.addEventListener('input', () => {
+        const value = searchInput.value.toLowerCase().trim();
+        autocompleteList.innerHTML = '';
+
+        if (!value) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        const matches = tools.filter(t =>
+            t.name.toLowerCase().includes(value) ||
+            t.description.includes(value)
+        );
+
+        if (!matches.length) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        matches.forEach(tool => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            item.innerHTML = `
+                <img src="${tool.imgSrc}" />
+                <span>${tool.name}</span>
+            `;
+            item.onclick = () => window.open(tool.href, '_blank');
+            autocompleteList.appendChild(item);
+        });
+
+        autocompleteList.style.display = 'block';
+    });
+
+    document.addEventListener('click', e => {
+        if (!searchInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+            autocompleteList.style.display = 'none';
+        }
+    });
+
+    const enableMobileCollapses = () => {
+        const mq = window.matchMedia('(max-width: 720px)');
+        if (!mq.matches) return;
+
+        const categories = Array.from(document.querySelectorAll('.category-container'));
+        categories.forEach((cat, idx) => {
+            const tools = cat.querySelector('.centered-tools');
+            const heading = cat.querySelector('h3');
+            if (!tools || !heading) return;
+
+            const setState = (open) => {
+                cat.classList.toggle('is-open', open);
+                tools.style.display = open ? 'flex' : 'none';
+                heading.dataset.mobileState = open ? '−' : '+';
+            };
+
+            heading.setAttribute('role', 'button');
+            heading.setAttribute('tabindex', '0');
+
+            const initialOpen = idx === 0;
+            setState(initialOpen);
+
+            const toggle = () => setState(!cat.classList.contains('is-open'));
+            heading.addEventListener('click', toggle);
+            heading.addEventListener('keydown', e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    toggle();
+                }
+            });
+        });
+    };
+
+    enableMobileCollapses();
+});
+</script>
+<script src="~/js/dashboard-execution.js" asp-append-version="true"></script>

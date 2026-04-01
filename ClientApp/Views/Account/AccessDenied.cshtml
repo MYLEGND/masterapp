@@ -1,0 +1,44 @@
+@{
+    ViewData["Title"] = "Access Denied";
+    Layout = null; // ✅ no navbar/tabs/layout
+
+    // ✅ Razor-safe way to set status code
+    Context.Response.StatusCode = 403;
+
+    var returnUrl = (string)(ViewBag.ReturnUrl ?? "/profile");
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Access Denied - Legend™</title>
+
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+
+    <style>
+        body { background:#fff; color:#111; font-family:'Inter', sans-serif; padding: 2rem 1rem; }
+        .wrap { max-width: 820px; margin: 0 auto; }
+        .cardx { background:#fff; border:1.5px solid #a68023; border-radius:16px; box-shadow:0 8px 22px rgba(0,0,0,0.06); padding:1.25rem; }
+        .title { margin:0; font-weight:900; font-size:1.7rem; }
+        .sub { margin:.5rem 0 0; font-weight:700; color:#444; }
+        .divider { height:1px; background:rgba(166,128,35,0.22); margin:1.1rem 0; }
+        .btnx { display:inline-block; border-radius:14px; padding:.75rem 1.15rem; font-weight:900; letter-spacing:.3px; text-decoration:none; }
+        .primary { border:2px solid #a68023; background:#a68023; color:#fff; box-shadow:0 10px 24px rgba(166,128,35,0.25); }
+        .outline { border:2px solid #a68023; background:#fff; color:#111; margin-left:.5rem; }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="cardx">
+            <h1 class="title">Access Denied</h1>
+            <p class="sub">You’re signed in, but you don’t have permission to view that client profile.</p>
+            <div class="divider"></div>
+
+            <a class="btnx primary" href="@returnUrl">Go Back</a>
+            <a class="btnx outline" href="/profile">My Profile</a>
+        </div>
+    </div>
+</body>
+</html>

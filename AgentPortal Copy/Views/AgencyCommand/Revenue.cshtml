@@ -1,0 +1,277 @@
+@using AgentPortal.Services
+@using AgentPortal.Models
+@using System.Globalization
+@model AgencyRevenueVm
+@{
+    ViewData["Title"] = "Agency Production";
+    string NameFor(string oid) => Model.AgentNames.TryGetValue(oid, out var n) ? n : oid;
+}
+
+<div class="revenue-hero">
+    <div>
+        <p class="eyebrow">Founder • Agency Production</p>
+        <h1>Revenue Intelligence</h1>
+        <p class="lede">Submitted, issued, paid — split by Leads vs Clients for operational clarity.</p>
+    </div>
+    <div class="hero-actions">
+        <a class="btn btn-ghost" asp-controller="AgencyCommand" asp-action="Index">← Back to Agency Command</a>
+    </div>
+</div>
+
+<div class="revenue-grid">
+    <div class="rev-card submitted">
+        <div class="label">Submitted (Leads)</div>
+        <div class="value">@Model.Leads.Submitted.ToString("C0")</div>
+        <div class="note">@Model.Leads.CountSubmitted deals</div>
+    </div>
+    <div class="rev-card issued">
+        <div class="label">Issued (Leads)</div>
+        <div class="value">@Model.Leads.Issued.ToString("C0")</div>
+        <div class="note">@Model.Leads.CountIssued deals</div>
+    </div>
+    <div class="rev-card paid">
+        <div class="label">Paid (Leads)</div>
+        <div class="value">@Model.Leads.Paid.ToString("C0")</div>
+        <div class="note">@Model.Leads.CountPaid deals</div>
+    </div>
+
+    <div class="rev-card submitted">
+        <div class="label">Submitted (Clients)</div>
+        <div class="value">@Model.Clients.Submitted.ToString("C0")</div>
+        <div class="note">@Model.Clients.CountSubmitted deals</div>
+    </div>
+    <div class="rev-card issued">
+        <div class="label">Issued (Clients)</div>
+        <div class="value">@Model.Clients.Issued.ToString("C0")</div>
+        <div class="note">@Model.Clients.CountIssued deals</div>
+    </div>
+    <div class="rev-card paid">
+        <div class="label">Paid (Clients)</div>
+        <div class="value">@Model.Clients.Paid.ToString("C0")</div>
+        <div class="note">@Model.Clients.CountPaid deals</div>
+    </div>
+</div>
+
+<div class="agent-table card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Top Producers by Month (local year @Model.Year)</span>
+        <small class="text-muted fw-bold">Ranked Paid → Issued → Submitted</small>
+    </div>
+    <div class="accordion" id="topProducersAccordion">
+        @foreach (var month in Model.Monthly.OrderByDescending(m => m.Month))
+        {
+            var monthName = CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(month.Month);
+            var collapseId = $"month-{month.Month}";
+            var headingId = $"heading-{month.Month}";
+            var hasData = month.Producers.Any();
+            var monthTotals = month.MonthTotals;
+            <div class="accordion-item soft-dark border-gold">
+                <h2 class="accordion-header" id="@headingId">
+                    <button class="accordion-button collapsed soft-dark text-ink border-gold" type="button" data-bs-toggle="collapse" data-bs-target="#@collapseId" aria-expanded="false" aria-controls="@collapseId">
+                        <div class="heading-left">
+                            <span class="dot text-gold">●</span>
+                            <div class="heading-text">
+                                <div class="title">@monthName @Model.Year</div>
+                                <div class="subtitle">@monthTotals.Paid.ToString("C0") paid • @monthTotals.Issued.ToString("C0") issued • @monthTotals.Submitted.ToString("C0") submitted</div>
+                            </div>
+                        </div>
+                        @if (!hasData)
+                        {
+                            <div class="chip-row">
+                                <span class="chip muted">No production yet</span>
+                            </div>
+                        }
+                    </button>
+                </h2>
+                <div id="@collapseId" class="accordion-collapse collapse" aria-labelledby="@headingId" data-bs-parent="#topProducersAccordion">
+                    <div class="accordion-body">
+                        @if (hasData)
+                        {
+                            <div class="accordion" id="producers-@month.Month">
+                                @foreach (var producer in month.Producers)
+                                {
+                                    var prodCollapseId = $"month-{month.Month}-prod-{producer.AgentUserId}";
+                                    var prodHeadingId = $"heading-{month.Month}-prod-{producer.AgentUserId}";
+                                    var name = NameFor(producer.AgentUserId);
+                                    <div class="accordion-item producer-card">
+                                        <h2 class="accordion-header" id="@prodHeadingId">
+                                            <button class="accordion-button collapsed producer-header" type="button" data-bs-toggle="collapse" data-bs-target="#@prodCollapseId" aria-expanded="false" aria-controls="@prodCollapseId">
+                                                <div class="producer-summary">
+                                                    <div>
+                                                        <div class="producer-name">@name</div>
+                                                        <div class="producer-sub">@monthName @Model.Year</div>
+                                                    </div>
+                                                    <div class="chip-row">
+                                                        <span class="chip success">Paid @producer.Totals.Paid.ToString("C0")</span>
+                                                        <span class="chip info">Issued @producer.Totals.Issued.ToString("C0")</span>
+                                                        <span class="chip warn">Submitted @producer.Totals.Submitted.ToString("C0")</span>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </h2>
+                                        <div id="@prodCollapseId" class="accordion-collapse collapse" aria-labelledby="@prodHeadingId" data-bs-parent="#producers-@month.Month">
+                                            <div class="accordion-body producer-body">
+                                                <div class="row g-3 mb-2">
+                                                    <div class="col-12 col-md-6">
+                                                        <div class="split-card leads">
+                                                            <div class="split-label">Leads</div>
+                                                            <div class="split-values">
+                                                                <span>Submitted @producer.LeadsTotals.Submitted.ToString("C0") (@producer.LeadsTotals.CountSubmitted)</span>
+                                                                <span>Issued @producer.LeadsTotals.Issued.ToString("C0") (@producer.LeadsTotals.CountIssued)</span>
+                                                                <span>Paid @producer.LeadsTotals.Paid.ToString("C0") (@producer.LeadsTotals.CountPaid)</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-12 col-md-6">
+                                                        <div class="split-card clients">
+                                                            <div class="split-label">Clients</div>
+                                                            <div class="split-values">
+                                                                <span>Submitted @producer.ClientsTotals.Submitted.ToString("C0") (@producer.ClientsTotals.CountSubmitted)</span>
+                                                                <span>Issued @producer.ClientsTotals.Issued.ToString("C0") (@producer.ClientsTotals.CountIssued)</span>
+                                                                <span>Paid @producer.ClientsTotals.Paid.ToString("C0") (@producer.ClientsTotals.CountPaid)</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="row g-3">
+                                                    <div class="col-12 col-xl-6">
+                                                        <div class="breakdown-card">
+                                                            <div class="breakdown-title">Weekly Breakdown</div>
+                                                            @if (producer.Weekly.Any())
+                                                            {
+                                                                <table class="table table-striped table-sm align-middle mb-0 top-prod-table">
+                                                                    <thead>
+                                                                        <tr><th>Week Start</th><th>Submitted</th><th>Issued</th><th>Paid</th></tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                    @foreach (var w in producer.Weekly)
+                                                                    {
+                                                                        <tr>
+                                                                            <td>@w.WeekStart.ToString("MMM dd")</td>
+                                                                            <td class="text-warning">@w.Totals.Submitted.ToString("C0")</td>
+                                                                            <td class="text-info">@w.Totals.Issued.ToString("C0")</td>
+                                                                            <td class="text-success">@w.Totals.Paid.ToString("C0")</td>
+                                                                        </tr>
+                                                                    }
+                                                                    </tbody>
+                                                                </table>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="text-muted fw-semibold">No weekly production.</div>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-12 col-xl-6">
+                                                        <div class="breakdown-card">
+                                                            <div class="breakdown-title">Daily Breakdown</div>
+                                                            @if (producer.Daily.Any())
+                                                            {
+                                                                <table class="table table-striped table-sm align-middle mb-0 top-prod-table">
+                                                                    <thead>
+                                                                        <tr><th>Date</th><th>Submitted</th><th>Issued</th><th>Paid</th></tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                    @foreach (var d in producer.Daily)
+                                                                    {
+                                                                        <tr>
+                                                                            <td>@d.Date.ToString("MMM dd")</td>
+                                                                            <td class="text-warning">@d.Totals.Submitted.ToString("C0")</td>
+                                                                            <td class="text-info">@d.Totals.Issued.ToString("C0")</td>
+                                                                            <td class="text-success">@d.Totals.Paid.ToString("C0")</td>
+                                                                        </tr>
+                                                                    }
+                                                                    </tbody>
+                                                                </table>
+                                                            }
+                                                            else
+                                                            {
+                                                                <div class="text-muted fw-semibold">No daily production.</div>
+                                                            }
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="text-muted fw-semibold">No production recorded for this month.</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    body { background:#ffffff; color:#0b1529; }
+    .revenue-hero{padding:16px 12px 8px 12px;color:#0b1529;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+    .hero-actions .btn-ghost{
+        border:1.6px solid rgba(221,180,87,.65);
+        color:#ffffff;
+        font-weight:800;
+        border-radius:12px;
+        padding:9px 14px;
+        background:#0b1529;
+        box-shadow:0 10px 20px rgba(0,0,0,.25);
+    }
+    .hero-actions .btn-ghost:hover{border-color:rgba(221,180,87,.9);color:#fefce8;background:#0d1a33;}
+    .eyebrow{letter-spacing:0.2em;text-transform:uppercase;color:#d8b04c;font-weight:900;margin-bottom:6px;}
+    h1{font-weight:900;letter-spacing:0.02em;color:#0b1529;}
+    .lede{color:#1f2937;font-weight:700;}
+    .revenue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:12px;}
+    .rev-card{padding:14px;border-radius:14px;background:#0b1224;border:1.6px solid rgba(221,180,87,.45);box-shadow:0 14px 34px rgba(0,0,0,.24);}
+    .rev-card .label{font-weight:800;color:#cbd5e1;text-transform:uppercase;font-size:.85rem;letter-spacing:.04em;}
+    .rev-card .value{font-weight:900;font-size:1.7rem;color:#ffffff;}
+    .rev-card .note{color:#94a3b8;font-weight:700;}
+    .rev-card.submitted{border-color:rgba(255,191,71,.7);background:#2f2106;}
+    .rev-card.submitted .value{color:#fbbf24;}
+    .rev-card.issued{border-color:rgba(59,130,246,.65);background:#0c1a3a;}
+    .rev-card.issued .value{color:#60a5fa;}
+    .rev-card.paid{border-color:rgba(34,197,94,.65);background:#0f2b1f;}
+    .rev-card.paid .value{color:#34d399;}
+    .agent-table{margin:18px 14px;background:#0f1629;border:1.6px solid rgba(221,180,87,.5);border-radius:16px;overflow:hidden;box-shadow:0 16px 38px rgba(0,0,0,.24);}
+    .agent-table .card-header{font-weight:900;padding:14px 18px;border-bottom:1px solid rgba(221,180,87,.35);background:#0b1529;color:#e2e8f0;}
+    #topProducersAccordion{display:flex;flex-direction:column;gap:14px;padding:12px;}
+    .accordion-item.soft-dark{border:1px solid rgba(221,180,87,.28);border-radius:16px;overflow:hidden;background:#0f172a;}
+    .accordion-button.soft-dark{background:#0f172a;color:#e5e7eb;padding:14px 18px;}
+    .accordion-button:focus{box-shadow:none;border-color:rgba(221,180,87,.6);}
+    .accordion-button:not(.collapsed){box-shadow:inset 0 -1px 0 rgba(221,180,87,.25);}
+    .text-ink{color:#e5e7eb!important;}
+    .border-gold{border-color:rgba(221,180,87,.45)!important;}
+    .text-gold{color:#fbbf24;}
+    .top-prod-table thead th{color:#cbd5e1;background:#0d1425;border-color:rgba(221,180,87,.3);font-weight:800;}
+    .top-prod-table tbody td{color:#e5e7eb;background:#0f182b;border-color:rgba(221,180,87,.08);}
+    .top-prod-table tbody tr:nth-child(2n) td{background:#101d33;}
+
+    .producer-card{border:1px solid rgba(221,180,87,.22);border-radius:14px;overflow:hidden;background:#111a2c;margin-bottom:12px;box-shadow:0 12px 28px rgba(0,0,0,.22);}
+    .producer-header{background:#121d31;color:#e5e7eb;padding:12px 16px;}
+    .producer-summary{display:flex;justify-content:space-between;align-items:center;width:100%;gap:14px;}
+    .producer-name{font-weight:800;font-size:1rem;}
+    .producer-sub{color:#94a3b8;font-weight:700;font-size:.9rem;}
+    .producer-body{background:#0e1525;padding:14px 16px;}
+    .split-card{border:1px solid rgba(221,180,87,.22);border-radius:10px;padding:10px;background:#121c30;}
+    .split-card.leads{border-color:rgba(59,130,246,.5);}
+    .split-card.clients{border-color:rgba(34,197,94,.5);}
+    .split-label{font-weight:800;color:#e5e7eb;margin-bottom:6px;}
+    .split-values{display:flex;flex-direction:column;gap:4px;color:#cbd5e1;font-weight:700;font-size:0.9rem;}
+    .breakdown-card{background:#141f33;border:1px solid rgba(221,180,87,.18);border-radius:12px;padding:14px;box-shadow:0 12px 22px rgba(0,0,0,.2);}
+    .breakdown-title{font-weight:800;color:#e5e7eb;margin-bottom:10px;}
+
+    .chip-row{display:flex;flex-wrap:wrap;gap:6px;}
+    .chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-weight:800;font-size:.85rem;letter-spacing:.01em;border:1px solid transparent;}
+    .chip.success{background:rgba(34,197,94,.14);color:#34d399;border-color:rgba(34,197,94,.5);}
+    .chip.info{background:rgba(59,130,246,.14);color:#60a5fa;border-color:rgba(59,130,246,.45);}
+    .chip.warn{background:rgba(251,191,36,.16);color:#fbbf24;border-color:rgba(251,191,36,.45);}
+    .chip.muted{background:rgba(148,163,184,.18);color:#e2e8f0;border-color:rgba(148,163,184,.4);}
+
+    .heading-left{display:flex;align-items:center;gap:10px;}
+    .heading-text .title{font-weight:800;font-size:1rem;color:#e5e7eb;}
+    .heading-text .subtitle{color:#94a3b8;font-weight:700;font-size:.9rem;}
+    .dot{font-size:1.1rem;}
+</style>

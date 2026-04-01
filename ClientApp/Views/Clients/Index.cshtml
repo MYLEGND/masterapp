@@ -1,0 +1,318 @@
+@model List<Domain.Entities.ClientProfile>
+@{
+    ViewData["Title"] = "Clients";
+    var portalBase = ((string)(ViewBag.ClientPortalBaseUrl ?? "https://client.mylegnd.com")).TrimEnd('/');
+}
+
+<style>
+    .legend-card {
+        border: 1.5px solid #a68023;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.06);
+        overflow: hidden;
+    }
+
+    .legend-card-header {
+        padding: 18px 20px;
+        border-bottom: 1px solid rgba(166,128,35,0.25);
+        display: flex;
+        gap: 14px;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+    }
+
+    .legend-title {
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: .5px;
+    }
+
+    .legend-sub {
+        margin: 0;
+        color: #666;
+        font-weight: 600;
+        font-size: .95rem;
+    }
+
+    .legend-btn-gold {
+        background: #a68023;
+        border: 1px solid #a68023;
+        color: #fff;
+        font-weight: 800;
+        border-radius: 12px;
+        padding: 10px 14px;
+        text-decoration: none;
+        transition: all .2s ease;
+        box-shadow: 0 10px 22px rgba(166,128,35,0.18);
+        white-space: nowrap;
+    }
+
+    .legend-btn-gold:hover {
+        color: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 14px 28px rgba(166,128,35,0.24);
+    }
+
+    .legend-search {
+        min-width: 260px;
+        border-radius: 12px;
+        border: 1px solid rgba(166,128,35,0.45);
+        padding: 10px 12px;
+        font-weight: 600;
+        outline: none;
+    }
+
+    .legend-table thead th {
+        background: rgba(166,128,35,0.10);
+        border-bottom: 1px solid rgba(166,128,35,0.35) !important;
+        font-weight: 800;
+        color: #1a1a1a;
+        white-space: nowrap;
+    }
+
+    .legend-table td {
+        vertical-align: middle;
+        font-weight: 600;
+    }
+
+    .pill {
+        display: inline-block;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-weight: 800;
+        font-size: .85rem;
+        background: rgba(166,128,35,0.12);
+        color: #a68023;
+        border: 1px solid rgba(166,128,35,0.25);
+        white-space: nowrap;
+    }
+
+    .btn-link-soft {
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 800;
+        text-decoration: none;
+        border: 1px solid rgba(166,128,35,0.35);
+        background: #fff;
+        color: #1a1a1a;
+        transition: all .2s ease;
+        white-space: nowrap;
+        display: inline-block;
+    }
+
+    .btn-link-soft:hover {
+        color: #a68023;
+        background: rgba(166,128,35,0.10);
+        transform: translateY(-1px);
+    }
+
+    .btn-danger-soft {
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-weight: 900;
+        border: 1px solid rgba(220,53,69,0.45);
+        background: #fff;
+        color: #dc3545;
+        transition: all .2s ease;
+        white-space: nowrap;
+    }
+
+    .btn-danger-soft:hover {
+        background: rgba(220,53,69,0.08);
+        transform: translateY(-1px);
+    }
+
+    .legend-alert-success {
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(60,118,61,0.35);
+        background: rgba(223,240,216,0.85);
+        font-weight: 700;
+        margin-bottom: 14px;
+    }
+</style>
+
+@if (TempData["Created"] != null)
+{
+    <div class="legend-alert-success">@TempData["Created"]</div>
+}
+
+<div class="legend-card">
+    <div class="legend-card-header">
+        <div>
+            <h2 class="legend-title">Clients</h2>
+            <p class="legend-sub">Search, open profiles, and manage your client list.</p>
+        </div>
+
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+            <input id="clientSearch" class="legend-search" type="text" placeholder="Search clients (name, email, phone)..." />
+            <a class="legend-btn-gold" asp-action="Create">Create Client</a>
+        </div>
+    </div>
+
+    <div class="p-3">
+        @if (Model == null || Model.Count == 0)
+        {
+            <p class="mb-0" style="font-weight:700;">No clients yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table legend-table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email (Username)</th>
+                            <th>Phone</th>
+                            <th>Client Portal</th>
+                            <th style="width:1%;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="clientRows">
+                    @foreach (var c in Model)
+                    {
+                        var clientUrl = $"{portalBase}/support/view-as-client/{c.Id}";
+                        var name = $"{c.FirstName} {c.LastName}".Trim();
+
+                                <tr class="client-row"
+                                    data-name="@name.ToLower()"
+                                    data-email="@(c.Email ?? "").ToLower()"
+                                    data-phone="@(c.Phone ?? "").ToLower()">
+        
+                                    <td>
+                                        <div style="font-weight:900;">@name</div>
+                                        <div class="text-muted" style="font-weight:700; font-size:.9rem;">Client ID: <span class="pill">@c.ClientUserId</span></div>
+                                    </td>
+        
+                                    <td>@c.Email</td>
+        
+                                    <td>@c.Phone</td>
+        
+                                    <td>
+                                        <a class="btn-link-soft" href="@clientUrl" target="_blank">Open Profile</a>
+                                    </td>
+        
+                                    <td class="d-flex gap-2">
+                                        <button type="button" class="legend-btn-gold view-production-btn" data-client-id="@c.ClientUserId" data-client-name="@name">View Production</button>
+                                        <form asp-action="Delete" method="post" class="m-0"
+                                              onsubmit="return confirm('Delete @name? This cannot be undone.');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="clientUserId" value="@c.ClientUserId" />
+                                            <button type="submit" class="btn-danger-soft">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+        
+            <!-- Production Modal -->
+            <div class="modal fade" id="productionModal" tabindex="-1" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content" style="background:#fff;color:#222;border:1px solid #a68023;">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Client Production</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <form id="productionForm">
+                            <input type="hidden" name="clientId" id="prodClientId" />
+                            <div class="modal-body">
+                                <div class="mb-2">
+                                    <label class="form-label">Client</label>
+                                    <div id="prodClientName" class="fw-bold"></div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Amount</label>
+                                    <input type="number" step="0.01" min="0" class="form-control" name="amount" required />
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Personal Revenue</label>
+                                    <input type="number" step="0.01" min="0" class="form-control" name="personalAmount" />
+                                    <div class="form-text text-muted">Optional; leave blank if not set.</div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" name="status">
+                                        <option value="0">Submitted</option>
+                                        <option value="1">Issued</option>
+                                        <option value="2">Paid</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Notes</label>
+                                    <textarea class="form-control" name="notes" rows="2"></textarea>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">Production History</label>
+                                    <div id="prodHistoryList" style="max-height:180px;overflow-y:auto;"></div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-danger" id="btnResetProduction" style="margin-right:auto;">Reset Production</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                <button type="submit" class="btn btn-success">Save Production</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div id="noMatches" class="mt-3" style="display:none; font-weight:800; color:#666;">
+                No matching clients.
+            </div>
+        }
+    </div>
+</div>
+
+@section Scripts {
+<script src="~/js/clients-production.js" asp-append-version="true"></script>
+<script>
+    (function () {
+        const input = document.getElementById('clientSearch');
+        const rows = Array.from(document.querySelectorAll('.client-row'));
+        const noMatches = document.getElementById('noMatches');
+
+        function applyFilter() {
+            const q = (input.value || '').trim().toLowerCase();
+            let visible = 0;
+
+            rows.forEach(r => {
+                const name = r.getAttribute('data-name') || '';
+                const email = r.getAttribute('data-email') || '';
+                const phone = r.getAttribute('data-phone') || '';
+                const hit = !q || name.includes(q) || email.includes(q) || phone.includes(q);
+
+                r.style.display = hit ? '' : 'none';
+                if (hit) visible++;
+            });
+
+            if (noMatches) noMatches.style.display = (visible === 0) ? '' : 'none';
+        }
+
+        if (input) {
+            input.addEventListener('input', applyFilter);
+        }
+        // Reset Production button logic
+        const resetBtn = document.getElementById('btnResetProduction');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function() {
+                const clientId = document.getElementById('prodClientId').value;
+                if (!clientId) return;
+                if (!confirm('Reset all production for this client? This cannot be undone.')) return;
+                fetch('/production/reset/client', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `clientId=${encodeURIComponent(clientId)}`
+                }).then(() => {
+                    if (typeof loadProductionHistory === 'function') {
+                        loadProductionHistory(clientId);
+                    }
+                });
+            });
+        }
+    })();
+</script>
+}

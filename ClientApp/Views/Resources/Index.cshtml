@@ -1,0 +1,891 @@
+@model ClientApp.Models.ResourcesIndexViewModel
+
+@{
+    ViewData["Title"] = "Resources";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="resources-page container py-4">
+
+    <div class="resources-hero mb-4">
+        <div class="hero-kicker">Legend™ Education</div>
+        <h1 class="hero-title m-0">@ViewData["Title"]</h1>
+        <p class="hero-sub m-0 mt-2">
+            Keep your policy documents close, review educational material quickly, and access important support information in one place.
+        </p>
+    </div>
+
+    @if (TempData["ResourceUploadSuccess"] is string successMessage)
+    {
+        <div class="resource-alert resource-alert-success mb-4" role="status">@successMessage</div>
+    }
+
+    @if (TempData["ResourceUploadError"] is string errorMessage)
+    {
+        <div class="resource-alert resource-alert-error mb-4" role="alert">@errorMessage</div>
+    }
+
+    <section class="priority-card mb-4">
+        <div class="priority-head">
+            <div>
+                <div class="info-kicker">Top Priority</div>
+                <h2 class="info-title mb-1">Your E-policy library</h2>
+                <p class="info-copy mb-0">Upload, preview, download, and remove your insurance documents whenever you need to.</p>
+            </div>
+        </div>
+
+        <div class="policy-layout">
+            <div class="policy-upload-panel">
+                <form asp-controller="Resources" asp-action="UploadPolicyDocuments" method="post" enctype="multipart/form-data" id="policyUploadForm">
+                    @Html.AntiForgeryToken()
+                    <input id="policyFileInput" name="files" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple hidden />
+
+                    <div id="policyDropzone" class="policy-dropzone" tabindex="0" role="button" aria-label="Upload E-policy documents">
+                        <div class="policy-dropzone-title">Drop E-policy files here</div>
+                        <div class="policy-dropzone-copy">or click to browse your device</div>
+                        <div id="policyUploadState" class="policy-dropzone-state">Accepted file types: PDF, PNG, JPG, JPEG</div>
+                    </div>
+
+                    <div id="policySelectedFiles" class="selected-files" hidden></div>
+
+                    <div class="upload-actions">
+                        <button type="submit" id="policyUploadButton" class="preview-open upload-submit">Upload documents</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="policy-library-panel">
+                <div class="policy-library-head">
+                    <h3 class="policy-library-title m-0">Uploaded documents</h3>
+                    <span class="policy-library-count">@Model.PolicyDocuments.Count file@(Model.PolicyDocuments.Count == 1 ? string.Empty : "s")</span>
+                </div>
+
+                @if (Model.PolicyDocuments.Count == 0)
+                {
+                    <div class="policy-empty-state">No E-policy documents have been uploaded yet.</div>
+                }
+                else
+                {
+                    <div class="policy-list">
+                        @foreach (var document in Model.PolicyDocuments)
+                        {
+                            <div class="policy-item">
+                                <button type="button"
+                                        class="policy-preview-trigger"
+                                        data-name="@document.DisplayName"
+                                        data-extension="@document.Extension"
+                                        data-preview-url="@document.PreviewUrl"
+                                        data-download-url="@document.DownloadUrl"
+                                        data-meta="@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")">
+                                    <span class="policy-name">@document.DisplayName</span>
+                                    <span class="policy-meta">@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                </button>
+
+                                <div class="policy-actions">
+                                    <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener">View</a>
+                                    <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
+                                    <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="fileName" value="@document.FileName" />
+                                        <button type="submit" class="policy-delete-button">Delete</button>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="controls-card mb-4">
+        <div class="controls-head">
+            <div>
+                <div class="info-kicker">Education Library</div>
+                <h2 class="info-title mb-1">Browse educational resources</h2>
+                <p class="info-copy mb-0">Search or select a resource and preview it below without leaving the page.</p>
+            </div>
+        </div>
+
+        <div class="row g-3 align-items-start">
+            <div class="col-12 col-lg-6">
+                <label class="control-label">Browse Resources</label>
+                <select id="resourceDropdown" class="form-select premium-field">
+                    <option value="">Select a resource…</option>
+                    @foreach (var r in Model.Resources)
+                    {
+                        <option value="@r.File">@r.Name</option>
+                    }
+                </select>
+                <div class="control-help">Choose a file to preview below.</div>
+            </div>
+
+            <div class="col-12 col-lg-6">
+                <label class="control-label">Search Resources</label>
+                <div class="search-wrap">
+                    <span class="search-icon">⌕</span>
+                    <input id="resourceSearch" type="text" class="form-control premium-field premium-input" placeholder="Search by name…" />
+                </div>
+                <ul id="searchResults" class="search-results" style="display:none;"></ul>
+                <div class="control-help">Type to filter resources instantly.</div>
+            </div>
+        </div>
+    </section>
+
+    <div id="resourceContainer" class="preview-shell mb-4" style="display:none;">
+        <div class="preview-head">
+            <div>
+                <h2 id="resourceTitle" class="preview-title m-0"></h2>
+                <div id="resourceMeta" class="preview-meta"></div>
+            </div>
+
+            <div class="preview-actions">
+                <a id="resourceDownload" class="preview-open preview-download" href="#" style="display:none;">Download</a>
+                <a id="resourceOpen" class="preview-open" href="#" target="_blank" rel="noopener">Open in new tab →</a>
+            </div>
+        </div>
+
+        <div class="preview-frame">
+            <div id="resourceContent" class="preview-content"></div>
+        </div>
+    </div>
+
+    <div id="emptyState" class="empty-state mb-4">
+        <div class="empty-chip">Preview</div>
+        <div class="empty-title">Select a policy document or resource to view it here</div>
+        <div class="empty-text">Use the E-policy list above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
+    </div>
+
+    <div class="resource-grid">
+        <section class="info-card">
+            <div class="info-kicker">Support Resources</div>
+            <h2 class="info-title">Immediate support when you need it</h2>
+            <div class="support-list">
+                <a class="support-item" href="tel:988">988 Suicide &amp; Crisis Lifeline <span>Call or text 988</span></a>
+                <a class="support-item" href="tel:800-799-7233">National Domestic Violence Hotline <span>Call 800-799-7233</span></a>
+                <a class="support-item" href="https://www.samhsa.gov/" target="_blank" rel="noopener">SAMHSA <span>Visit samhsa.gov</span></a>
+            </div>
+        </section>
+
+        <section class="info-card">
+            <div class="info-kicker">Life Planning Topics</div>
+            <h2 class="info-title">Priority planning areas</h2>
+            <div class="topic-grid">
+                <div class="topic-chip">Legal Risk</div>
+                <div class="topic-chip">Health Risk</div>
+                <div class="topic-chip">Life Risk</div>
+                <div class="topic-chip">Legacy Transfer</div>
+            </div>
+            <p class="info-copy mb-0">Review these areas regularly alongside your policy documents and educational materials so decisions stay coordinated and easy to revisit.</p>
+        </section>
+    </div>
+
+</div>
+
+<style>
+:root{
+    --gold:#5c3f08;
+    --gold2:#8c6514;
+    --gold3:#c89b2c;
+    --goldSoft:rgba(92,63,8,.12);
+    --ink:#101010;
+    --muted:rgba(16,16,16,.62);
+    --line:#d5bf85;
+    --bg:#ffffff;
+    --soft:#fbf8f1;
+    --shadow: 0 22px 56px rgba(41,29,5,.12);
+    --shadowSoft: 0 14px 34px rgba(41,29,5,.09);
+    --r18:18px;
+}
+
+.resources-page{
+    background: var(--bg);
+}
+
+.resources-hero,
+.priority-card,
+.controls-card,
+.info-card,
+.preview-shell{
+    border: 1px solid rgba(92,63,8,.24);
+    border-radius: var(--r18);
+    background: #fff;
+    box-shadow: var(--shadowSoft);
+    position: relative;
+    overflow: hidden;
+}
+
+.resources-hero::before,
+.priority-card::before,
+.controls-card::before,
+.info-card::before,
+.preview-shell::before{
+    content:"";
+    position:absolute;
+    left:0;
+    right:0;
+    top:0;
+    height:4px;
+    background: linear-gradient(90deg, var(--gold), var(--gold3), var(--gold2), var(--gold));
+}
+
+.resources-hero{
+    padding: 22px 20px 20px;
+    background:
+        radial-gradient(1200px 420px at 12% 0%, rgba(200,155,44,.18), transparent 58%),
+        radial-gradient(1000px 320px at 100% 0%, rgba(92,63,8,.12), transparent 56%),
+        linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,242,227,.90));
+}
+
+.hero-kicker,
+.info-kicker,
+.empty-chip{
+    display:inline-block;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    font-size: .74rem;
+    color: rgba(16,16,16,.66);
+}
+
+.hero-title{
+    margin-top: 10px !important;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+    color: var(--gold);
+    text-shadow: 0 1px 0 rgba(255,255,255,.65);
+    font-size: clamp(1.9rem, 3vw, 2.45rem);
+    line-height: 1.08;
+}
+
+.hero-sub,
+.info-copy,
+.control-help,
+.preview-meta,
+.empty-text,
+.policy-dropzone-copy,
+.policy-dropzone-state,
+.policy-meta,
+.policy-library-count,
+.policy-empty-state {
+    color: var(--muted);
+    line-height: 1.7;
+}
+
+.hero-sub-strong,
+.info-title,
+.preview-title,
+.empty-title,
+.policy-library-title,
+.policy-name,
+.support-item,
+.control-label {
+    color: rgba(16,16,16,.88);
+    font-weight: 900;
+}
+
+.priority-card,
+.controls-card,
+.info-card {
+    padding: 20px 18px 18px;
+}
+
+.priority-head,
+.controls-head {
+    margin-bottom: 16px;
+}
+
+.policy-layout,
+.resource-grid {
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+.policy-dropzone{
+    border: 1.5px dashed rgba(92,63,8,.58);
+    border-radius: 16px;
+    padding: 28px 18px;
+    background:
+        radial-gradient(700px 180px at 50% 0%, rgba(200,155,44,.16), transparent 60%),
+        linear-gradient(180deg, rgba(92,63,8,.05), rgba(92,63,8,.10));
+    text-align:center;
+    cursor:pointer;
+    transition: border-color .15s ease, background .15s ease, transform .12s ease;
+}
+
+.policy-dropzone:hover,
+.policy-dropzone:focus{
+    border-color: rgba(111,79,15,.88);
+    background: rgba(111,79,15,.12);
+    transform: translateY(-1px);
+    outline: none;
+}
+
+.policy-dropzone.is-dragover{
+    border-color: rgba(111,79,15,.95);
+    background: rgba(111,79,15,.14);
+}
+
+.policy-dropzone.is-uploading{
+    opacity: .72;
+    pointer-events:none;
+}
+
+.policy-dropzone-title{
+    font-weight: 950;
+    color: var(--gold);
+    font-size: 1.08rem;
+}
+
+.selected-files{
+    margin-top: 14px;
+    display:grid;
+    gap: 8px;
+}
+
+.selected-file{
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(251,250,247,.92);
+    border: 1px solid rgba(111,79,15,.15);
+    color: rgba(16,16,16,.78);
+    font-weight: 800;
+}
+
+.upload-actions{
+    margin-top: 14px;
+    display:flex;
+    justify-content:flex-end;
+}
+
+.preview-open,
+.policy-action-link,
+.policy-delete-button {
+    text-decoration:none;
+    font-weight: 900;
+    color: var(--gold);
+    padding: 10px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(92,63,8,.28);
+    background: linear-gradient(180deg, #fffef9, #f6ecd1);
+    box-shadow: 0 8px 18px rgba(92,63,8,.10);
+    transition: transform .12s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.preview-open:hover,
+.policy-action-link:hover,
+.policy-delete-button:hover{
+    transform: translateY(-1px);
+    background: linear-gradient(180deg, #fff7df, #f2dfad);
+    border-color: rgba(92,63,8,.48);
+    box-shadow: 0 12px 24px rgba(92,63,8,.16);
+}
+
+.upload-submit,
+.preview-download {
+    color:#fff;
+    border-color: rgba(92,63,8,.92);
+    background: linear-gradient(180deg, var(--gold2), var(--gold));
+}
+
+.upload-submit:hover,
+.preview-download:hover {
+    color:#fff;
+    background: linear-gradient(180deg, #a97a1d, #6d4a08);
+}
+
+.policy-delete-button {
+    color:#fff;
+    border-color: rgba(153, 27, 27, .95);
+    background: linear-gradient(180deg, #d64545, #a92121);
+    box-shadow: 0 8px 18px rgba(169,33,33,.18);
+}
+
+.policy-delete-button:hover {
+    color:#fff;
+    background: linear-gradient(180deg, #e25a5a, #8e1717);
+    border-color: rgba(127, 17, 17, .98);
+    box-shadow: 0 12px 24px rgba(127,17,17,.24);
+}
+
+.policy-item {
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid rgba(92,63,8,.18);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,244,231,.95));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+.policy-preview-trigger {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    text-align: left;
+}
+
+.policy-preview-trigger:hover .policy-name,
+.policy-preview-trigger:focus .policy-name {
+    color: var(--gold);
+}
+
+.policy-actions {
+    display:flex;
+    flex-wrap:wrap;
+    gap: 8px;
+    justify-content:flex-end;
+}
+
+.policy-delete-form {
+    margin: 0;
+}
+
+.search-wrap{
+    position: relative;
+}
+
+.search-icon{
+    position:absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: .55;
+    font-weight: 900;
+}
+
+.premium-field{
+    border: 1px solid var(--line) !important;
+    border-radius: 14px !important;
+    padding: .75rem .9rem !important;
+    background: #fff !important;
+}
+
+.premium-field:focus{
+    border-color: rgba(111,79,15,.92) !important;
+    box-shadow: 0 0 0 .22rem rgba(111,79,15,.16) !important;
+}
+
+.premium-input{
+    padding-left: 36px !important;
+}
+
+.search-results{
+    margin: 10px 0 0;
+    padding: 6px;
+    list-style: none;
+    border-radius: 16px;
+    border: 1px solid rgba(92,63,8,.18);
+    background: rgba(255,251,242,.98);
+    max-height: 280px;
+    overflow-y: auto;
+    box-shadow: var(--shadowSoft);
+}
+
+.search-results li{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.search-results li:hover{
+    background: rgba(111,79,15,.08);
+}
+
+.result-tag,
+.topic-chip {
+    border: 1px solid rgba(111,79,15,.20);
+    color: var(--gold);
+    background: rgba(255,255,255,.90);
+}
+
+.result-tag{
+    font-size: .76rem;
+    font-weight: 950;
+    padding: 4px 8px;
+    border-radius: 999px;
+}
+
+.preview-shell{
+    overflow:hidden;
+}
+
+.preview-head{
+    padding: 16px 18px;
+    border-bottom: 1px solid rgba(92,63,8,.16);
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 12px;
+    background: linear-gradient(180deg, rgba(200,155,44,.16), rgba(92,63,8,.04) 62%, transparent 100%);
+}
+
+.preview-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap: 8px;
+    justify-content:flex-end;
+}
+
+.preview-frame{
+    padding: 18px;
+}
+
+.preview-content{
+    border-radius: 16px;
+    border: 1px solid rgba(92,63,8,.16);
+    background: #fff;
+    overflow: hidden;
+}
+
+.preview-content img,
+.preview-content video,
+.preview-content iframe{
+    width: 100%;
+    display:block;
+    border: 0;
+}
+
+.preview-content iframe{
+    height: min(82vh, 980px);
+}
+
+.empty-state{
+    padding: 22px 18px;
+    border: 1px dashed rgba(111,79,15,.34);
+    border-radius: var(--r18);
+    background: rgba(111,79,15,.05);
+}
+
+.support-list{
+    display:grid;
+    gap: 12px;
+}
+
+.support-item{
+    display:flex;
+    flex-direction:column;
+    gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid rgba(92,63,8,.16);
+    border-radius: 14px;
+    text-decoration:none;
+    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,242,227,.90));
+}
+
+.support-item span {
+    color: var(--muted);
+    font-weight: 700;
+}
+
+.topic-grid{
+    display:grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 8px 0 14px;
+}
+
+.topic-chip{
+    padding: 10px 12px;
+    border-radius: 999px;
+    font-weight: 900;
+    text-align:center;
+}
+
+.resource-alert{
+    padding: 12px 14px;
+    border-radius: 14px;
+    font-weight: 800;
+    border: 1px solid transparent;
+}
+
+.resource-alert-success{
+    background: rgba(30, 132, 73, .08);
+    border-color: rgba(30, 132, 73, .22);
+    color: #1d6f43;
+}
+
+.resource-alert-error{
+    background: rgba(192, 57, 43, .08);
+    border-color: rgba(192, 57, 43, .22);
+    color: #9a2c1f;
+}
+
+@@media (max-width: 991.98px){
+    .policy-layout,
+    .resource-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .topic-grid{
+        grid-template-columns: 1fr;
+    }
+}
+
+@@media (max-width: 767.98px){
+    .policy-item,
+    .preview-head{
+        flex-direction:column;
+    }
+
+    .policy-actions,
+    .preview-actions,
+    .upload-actions{
+        width:100%;
+        justify-content:stretch;
+    }
+
+    .policy-action-link,
+    .policy-delete-button,
+    .upload-submit,
+    .preview-open{
+        width:100%;
+        text-align:center;
+        display:block;
+    }
+}
+</style>
+
+@section Scripts {
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const resources = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.Resources));
+    const dropdown = document.getElementById("resourceDropdown");
+    const searchInput = document.getElementById("resourceSearch");
+    const searchResults = document.getElementById("searchResults");
+    const fileInput = document.getElementById("policyFileInput");
+    const dropzone = document.getElementById("policyDropzone");
+    const selectedFiles = document.getElementById("policySelectedFiles");
+    const uploadState = document.getElementById("policyUploadState");
+    const uploadForm = document.getElementById("policyUploadForm");
+    const uploadButton = document.getElementById("policyUploadButton");
+    const container = document.getElementById("resourceContainer");
+    const emptyState = document.getElementById("emptyState");
+    const title = document.getElementById("resourceTitle");
+    const meta = document.getElementById("resourceMeta");
+    const openLink = document.getElementById("resourceOpen");
+    const downloadLink = document.getElementById("resourceDownload");
+    const content = document.getElementById("resourceContent");
+    const policyTriggers = document.querySelectorAll(".policy-preview-trigger");
+    const allowedTypes = [".pdf", ".png", ".jpg", ".jpeg"];
+
+    function extTag(ext) {
+        if (!ext) return "FILE";
+        return ext.replace(".", "").toUpperCase();
+    }
+
+    function renderEmbeddedDocument(name, extension, viewUrl, metaText, downloadUrl) {
+        emptyState.style.display = "none";
+        container.style.display = "block";
+
+        title.textContent = name;
+        meta.textContent = metaText || `Type: ${extTag(extension)}`;
+        openLink.href = viewUrl;
+
+        if (downloadUrl) {
+            downloadLink.style.display = "inline-flex";
+            downloadLink.href = downloadUrl;
+        } else {
+            downloadLink.style.display = "none";
+            downloadLink.removeAttribute("href");
+        }
+
+        const ext = (extension || "").toLowerCase();
+        let body = "";
+
+        if (ext === ".pdf") {
+            body = `<iframe src="${viewUrl}" loading="lazy"></iframe>`;
+        } else if ([".png", ".jpg", ".jpeg", ".webp"].includes(ext)) {
+            body = `<img src="${viewUrl}" alt="${name}" loading="lazy" />`;
+        } else if (ext === ".mp4") {
+            body = `<video controls preload="metadata"><source src="${viewUrl}" type="video/mp4"></video>`;
+        } else {
+            body = `<div style="padding:18px;"><a class="preview-open" href="${viewUrl}" target="_blank" rel="noopener">Open ${name} →</a></div>`;
+        }
+
+        content.innerHTML = body;
+    }
+
+    function renderResource(resource) {
+        const url = `/resources/${resource.File}`;
+        renderEmbeddedDocument(resource.Name, resource.Extension, url, `Type: ${extTag(resource.Extension)} • File: ${resource.File}`);
+    }
+
+    function renderSelectedFiles(files) {
+        const entries = Array.from(files || []);
+
+        if (entries.length === 0) {
+            selectedFiles.hidden = true;
+            selectedFiles.innerHTML = "";
+            uploadState.textContent = "Accepted file types: PDF, PNG, JPG, JPEG";
+            dropzone.classList.remove("is-error");
+            return;
+        }
+
+        selectedFiles.hidden = false;
+        selectedFiles.innerHTML = entries.map(file => `<div class="selected-file">${file.name}</div>`).join("");
+
+        const invalid = entries.some(file => {
+            const name = (file.name || "").toLowerCase();
+            return !allowedTypes.some(ext => name.endsWith(ext));
+        });
+
+        if (invalid) {
+            uploadState.textContent = "One or more files have an unsupported file type.";
+            dropzone.classList.add("is-error");
+            return;
+        }
+
+        dropzone.classList.remove("is-error");
+        uploadState.textContent = `${entries.length} file${entries.length === 1 ? "" : "s"} ready to upload`;
+    }
+
+    dropdown.addEventListener("change", function () {
+        const file = this.value;
+        searchInput.value = "";
+        searchResults.innerHTML = "";
+        searchResults.style.display = "none";
+
+        if (!file) {
+            container.style.display = "none";
+            emptyState.style.display = "block";
+            return;
+        }
+
+        const resource = resources.find(x => x.File === file);
+        if (resource) renderResource(resource);
+    });
+
+    searchInput.addEventListener("input", function () {
+        const q = (this.value || "").trim().toLowerCase();
+        searchResults.innerHTML = "";
+
+        if (!q) {
+            searchResults.style.display = "none";
+            return;
+        }
+
+        const matches = resources.filter(r => (r.Name || "").toLowerCase().includes(q)).slice(0, 30);
+
+        if (matches.length === 0) {
+            searchResults.style.display = "block";
+            searchResults.innerHTML = `<li style="padding:12px 10px; opacity:.7;">No matches found.</li>`;
+            return;
+        }
+
+        matches.forEach(resource => {
+            const li = document.createElement("li");
+            const left = document.createElement("div");
+            left.className = "result-name";
+            left.textContent = resource.Name;
+
+            const right = document.createElement("div");
+            right.className = "result-tag";
+            right.textContent = extTag((resource.Extension || "").toLowerCase());
+
+            li.appendChild(left);
+            li.appendChild(right);
+            li.onclick = () => {
+                renderResource(resource);
+                dropdown.value = resource.File;
+                searchResults.innerHTML = "";
+                searchResults.style.display = "none";
+            };
+            searchResults.appendChild(li);
+        });
+
+        searchResults.style.display = "block";
+    });
+
+    document.addEventListener("click", (e) => {
+        const clickedInside = searchResults.contains(e.target) || searchInput.contains(e.target);
+        if (!clickedInside) {
+            searchResults.style.display = "none";
+        }
+    });
+
+    policyTriggers.forEach(trigger => {
+        trigger.addEventListener("click", function () {
+            renderEmbeddedDocument(
+                this.dataset.name,
+                this.dataset.extension,
+                this.dataset.previewUrl,
+                this.dataset.meta,
+                this.dataset.downloadUrl);
+        });
+    });
+
+    if (dropzone && fileInput) {
+        dropzone.addEventListener("click", () => fileInput.click());
+        dropzone.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInput.click();
+            }
+        });
+
+        ["dragenter", "dragover"].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.add("is-dragover");
+            });
+        });
+
+        ["dragleave", "drop"].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                dropzone.classList.remove("is-dragover");
+            });
+        });
+
+        dropzone.addEventListener("drop", (e) => {
+            if (!e.dataTransfer || !e.dataTransfer.files) return;
+            fileInput.files = e.dataTransfer.files;
+            renderSelectedFiles(fileInput.files);
+        });
+
+        fileInput.addEventListener("change", () => renderSelectedFiles(fileInput.files));
+    }
+
+    if (uploadForm) {
+        uploadForm.addEventListener("submit", (e) => {
+            if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+                e.preventDefault();
+                uploadState.textContent = "Choose at least one file before uploading.";
+                dropzone.classList.add("is-error");
+                return;
+            }
+
+            const invalid = Array.from(fileInput.files).some(file => {
+                const lower = (file.name || "").toLowerCase();
+                return !allowedTypes.some(ext => lower.endsWith(ext));
+            });
+
+            if (invalid) {
+                e.preventDefault();
+                uploadState.textContent = "Only PDF, PNG, JPG, and JPEG files can be uploaded.";
+                dropzone.classList.add("is-error");
+                return;
+            }
+
+            dropzone.classList.remove("is-error");
+            dropzone.classList.add("is-uploading");
+            uploadState.textContent = "Uploading documents...";
+
+            if (uploadButton) {
+                uploadButton.textContent = "Uploading...";
+                uploadButton.setAttribute("disabled", "disabled");
+            }
+        });
+    }
+});
+</script>
+}

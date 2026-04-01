@@ -1,0 +1,614 @@
+/* ==================================================
+   SITE.CSS – LEGEND™ PROTECT WEBSITE (SURGICAL FIX)
+   - Forces ALL page backgrounds to WHITE (no grey tints)
+   - Removes unwanted hover "fill" on white buttons/links
+   - Keeps gold theme crisp + premium
+   - Fixes a couple small bugs (prayer shadow, footer grey option)
+================================================== */
+
+/* ------------------ GLOBAL ------------------ */
+html, body {
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    color: #111;
+    background-color: #fff;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* If your layout wrapper is tinting the page, force it white */
+main,
+.layout-content,
+.container,
+.container-fluid,
+.content,
+.page,
+.page-wrap,
+section {
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+/* === Allow premium navy sections to stay dark even with white defaults above === */
+section.premium-shell,
+.premium-shell {
+    background: #0f172a !important;
+    background-color: #0f172a !important;
+    color: #e8edf7 !important;
+    border-color: rgba(166,128,35,0.45) !important;
+}
+.premium-shell .card,
+.premium-shell .pillar,
+.premium-shell .step,
+.premium-shell .side-chip,
+.premium-shell .floating,
+.premium-shell .btn-mini {
+    background: rgba(255,255,255,0.04) !important;
+    color: #e8edf7 !important;
+    border-color: rgba(232,237,247,0.22) !important;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.16) !important;
+}
+.premium-shell h1,
+.premium-shell h2,
+.premium-shell h3,
+.premium-shell h4,
+.premium-shell h5,
+.premium-shell p,
+.premium-shell li,
+.premium-shell .card-title,
+.premium-shell .card-text,
+.premium-shell .card-kicker,
+.premium-shell .side-title,
+.premium-shell .side-sub,
+.premium-shell .hero-title,
+.premium-shell .hero-lead,
+.premium-shell .pillar h5,
+.premium-shell .step h5,
+.premium-shell .pillar p,
+.premium-shell .step p,
+.premium-shell .badge,
+.premium-shell .pill,
+.premium-shell .btn-secondary,
+.premium-shell .btn-review,
+.premium-shell .mini-text,
+.premium-shell .btn-mini {
+    color: #e8edf7 !important;
+}
+.premium-shell .badge {
+    background: rgba(255,255,255,0.08) !important;
+    border-color: rgba(232,237,247,0.36) !important;
+}
+
+/* IMPORTANT: kill bootstrap’s default hover background on anchors/buttons that look like buttons */
+a, .btn, button {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* ------------------ LAYOUT CONTENT ------------------ */
+.layout-content {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+    flex-grow: 1;
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+/* ------------------ FOOTER ------------------ */
+/* You asked for all backgrounds WHITE — footer included */
+footer.footer {
+    background-color: #fff !important; /* was #f8f8f8 */
+    color: #0f172a;
+    border-top: 1.5px solid rgba(166,128,35,.45);
+    text-align: center;
+    font-size: 0.95rem;
+    font-weight: 500;
+    padding: 1rem 0;
+}
+
+/* ------------------------ HEADER / NAVBAR ------------------------ */
+header {
+    width: 100%;
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+.navbar {
+    background-color: #fff !important;
+    border: 1.5px solid #a68023;
+    border-radius: 12px;
+    height: 180px;       /* FIXED banner height */
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* vertical centering */
+    padding: 0 2rem;
+    box-sizing: border-box;
+}
+
+.navbar-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    height: 100%;          /* fills navbar height */
+}
+
+.navbar-brand img {
+    height: auto;          /* preserve aspect ratio */
+    max-height: 170px;     /* fixed maximum height for the logo */
+    width: auto;
+    display: block;
+}
+
+.navbar-left {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+}
+
+.navbar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+/* ---------- NAV LINKS (NO GREY FILL ON HOVER) ---------- */
+.navbar-left .nav-link,
+.navbar-right .nav-link {
+    font-weight: 700;
+    padding: 0.5rem 1.25rem;
+    border-radius: 50px;
+    color: #1a1a1a !important;
+    text-decoration: none;
+    transition: transform 0.25s ease, color 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    background: transparent !important;       /* LOCK */
+    background-color: transparent !important; /* LOCK */
+    border: 1.5px solid transparent;          /* premium: hover uses border instead of fill */
+}
+
+/* Hover/active: gold text + crisp border, STILL WHITE/transparent background */
+.navbar-left .nav-link:hover,
+.navbar-left .nav-link.active,
+.navbar-right .nav-link:hover,
+.navbar-right .nav-link.active {
+    color: #a68023 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border-color: rgba(166,128,35,0.55);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.06);
+}
+
+/* Remove weird focus highlight fills */
+.navbar-left .nav-link:focus,
+.navbar-right .nav-link:focus,
+.navbar-left .nav-link:focus-visible,
+.navbar-right .nav-link:focus-visible {
+    outline: none;
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: 0 0 0 4px rgba(166,128,35,0.18);
+    border-color: rgba(166,128,35,0.65);
+}
+
+.header-bottom {
+    text-align: center;
+    margin-top: 1rem;
+    font-weight: 700;
+    color: #a68023;
+    font-size: 1.5rem;
+    letter-spacing: 1.2px;
+}
+
+/* ------------------------ RESPONSIVE ------------------------ */
+@media (max-width: 768px) {
+    .navbar {
+        height: auto;       /* let navbar grow if needed */
+        padding: 1rem;
+    }
+
+    .navbar-top {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .navbar-left, .navbar-right {
+        justify-content: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .header-bottom {
+        font-size: 1.25rem;
+    }
+}
+
+/* =================== SECTION IMAGES =================== */
+.mb-5 img {
+    margin-bottom: 1.5rem;
+}
+
+/* ===================== GOLD BUTTON ===================== */
+.btn-gold {
+    background-color: #a68023 !important;
+    color: #fff !important;
+    border: 1px solid rgba(166,128,35,0.55) !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.btn-gold:hover {
+    background-color: #8c6120 !important;
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.14);
+    color: #fff !important;
+}
+
+.btn-gold:focus,
+.btn-gold:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 4px rgba(166,128,35,0.22), 0 12px 28px rgba(0,0,0,0.12);
+}
+
+/* =================== WHITE OUTLINE BUTTON (NO GREY FILL EVER) =================== */
+/* Use this class on “Training Packages”, “Book a Call”, etc. if they’re anchors */
+.btn-white-outline {
+    background: #fff !important;
+    background-color: #fff !important;
+    color: #1a1a1a !important;
+    border: 2px solid rgba(166,128,35,0.62) !important;
+    border-radius: 999px;
+    font-weight: 800;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    box-shadow: 0 10px 22px rgba(0,0,0,0.05);
+}
+
+.btn-white-outline:hover,
+.btn-white-outline:active,
+.btn-white-outline:focus,
+.btn-white-outline:focus-visible {
+    background: #fff !important;
+    background-color: #fff !important;
+    color: #a68023 !important;
+    border-color: rgba(166,128,35,0.9) !important;
+    transform: translateY(-2px);
+    box-shadow: 0 14px 30px rgba(0,0,0,0.08);
+    outline: none;
+}
+
+/* =================== REVIEW BUTTON (EYE CATCHING, STILL PREMIUM) =================== */
+.btn-review-premium {
+    background: #fff !important; /* keep white */
+    background-color: #fff !important;
+    color: #a68023 !important;
+    border: 2px solid rgba(166,128,35,0.95) !important;
+    border-radius: 999px;
+    font-weight: 900;
+    box-shadow: 0 18px 44px rgba(166,128,35,0.16);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-review-premium:hover,
+.btn-review-premium:focus,
+.btn-review-premium:focus-visible,
+.btn-review-premium:active {
+    background: #fff !important;
+    background-color: #fff !important;
+    transform: translateY(-2px);
+    box-shadow: 0 22px 52px rgba(166,128,35,0.22);
+    outline: none;
+}
+
+/* =================== TOOLBOXES =================== */
+.toolbox-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+.toolbox {
+    background-color: #fff !important;
+    border: 2px solid #a68023;
+    border-radius: 12px;
+    padding: 1.5rem;
+    flex: 1 1 calc(33.333% - 1rem);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    min-height: 150px;
+}
+
+.toolbox h3 {
+    color: #a68023;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.toolbox p {
+    color: #111;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.toolbox:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+}
+
+@media (max-width: 992px) {
+    .toolbox {
+        flex: 1 1 calc(50% - 1rem);
+    }
+}
+
+@media (max-width: 576px) {
+    .toolbox {
+        flex: 1 1 100%;
+    }
+}
+
+/* ========================= Remove Buttons ========================= */
+.remove-driver-btn,
+.remove-vehicle-btn,
+.remove-accident-btn,
+.remove-violation-btn,
+.remove-comploss-btn {
+    background-color: #c9302c;
+    color: #fff;
+    font-weight: bold;
+    border: none;
+    padding: 5px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+}
+
+.remove-driver-btn:hover,
+.remove-vehicle-btn:hover,
+.remove-accident-btn:hover,
+.remove-violation-btn:hover,
+.remove-comploss-btn:hover {
+    background-color: #a52723;
+    transform: translateY(-1px);
+}
+
+/* ========================= Thank You Message ========================= */
+.thank-you-message {
+    background-color: #fff !important; /* was #f9f9f9 */
+    border: 2px solid #a68023;
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 40px;
+    font-size: 1rem;
+    color: #333;
+    line-height: 1.6;
+    text-align: center;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+}
+
+.thank-you-message h3 {
+    color: #000;
+    margin-bottom: 15px;
+    font-size: 1.5rem;
+}
+
+.thank-you-message p {
+    margin-bottom: 10px;
+}
+
+.thank-you-message .verse {
+    font-style: italic;
+    font-size: 0.9rem;
+    color: #a68023;
+}
+
+/* ========================= Footer link ========================= */
+.footer-link {
+    color: #a68023;
+    text-decoration: none;
+    font-weight: 600;
+    margin-left: 8px;
+    transition: color 0.25s ease, text-decoration 0.25s ease;
+}
+
+.footer-link:hover {
+    color: #d4af37;
+    text-decoration: underline;
+}
+
+/* ========================= Required Notes ========================= */
+.required-star {
+    color: red;
+    margin-left: 2px;
+    font-weight: bold;
+}
+
+.required-note {
+    font-size: 1rem;
+    color: #a3a2a2;
+    margin-bottom: 24px;
+}
+
+/* ------------------- PRAYER SECTION ------------------- */
+.prayer-section {
+    padding: 3.5rem 1rem 4.5rem;
+    background: #fff !important; /* remove gradient */
+    background-color: #fff !important;
+}
+
+.prayer-container {
+    max-width: 1140px;
+    margin: 0 auto;
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+.prayer-card {
+    border: 2px solid #a68023;
+    border-radius: 18px;
+    padding: 2.75rem 3rem;
+    text-align: center;
+    background: #fff !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.06); /* FIX: your old one was `box-shadow:#fff` (invalid) */
+}
+
+.prayer-card p {
+    font-size: 1.25rem;
+    font-style: italic;
+    line-height: 1.75;
+    color: #444;
+    margin: 0;
+}
+
+.prayer-divider {
+    width: 80px;
+    height: 3px;
+    background-color: #a68023;
+    margin: 1.75rem auto;
+}
+
+@media (max-width: 768px) {
+    .prayer-card {
+        padding: 2.25rem 1.75rem;
+    }
+
+    .prayer-card p {
+        font-size: 1.15rem;
+    }
+}
+
+/* ==================================================
+   LAST LINE OF DEFENSE:
+   Bootstrap sometimes adds grey "active" backgrounds
+================================================== */
+a.btn,
+.btn:focus,
+.btn:active,
+.btn:focus-visible,
+button:focus,
+button:active,
+button:focus-visible {
+    outline: none !important;
+}
+
+/* Prevent any generic anchor hover background (rare, but kills it) */
+a:hover {
+    background-color: transparent;
+}
+
+.btn.btn-secondary,
+.btn.btn-secondary:hover,
+.btn.btn-secondary:focus,
+.btn.btn-secondary:focus-visible,
+.btn.btn-secondary:active,
+.btn.btn-secondary:active:focus{
+    background:#fff !important;
+    background-color:#fff !important;
+}
+
+/* 6) Floating container stays white too (no tint) */
+.floating{
+    background:#fff !important;
+    background-color:#fff !important;
+}
+
+/* ==================================================
+   FORM / APPLICATION THEME (Quote & Application pages)
+   - aligns with home/risk navy + gold styling
+================================================== */
+:root{
+    --form-surface:#0f172a;
+    --form-surface-soft:#111c32;
+    --form-gold:#a68023;
+    --form-gold-strong:#c79931;
+    --form-text:#f8fafc;
+    --form-ink:#0f172a;
+}
+
+.section-card{
+    background-color: var(--form-surface) !important;
+    border: 1.6px solid var(--form-gold-strong) !important;
+    color: var(--form-text) !important;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.18) !important;
+}
+.section-card h5,
+.section-title{
+    color: var(--form-gold-strong) !important;
+}
+
+.mini-card{
+    background: var(--form-surface-soft) !important;
+    border: 1.2px solid var(--form-gold-strong) !important;
+    color: var(--form-text) !important;
+    box-shadow: 0 12px 28px rgba(0,0,0,0.16) !important;
+}
+.mini-card h5{
+    color: var(--form-gold-strong) !important;
+}
+
+label{
+    color: var(--form-text) !important;
+}
+
+.form-control,
+.form-select,
+textarea{
+    background: #ffffff !important;
+    color: var(--form-ink) !important;
+    border: 1.6px solid var(--form-gold-strong) !important;
+}
+.form-control::placeholder,
+textarea::placeholder{
+    color: rgba(15,23,42,0.55) !important;
+}
+.form-control:focus,
+.form-select:focus,
+textarea:focus{
+    background: #ffffff !important;
+    color: var(--form-ink) !important;
+    border-color: var(--form-gold-strong) !important;
+    box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22) !important;
+}
+
+.btn-gold{
+    background: linear-gradient(180deg, var(--form-gold-strong), var(--form-gold)) !important;
+    color: #fff !important;
+    border: 1.4px solid var(--form-gold-strong) !important;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.18) !important;
+}
+
+.btn-outline,
+.btn-outline-gold{
+    background: var(--form-surface-soft) !important;
+    border: 2px solid var(--form-gold-strong) !important;
+    color: var(--form-text) !important;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.14) !important;
+}
+.btn-outline:hover,
+.btn-outline-gold:hover{
+    border-color: var(--form-gold-strong) !important;
+    color: var(--form-text) !important;
+}
+
+.wizard-pill{
+    border: 1.4px solid var(--form-gold-strong) !important;
+    background: var(--form-surface-soft) !important;
+    color: var(--form-text) !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.12) !important;
+}
+.wizard-pill.active{
+    background: rgba(199,153,49,0.18) !important;
+    color: var(--form-text) !important;
+    border-color: var(--form-gold-strong) !important;
+}
+
+.required-note{
+    color: #0f172a !important;
+}

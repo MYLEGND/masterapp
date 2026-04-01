@@ -1,0 +1,23 @@
+@{
+    ViewData["Title"] = "Net Worth Tracker";
+}
+
+<div class="container d-flex flex-column align-items-center mt-5">
+
+    <h2 class="fw-bold mb-3" style="color:#a68023;">
+        Net Worth Tracker
+    </h2>
+
+    <p class="text-muted text-center mb-4">
+        Track assets, liabilities, and your true net worth.
+    </p>
+
+    <!-- REQUIRED: JS renders tool here -->
+    <div id="budget-embed" class="w-100" style="max-width:700px;"></div>
+
+</div>
+
+<meta name="finance-scope" content="@ViewBag.ClientProfileId" />
+
+
+<script src="~/js/finance-tools.js"></script>

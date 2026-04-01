@@ -1,0 +1,22 @@
+﻿<Project>
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>/tmp/masterapp/obj/Domain/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/Domain/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>/tmp/masterapp/bin/Domain/</BaseOutputPath>
+  </PropertyGroup>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\SHARED\Shared.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+</Project>

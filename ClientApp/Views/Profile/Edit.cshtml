@@ -1,0 +1,268 @@
+@model ClientApp.Models.EditClientViewModel
+@{
+    ViewData["Title"] = "Edit Profile";
+}
+
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-strong:#c79931;
+        --navy:#0b1529;
+        --navy-2:#0f1d38;
+    }
+    .profile-shell{
+        max-width:960px;
+        margin:0 auto;
+        padding:1.5rem;
+    }
+    .profile-card{
+        background: var(--navy);
+        color:#f8fafc;
+        border:1.6px solid var(--gold);
+        border-radius:16px;
+        box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+        overflow:hidden;
+    }
+    .profile-card .card-header{
+        background: var(--navy-2);
+        border-bottom:1px solid rgba(166,128,35,.38);
+        padding:1.1rem 1.5rem;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:1rem;
+    }
+    .profile-card h2{
+        margin:0;
+        font-weight:900;
+        letter-spacing:.4px;
+    }
+    .badge{
+        background: rgba(166,128,35,.16);
+        border:1px solid rgba(166,128,35,.52);
+        border-radius:999px;
+        padding:0.35rem 0.9rem;
+        font-weight:800;
+        color:#f8fafc;
+    }
+    .profile-card .card-body{
+        padding:1.5rem;
+        display:grid;
+        gap:1rem;
+    }
+    .two-col{
+        display:grid;
+        gap:1rem;
+        grid-template-columns:repeat(auto-fit, minmax(240px,1fr));
+    }
+    .label{
+        font-weight:800;
+        margin-bottom:.35rem;
+        color:#f8fafc;
+        letter-spacing:.2px;
+    }
+    .input{
+        width:100%;
+        border-radius:10px;
+        border:1.5px solid rgba(166,128,35,.62);
+        background: var(--navy-2);
+        color:#f8fafc;
+        padding:0.85rem 1rem;
+        font-weight:700;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .input:focus{
+        outline:none;
+        border-color: rgba(166,128,35,.92);
+        box-shadow:0 0 0 3px rgba(166,128,35,.22);
+    }
+    .input[readonly], .input[disabled]{
+        opacity:0.75;
+        cursor:not-allowed;
+    }
+    .legend-help{
+        color:#cbd5e1;
+        font-size:0.9rem;
+        margin:0.35rem 0 0;
+    }
+    .legend-btn{
+        background: var(--gold);
+        color:#0b1529;
+        border:1px solid var(--gold-strong);
+        border-radius:12px;
+        font-weight:900;
+        padding:0.9rem 1.4rem;
+        box-shadow:0 14px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.16);
+        text-decoration:none;
+    }
+    .legend-btn:hover{
+        background:#ddb457;
+        border-color:#ddb457;
+        color:#0b1529;
+        text-decoration:none;
+    }
+    .legend-btn.secondary{
+        background: var(--navy-2);
+        color:#f8fafc;
+        border-color: rgba(166,128,35,.62);
+    }
+    .note-pill{
+        background: rgba(15,29,56,.9);
+        border:1px solid rgba(166,128,35,.52);
+        color:#e2e8f0;
+        border-radius:12px;
+        padding:0.85rem 1rem;
+        font-weight:700;
+    }
+    .avatar-block{
+        display:flex;
+        flex-wrap:wrap;
+        gap:1.2rem;
+        align-items:center;
+        padding:0.8rem 0.6rem;
+        border-bottom:1px solid rgba(166,128,35,.24);
+        margin-bottom:0.5rem;
+    }
+    .avatar-preview{
+        width:110px;
+        height:110px;
+        border-radius:50%;
+        overflow:hidden;
+        border:2px solid var(--gold-strong);
+        display:grid;
+        place-items:center;
+        background: var(--navy-2);
+        color:#f8fafc;
+        font-weight:900;
+        font-size:1.6rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.22);
+    }
+    .avatar-actions{
+        flex:1;
+        min-width:240px;
+        display:grid;
+        gap:0.45rem;
+    }
+    .avatar-actions label{ color:#f8fafc; font-weight:800; }
+    .avatar-actions input[type=file]{
+        background: var(--navy-2);
+        border:1.5px solid rgba(166,128,35,.62);
+        border-radius:10px;
+        color:#e2e8f0;
+        padding:0.65rem;
+    }
+    .legend-btn-small{
+        width: fit-content;
+        padding:0.65rem 1.1rem;
+        border-radius:10px;
+        background: var(--gold);
+        color:#0b1529;
+        border:1px solid var(--gold-strong);
+        font-weight:900;
+        box-shadow: 0 10px 20px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    .legend-btn-small:hover{
+        background:#ddb457;
+        border-color:#ddb457;
+        text-decoration:none;
+    }
+    .form-actions{
+        display:flex;
+        gap:0.75rem;
+        flex-wrap:wrap;
+        margin-top:0.5rem;
+    }
+</style>
+
+<div class="profile-shell">
+    <div class="profile-card">
+        <div class="card-header">
+            <div>
+                <div class="badge">My Profile</div>
+                <h2>Edit my profile</h2>
+                <p class="legend-help mb-0">Update your info (DOB is read-only). Changes reflect what your agent sees.</p>
+            </div>
+            <a class="legend-btn secondary" href="/profile">Back to profile</a>
+        </div>
+
+        <div class="card-body">
+            @if (TempData["AvatarSuccess"] is string ok)
+            {
+                <div class="note-pill">@ok</div>
+            }
+            @if (TempData["AvatarError"] is string err)
+            {
+                <div class="note-pill">@err</div>
+            }
+
+            <div class="avatar-block">
+                <div class="avatar-preview">
+                    <img src="@Url.Action("Current","Avatar")" alt="Current avatar" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'; this.parentElement.textContent='A';" />
+                </div>
+                <div class="avatar-actions">
+                    <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data">
+                        @Html.AntiForgeryToken()
+                        <label for="photo">Profile picture</label>
+                        <input type="file" id="photo" name="photo" accept=".png,.jpg,.jpeg,.webp" required />
+                        <button type="submit" class="legend-btn-small mt-1">Upload photo</button>
+                        <p class="legend-help mb-0">PNG/JPG/WEBP under 3 MB. This updates what you and your agent see.</p>
+                    </form>
+                </div>
+            </div>
+
+            <form asp-action="Edit" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                @Html.HiddenFor(m => m.ClientUserId)
+
+                <div class="two-col">
+                    <div>
+                        <label asp-for="FirstName" class="label"></label>
+                        <input asp-for="FirstName" class="input" autocomplete="given-name" />
+                        <span asp-validation-for="FirstName" class="text-danger"></span>
+                    </div>
+                    <div>
+                        <label asp-for="LastName" class="label"></label>
+                        <input asp-for="LastName" class="input" autocomplete="family-name" />
+                        <span asp-validation-for="LastName" class="text-danger"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Email" class="label"></label>
+                        <input asp-for="Email" class="input" autocomplete="email" inputmode="email" />
+                        <span asp-validation-for="Email" class="text-danger"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Phone" class="label"></label>
+                        <input asp-for="Phone" class="input" autocomplete="tel" inputmode="tel" />
+                        <span asp-validation-for="Phone" class="text-danger"></span>
+                    </div>
+                    <div>
+                        <label asp-for="MaritalStatus" class="label">Marital status</label>
+                        <select asp-for="MaritalStatus" class="input">
+                            <option value="">-- Select --</option>
+                            <option>Single</option>
+                            <option>Married</option>
+                            <option>Domestic Partnership</option>
+                            <option>Divorced</option>
+                            <option>Widowed</option>
+                        </select>
+                        <span asp-validation-for="MaritalStatus" class="text-danger"></span>
+                    </div>
+                    <div>
+                        <label class="label">Date of birth</label>
+                        <input class="input" value="@((Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—"))" readonly />
+                        <p class="legend-help mb-0">Contact support to correct your DOB.</p>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="legend-btn">Save changes</button>
+                    <a class="legend-btn secondary" href="/profile">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts{
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+}

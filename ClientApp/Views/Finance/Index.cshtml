@@ -1,0 +1,823 @@
+<div id="financeRoot"
+     data-client-profile-id="@ViewBag.ClientProfileId"
+     data-client-user-id="@ViewBag.ClientUserId"></div>
+<form id="__af" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+</form>
+@{
+    ViewData["Title"] = "Finance";
+}
+
+<div class="container-fluid finance-shell mt-5">
+
+    <!-- Header / Tool selection -->
+    <div class="finance-header text-center mb-4">
+        <div class="finance-kicker">Legend Finance Suite</div>
+        <h2 class="finance-title m-0">Select a Tool</h2>
+        <div class="finance-subtitle">Pick a tool below — your goals, alerts, and calculators stay in sync.</div>
+
+        <div class="finance-selector-row mt-3">
+            <div class="finance-select-wrap">
+                <select id="budgetDropdown" class="form-select finance-select shadow-sm">
+                    <option value="">-- Select a tool --</option>
+                </select>
+            </div>
+            <button type="button" class="btn finance-toolbar-btn" id="btnToggleSupportPanels">Goals + Alerts</button>
+        </div>
+    </div>
+
+    <!-- Main tools layout -->
+    <div class="row w-100 g-4 align-items-stretch finance-tools-row mx-auto">
+        <div class="col-12 d-flex">
+            <div id="budget-embed" class="finance-main w-100 flex-grow-1"></div>
+        </div>
+    </div>
+
+    <div class="finance-support-overlay d-none" id="financeSupportPanels" aria-hidden="true">
+        <div class="finance-support-backdrop" data-support-close="true"></div>
+        <div class="finance-support-modal" role="dialog" aria-modal="true" aria-label="Goals and alerts">
+            <div class="finance-support-modal-head">
+                <strong>Goals &amp; Alerts</strong>
+                <button type="button" class="btn finance-support-close" id="btnCloseSupportPanels" aria-label="Close">Close</button>
+            </div>
+
+            <div class="finance-support-grid">
+                <div class="finance-action-container finance-side-card w-100">
+                    <!-- Content injected via goals.js -->
+                </div>
+                <div class="finance-goals-container finance-side-card w-100">
+                    <!-- Content injected via alerts.js -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- JS references (keep functionality the same) -->
+<script src="~/js/finance-tools.js" asp-append-version="true"></script>
+<script src="~/js/goals.js" asp-append-version="true"></script>
+<script src="~/js/alerts.js" asp-append-version="true"></script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const supportPanels = document.getElementById("financeSupportPanels");
+    const toggleButton = document.getElementById("btnToggleSupportPanels");
+    const closeSupport = document.getElementById("btnCloseSupportPanels");
+    if (!supportPanels) return;
+
+    const setButtonState = (isOpen) => {
+        const label = isOpen ? "Hide Goals + Alerts" : "Goals + Alerts";
+        if (!toggleButton) return;
+        toggleButton.textContent = label;
+        toggleButton.setAttribute("aria-pressed", isOpen ? "true" : "false");
+    };
+
+    const setOpenState = (isOpen) => {
+        supportPanels.classList.toggle("d-none", !isOpen);
+        supportPanels.setAttribute("aria-hidden", isOpen ? "false" : "true");
+        document.body.classList.toggle("finance-support-open", isOpen);
+        setButtonState(isOpen);
+    };
+
+    const togglePanels = () => {
+        const isOpen = !supportPanels.classList.contains("d-none");
+        setOpenState(!isOpen);
+    };
+
+    toggleButton?.addEventListener("click", togglePanels);
+    closeSupport?.addEventListener("click", () => setOpenState(false));
+    supportPanels.querySelector("[data-support-close='true']")?.addEventListener("click", () => setOpenState(false));
+    document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") setOpenState(false);
+    });
+    setButtonState(false);
+});
+</script>
+
+<style>
+/* ============================================================
+    FINANCE PAGE — Workstation dark navy styling
+    Keep dark-gold border lines + input text readability.
+    ============================================================ */
+
+:root{
+    --gold:#d1a034;
+    --goldSoft: rgba(209,160,52,.16);
+    --lineDark:#8f6c1b;
+    --ink:#f8fafc;
+    --muted:#9fb0cd;
+    --borderSoft: rgba(159,176,205,.22);
+    --card:#111827;
+    --navyBase:#0b111f;
+    --navyPanel:#111827;
+    --navyField:#121a2b;
+    --finance-main-width: 840px;
+    --shadowA: 0 18px 55px rgba(0,0,0,0.45);
+    --shadowB: 0 22px 70px rgba(0,0,0,0.52);
+    --radius: 20px;
+}
+
+html,
+body{
+    background: #ffffff !important;
+    color: #111827;
+}
+
+.finance-shell{
+    min-height: calc(100vh - 110px);
+    border-radius: 20px;
+}
+
+/* ✅ Full viewport width with elegant gutters */
+.finance-shell{
+    width: 100%;
+    max-width: 1125px;
+    padding-left: clamp(12px, 2vw, 28px);
+    padding-right: clamp(12px, 2vw, 28px);
+    background: #ffffff;
+}
+
+/* Make the row truly span the shell */
+.finance-tools-row{
+    max-width: 915px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.finance-selector-row{
+    display: grid;
+    grid-template-columns: minmax(420px, 760px) minmax(170px, 240px);
+    justify-content: center;
+    gap: .85rem;
+    align-items: center;
+}
+
+.finance-toolbar-btn{
+    border: 2px solid var(--lineDark) !important;
+    border-radius: 14px !important;
+    background: #131d31 !important;
+    color: #f8fafc !important;
+    font-weight: 900 !important;
+    padding: 11px 12px !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.06);
+}
+
+.finance-toolbar-btn[aria-pressed="true"]{
+    background: var(--gold) !important;
+    color: #111827 !important;
+}
+
+.finance-toolbar-btn:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 14px 30px rgba(0,0,0,0.09);
+}
+
+.finance-support-overlay{
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1rem;
+}
+
+.finance-support-backdrop{
+    position: absolute;
+    inset: 0;
+    background: rgba(2, 6, 14, .82);
+    backdrop-filter: blur(2px);
+}
+
+.finance-support-modal{
+    position: relative;
+    width: min(1750px, 96vw);
+    max-height: 90vh;
+    overflow: auto;
+    border: 2px solid var(--lineDark);
+    border-radius: 18px;
+    background: var(--navyPanel);
+    box-shadow: 0 24px 80px rgba(0,0,0,.22);
+    padding: 1rem;
+}
+
+.finance-support-modal-head{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    margin-bottom: .85rem;
+}
+
+.finance-support-modal-head strong{
+    font-size: 1.05rem;
+    color: var(--ink);
+}
+
+.finance-support-close{
+    border: 2px solid var(--lineDark) !important;
+    border-radius: 12px !important;
+    font-weight: 800 !important;
+    background: #131d31 !important;
+    color: var(--ink) !important;
+}
+
+.finance-support-grid{
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+body.finance-support-open{
+    overflow: hidden;
+}
+
+/* ============================================================
+   Header — white card + HARD GOLD border (sharp)
+   ============================================================ */
+.finance-header{
+    position: relative;
+    width: min(100%, var(--finance-main-width));
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 22px 18px 18px;
+    border-radius: 18px;
+
+    /* ✅ HARD GOLD BORDER */
+    border: 2px solid var(--lineDark) !important;
+
+    background: #0f172a !important;
+    background-image: none !important;
+    box-shadow: var(--shadowA) !important;
+}
+
+.finance-shell .finance-header,
+main .finance-header,
+body .finance-header{
+    background: #0f172a !important;
+    background-image: none !important;
+}
+
+/* tiny gold glow on header corner (subtle) */
+.finance-header:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius: 18px;
+    pointer-events:none;
+    background:
+        radial-gradient(700px 240px at 18% 0%, var(--goldSoft), transparent 58%);
+}
+
+/* kicker pill — still clean */
+.finance-kicker{
+    display: inline-block;
+    font-weight: 900;
+    letter-spacing: 1.6px;
+    text-transform: uppercase;
+    font-size: .78rem;
+    color: #111827;
+    background: var(--gold);
+    border: 2px solid var(--lineDark);
+    padding: 6px 12px;
+    border-radius: 999px;
+}
+
+.finance-title{
+    margin-top: 10px !important;
+    font-weight: 950;
+    letter-spacing: .2px;
+    color: var(--ink) !important;
+}
+
+.finance-subtitle{
+    margin-top: 8px;
+    color: var(--muted) !important;
+    font-weight: 650;
+    font-size: .98rem;
+}
+
+/* Dropdown wrapper */
+.finance-select-wrap{
+    max-width: 560px;
+}
+
+/* Dropdown styling — crisp gold border, sharp focus */
+.finance-select{
+    border: 2px solid var(--lineDark) !important;
+    border-radius: 14px !important;
+    padding: 12px 14px !important;
+    font-weight: 900 !important;
+    color: #f5f7fb !important;
+    background: var(--navyField) !important;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.06) !important;
+    transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.finance-select:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
+    filter: saturate(1.02);
+}
+.finance-select:focus{
+    outline: none !important;
+    border-color: var(--lineDark) !important;
+    box-shadow:
+        0 0 0 .22rem rgba(166,128,35,0.20),
+        0 16px 40px rgba(0,0,0,0.08) !important;
+}
+
+/* ============================================================
+   Side cards — WHITE first, HARD GOLD border (sharp)
+   ============================================================ */
+.finance-side-card{
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 520px;
+
+    border-radius: var(--radius);
+
+    /* ✅ HARD GOLD BORDER */
+    border: 2px solid var(--lineDark) !important;
+
+    background: var(--navyPanel);
+    box-shadow:
+        0 20px 60px rgba(0,0,0,0.08),
+        inset 0 1px 0 rgba(159,176,205,0.18);
+
+    padding: 18px;
+    overflow: hidden;
+}
+
+/* subtle gold corner glow (kept tasteful) */
+.finance-side-card:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius: var(--radius);
+    pointer-events:none;
+    background:
+        radial-gradient(700px 260px at 12% 0%, var(--goldSoft), transparent 62%);
+}
+
+/* subtle inner highlight border (clean) */
+.finance-side-card:after{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius: var(--radius);
+    pointer-events:none;
+    border: 1px solid var(--borderSoft);
+}
+
+/* Make injected content area scroll nicely on large screens */
+@@media (min-width: 1200px) {
+  .finance-side-card {
+    max-height: calc(100vh - 250px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* If your JS injects lists, keep them flexible */
+.finance-action-container #actionContainer,
+.finance-goals-container #alertsList{
+    flex: 1;
+    overflow-y: auto;
+}
+
+/* ============================================================
+   Buttons — crisp + premium (no gold overload)
+   ============================================================ */
+.finance-toolbar-btn,
+.finance-support-close,
+#budget-embed .btn,
+#budget-embed button,
+.finance-action-container button,
+.finance-goals-container button{
+    cursor: pointer;
+    user-select: none;
+    border-radius: 12px !important;
+    font-weight: 900 !important;
+    transition: transform .14s ease, box-shadow .18s ease, filter .18s ease, border-color .18s ease, background-color .18s ease, color .18s ease;
+}
+
+.finance-toolbar-btn:focus-visible,
+.finance-support-close:focus-visible,
+#budget-embed .btn:focus-visible,
+#budget-embed button:focus-visible,
+.finance-action-container button:focus-visible,
+.finance-goals-container button:focus-visible{
+    outline: none !important;
+    box-shadow: 0 0 0 .2rem rgba(209,160,52,.28), 0 12px 26px rgba(0,0,0,.20) !important;
+}
+
+.finance-toolbar-btn:hover,
+.finance-support-close:hover,
+#budget-embed .btn:hover,
+#budget-embed button:hover,
+.finance-action-container button:hover,
+.finance-goals-container button:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px rgba(0,0,0,.22);
+    filter: brightness(1.06);
+}
+
+.finance-toolbar-btn:active,
+.finance-support-close:active,
+#budget-embed .btn:active,
+#budget-embed button:active,
+.finance-action-container button:active,
+.finance-goals-container button:active{
+    transform: translateY(0) scale(.985);
+    box-shadow: 0 6px 14px rgba(0,0,0,.20);
+}
+
+.finance-toolbar-btn:disabled,
+.finance-support-close:disabled,
+#budget-embed .btn:disabled,
+#budget-embed button:disabled,
+.finance-action-container button:disabled,
+.finance-goals-container button:disabled{
+    opacity: .56;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+    filter: grayscale(.08);
+}
+
+/* Inputs — HARD GOLD borders everywhere */
+.finance-action-container input,
+.finance-goals-container input{
+    border-radius: 12px !important;
+    border: 2px solid var(--lineDark) !important;
+    padding: 10px 12px !important;
+    font-weight: 800;
+    background: var(--navyField);
+    color: #f5f7fb;
+}
+.finance-action-container input:focus,
+.finance-goals-container input:focus{
+    outline: none !important;
+    box-shadow: 0 0 0 .18rem rgba(166,128,35,0.18) !important;
+}
+
+/* Gold checkboxes */
+.finance-action-container .action-done{
+    accent-color: var(--gold);
+    width: 22px;
+    height: 22px;
+    cursor: pointer;
+}
+
+/* ============================================================
+   Middle tool container — HARD GOLD border + white stage
+   ============================================================ */
+.finance-main{
+    width: min(100%, var(--finance-main-width));
+    box-sizing: border-box;
+    margin: 0 auto;
+    border-radius: 22px;
+
+    /* ✅ HARD GOLD BORDER */
+    border: 2px solid var(--lineDark);
+
+    background: var(--navyPanel);
+    box-shadow: var(--shadowB);
+    padding: 18px;
+    min-height: clamp(520px, 66vh, 860px);
+    position: relative;
+    overflow: hidden;
+}
+
+#budget-embed,
+#budget-embed .networth-tool,
+#budget-embed .tool-shell,
+#budget-embed .tool-card,
+#budget-embed .panel,
+#budget-embed .card,
+.finance-action-container,
+.finance-goals-container,
+.finance-action-container .card,
+.finance-goals-container .card,
+.finance-action-container .list-group-item,
+.finance-goals-container .list-group-item{
+    background: var(--navyPanel) !important;
+    color: #ecf2fb !important;
+    border-color: var(--lineDark) !important;
+}
+
+#budget-embed .table,
+#budget-embed .table-responsive,
+#budget-embed .table tbody,
+#budget-embed .table tr,
+#budget-embed .table td,
+#budget-embed .table th{
+    background-color: var(--navyPanel) !important;
+    color: #f3f7ff !important;
+    border-color: var(--lineDark) !important;
+}
+
+#budget-embed .btn-outline-secondary,
+#budget-embed .btn-light,
+#budget-embed .btn-secondary,
+.finance-action-container .btn-outline-secondary,
+.finance-goals-container .btn-outline-secondary,
+.finance-action-container .btn-light,
+.finance-goals-container .btn-light{
+    background: var(--navyField) !important;
+    color: #f5f7fb !important;
+    border: 2px solid var(--lineDark) !important;
+}
+
+#budget-embed select,
+#budget-embed textarea,
+.finance-action-container textarea,
+.finance-goals-container textarea,
+.finance-action-container select,
+.finance-goals-container select{
+    background: var(--navyField) !important;
+    color: #f5f7fb !important;
+    border: 2px solid var(--lineDark) !important;
+}
+
+#budget-embed select:focus,
+#budget-embed textarea:focus,
+.finance-action-container textarea:focus,
+.finance-goals-container textarea:focus,
+.finance-action-container select:focus,
+.finance-goals-container select:focus{
+    outline: none !important;
+    box-shadow: 0 0 0 .18rem rgba(209,160,52,.24) !important;
+}
+
+/* subtle gold glow behind main stage */
+.finance-main:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius: 22px;
+    pointer-events:none;
+    background:
+        radial-gradient(900px 320px at 14% 0%, var(--goldSoft), transparent 58%);
+}
+
+/* Keep tool itself styled nicely (tool markup untouched) */
+#budget-embed .networth-tool{
+    border: 2px solid var(--lineDark);
+    border-radius: 18px;
+    padding: 22px;
+    background: var(--navyPanel);
+    box-shadow: 0 14px 38px rgba(0,0,0,0.07);
+}
+
+/* Tables */
+#budget-embed table{
+    border-radius: 12px;
+    overflow: hidden;
+
+    /* ✅ HARD GOLD outline so the whole table reads premium */
+    border: 2px solid var(--lineDark);
+}
+#budget-embed table th{
+    background-color: var(--navyPanel);
+    color: #f8fafc;
+    font-weight: 950;
+
+    /* ✅ HARD GOLD separators */
+    border-bottom: 2px solid var(--lineDark) !important;
+}
+#budget-embed table td{
+    font-weight: 800;
+    text-align: center;
+    color: #f2f6fc;
+
+    /* ✅ HARD GOLD grid lines (if bootstrap/table adds borders) */
+    border-color: var(--lineDark) !important;
+}
+
+/* Labels + inputs in main tool */
+#budget-embed .form-control{
+    border: 2px solid var(--lineDark) !important;
+    border-radius: 12px !important;
+    font-weight: 800;
+    color: #f5f7fb;
+    background: var(--navyField);
+}
+#budget-embed .form-control:focus{
+    outline: none !important;
+    box-shadow: 0 0 0 .18rem rgba(166,128,35,0.18) !important;
+    border-color: var(--lineDark) !important;
+}
+#budget-embed .form-label{
+    color: #f5f7fb;
+    font-weight: 850;
+}
+
+/* Hard override for injected inline light themes in finance-tools.js */
+#budget-embed .networth-tool[style],
+#budget-embed [style*="background:#fff"],
+#budget-embed [style*="background: #fff"],
+#budget-embed [style*="background:#ffffff"],
+#budget-embed [style*="background: #ffffff"],
+#budget-embed [style*="background-color:#fff"],
+#budget-embed [style*="background-color: #fff"],
+#budget-embed [style*="background-color:#ffffff"],
+#budget-embed [style*="background-color: #ffffff"],
+#budget-embed [style*="background:#fafafa"],
+#budget-embed [style*="background: #fafafa"],
+#budget-embed [style*="background:#f8f6f0"],
+#budget-embed [style*="background: #f8f6f0"],
+#budget-embed [style*="background:#f3f0e8"],
+#budget-embed [style*="background: #f3f0e8"],
+#budget-embed [style*="linear-gradient(135deg, #f1ede3, #e1d6b8)"],
+#budget-embed [style*="linear-gradient(180deg, #ffffff"],
+#budget-embed [style*="linear-gradient(180deg,#ffffff"],
+#budget-embed [style*="linear-gradient(180deg, #fff"],
+#budget-embed [style*="linear-gradient(180deg,#fff"]{
+    background: var(--navyPanel) !important;
+    background-color: var(--navyPanel) !important;
+    color: #f3f7ff !important;
+    border-color: var(--lineDark) !important;
+}
+
+#budget-embed [style*="color:#111"],
+#budget-embed [style*="color: #111"],
+#budget-embed [style*="color:#222"],
+#budget-embed [style*="color: #222"],
+#budget-embed [style*="color:#333"],
+#budget-embed [style*="color: #333"],
+#budget-embed [style*="color:#444"],
+#budget-embed [style*="color: #444"],
+#budget-embed [style*="color:#555"],
+#budget-embed [style*="color: #555"],
+#budget-embed [style*="color:#666"],
+#budget-embed [style*="color: #666"],
+#budget-embed [style*="color:#777"],
+#budget-embed [style*="color: #777"]{
+    color: #eef4ff !important;
+}
+
+#budget-embed [style*="border:1px solid #d6c48a"],
+#budget-embed [style*="border: 1px solid #d6c48a"],
+#budget-embed [style*="border:1px solid #eee"],
+#budget-embed [style*="border: 1px solid #eee"]{
+    border: 2px solid var(--lineDark) !important;
+}
+
+.finance-action-container,
+.finance-goals-container,
+.finance-action-container *:not(input):not(select):not(textarea),
+.finance-goals-container *:not(input):not(select):not(textarea){
+    color: #eaf0fa;
+}
+
+/* Force readability for older tool templates that inject inline dark text colors */
+#budget-embed [style*="color:#111"],
+#budget-embed [style*="color: #111"],
+#budget-embed [style*="color:#222"],
+#budget-embed [style*="color: #222"],
+#budget-embed [style*="color:#333"],
+#budget-embed [style*="color: #333"],
+#budget-embed [style*="color:#444"],
+#budget-embed [style*="color: #444"],
+#budget-embed [style*="color:#555"],
+#budget-embed [style*="color: #555"],
+#budget-embed [style*="color:#666"],
+#budget-embed [style*="color: #666"],
+#budget-embed [style*="color:#777"],
+#budget-embed [style*="color: #777"],
+#budget-embed [style*="color:#1a1a1a"],
+#budget-embed [style*="color: #1a1a1a"],
+#budget-embed [style*="color:#2d3748"],
+#budget-embed [style*="color: #2d3748"]{
+    color: #eef4ff !important;
+}
+
+#budget-embed [style*="font-style:italic"][style*="color:#555"],
+#budget-embed [style*="font-style: italic"][style*="color:#555"],
+#budget-embed [style*="font-style:italic"][style*="color: #555"],
+#budget-embed [style*="font-style: italic"][style*="color: #555"]{
+    color: #c8d3e3 !important;
+}
+
+.finance-action-container .text-muted,
+.finance-goals-container .text-muted,
+.finance-action-container small,
+.finance-goals-container small,
+.finance-action-container .tiny,
+.finance-goals-container .tiny{
+    color: #b9c4d4 !important;
+}
+
+.finance-action-container .badge,
+.finance-goals-container .badge,
+.finance-action-container .pill,
+.finance-goals-container .pill{
+    background: var(--navyField) !important;
+    color: #f3f7ff !important;
+    border: 1px solid var(--lineDark) !important;
+}
+
+.finance-action-container .card,
+.finance-goals-container .card,
+#budget-embed .card{
+    background: var(--navyPanel) !important;
+    color: #ecf2fb !important;
+    border: 1px solid var(--lineDark) !important;
+}
+
+/* Optional: crisp gold hr lines if any appear inside injected tools */
+#budget-embed hr,
+.finance-side-card hr{
+    border-top: 2px solid var(--lineDark);
+    opacity: 1;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@@media (max-width: 1199.98px) {
+  .finance-shell{
+        max-width: 1700px;
+  }
+
+    .finance-support-modal{
+        width: min(1500px, 97vw);
+    }
+}
+
+@@media (max-width: 991.98px) {
+  .finance-side-card{
+    min-height: 460px;
+    max-height: none;
+    overflow: visible;
+  }
+
+    .finance-selector-row{
+        grid-template-columns: 1fr;
+    }
+
+    .finance-support-grid{
+        grid-template-columns: 1fr;
+    }
+}
+
+@@media (max-width: 575.98px){
+    .finance-shell{ margin-top: 1.25rem !important; }
+    .finance-header{ padding: 18px 14px; border-radius: 16px; }
+    .finance-title{ font-size: 1.35rem; }
+    .finance-subtitle{ font-size: .95rem; }
+    .finance-side-card{ padding: 14px; border-radius: 18px; }
+    .finance-main{ padding: 12px; border-radius: 18px; }
+    #budget-embed .networth-tool{ padding: 16px; border-radius: 16px; }
+}
+
+/* ===== Force full-width tool embedding ===== */
+.finance-shell{
+    max-width: 1200px;
+}
+.finance-tools-row{
+    max-width: 1200px;
+}
+.finance-main{
+    width: 100% !important;
+    max-width: 100% !important;
+}
+#budget-embed,
+#budget-embed .networth-tool,
+#budget-embed .tool-shell,
+#budget-embed .tool-card,
+#budget-embed .panel,
+#budget-embed .card,
+#budget-embed form,
+#budget-embed .container,
+#budget-embed .container-fluid,
+#budget-embed .row,
+#budget-embed [class*="col-"]{
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    box-sizing: border-box;
+}
+#budget-embed .row{
+    display: flex;
+    flex-wrap: wrap;
+}
+#budget-embed [style*="max-width"],
+#budget-embed [style*="width: 600px"],
+#budget-embed [style*="width:600px"],
+#budget-embed [style*="width: 640px"],
+#budget-embed [style*="width:640px"],
+#budget-embed [style*="width: 720px"],
+#budget-embed [style*="width:720px"],
+#budget-embed [style*="width: 800px"],
+#budget-embed [style*="width:800px"],
+#budget-embed [style*="width: 900px"],
+#budget-embed [style*="width:900px"]{
+    max-width: 100% !important;
+    width: 100% !important;
+}
+</style>

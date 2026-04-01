@@ -1,0 +1,15 @@
+@{
+    ViewData["Title"] = "Login";
+}
+
+<div class="container mt-5" style="max-width: 400px; text-align:center;">
+    <h2 class="mb-4">Welcome Back</h2>
+    <p class="mb-4">Click below to sign in with your account</p>
+
+    <form asp-action="LoginSubmit" method="post">
+        <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
+        <button type="submit" class="btn" style="background-color:#a68023; color:#fff; font-weight:700; padding:1rem 2rem;">
+            Login with Azure AD
+        </button>
+    </form>
+</div>

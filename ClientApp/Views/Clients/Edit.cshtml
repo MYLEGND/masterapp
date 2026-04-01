@@ -1,0 +1,354 @@
+@model ClientApp.Models.EditClientViewModel
+@{
+    ViewData["Title"] = "Update Profile";
+}
+
+<style>
+    :root{
+        --gold:#a68023;
+        --gold-strong:#c79931;
+        --navy:#0b1529;
+        --navy-2:#0f1d38;
+    }
+    body { background:#ffffff; color:#0f172a; font-family:'Inter', sans-serif; }
+
+    .profile-shell{
+        max-width:1100px;
+        margin:0 auto;
+        padding:24px 16px 42px;
+    }
+    .profile-card{
+        background: var(--navy);
+        color:#f8fafc;
+        border:1.6px solid var(--gold);
+        border-radius:16px;
+        box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+        overflow:hidden;
+    }
+    .profile-card .card-header{
+        background: var(--navy-2);
+        border-bottom:1px solid rgba(166,128,35,.38);
+        padding:1.1rem 1.5rem;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:1rem;
+        flex-wrap:wrap;
+    }
+    .profile-card h2{
+        margin:0;
+        font-weight:900;
+        letter-spacing:.4px;
+        color: #c79931;
+    }
+    .badge{
+        background: rgba(166,128,35,.16);
+        border:1px solid rgba(166,128,35,.52);
+        border-radius:999px;
+        padding:0.35rem 0.9rem;
+        font-weight:800;
+        color:#0b1529;
+    }
+    .legend-help{
+        color:#0b1529;
+        font-size:0.95rem;
+        margin:0.15rem 0 0;
+    }
+    .profile-card .card-body{
+        padding:1.5rem;
+        display:grid;
+        gap:1rem;
+    }
+    .avatar-block{
+        display:flex;
+        flex-wrap:wrap;
+        gap:1.2rem;
+        align-items:center;
+        padding:0.8rem 0.6rem;
+        border-bottom:1px solid rgba(166,128,35,.24);
+        margin-bottom:0.5rem;
+    }
+    .avatar-preview{
+        width:110px;
+        height:110px;
+        border-radius:50%;
+        overflow:hidden;
+        border:2px solid var(--gold-strong);
+        display:grid;
+        place-items:center;
+        background: var(--navy-2);
+        color:#f8fafc;
+        font-weight:900;
+        font-size:1.6rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.22);
+    }
+    .avatar-actions{
+        flex:1;
+        min-width:260px;
+        display:grid;
+        gap:0.45rem;
+    }
+    .avatar-actions label{ color:#f8fafc; font-weight:800; }
+    .avatar-actions input[type=file]{
+        background: var(--navy-2);
+        border:1.5px solid rgba(166,128,35,.62);
+        border-radius:10px;
+        color:#e2e8f0;
+        padding:0.65rem;
+    }
+    .legend-btn, .legend-btn-small{
+        background: var(--gold);
+        color:#0b1529;
+        border:1px solid var(--gold-strong);
+        border-radius:12px;
+        font-weight:900;
+        padding:0.9rem 1.4rem;
+        box-shadow:0 14px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.16);
+        text-decoration:none;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:6px;
+    }
+    .legend-btn:hover, .legend-btn-small:hover{
+        background:#ddb457;
+        border-color:#ddb457;
+        color:#0b1529;
+        text-decoration:none;
+    }
+    .legend-btn.secondary{
+        background: var(--navy-2);
+        color:#f8fafc;
+        border-color: rgba(166,128,35,.62);
+        box-shadow:0 10px 22px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.10);
+    }
+    .legend-btn-small{
+        padding:0.65rem 1.1rem;
+        border-radius:10px;
+    }
+    .two-col{
+        display:grid;
+        gap:1rem;
+        grid-template-columns:repeat(auto-fit, minmax(240px,1fr));
+    }
+    .label{
+        font-weight:800;
+        color:#f8fafc;
+        margin-bottom:.35rem;
+        letter-spacing:.2px;
+    }
+    .input{
+        width:100%;
+        border-radius:10px;
+        border:1.5px solid rgba(166,128,35,.62);
+        background: var(--navy-2);
+        color:#f8fafc;
+        padding:0.85rem 1rem;
+        font-weight:700;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .input:focus{
+        outline:none;
+        border-color: rgba(166,128,35,.92);
+        box-shadow:0 0 0 3px rgba(166,128,35,.22);
+    }
+    .input[readonly], .input[disabled]{ opacity:0.75; cursor:not-allowed; }
+    .validation{ font-weight:800; }
+    .note{ color:#cbd5e1; font-size:0.9rem; margin:4px 0 0; }
+    .form-actions{
+        display:flex;
+        gap:0.75rem;
+        flex-wrap:wrap;
+        margin-top:0.5rem;
+    }
+    .subcard{
+        border:1px solid rgba(166,128,35,.22);
+        background: rgba(15,29,56,.72);
+        border-radius:14px;
+        padding:14px;
+    }
+    .subcard-top{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        flex-wrap:wrap;
+        margin-bottom:10px;
+    }
+    .section-title{
+        font-weight:950;
+        letter-spacing:.25px;
+        color: var(--gold-strong);
+        margin:0;
+        font-size:1.05rem;
+    }
+    .pill{
+        border-radius:999px;
+        padding:6px 12px;
+        font-weight:950;
+        border:1px solid rgba(166,128,35,.35);
+        background: rgba(166,128,35,.16);
+        color: var(--gold-strong);
+        white-space:nowrap;
+    }
+</style>
+
+<div class="profile-shell">
+    <div class="profile-card">
+        <div class="card-header">
+            <div>
+                <div class="badge">My Profile</div>
+                <h2>Update account</h2>
+                <p class="legend-help mb-0">Keep your contact info current; DOB is read-only and shown to your agent.</p>
+            </div>
+            <a class="legend-btn secondary" href="/profile">Back to profile</a>
+        </div>
+
+        <div class="card-body">
+            <div class="avatar-block">
+                <div class="avatar-preview">
+                    <img src="@Url.Action("Current","Avatar")" alt="Current avatar" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'; this.parentElement.textContent='A';" />
+                </div>
+                <div class="avatar-actions">
+                    <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data">
+                        @Html.AntiForgeryToken()
+                        <label for="photo">Profile picture</label>
+                        <input type="file" id="photo" name="photo" accept=".png,.jpg,.jpeg,.webp" required />
+                        <button type="submit" class="legend-btn-small mt-1">Upload photo</button>
+                        <p class="legend-help mb-0">PNG/JPG/WEBP under 3 MB.</p>
+                    </form>
+                </div>
+            </div>
+
+            <form asp-action="Edit" method="post" novalidate>
+                @Html.AntiForgeryToken()
+                <input type="hidden" asp-for="ClientUserId" />
+
+                <div asp-validation-summary="ModelOnly" class="note-pill text-danger"
+                     style="background:rgba(220,53,69,.14);border:1px solid rgba(220,53,69,.45);color:#ffecec;"></div>
+
+                <div class="two-col">
+                    <div>
+                        <label asp-for="FirstName" class="label"></label>
+                        <input asp-for="FirstName" class="input" autocomplete="given-name" />
+                        <span asp-validation-for="FirstName" class="text-danger validation"></span>
+                    </div>
+                    <div>
+                        <label asp-for="LastName" class="label"></label>
+                        <input asp-for="LastName" class="input" autocomplete="family-name" />
+                        <span asp-validation-for="LastName" class="text-danger validation"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Email" class="label"></label>
+                        <input asp-for="Email" class="input" autocomplete="email" inputmode="email" />
+                        <span asp-validation-for="Email" class="text-danger validation"></span>
+                    </div>
+                    <div>
+                        <label asp-for="Phone" class="label"></label>
+                        <input asp-for="Phone" class="input" autocomplete="tel" inputmode="tel" />
+                        <span asp-validation-for="Phone" class="text-danger validation"></span>
+                    </div>
+                    <div>
+                        <label asp-for="MaritalStatus" class="label">Marital status</label>
+                        <select asp-for="MaritalStatus" class="input">
+                            <option value="">-- Select --</option>
+                            <option>Single</option>
+                            <option>Married</option>
+                            <option>Domestic Partnership</option>
+                            <option>Divorced</option>
+                            <option>Widowed</option>
+                        </select>
+                        <span asp-validation-for="MaritalStatus" class="text-danger validation"></span>
+                    </div>
+                    <div>
+                        <label class="label">Date of birth</label>
+                        <input class="input" value="@((Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—"))" readonly />
+                        <p class="legend-help mb-0">Contact support to correct your DOB.</p>
+                    </div>
+                </div>
+
+                <div id="soCard" class="subcard" style="display:none; margin-top:12px;">
+                    <div class="subcard-top">
+                        <div>
+                            <div class="section-title">Significant Other</div>
+                            <div class="note">Required for Married / Domestic Partnership.</div>
+                        </div>
+                        <span class="pill">Required</span>
+                    </div>
+
+                    <div class="two-col">
+                        <div>
+                            <label asp-for="SignificantOtherFirstName" class="label">First name</label>
+                            <input asp-for="SignificantOtherFirstName" class="input" id="SignificantOtherFirstName" />
+                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger validation"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherLastName" class="label">Last name</label>
+                            <input asp-for="SignificantOtherLastName" class="input" id="SignificantOtherLastName" />
+                            <span asp-validation-for="SignificantOtherLastName" class="text-danger validation"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherDOB" class="label">Date of birth</label>
+                            <input asp-for="SignificantOtherDOB" class="input" readonly id="SignificantOtherDOB" />
+                            <div class="note">Contact support to update.</div>
+                            <span asp-validation-for="SignificantOtherDOB" class="text-danger validation"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherPhone" class="label">Phone</label>
+                            <input asp-for="SignificantOtherPhone" class="input" />
+                            <span asp-validation-for="SignificantOtherPhone" class="text-danger validation"></span>
+                        </div>
+                        <div class="full">
+                            <label asp-for="SignificantOtherEmail" class="label">Email</label>
+                            <input asp-for="SignificantOtherEmail" class="input" />
+                            <span asp-validation-for="SignificantOtherEmail" class="text-danger validation"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="legend-btn">Save changes</button>
+                    <a class="legend-btn secondary" href="/profile">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@section Scripts{
+    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        (() => {
+            const status = document.getElementById('MaritalStatus');
+            const soCard = document.getElementById('soCard');
+            const soFirst = document.getElementById('SignificantOtherFirstName');
+            const soLast  = document.getElementById('SignificantOtherLastName');
+            const soDob   = document.getElementById('SignificantOtherDOB');
+
+            const needsSO = (v) => {
+                if (!v) return false;
+                v = v.toLowerCase();
+                return v === 'married' || v === 'domestic partnership';
+            };
+
+            const applySO = () => {
+                const v = status ? status.value : '';
+                const required = needsSO(v);
+                if (soCard) soCard.style.display = required ? '' : 'none';
+                if (soFirst) soFirst.required = required;
+                if (soLast)  soLast.required  = required;
+                if (soDob)   soDob.required   = required;
+                if (!required) {
+                    if (soFirst) soFirst.value = '';
+                    if (soLast)  soLast.value  = '';
+                    if (soDob)   soDob.value   = '';
+                }
+            };
+
+            if (status) {
+                status.addEventListener('change', applySO);
+                applySO();
+            }
+        })();
+    </script>
+}

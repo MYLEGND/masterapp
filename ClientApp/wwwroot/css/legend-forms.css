@@ -1,0 +1,176 @@
+/* Legend premium navy form styling, aligned with Advanced Markets look */
+:root {
+    --legend-navy: #0f172a;
+    --legend-navy-2: #1e293b;
+    --legend-ink: #e2e8f0;
+    --legend-line: #273554;
+    --legend-gold: #a68023;
+    --legend-muted: #94a3b8;
+}
+
+.legend-shell {
+    max-width: 1180px;
+    margin: 16px auto 32px;
+    padding: 0 18px;
+}
+
+.legend-hero {
+    border: 1.5px solid rgba(39, 53, 84, .9);
+    border-radius: 20px;
+    background: linear-gradient(135deg, var(--legend-navy), var(--legend-navy-2));
+    color: var(--legend-ink);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, .22);
+    overflow: hidden;
+}
+
+.legend-hero-bar {
+    height: 4px;
+    background: linear-gradient(90deg, var(--legend-gold), #c79931, #ddb457, #c79931, var(--legend-gold));
+}
+
+.legend-hero-body {
+    padding: 26px 26px 24px;
+}
+
+.legend-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    color: #e2e8f0;
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .12);
+}
+
+.legend-title {
+    margin: 12px 0 6px;
+    font-size: 2rem;
+    font-weight: 950;
+    letter-spacing: -.2px;
+    color: #f8fafc;
+}
+
+.legend-sub {
+    margin: 0 0 4px;
+    color: var(--legend-muted);
+    font-weight: 700;
+    line-height: 1.55;
+}
+
+.legend-card {
+    border: 1px solid #d7dae3;
+    border-radius: 16px;
+    background: #ffffff;
+    color: #0f172a;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, .08);
+}
+
+.legend-card .card-header {
+    border-bottom: 1px solid #e5e7eb;
+    background: #f8fafc;
+    color: #0f172a;
+    font-weight: 800;
+}
+
+.legend-card .card-body {
+    background: #ffffff;
+}
+
+.legend-form input.form-control,
+.legend-form select.form-select,
+.legend-form textarea.form-control {
+    background: #f8fafc;
+    color: #0f172a;
+    border: 1.2px solid #cbd5e1;
+    border-radius: 12px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5);
+    font-weight: 700;
+    padding: 10px 12px;
+}
+
+.legend-form input.form-control:focus,
+.legend-form select.form-select:focus,
+.legend-form textarea.form-control:focus {
+    border-color: var(--legend-gold);
+    box-shadow: 0 0 0 2px rgba(166, 128, 35, .25);
+    outline: none;
+}
+
+.legend-form label.form-label,
+.legend-form .fw-bold {
+    color: #0f172a;
+}
+
+.legend-form .text-muted {
+    color: #64748b !important;
+}
+
+.legend-form .table {
+    color: #0f172a;
+}
+
+.legend-form .table thead {
+    background: #f8fafc;
+    color: #0f172a;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.legend-form .table tbody tr {
+    border-color: #e5e7eb;
+}
+
+.legend-form .badge {
+    font-weight: 800;
+}
+
+.legend-btn-primary {
+    background: linear-gradient(180deg, #ffe9b5, #e6b23a);
+    border: 1.5px solid var(--legend-gold);
+    color: #0f172a;
+    font-weight: 900;
+    border-radius: 999px;
+    padding: 10px 16px;
+    box-shadow: 0 14px 28px rgba(166, 128, 35, .25);
+}
+
+.legend-btn-primary:hover {
+    transform: translateY(-1px);
+}
+
+.legend-section {
+    background: linear-gradient(180deg, #0f172a, #0d1528);
+    border: 1px solid #1c2740;
+    border-radius: 16px;
+    padding: 14px 16px;
+    box-shadow: 0 10px 22px rgba(0, 0, 0, .2);
+    margin-bottom: 14px;
+}
+
+.legend-section .card-header {
+    border: none;
+    background: transparent;
+}
+
+.legend-section .card-body {
+    background: transparent;
+    padding: 12px 0 0;
+}
+
+.legend-note {
+    color: var(--legend-muted);
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .legend-hero-body {
+        padding: 20px 18px;
+    }
+    .legend-title {
+        font-size: 1.7rem;
+    }
+}

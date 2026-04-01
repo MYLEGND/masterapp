@@ -1,0 +1,324 @@
+@model Protect_Website.Models.DisabilityQuoteFormModel
+
+@{
+    ViewData["Title"] = "Disability Insurance Quote";
+    ViewData["PageKey"] = "quote_disability";
+}
+
+<div class="container-narrow">
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Disability Insurance Quote
+        </h1>
+    </div>
+
+    <p class="required-note text-center">
+        <strong>
+            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+        </strong>
+    </p>
+
+@if (ViewBag.Success != null)
+{
+    <div class="success-message">
+        @ViewBag.Success
+    </div>
+}
+
+
+<style>
+    body { background-color: #0f172a; color: #f8fafc; }
+    .section-card { background-color: #0f172a; border: 1.6px solid #c79931; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); color: #f8fafc; }
+    .section-title { font-size: 1.5rem; font-weight: 900; color: #c79931; margin-bottom: 1rem; }
+    .form-control, .form-select { border: 1.6px solid #c79931; background: #ffffff; color: #0f172a; }
+    .form-control::placeholder, .form-select::placeholder{ color: rgba(15,23,42,0.55); }
+    .form-control:focus, .form-select:focus { outline: none; box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22); border-color: #c79931; background: #ffffff; color: #0f172a; }
+    .btn-gold { background: linear-gradient(180deg, #c79931, #a68023); color: #fff; font-weight: 900; border: 1.4px solid #c79931; box-shadow: 0 14px 32px rgba(0,0,0,0.18); }
+    .btn-gold:hover { background: linear-gradient(180deg, #c79931, #a68023); color: #fff; }
+    .text-gold { color: #000; }
+
+    /* ===== Visual-only: single-card layout + tighter, lead-form grouping ===== */
+    .lead-card{
+        max-width: 1320px;
+        width: 100%;
+        margin: 0 auto 30px auto;
+    }
+
+    .lead-grid{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+
+    @@media (min-width: 992px){
+        .lead-grid{
+            grid-template-columns: 1fr 1fr;
+            gap: 22px;
+        }
+    }
+
+    .lead-block{
+        border: 1.4px solid #c79931;
+        border-radius: 10px;
+        padding: 16px 16px 6px 16px;
+        background: #111c32;
+        color: #f8fafc;
+    }
+
+    .lead-block .section-title{
+        margin-bottom: 12px;
+        font-size: 1.15rem;
+        color: #c79931;
+    }
+
+    .lead-row{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px 14px;
+    }
+
+    @@media (min-width: 768px){
+        .lead-row.three{
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .lead-row.two{
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    .field{
+        margin-bottom: 0;
+    }
+
+    .field label{
+        display:block;
+        margin-bottom: 6px;
+        font-weight: 800;
+        color: #f8fafc;
+        font-size: .95rem;
+    }
+
+    .field .form-control,
+    .field .form-select{
+        margin-bottom: 10px;
+    }
+
+.disclaimer-wrap{
+    margin-top: 6px;
+}
+.disclaimer-check{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:10px 0;
+}
+.disclaimer-check .form-check-input{
+    width:18px;
+    height:18px;
+    margin-top:2px;
+    margin-left:0;
+    margin-right:0;
+    position:static;
+    flex-shrink:0;
+}
+.disclaimer-check .form-check-label{
+    line-height:1.5;
+    white-space:normal;
+    color:#f8fafc;
+}
+</style>
+
+<form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form">
+
+    <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
+    <div class="section-card lead-card">
+
+        <div class="lead-grid">
+
+            <!-- LEFT: Personal Info + Next Steps -->
+            <div class="lead-block">
+
+                <div class="section-title">Personal Information</div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>First Name<span class="text-danger">*</span></label>
+                        <input asp-for="FirstName" class="form-control" placeholder="First Name*" required />
+                    </div>
+                    <div class="field">
+                        <label>Last Name<span class="text-danger">*</span></label>
+                        <input asp-for="LastName" class="form-control" placeholder="Last Name*" required />
+                    </div>
+                    <div class="field">
+                        <label>Age<span class="text-danger">*</span></label>
+                        <input asp-for="Age" class="form-control" placeholder="Age*" required />
+                    </div>
+                </div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Email<span class="text-danger">*</span></label>
+                        <input asp-for="Email" class="form-control" placeholder="Email*" required />
+                    </div>
+                    <div class="field">
+                        <label>Phone<span class="text-danger">*</span></label>
+                        <input asp-for="Phone" class="form-control" placeholder="Phone*" required />
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top: 6px;">Next Steps</div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Preferred Contact Method<span class="text-danger">*</span></label>
+                        <select asp-for="ContactMethod" class="form-select" required>
+                            <option value="">Preferred contact method*</option>
+                            <option>Phone</option>
+                            <option>Email</option>
+                            <option>Text</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Best Time to Contact<span class="text-danger">*</span></label>
+                        <select asp-for="BestTimeToContact" class="form-select" required>
+                            <option value="">Best Time to Contact*</option>
+                            <option>Morning</option>
+                            <option>Afternoon</option>
+                            <option>Evening</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT: Income/Work + Awareness -->
+            <div class="lead-block">
+
+                <div class="section-title">Income & Work</div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>Employment Type<span class="text-danger">*</span></label>
+                        <select asp-for="EmploymentType" class="form-select" required>
+                            <option value="">Employment Type*</option>
+                            <option>W-2 Employee</option>
+                            <option>1099 / Contractor</option>
+                            <option>Business Owner</option>
+                            <option>Self-Employed</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Occupation<span class="text-danger">*</span></label>
+                        <input asp-for="Occupation" class="form-control" placeholder="Occupation*" required />
+                    </div>
+                    <div class="field">
+                        <label>Annual Income Range<span class="text-danger">*</span></label>
+                        <select asp-for="IncomeRange" class="form-select" required>
+                            <option value="">Annual Income Range*</option>
+                            <option>Under $50k</option>
+                            <option>$50k–$100k</option>
+                            <option>$100k–$250k</option>
+                            <option>$250k-$500k</option>
+                            <option>$$500k-$999,999</option>
+                            <option>$$1,000,000+</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top: 6px;">Coverage Awareness</div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>Current Disability Coverage<span class="text-danger">*</span></label>
+                        <select asp-for="CurrentCoverage" class="form-select" required>
+                            <option value="">Current Disability Coverage*</option>
+                            <option>None</option>
+                            <option>Employer Only</option>
+                            <option>Individual Policy</option>
+                            <option>Both</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Income Protection Importance<span class="text-danger">*</span></label>
+                        <select asp-for="IncomeProtectionImportance" class="form-select" required>
+                            <option value="">Income Protection Importance*</option>
+                            <option>Critical</option>
+                            <option>Important</option>
+                            <option>Somewhat Important</option>
+                            <option>Not a Priority</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Decision Timeline<span class="text-danger">*</span></label>
+                        <select asp-for="Timeline" class="form-select" required>
+                            <option value="">Decision Timeline*</option>
+                            <option>Immediately</option>
+                            <option>30–60 Days</option>
+                            <option>3–6 Months</option>
+                            <option>Just Researching</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ===================== DISCLAIMER ===================== -->
+        <div class="lead-block disclaimer-wrap">
+            <div class="form-check disclaimer-check">
+                <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
+                <label class="form-check-label" for="disclaimerCheckbox">
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my disability insurance quote request.<span class="text-danger">*</span>
+                </label>
+            </div>
+            <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
+
+            <div class="text-center mb-5" style="margin-top: 30px;">
+                <button type="submit" class="btn btn-gold">Submit Disability Quote Request</button>
+            </div>
+        </div>
+
+    </div>
+
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const form = document.getElementById("disabilityQuoteForm");
+            const disclaimerCheckbox = document.getElementById("disclaimerCheckbox");
+
+            if (!form) return;
+
+            // Custom disclaimer validation
+            form.addEventListener("submit", function (event) {
+                if (!disclaimerCheckbox.checked) {
+                    event.preventDefault();
+                    alert("Please acknowledge the disclaimer to proceed: You must authorize us to contact me regarding your disability insurance interest.");
+                    disclaimerCheckbox.focus();
+                    return false;
+                }
+
+                // Default HTML5 validation scroll
+                if (!form.checkValidity()) {
+                    event.preventDefault();
+                    const firstInvalid = form.querySelector(":invalid");
+                    if (firstInvalid) {
+                        firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+                        firstInvalid.focus();
+                    }
+                    return false;
+                }
+            });
+        });
+    </script>
+}

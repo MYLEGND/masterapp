@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/AgentPortal/">
+    <Project Path="AgentPortal/AgentPortal.csproj" />
+  </Folder>
+  <Folder Name="/ClientApp/">
+    <Project Path="ClientApp/ClientApp.csproj" />
+  </Folder>
+  <Folder Name="/SHARED/">
+    <Project Path="SHARED/Shared.csproj" />
+  </Folder>
+  <Project Path="Domain/Domain.csproj" />
+  <Project Path="Infrastructure/Infrastructure.csproj" />
+</Solution>

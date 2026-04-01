@@ -1,0 +1,438 @@
+@{
+    var uwSubtitle = (string?)ViewData["UwSubtitle"] ?? "Underwriting Intake — Mortgage Protection";
+    var uwProduct = ((string?)ViewData["UwProduct"] ?? "MP").ToUpperInvariant();
+
+    string SectionTitle(string mp, string fe, string med, string life, string di)
+        => uwProduct switch
+        {
+            "FE" => fe,
+            "MED" => med,
+            "LIFE" => life,
+            "DI" => di,
+            _ => mp
+        };
+
+    var housingLabel = SectionTitle(
+        "Status (select all that apply)",
+        "Current coverage status (select all that apply)",
+        "Current Medicare coverage (select all that apply)",
+        "Household status",
+        "Employment status");
+
+    var housingOptions = uwProduct switch
+    {
+        "FE" => new[] { "None", "Term expiring", "Group coverage", "Medicaid spend-down", "GI only" },
+        "MED" => new[] { "MAPD", "Med Supp", "Employer / Retiree", "VA / Tricare", "Medicaid / LIS", "None" },
+        "LIFE" => new[] { "Own", "Rent", "Living with family" },
+        "DI" => new[] { "W-2", "1099", "Owner", "Union", "Student" },
+        _ => new[] { "Purchased", "Refinanced", "Rent" }
+    };
+
+    var lenderLabel = SectionTitle(
+        "Lender",
+        "Current carrier",
+        "Current carrier",
+        "Primary carrier",
+        "Employer / Association");
+
+    var loanLabel = SectionTitle(
+        "Loan Amount / Balance",
+        "Desired coverage amount",
+        "Max out-of-pocket (MOOP)",
+        "Desired face amount",
+        "Monthly gross income");
+
+    var homeValueLabel = SectionTitle(
+        "Home Value",
+        "Funeral / burial estimate",
+        "RX spend (annual est.)",
+        "Income replacement target",
+        "Monthly benefit target");
+
+    var equityLabel = SectionTitle(
+        "Equity",
+        "Gap to cover",
+        "Giveback ($)",
+        "Debt to clear",
+        "Employer LTD %");
+
+    var termLabel = SectionTitle(
+        "Mortgage Term (select all that apply)",
+        "Underwriting path",
+        "Enrollment window (select all that apply)",
+        "Term length (select all that apply)",
+        "Elimination period (days)");
+
+    var termOptions = uwProduct switch
+    {
+        "FE" => new[] { "Level", "Graded", "GI" },
+        "MED" => new[] { "AEP", "OEP", "ICEP", "SEP - Move", "SEP - LIS/Medicaid", "SEP - 5-star" },
+        "LIFE" => new[] { "10", "15", "20", "25", "30", "Lifetime" },
+        "DI" => new[] { "30", "60", "90", "180" },
+        _ => new[] { "15", "20", "30" }
+    };
+
+    var paymentLabel = SectionTitle(
+        "Monthly Payment (Rent/Mortgage)",
+        "Budget per month",
+        "Current premium",
+        "Budget per month",
+        "Budget per month");
+
+    var incomeLabel = SectionTitle(
+        "Monthly Income",
+        "Monthly income (SS / pension / work)",
+        "Household income (MAGI)",
+        "Monthly income",
+        "Occupation class");
+
+    var addlIncomeLabel = SectionTitle(
+        "Additional Income",
+        "SSI / Pension (extra)",
+        "Extra help / LIS level",
+        "Secondary income",
+        "Other income");
+
+    var savingsLabel = SectionTitle(
+        "Emergency Savings (select all that apply)",
+        "Set aside for funeral (select all)",
+        "Medicaid / LIS level (select all)",
+        "Emergency savings (select all)",
+        "Emergency savings (select all)");
+
+    var savingsOptions = uwProduct switch
+    {
+        "FE" => new[] { "None", "0-2k", "2-5k", "5-10k", "10k+" },
+        "MED" => new[] { "None", "Full Medicaid", "QMB", "SLMB", "LIS Full", "LIS Partial" },
+        "LIFE" => new[] { "None", "1-3 months", "3-6 months", "6+ months" },
+        "DI" => new[] { "None", "1-3 months", "3-6 months", "6+ months" },
+        _ => new[] { "None", "1-3 months", "3-6 months", "6+ months" }
+    };
+
+    var coverageLabel = SectionTitle(
+        "Coverage Goal",
+        "Coverage goal",
+        "Plan goal (giveback / benefits)",
+        "Coverage goal",
+        "Monthly benefit goal");
+
+    var insuranceSectionTitle = SectionTitle(
+        "Insurance & Plan",
+        "Policy & Payment",
+        "Plan & Providers",
+        "Insurance & Plan",
+        "Policy Structure");
+
+    var planTermLabel = SectionTitle(
+        "Term desired (select all that apply)",
+        "Plan type (select all that apply)",
+        "Plan type preference (select all that apply)",
+        "Term desired (select all that apply)",
+        "Benefit period (years)");
+
+    var planTermOptions = uwProduct switch
+    {
+        "FE" => new[] { "Level", "Graded", "GI" },
+        "MED" => new[] { "HMO", "PPO", "PFFS", "SNP", "Med Supp (Plan G/N/K/L/M)" },
+        "LIFE" => new[] { "10", "15", "20", "25", "30", "Lifetime" },
+        "DI" => new[] { "2", "5", "10", "To Age 65", "To Age 67" },
+        _ => new[] { "10", "20", "30", "Lifetime" }
+    };
+}
+
+<div class="uw-overlay" id="uwOverlay" data-uw-product="@uwProduct" data-uw-subtitle="@uwSubtitle" hidden>
+    <div class="uw-dialog" id="uwDialog" role="dialog" aria-modal="true" aria-labelledby="uwTitle">
+        <div class="uw-head">
+            <div class="uw-brand">
+                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
+                <div>
+                    <div class="uw-name" id="uwTitle">Legend Legacy Protection</div>
+                    <div class="uw-sub">@uwSubtitle</div>
+                </div>
+            </div>
+            <button type="button" class="uw-close" data-uw-close aria-label="Close underwriting form">×</button>
+        </div>
+
+        <form id="uwForm" class="uw-form">
+            <div class="uw-section">
+                <div class="uw-section-title">@SectionTitle("Borrower Basics","Client Basics","Beneficiary Basics","Client Basics","Client Basics")</div>
+                <div class="uw-grid">
+                    <label class="uw-field">Date
+                        <input id="uwDate" name="date" />
+                    </label>
+                    <label class="uw-field">Client Name
+                        <input id="uwClientName" name="clientName" autocomplete="name" />
+                    </label>
+                    <label class="uw-field">Occupation
+                        <input id="uwOccupation" name="occupation" />
+                    </label>
+                    <label class="uw-field">DOB
+                        <input id="uwDob" name="dob" autocomplete="bday" />
+                    </label>
+                    <label class="uw-field">Age
+                        <input id="uwAge" name="age" />
+                    </label>
+                    <label class="uw-field">Gender
+                        <input id="uwGender" name="gender" />
+                    </label>
+                    <label class="uw-field">Smoker
+                        <select id="uwNicotine" name="nicotine">
+                            <option value="">Select</option>
+                            <option value="No">No</option>
+                            <option value="Yes">Yes</option>
+                        </select>
+                    </label>
+                    <label class="uw-field">Height
+                        <input id="uwHeight" name="height" placeholder="e.g., 5'10&quot;" />
+                    </label>
+                    <label class="uw-field">Weight
+                        <input id="uwWeight" name="weight" />
+                    </label>
+                    <label class="uw-field">Phone
+                        <input id="uwPhone" name="phone" autocomplete="tel" />
+                    </label>
+                    <label class="uw-field">Alt Phone
+                        <input id="uwPhone2" name="phone2" autocomplete="tel" />
+                    </label>
+                    <label class="uw-field">Email
+                        <input id="uwEmail" name="email" autocomplete="email" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">Address</div>
+                <div class="uw-grid">
+                    <label class="uw-field uw-span-2">Street
+                        <input id="uwAddress" name="address" autocomplete="street-address" />
+                    </label>
+                    <label class="uw-field">City
+                        <input id="uwCity" name="city" autocomplete="address-level2" />
+                    </label>
+                    <label class="uw-field">State
+                        <input id="uwState" name="state" autocomplete="address-level1" />
+                    </label>
+                    <label class="uw-field">Zip
+                        <input id="uwZip" name="zip" autocomplete="postal-code" />
+                    </label>
+                    <label class="uw-field">County
+                        <input id="uwCounty" name="county" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">@SectionTitle("Mortgage / Housing","Final Expense Need & Budget","Medicare Coverage Snapshot","Protection Goals","Income & Benefit")</div>
+                <div class="uw-grid">
+                    <label class="uw-field uw-full">@housingLabel
+                        <select id="uwHousingStatus" name="housingStatus" multiple size="4">
+                            <option value="">Select</option>
+                            @foreach (var opt in housingOptions)
+                            {
+                                <option value="@opt">@opt</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="uw-field">@lenderLabel
+                        <input id="uwLender" name="lender" />
+                    </label>
+                    <label class="uw-field uw-span-2">@loanLabel
+                        <input id="uwLoan" name="loan" />
+                    </label>
+                    <label class="uw-field uw-span-2">@homeValueLabel
+                        <input id="uwHomeValue" name="homeValue" />
+                    </label>
+                    <label class="uw-field uw-span-2">@equityLabel
+                        <input id="uwEquity" name="equity" />
+                    </label>
+                    <label class="uw-field uw-span-2">@termLabel
+                        <select id="uwTerm" name="term" multiple size="@Math.Max(3, termOptions.Length)">
+                            <option value="">Select</option>
+                            @foreach (var opt in termOptions)
+                            {
+                                <option value="@opt">@opt</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="uw-field uw-span-2">@paymentLabel
+                        <input id="uwPayment" name="payment" />
+                    </label>
+                    <label class="uw-field">@incomeLabel
+                        <input id="uwIncome" name="income" />
+                    </label>
+                    <label class="uw-field">@addlIncomeLabel
+                        <input id="uwAddlIncome" name="addlIncome" />
+                    </label>
+                    <label class="uw-field uw-span-2">@savingsLabel
+                        <select id="uwSavings" name="savings" multiple size="@Math.Max(4, savingsOptions.Length)">
+                            <option value="">Select</option>
+                            @foreach (var opt in savingsOptions)
+                            {
+                                <option value="@opt">@opt</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="uw-field uw-span-2">@coverageLabel
+                        <input id="uwCoverage" name="coverage" placeholder="Benefit target, giveback, or plan goal" />
+                    </label>
+                    <label class="uw-field">Beneficiary 1
+                        <input id="uwBeneficiary" name="beneficiary" placeholder="Primary beneficiary" />
+                    </label>
+                    <label class="uw-field">Beneficiary 2
+                        <input id="uwBeneficiary2" name="beneficiary2" placeholder="Secondary beneficiary" />
+                    </label>
+                    <label class="uw-field">Beneficiary 3
+                        <input id="uwBeneficiary3" name="beneficiary3" placeholder="Tertiary beneficiary" />
+                    </label>
+                    <label class="uw-field">Beneficiary 4
+                        <input id="uwBeneficiary4" name="beneficiary4" placeholder="Contingent beneficiary" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">Health</div>
+                <div class="uw-grid">
+                    <label class="uw-field uw-span-2">Major surgeries last 20 yrs
+                        <textarea id="uwSurgeries" name="surgeries" rows="2"></textarea>
+                    </label>
+                    <label class="uw-field uw-span-2">Prescribed medications
+                        <textarea id="uwMeds" name="meds" rows="2" placeholder="Name, dosage, reason"></textarea>
+                    </label>
+                    <label class="uw-field">Bankruptcies (past 10 yrs)
+                        <input id="uwBankruptcies" name="bankruptcies" />
+                    </label>
+                    <label class="uw-field">DUIs / Felonies
+                        <input id="uwDui" name="dui" />
+                    </label>
+                    <label class="uw-field uw-full">Medical conditions (select all that apply)
+                        <select id="uwHealthConditions" name="healthConditions" multiple size="12">
+                            <option value="Heart attack">Heart attack</option>
+                            <option value="Stroke">Stroke</option>
+                            <option value="TIA">TIA</option>
+                            <option value="Cancer">Cancer</option>
+                            <option value="Stents">Stents</option>
+                            <option value="Diabetes - pills">Diabetes (pills)</option>
+                            <option value="Diabetes - insulin">Diabetes (insulin)</option>
+                            <option value="High blood pressure">High blood pressure (HBP)</option>
+                            <option value="Neuropathy">Neuropathy</option>
+                            <option value="Lupus / Rheumatoid arthritis">Lupus / Rheumatoid arthritis</option>
+                            <option value="Asthma">Asthma</option>
+                            <option value="COPD - albuterol">COPD (albuterol)</option>
+                            <option value="COPD - corticosteroid">COPD (corticosteroid)</option>
+                            <option value="Thyroid">Thyroid</option>
+                            <option value="Anxiety / Depression">Anxiety / Depression</option>
+                            <option value="Kidney disease">Kidney disease</option>
+                            <option value="Liver disease">Liver disease</option>
+                            <option value="STD">STD</option>
+                        </select>
+                    </label>
+                    <label class="uw-field uw-span-2">Medical condition notes
+                        <textarea id="uwHealth" name="health" rows="2" placeholder="Details, timing, treatment, control, doctor notes"></textarea>
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">@insuranceSectionTitle</div>
+                <div class="uw-grid">
+                    <label class="uw-field">@SectionTitle("Existing life insurance","Existing coverage","Current plan","Existing coverage","Existing coverage")
+                        <input id="uwLifeCoverage" name="lifeCoverage" placeholder="Carrier / Amount / Plan" />
+                    </label>
+                    <label class="uw-field">@SectionTitle("If you passed away, what happens?","Final expense wishes / next-of-kin","Doctors to keep (PCP / specialists)","If you passed away, what happens?","Monthly expenses to protect")
+                        <textarea id="uwFamilyPlan" name="familyPlan" rows="2" placeholder="Care plan, providers, or family impact"></textarea>
+                    </label>
+                    <label class="uw-field">@SectionTitle("Comfortable & affordable look like?","Budget guardrails","Benefits important to you","Comfortable & affordable look like?","Budget & rider preferences")
+                        <textarea id="uwAfford" name="afford" rows="2" placeholder="Budget, must-haves, nice-to-haves"></textarea>
+                    </label>
+                    <label class="uw-field">@planTermLabel
+                        <select id="uwPlanTerm" name="planTerm" multiple size="@Math.Max(4, planTermOptions.Length)">
+                            <option value="">Select</option>
+                            @foreach (var opt in planTermOptions)
+                            {
+                                <option value="@opt">@opt</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="uw-field">Savings / Assets (select all that apply)
+                        <select id="uwEmergencyAssets" name="emergencyAssets" multiple size="5">
+                            <option value="None">None</option>
+                            <option value="401k">401k</option>
+                            <option value="IRA">IRA</option>
+                            <option value="Stocks">Stocks</option>
+                            <option value="Annuity">Annuity</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </label>
+                    <label class="uw-field">Bank Name
+                        <input id="uwBank" name="bank" />
+                    </label>
+                    <label class="uw-field">Routing
+                        <input id="uwRouting" name="routing" />
+                    </label>
+                    <label class="uw-field">Account
+                        <input id="uwAccount" name="account" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">IDs & Docs</div>
+                <div class="uw-grid">
+                    <label class="uw-field">Driver’s License #
+                        <input id="uwDln" name="dln" />
+                    </label>
+                    <label class="uw-field">SSN
+                        <input id="uwSsn" name="ssn" />
+                    </label>
+                    <label class="uw-field">Savings (select all that apply)
+                        <select id="uwSavings2" name="savings2" multiple size="4">
+                            <option value="None">None</option>
+                            <option value="Checking">Checking</option>
+                            <option value="Savings">Savings</option>
+                            <option value="Cash">Cash</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-section">
+                <div class="uw-section-title">Notes & Next Steps</div>
+                <div class="uw-grid">
+                    <label class="uw-field uw-span-2">Plan Notes
+                        <textarea id="uwNotes" name="notes" rows="3" placeholder="Plan design, riders, contingencies, underwriting guidance"></textarea>
+                    </label>
+                    <label class="uw-field">Family Plan Notes
+                        <textarea id="uwFamilyPlan2" name="familyPlan2" rows="3" placeholder="Additional family / estate notes"></textarea>
+                    </label>
+                </div>
+            </div>
+
+            <div class="uw-actions">
+                <div class="proposal-actions-inline">
+                    <button type="button" class="btn btn-ghost" id="btnUwNew">+ New</button>
+                    <div class="proposal-saved">
+                        <span>Saved Underwriting</span>
+                        <button type="button" class="btn btn-ghost" id="btnUwDownload">Download PDF</button>
+                    </div>
+                </div>
+                <div class="uw-right">
+                    <button type="submit" class="btn btn-gold" id="uwSave">Save</button>
+                </div>
+            </div>
+
+            <div class="uw-menu" id="uwMenu" hidden>
+                <div class="uw-menu-head">
+                    <div>
+                        <div class="uw-menu-title">Underwriting</div>
+                        <div class="uw-menu-sub">Saved forms</div>
+                    </div>
+                    <button type="button" class="btn btn-ghost" data-uw-close>Close</button>
+                </div>
+                <div class="uw-menu-body" id="uwMenuList">
+                    <div class="proposal-empty">No underwriting saved</div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>

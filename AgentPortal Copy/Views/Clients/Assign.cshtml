@@ -1,0 +1,29 @@
+@{
+    ViewData["Title"] = "Assign Client";
+}
+
+<h2>Assign Client</h2>
+
+@if (!ViewData.ModelState.IsValid)
+{
+    <div style="padding:10px; border:1px solid #a94442; background:#f2dede; margin-bottom:12px;">
+        @foreach (var err in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+        {
+            <div>@err.ErrorMessage</div>
+        }
+    </div>
+}
+
+<form method="post" asp-action="Assign">
+    @Html.AntiForgeryToken()
+
+    <div style="margin-bottom:10px;">
+        <label>Client Email</label><br />
+        <input name="email" style="width:340px;" />
+        <div style="font-size:12px; color:#666; margin-top:6px;">
+            Client must have logged into the client portal once so their profile exists.
+        </div>
+    </div>
+
+    <button type="submit">Assign</button>
+</form>

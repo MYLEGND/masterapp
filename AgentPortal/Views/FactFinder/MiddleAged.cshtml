@@ -1,0 +1,2082 @@
+@* Views/FactFinder/MiddleAged.cshtml *@
+@model AgentPortal.Models.FactFinderViewModel
+
+@{
+    ViewData["Title"] = "Middle-Aged Fact Finder";
+}
+
+<style>
+    :root{
+        --navy-900: #0b1529;
+        --navy-800: #0f1d38;
+        --navy-700: #162445;
+        --gold: #a68023;
+        --gold-dark:#8f6f1e;
+        --ink:#f8fafc;
+        --muted: #cbd5e1;
+        --line: rgba(166,128,35,.55);
+        --bg: var(--navy-900);
+        --soft:#0f1d38;
+        --card:#0f1d38;
+        --input-text: #0b1529;
+        --shadow: 0 18px 38px rgba(0,0,0,.32);
+        --radius: 18px;
+    }
+
+    body { background-color: var(--bg); color: var(--ink); }
+
+    .ff-shell{
+        max-width: 980px; /* full-screen feel, but readable */
+        width: 100%;
+        margin: 0 auto;
+        padding: 0 14px 30px 14px;
+    }
+
+    .success-message{
+        background: #e9f7ef;
+        border: 1px solid #bfe5cf;
+        color: #135b2c;
+        padding: 12px 14px;
+        border-radius: 12px;
+        margin-top: 14px;
+        font-weight: 800;
+    }
+
+    .ff-title{
+        margin-top: 18px;
+        margin-bottom: 8px;
+        text-align:center;
+    }
+
+    .ff-title h1{
+        font-weight: 950;
+        font-size: clamp(2.0rem, 3.2vw, 2.6rem);
+        color: var(--ink);
+        letter-spacing: .5px;
+        margin: 0;
+    }
+
+    .required-note{
+        text-align:center;
+        color: var(--muted);
+        margin: 0 0 14px 0;
+    }
+
+    .req{ color:#dc3545; font-weight: 900; margin-left: 2px; }
+
+    /* Progress */
+    .ff-progress-wrap{
+        background: var(--soft);
+        border: 1.5px solid var(--gold);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        box-shadow: var(--shadow);
+        margin-bottom: 14px;
+        color: var(--ink);
+    }
+
+    .ff-progress-top{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+    }
+
+    .ff-step-pill{
+        background: var(--navy-900);
+        border: 1.2px solid var(--gold);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-weight: 950;
+        color: var(--ink);
+        font-size: .9rem;
+        white-space: nowrap;
+    }
+
+    .ff-progress{
+        height: 10px;
+        border-radius: 999px;
+        background: var(--navy-700);
+        overflow:hidden;
+        border: 1px solid var(--gold);
+    }
+
+    #ffProgressBarMiddle{
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--gold), var(--gold-dark));
+        border-radius: 999px;
+        transition: width .25s ease;
+    }
+
+    /* Steps */
+    .wizard-step{ display:none; }
+    .wizard-step.active{ display:block; }
+
+    /* Cards */
+    .section-card{
+        background: #fff;
+        border: 1.6px solid var(--gold);
+        border-radius: var(--radius);
+        padding: 16px 16px;
+        box-shadow: var(--shadow);
+        margin-bottom: 14px;
+        color: var(--navy-900);
+    }
+
+    .section-title{
+        font-weight: 950;
+        color: var(--navy-900);
+        font-size: 1.15rem;
+        margin-bottom: 4px;
+    }
+
+    .subtle{
+        color: var(--navy-900);
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    /* Grid wrappers (your markup uses "grid two")
+       FIX: default to stacked vertical for better fitting + hierarchy */
+    .grid.two{
+        display:grid;
+        grid-template-columns: 1fr; /* STACKED */
+        gap: 14px;
+        align-items: start;
+    }
+
+    /* Optional: if you ever want side-by-side later, add class "two-cols" to markup */
+    .grid.two.two-cols{
+        grid-template-columns: 1fr 1fr;
+    }
+
+    @@media (max-width: 980px){
+        .grid.two.two-cols{ grid-template-columns: 1fr; }
+    }
+
+    .stack{
+        display:flex;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .block{
+        background: var(--navy-800);
+        border: 1.2px solid var(--gold);
+        border-radius: 16px;
+        padding: 14px;
+        color: var(--ink);
+    }
+
+    .block-title{
+        font-weight: 950;
+        color: var(--ink);
+        font-size: 1.05rem;
+        margin-bottom: 10px;
+        letter-spacing: .2px;
+    }
+
+    .mini-title{
+        font-weight: 950;
+        color: var(--ink);
+        margin-top: 12px;
+        margin-bottom: 8px;
+        opacity: .92;
+    }
+
+    .block label,
+    .block .field label,
+    .block .block-title,
+    .block .mini-title,
+    .block .subtle{
+        color: #fff !important;
+    }
+
+    /* Rows */
+    .row.two{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.three{
+        display:grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.four{
+        display:grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+
+    .row.five{
+        display:grid;
+        grid-template-columns: 1.1fr .9fr .6fr .9fr 1.1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    @@media (max-width: 980px){
+        .grid.two{ grid-template-columns: 1fr; }
+        .row.two, .row.three, .row.four, .row.five{ grid-template-columns: 1fr; }
+    }
+
+    .field label{
+        display:block;
+        font-weight: 900;
+        color: var(--navy-900);
+        margin-bottom: 6px;
+        font-size: .92rem;
+    }
+
+    /* White container text clarity */
+    .section-card .field label,
+    .section-card .section-title,
+    .section-card .subtle,
+    .section-card .table-like label{
+        color: var(--navy-900) !important;
+    }
+
+.table-like{
+    background:#fff;
+    border: 1px solid rgba(0,0,0,.06);
+    border-radius: 14px;
+    padding: 10px;
+    margin-bottom: 10px;
+    position: relative;
+    color: var(--navy-900);
+}
+
+/* Force white text inside navy blocks */
+.block label,
+.block .field label,
+.block .block-title,
+.block .mini-title,
+.block .subtle{
+    color: #fff !important;
+}
+
+.block .table-like label,
+.block .table-like .field label{
+    color: var(--navy-900) !important;
+}
+
+.ack-text{
+    color: var(--navy-900) !important;
+}
+
+    /* GOLD INPUTS */
+    input.form-control,
+    textarea.form-control,
+    select.form-select{
+        border: 1.6px solid var(--gold) !important;
+        border-radius: 12px !important;
+        padding: 10px 12px !important;
+        background: #fff !important;
+        color: var(--input-text) !important;
+        font-weight: 700;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+
+    input.form-control:focus,
+    textarea.form-control:focus,
+    select.form-select:focus{
+        border-color: var(--gold) !important;
+        box-shadow: 0 0 0 .22rem rgba(166,128,35,.25) !important;
+    }
+
+    textarea.form-control{ resize: vertical; }
+
+    .checkline{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        background: var(--navy-800);
+        border: 1.2px solid var(--gold);
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        font-weight: 800;
+        color: var(--ink);
+    }
+
+    .checkline input[type="checkbox"]{
+        width: 18px;
+        height: 18px;
+        accent-color: var(--gold);
+    }
+
+    /* Table-like rows */
+    .table-like{
+        background:#fff;
+        border: 1px solid rgba(0,0,0,.06);
+        border-radius: 14px;
+        padding: 10px;
+        margin-bottom: 10px;
+        position: relative;
+    }
+
+    /* Buttons */
+    .wizard-actions{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 12px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+
+    .btn{
+        border-radius: 999px !important;
+        font-weight: 950 !important;
+        letter-spacing: .2px;
+        padding: 10px 16px !important;
+    }
+
+    .btn-gold{
+        background: linear-gradient(180deg, var(--gold), var(--gold-dark)) !important;
+        border: 1px solid rgba(0,0,0,.06) !important;
+        color: #fff !important;
+        box-shadow: 0 12px 26px rgba(166,128,35,.25);
+    }
+
+    .btn-gold:hover{ filter: brightness(1.02); }
+
+    .btn-ghost{
+        background: var(--navy-900) !important;
+        border: 2px solid var(--gold) !important;
+        color: #fff !important;
+    }
+
+    .btn-ghost:hover{
+        border-color: var(--gold) !important;
+        filter: brightness(1.05);
+        box-shadow: 0 10px 20px rgba(0,0,0,.2);
+    }
+
+    /* ============================
+       VALIDATION HELPER (Agent UX)
+    ============================ */
+    .ff-error-summary{
+        background: #fff3cd;
+        border: 1px solid rgba(166,128,35,.45);
+        color: #664d03;
+        padding: 12px 14px;
+        border-radius: 14px;
+        margin: 12px 0 14px 0;
+        font-weight: 900;
+        box-shadow: var(--shadow);
+    }
+
+    .ff-error-summary .title{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+
+    .ff-error-summary .count{
+        background:#fff;
+        border: 1px solid rgba(0,0,0,.08);
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-weight: 950;
+    }
+
+    .ff-error-summary ul{
+        margin: 0;
+        padding-left: 18px;
+        font-weight: 800;
+    }
+
+    .ff-error-summary li{
+        margin: 6px 0;
+    }
+
+    .ff-error-summary a{
+        color: #664d03;
+        text-decoration: underline;
+        font-weight: 950;
+    }
+
+    .ff-field-invalid input.form-control,
+    .ff-field-invalid textarea.form-control,
+    .ff-field-invalid select.form-select{
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 0 .22rem rgba(220,53,69,.18) !important;
+    }
+
+    .ff-fix-tag{
+        display:inline-flex;
+        align-items:center;
+        gap: 6px;
+        margin-top: 6px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(220,53,69,.10);
+        border: 1px solid rgba(220,53,69,.35);
+        color: #b02a37;
+        font-weight: 950;
+        font-size: .82rem;
+        letter-spacing: .1px;
+    }
+
+    /* optional tiny pulse so it's obvious */
+    @@keyframes ffPulse {
+        0%   { transform: scale(1); }
+        50%  { transform: scale(1.01); }
+        100% { transform: scale(1); }
+    }
+    .ff-field-invalid{ animation: ffPulse .22s ease-in-out; }
+
+    /* Repeater header row (Add button lives right on the card) */
+    .repeater-head{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+        margin-top: 6px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+    }
+
+    /* ===========
+       REPEATER CTA BAR
+       - Buttons live INSIDE each table-like card, bottom-left
+    =========== */
+    .repeater-actions{
+        display:flex;
+        align-items:center;
+        justify-content:flex-start;
+        gap: 10px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(0,0,0,.08);
+    }
+
+    .btn-delete-row{
+        position: static;
+        border-radius: 999px !important;
+        font-weight: 950 !important;
+        padding: 8px 12px !important;
+    }
+
+    .repeater-actions .btn{
+        padding: 8px 12px !important;
+    }
+</style>
+
+<div class="ff-shell">
+
+    @if (ViewBag.Success != null)
+    {
+        <div class="success-message">@ViewBag.Success</div>
+    }
+
+    <div class="ff-title">
+        <h1>Fact Finder - Middle-Aged (35-61)</h1>
+    </div>
+
+    <p class="required-note">
+        <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
+    </p>
+
+    <div class="ff-progress-wrap">
+        <div class="ff-progress-top">
+            <div class="ff-step-pill">
+                Step <span id="ffStepNowMiddle">1</span> of <span id="ffStepTotalMiddle">6</span>
+            </div>
+            <div style="font-weight:900; color:var(--muted); font-size:.95rem;" id="ffStepLabelMiddle">
+                Values + Concerns
+            </div>
+        </div>
+        <div class="ff-progress"><div id="ffProgressBarMiddle"></div></div>
+    </div>
+
+    <div id="ffErrorSummaryMiddle"></div>
+
+    <div id="ffMiddleApp">
+        <form id="factFinderFormMiddle" method="post" asp-action="Submit" asp-controller="FactFinder" novalidate>
+            @Html.AntiForgeryToken()
+
+            @* CRITICAL: tells controller which section was submitted *@
+            <input type="hidden" asp-for="FormType" value="Middle" />
+
+            <!-- =========================================================
+                 STEP 1 — VALUES + CONCERNS (BREAK DOWN GUARDS FIRST)
+            ========================================================== -->
+            <section class="wizard-step active" data-step="1" data-label="Values + Concerns">
+
+                <div class="section-card">
+                    <div class="section-title">Part 1 — Values, Direction & Real Concerns</div>
+                    <div class="subtle">Before money, we get truth. What matters, what’s heavy, and what “winning” looks like.</div>
+
+                    <div class="grid two">
+
+                        <!-- Identity (Required) -->
+                        <div class="block">
+                            <div class="block-title">Identity (Start Here)</div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Applicant Name<span class="req">*</span></label>
+                                    <input asp-for="Middle.Applicant.Name" class="form-control" placeholder="Applicant Name*" required />
+                                    <span asp-validation-for="Middle.Applicant.Name" class="text-danger"></span>
+                                </div>
+                                <div class="field">
+                                    <label>Date of Birth<span class="req">*</span></label>
+                                    <input asp-for="Middle.Applicant.DOB" type="date" class="form-control" required />
+                                    <span asp-validation-for="Middle.Applicant.DOB" class="text-danger"></span>
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Contact (Optional)</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Email</label>
+                                    <input asp-for="Middle.Applicant.Email" type="email" class="form-control" placeholder="Email" />
+                                </div>
+                                <div class="field">
+                                    <label>Phone No.</label>
+                                    <input asp-for="Middle.Applicant.Phone" type="tel" class="form-control" placeholder="Phone" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Spouse / Partner (Optional)</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Spouse Name</label>
+                                    <input asp-for="Middle.Spouse.Name" class="form-control" placeholder="Spouse Name" />
+                                </div>
+                                <div class="field">
+                                    <label>Date of Birth</label>
+                                    <input asp-for="Middle.Spouse.DOB" type="date" class="form-control" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Concerns + Family context -->
+                        <div class="block">
+                            <div class="block-title">What Matters + What’s Heavy</div>
+
+                            <div class="field">
+                                <label>34) What does “winning” look like for your family in 10–15 years?</label>
+                                <textarea asp-for="Middle.Direction.WinningDefinition" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>35) What are you most afraid of financially if nothing changes?</label>
+                                <textarea asp-for="Middle.Direction.BiggestFearIfNoChange" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>36) If you could change one thing starting today, what would it be?</label>
+                                <textarea asp-for="Middle.Direction.ChangeOneThing" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Children / Dependents</div>
+
+                            @{
+                                var depCount = Model.Middle?.Dependents?.Count ?? 0;
+                                var depRender = Math.Max(1, depCount);
+                            }
+                            <div id="depListMiddle">
+                                @for (int i = 0; i < depRender; i++)
+                                {
+                                    var dep = (Model.Middle?.Dependents != null && Model.Middle.Dependents.Count > i)
+                                        ? Model.Middle.Dependents[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+                                        <div class="row four">
+                                            <div class="field">
+                                                <label>Name</label>
+                                                <input name="Middle.Dependents[@i].Name" value="@(dep?.Name ?? "")" class="form-control" placeholder="Name" />
+                                            </div>
+                                            <div class="field">
+                                                <label>Age</label>
+                                                <input name="Middle.Dependents[@i].Age" value="@(dep?.Age?.ToString() ?? "")" type="number" class="form-control" placeholder="Age" />
+                                            </div>
+                                            <div class="field">
+                                                <label>Relationship</label>
+                                                <input name="Middle.Dependents[@i].Relationship" value="@(dep?.Relationship ?? "")" class="form-control" placeholder="Child / Other" />
+                                            </div>
+                                            <div class="field">
+                                                <label>Any special needs / ongoing care?</label>
+                                                <input name="Middle.Dependents[@i].SpecialNeeds" value="@(dep?.SpecialNeeds ?? "")" class="form-control" placeholder="Yes/No/Describe" />
+                                            </div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="depListMiddle"
+                                                    data-template="tplMiddleDependents">+ Add Dependent</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="mini-title">Family Responsibilities</div>
+                            <div class="field">
+                                <label>Are you financially supporting anyone outside your household?</label>
+                                <textarea asp-for="Middle.FamilySupportOutsideHousehold" class="form-control" style="min-height:82px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Emergency Contact</div>
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Name</label>
+                                    <input asp-for="Middle.EmergencyContact.Name" class="form-control" placeholder="Name" />
+                                </div>
+                                <div class="field">
+                                    <label>Phone No.</label>
+                                    <input asp-for="Middle.EmergencyContact.Phone" type="tel" class="form-control" placeholder="Phone" />
+                                </div>
+                                <div class="field">
+                                    <label>Email</label>
+                                    <input asp-for="Middle.EmergencyContact.Email" type="email" class="form-control" placeholder="Email" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Appointment (Agent Use)</div>
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Source of Visit</label>
+                                    <input asp-for="Middle.SourceOfVisit" class="form-control" placeholder="Referral / Event / Online / Other" />
+                                </div>
+                                <div class="field">
+                                    <label>Agent(s)</label>
+                                    <input asp-for="Middle.Agents" class="form-control" placeholder="Agent name(s)" />
+                                </div>
+                                <div class="field">
+                                    <label>Date of Appointment</label>
+                                    <input asp-for="Middle.DateOfAppointment" type="date" class="form-control" />
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="wizard-actions">
+                        <div></div>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 2 — HOUSEHOLD + CAREER + BENEFITS (STILL HUMAN FIRST)
+            ========================================================== -->
+            <section class="wizard-step" data-step="2" data-label="Household + Career">
+
+                <div class="section-card">
+                    <div class="section-title">Part 2 — Household, Career & Benefits</div>
+                    <div class="subtle">We learn how life is built: income structure, stability, and what could disrupt the plan.</div>
+
+                    <div class="grid two">
+
+                        <!-- Applicant career -->
+                        <div class="block">
+                            <div class="block-title">Applicant — Work & Stability</div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Occupation / Role</label>
+                                    <input asp-for="Middle.Applicant.Occupation" class="form-control" placeholder="Job title / role" />
+                                </div>
+                                <div class="field">
+                                    <label>Employer / Company</label>
+                                    <input asp-for="Middle.Applicant.Employer" class="form-control" placeholder="Employer / business name" />
+                                </div>
+                                <div class="field">
+                                    <label>Years in current role</label>
+                                    <input asp-for="Middle.Applicant.YearsInRole" type="number" class="form-control" placeholder="Years" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Work + Income Structure</div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Income Type</label>
+                                    <select asp-for="Middle.Applicant.IncomeType" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>Salary</option>
+                                        <option>Hourly</option>
+                                        <option>Commission</option>
+                                        <option>Business Owner</option>
+                                        <option>Mixed</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Annual Income (Approx.)</label>
+                                    <input asp-for="Middle.Applicant.AnnualIncome" type="number" step="0.01" class="form-control" placeholder="0.00" />
+                                </div>
+                                <div class="field">
+                                    <label>Income Trend (last 3 years)</label>
+                                    <select asp-for="Middle.Applicant.IncomeTrend" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>Increasing</option>
+                                        <option>Flat</option>
+                                        <option>Unpredictable</option>
+                                        <option>Declining</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>What are the biggest threats to your income in the next 5 years?</label>
+                                <textarea asp-for="Middle.Applicant.IncomeThreats" class="form-control" style="min-height:92px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Benefits -->
+                        <div class="block">
+                            <div class="block-title">Employer Benefits Snapshot</div>
+
+                            <div class="row two">
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.Health" type="checkbox" id="midAppBenHealth" />
+                                    <label for="midAppBenHealth">Health</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.Dental" type="checkbox" id="midAppBenDental" />
+                                    <label for="midAppBenDental">Dental</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.Vision" type="checkbox" id="midAppBenVision" />
+                                    <label for="midAppBenVision">Vision</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.HSA" type="checkbox" id="midAppBenHsa" />
+                                    <label for="midAppBenHsa">HSA</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.FSA" type="checkbox" id="midAppBenFsa" />
+                                    <label for="midAppBenFsa">FSA</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.GroupLife" type="checkbox" id="midAppBenGroupLife" />
+                                    <label for="midAppBenGroupLife">Group Life</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.GroupDI" type="checkbox" id="midAppBenGroupDi" />
+                                    <label for="midAppBenGroupDi">Group Disability</label>
+                                </div>
+                                <div class="checkline">
+                                    <input asp-for="Middle.ApplicantBenefits.RetirementPlan" type="checkbox" id="midAppBenRet" />
+                                    <label for="midAppBenRet">401(k)/403(b)/Retirement Plan</label>
+                                </div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Retirement Plan Match (if any)</label>
+                                    <input asp-for="Middle.ApplicantBenefits.RetMatch" class="form-control" placeholder="Example: 4% match" />
+                                </div>
+                                <div class="field">
+                                    <label>Vesting Schedule (if applicable)</label>
+                                    <input asp-for="Middle.ApplicantBenefits.Vesting" class="form-control" placeholder="Example: 3 years cliff" />
+                                </div>
+                                <div class="field">
+                                    <label>Other Employer Benefits</label>
+                                    <input asp-for="Middle.ApplicantBenefits.Other" class="form-control" placeholder="Describe" />
+                                </div>
+                            </div>
+
+                            <div class="mini-title">Quick Pressure Check</div>
+                            <div class="field">
+                                <label>20) Biggest frustration with finances right now?</label>
+                                <textarea asp-for="Middle.Cashflow.BiggestFrustration" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 3 — HEALTH COVERAGE + RISKS
+            ========================================================== -->
+            <section class="wizard-step" data-step="3" data-label="Health + Coverage">
+
+                <div class="section-card">
+                    <div class="section-title">Part 3 — Health Coverage, Health Risks & Medical Exposure</div>
+                    <div class="subtle">Current plan quality, gaps, and risk exposure.</div>
+
+                    <div class="grid two">
+
+                        <!-- Coverage -->
+                        <div class="block">
+                            <div class="block-title">Health Coverage Snapshot</div>
+
+                            <div class="field">
+                                <label>1) What coverage do you currently have?</label>
+                                <textarea asp-for="Middle.Health.CurrentCoverageSummary" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Carrier / Company</label>
+                                    <input asp-for="Middle.Health.Carrier" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Monthly Premium (Approx.)</label>
+                                    <input asp-for="Middle.Health.Premium" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Deductible (Individual / Family)</label>
+                                    <input asp-for="Middle.Health.Deductible" class="form-control" placeholder="Example: 2,000 / 4,000" />
+                                </div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Out-of-Pocket Max (Individual / Family)</label>
+                                    <input asp-for="Middle.Health.OOPMax" class="form-control" placeholder="Example: 6,500 / 13,000" />
+                                </div>
+                                <div class="field">
+                                    <label>Do you have an HSA? Balance?</label>
+                                    <input asp-for="Middle.Health.HSABalance" class="form-control" placeholder="Yes/No + amount" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>2) When was the last time you reviewed your plan?</label>
+                                <textarea asp-for="Middle.Health.LastReviewNotes" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>3) Have medical bills ever surprised you?</label>
+                                <textarea asp-for="Middle.Health.MedicalBillsSurprises" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Optional Coverage / Gap Fillers</div>
+                            <div class="row two">
+                                <div class="checkline"><input asp-for="Middle.Health.Additional.CriticalIllness" type="checkbox" id="midHealthCI" /><label for="midHealthCI">Critical Illness</label></div>
+                                <div class="checkline"><input asp-for="Middle.Health.Additional.Accident" type="checkbox" id="midHealthAcc" /><label for="midHealthAcc">Accident</label></div>
+                                <div class="checkline"><input asp-for="Middle.Health.Additional.HospitalIndemnity" type="checkbox" id="midHealthHosp" /><label for="midHealthHosp">Hospital Indemnity</label></div>
+                                <div class="checkline"><input asp-for="Middle.Health.Additional.ShortTermDI" type="checkbox" id="midHealthStd" /><label for="midHealthStd">Short-Term Disability</label></div>
+                                <div class="checkline"><input asp-for="Middle.Health.Additional.LongTermDI" type="checkbox" id="midHealthLtd" /><label for="midHealthLtd">Long-Term Disability</label></div>
+                                <div class="field">
+                                    <label>Other</label>
+                                    <input asp-for="Middle.Health.Additional.Other" class="form-control" placeholder="Other coverage" />
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Risk -->
+                        <div class="block">
+                            <div class="block-title">Health Risk & Family History</div>
+
+                            <div class="field">
+                                <label>4) How would you describe your health in the last three years?</label>
+                                <textarea asp-for="Middle.Health.HealthLastThreeYears" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>5) Current medications (if any)</label>
+                                <textarea asp-for="Middle.Health.CurrentMeds" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>6) Any major diagnoses in the last 10 years?</label>
+                                    <textarea asp-for="Middle.Health.MajorDiagnoses" class="form-control" style="min-height:84px;"></textarea>
+                                </div>
+                                <div class="field">
+                                    <label>7) Any surgeries / hospitalizations in the last 10 years?</label>
+                                    <textarea asp-for="Middle.Health.SurgeriesHosp" class="form-control" style="min-height:84px;"></textarea>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>8) Family history of major illness?</label>
+                                <textarea asp-for="Middle.Health.FamilyHistory" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>9) If a health event happened this year, how would it impact your income and responsibilities?</label>
+                                <textarea asp-for="Middle.Health.HealthEventImpact" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 4 — PROTECTION
+            ========================================================== -->
+            <section class="wizard-step" data-step="4" data-label="Protection Planning">
+
+                <div class="section-card">
+                    <div class="section-title">Part 4 — Protection Planning (Life, Disability, Liability)</div>
+                    <div class="subtle">We inventory everything. Blind spots cost families.</div>
+
+                    <div class="grid two">
+
+                        <!-- Life -->
+                        <div class="block">
+                            <div class="block-title">Life Insurance Inventory</div>
+
+                            <div class="field">
+                                <label>10) Purpose of your life insurance right now?</label>
+                                <textarea asp-for="Middle.Life.PrimaryPurpose" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Applicant Policies</div>
+                            <div class="subtle">Starts with one policy. Add only if needed.</div>
+
+                            @{
+                                var laCount = Model.Middle?.Life?.Applicant?.Count ?? 0;
+                                var laRender = Math.Max(1, laCount);
+                            }
+                            <div id="lifeApplicantListMiddle">
+                                @for (int i = 0; i < laRender; i++)
+                                {
+                                    var p = (Model.Middle?.Life?.Applicant != null && Model.Middle.Life.Applicant.Count > i)
+                                        ? Model.Middle.Life.Applicant[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+
+                                        <div class="mini-title" style="margin-top:0;">Policy @(i + 1)</div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Type</label><input name="Middle.Life.Applicant[@i].Type" value="@(p?.Type ?? "")" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
+                                            <div class="field"><label>Company</label><input name="Middle.Life.Applicant[@i].Company" value="@(p?.Company ?? "")" class="form-control" /></div>
+                                            <div class="field"><label>Face Amount</label><input name="Middle.Life.Applicant[@i].Face" value="@(p?.Face?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Monthly Premium</label><input name="Middle.Life.Applicant[@i].Premium" value="@(p?.Premium?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Duration</label><input name="Middle.Life.Applicant[@i].Duration" value="@(p?.Duration ?? "")" class="form-control" placeholder="10/20/30 yrs or permanent" /></div>
+                                            <div class="field"><label>Beneficiary</label><input name="Middle.Life.Applicant[@i].Beneficiary" value="@(p?.Beneficiary ?? "")" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="row two">
+                                            <div class="field"><label>Cash Value (if any)</label><input name="Middle.Life.Applicant[@i].CashValue" value="@(p?.CashValue?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Convertible? / Riders?</label><input name="Middle.Life.Applicant[@i].Riders" value="@(p?.Riders ?? "")" class="form-control" placeholder="Conversion, waiver, child rider, etc." /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="lifeApplicantListMiddle"
+                                                    data-template="tplMiddleLifeApplicant">+ Add Policy</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="mini-title">Spouse Policies</div>
+                            <div class="subtle">Starts with one policy. Add only if needed.</div>
+                            @{
+                                var lsCount = Model.Middle?.Life?.Spouse?.Count ?? 0;
+                                var lsRender = Math.Max(1, lsCount);
+                            }
+                            <div id="lifeSpouseListMiddle">
+                                @for (int i = 0; i < lsRender; i++)
+                                {
+                                    var p = (Model.Middle?.Life?.Spouse != null && Model.Middle.Life.Spouse.Count > i)
+                                        ? Model.Middle.Life.Spouse[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+
+                                        <div class="mini-title" style="margin-top:0;">Policy @(i + 1)</div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Type</label><input name="Middle.Life.Spouse[@i].Type" value="@(p?.Type ?? "")" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
+                                            <div class="field"><label>Company</label><input name="Middle.Life.Spouse[@i].Company" value="@(p?.Company ?? "")" class="form-control" /></div>
+                                            <div class="field"><label>Face Amount</label><input name="Middle.Life.Spouse[@i].Face" value="@(p?.Face?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="row three">
+                                            <div class="field"><label>Monthly Premium</label><input name="Middle.Life.Spouse[@i].Premium" value="@(p?.Premium?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Duration</label><input name="Middle.Life.Spouse[@i].Duration" value="@(p?.Duration ?? "")" class="form-control" placeholder="10/20/30 yrs or permanent" /></div>
+                                            <div class="field"><label>Beneficiary</label><input name="Middle.Life.Spouse[@i].Beneficiary" value="@(p?.Beneficiary ?? "")" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="row two">
+                                            <div class="field"><label>Cash Value (if any)</label><input name="Middle.Life.Spouse[@i].CashValue" value="@(p?.CashValue?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Convertible? / Riders?</label><input name="Middle.Life.Spouse[@i].Riders" value="@(p?.Riders ?? "")" class="form-control" placeholder="Conversion, waiver, child rider, etc." /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="lifeSpouseListMiddle"
+                                                    data-template="tplMiddleLifeSpouse">+ Add Policy</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="field">
+                                <label>11) When was your life insurance last reviewed?</label>
+                                <input asp-for="Middle.Life.LastReview" class="form-control" placeholder="MM/YYYY or notes" />
+                            </div>
+
+                            <div class="field">
+                                <label>12) If you passed away this year, what would financially break first?</label>
+                                <textarea asp-for="Middle.Life.WhatBreaksFirst" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- DI + Liability -->
+                        <div class="block">
+                            <div class="block-title">Disability + Liability + Major Risks</div>
+
+                            <div class="field">
+                                <label>13) If you couldn’t work for 6–12 months, what happens financially?</label>
+                                <textarea asp-for="Middle.DI.IfCannotWorkImpact" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Disability Coverage</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you have DI through work?</label>
+                                    <input asp-for="Middle.DI.GroupDI" class="form-control" placeholder="Yes/No + details" />
+                                </div>
+                                <div class="field">
+                                    <label>Do you have personal DI?</label>
+                                    <input asp-for="Middle.DI.IndividualDI" class="form-control" placeholder="Yes/No + details" />
+                                </div>
+                            </div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Benefit Amount / Month</label>
+                                    <input asp-for="Middle.DI.BenefitAmount" class="form-control" placeholder="$ / month" />
+                                </div>
+                                <div class="field">
+                                    <label>Elimination Period</label>
+                                    <input asp-for="Middle.DI.Elimination" class="form-control" placeholder="30/60/90 days" />
+                                </div>
+                                <div class="field">
+                                    <label>Benefit Period</label>
+                                    <input asp-for="Middle.DI.BenefitPeriod" class="form-control" placeholder="2/5/To 65/To 67" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>14) How long would your emergency fund cover you?</label>
+                                <input asp-for="Middle.DI.EmergencyFundMonths" class="form-control" placeholder="Example: 3 months" />
+                            </div>
+
+                            <div class="mini-title">Liability / Big Risk Events</div>
+                            <div class="field">
+                                <label>15) Do you have umbrella liability coverage? How much?</label>
+                                <input asp-for="Middle.Liability.Umbrella" class="form-control" placeholder="Yes/No + amount" />
+                            </div>
+
+                            <div class="field">
+                                <label>16) Any major exposures?</label>
+                                <textarea asp-for="Middle.Liability.Exposures" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>17) Any claim, lawsuit, major accident, or insurance cancellation?</label>
+                                <textarea asp-for="Middle.Liability.ClaimsHistory" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 5 — CASH FLOW + DEBT
+            ========================================================== -->
+            <section class="wizard-step" data-step="5" data-label="Cash Flow + Debt">
+
+                <div class="section-card">
+                    <div class="section-title">Part 5 — Cash Flow, Debts, Leaks & Stress Points</div>
+                    <div class="subtle">Now we touch the numbers — after trust is built.</div>
+
+                    <div class="grid two">
+
+                        <!-- Cash Flow -->
+                        <div class="block">
+                            <div class="block-title">Cash Flow & Monthly Structure</div>
+
+                            <div class="row three">
+                                <div class="field">
+                                    <label>Monthly Household Income (Net)</label>
+                                    <input asp-for="Middle.Cashflow.NetIncome" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Monthly Core Expenses</label>
+                                    <input asp-for="Middle.Cashflow.CoreExpenses" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Monthly Savings / Investing</label>
+                                    <input asp-for="Middle.Cashflow.Savings" type="number" step="0.01" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>18) Where does money leak the most each month?</label>
+                                <textarea asp-for="Middle.Cashflow.Leaks" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>19) Do you operate on a written budget, a loose system, or no system?</label>
+                                <select asp-for="Middle.Cashflow.BudgetSystem" class="form-select">
+                                    <option value="">Select</option>
+                                    <option>Written Budget</option>
+                                    <option>Loose System</option>
+                                    <option>No System</option>
+                                </select>
+                            </div>
+
+                            <div class="mini-title">Emergency Reserves</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Emergency Fund Amount</label>
+                                    <input asp-for="Middle.Cashflow.EmergencyFundAmount" type="number" step="0.01" class="form-control" />
+                                </div>
+                                <div class="field">
+                                    <label>Months Covered</label>
+                                    <input asp-for="Middle.Cashflow.EmergencyFundMonths" class="form-control" placeholder="Example: 3–6 months" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>21) If you had an unexpected $10,000 expense this month, how would you handle it?</label>
+                                <textarea asp-for="Middle.Cashflow.Unexpected10kPlan" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Debt -->
+                        <div class="block">
+                            <div class="block-title">Debt & Obligations</div>
+
+                            <div class="mini-title">Primary Residence</div>
+                            <div class="row three">
+                                <div class="field"><label>Home Value (Approx.)</label><input asp-for="Middle.Debt.HomeValue" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Mortgage Balance</label><input asp-for="Middle.Debt.MortgageBalance" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Interest Rate</label><input asp-for="Middle.Debt.MortgageRate" class="form-control" placeholder="%" /></div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field"><label>Monthly Mortgage Payment</label><input asp-for="Middle.Debt.MortgagePayment" type="number" step="0.01" class="form-control" /></div>
+                                <div class="field"><label>Years Remaining</label><input asp-for="Middle.Debt.MortgageYearsRemaining" type="number" class="form-control" /></div>
+                            </div>
+
+                            <div class="mini-title">Other Debts</div>
+                            <div class="subtle">Starts with one row. Add only what applies.</div>
+                            @{
+                                var dCount = Model.Middle?.Debt?.Other?.Count ?? 0;
+                                var dRender = Math.Max(1, dCount);
+                            }
+                            <div id="debtOtherListMiddle">
+                                @for (int i = 0; i < dRender; i++)
+                                {
+                                    var d = (Model.Middle?.Debt?.Other != null && Model.Middle.Debt.Other.Count > i)
+                                        ? Model.Middle.Debt.Other[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+                                        <div class="row five">
+                                            <div class="field"><label>Type</label><input name="Middle.Debt.Other[@i].Type" value="@(d?.Type ?? "")" class="form-control" placeholder="Auto / Student / Credit / Personal / Business" /></div>
+                                            <div class="field"><label>Balance</label><input name="Middle.Debt.Other[@i].Balance" value="@(d?.Balance?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Rate</label><input name="Middle.Debt.Other[@i].Rate" value="@(d?.Rate ?? "")" class="form-control" placeholder="%" /></div>
+                                            <div class="field"><label>Monthly Payment</label><input name="Middle.Debt.Other[@i].Payment" value="@(d?.Payment?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Notes</label><input name="Middle.Debt.Other[@i].Notes" value="@(d?.Notes ?? "")" class="form-control" placeholder="Any notes" /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="debtOtherListMiddle"
+                                                    data-template="tplMiddleDebtOther">+ Add Debt</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="field">
+                                <label>22) Do you feel your debt is under control, heavy, or chaotic?</label>
+                                <select asp-for="Middle.Debt.FeelsLike" class="form-select">
+                                    <option value="">Select</option>
+                                    <option>Under Control</option>
+                                    <option>Heavy but Managed</option>
+                                    <option>Chaotic / Stressful</option>
+                                </select>
+                            </div>
+
+                            <div class="field">
+                                <label>23) If you could change one thing about your debt situation, what would it be?</label>
+                                <textarea asp-for="Middle.Debt.ChangeOneThing" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                        </div>
+                    </div>
+
+                    <div class="wizard-actions">
+                        <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                        <button type="button" class="btn btn-gold" data-next>Next</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- =========================================================
+                 STEP 6 — ASSETS + TAX + LEGACY + SUBMIT
+            ========================================================== -->
+            <section class="wizard-step" data-step="6" data-label="Assets + Legacy">
+
+                <div class="section-card">
+                    <div class="section-title">Part 6 — Assets, Taxes, Legacy & Next Steps</div>
+                    <div class="subtle">We lock in the full picture and make it actionable.</div>
+
+                    <div class="grid two">
+
+                        <!-- Retirement + Investments -->
+                        <div class="block">
+                            <div class="block-title">Retirement & Investment Accounts</div>
+
+                            <div class="mini-title">Retirement Accounts</div>
+                            <div class="subtle">Starts with one row. Add only what exists.</div>
+                            @{
+                                var retCount = Model.Middle?.Assets?.Retirement?.Count ?? 0;
+                                var retRender = Math.Max(1, retCount);
+                            }
+                            <div id="retirementListMiddle">
+                                @for (int i = 0; i < retRender; i++)
+                                {
+                                    var a = (Model.Middle?.Assets?.Retirement != null && Model.Middle.Assets.Retirement.Count > i)
+                                        ? Model.Middle.Assets.Retirement[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+                                        <div class="row four">
+                                            <div class="field"><label>Account Type</label><input name="Middle.Assets.Retirement[@i].Type" value="@(a?.Type ?? "")" class="form-control" placeholder="401(k)/403(b)/IRA/Roth/HSA/SEP/Solo401k" /></div>
+                                            <div class="field"><label>Institution</label><input name="Middle.Assets.Retirement[@i].Institution" value="@(a?.Institution ?? "")" class="form-control" placeholder="Fidelity/Vanguard/etc." /></div>
+                                            <div class="field"><label>Approx. Value</label><input name="Middle.Assets.Retirement[@i].Value" value="@(a?.Value?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Contribution / Month</label><input name="Middle.Assets.Retirement[@i].MonthlyContribution" value="@(a?.MonthlyContribution?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="retirementListMiddle"
+                                                    data-template="tplMiddleRetirement">+ Add Account</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="mini-title">Brokerage / Investment Accounts</div>
+                            <div class="subtle">Starts with one row. Add only what exists.</div>
+                            @{
+                                var broCount = Model.Middle?.Assets?.Brokerage?.Count ?? 0;
+                                var broRender = Math.Max(1, broCount);
+                            }
+                            <div id="brokerageListMiddle">
+                                @for (int i = 0; i < broRender; i++)
+                                {
+                                    var b = (Model.Middle?.Assets?.Brokerage != null && Model.Middle.Assets.Brokerage.Count > i)
+                                        ? Model.Middle.Assets.Brokerage[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+                                        <div class="row three">
+                                            <div class="field"><label>Institution</label><input name="Middle.Assets.Brokerage[@i].Institution" value="@(b?.Institution ?? "")" class="form-control" /></div>
+                                            <div class="field"><label>Approx. Value</label><input name="Middle.Assets.Brokerage[@i].Value" value="@(b?.Value?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Notes</label><input name="Middle.Assets.Brokerage[@i].Notes" value="@(b?.Notes ?? "")" class="form-control" placeholder="Taxable, managed, DIY, etc." /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="brokerageListMiddle"
+                                                    data-template="tplMiddleBrokerage">+ Add Account</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="field">
+                                <label>24) Are your accounts organized and intentional, or scattered and reactive?</label>
+                                <textarea asp-for="Middle.Assets.OrganizationFeel" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>25) Do you know your approximate net worth today?</label>
+                                <input asp-for="Middle.Assets.NetWorthEstimate" class="form-control" placeholder="Yes/No + amount" />
+                            </div>
+
+                            <div class="mini-title">Tax & Education Planning</div>
+
+                            <div class="field">
+                                <label>29) Do you feel like you pay “too much” in taxes? If yes, why?</label>
+                                <textarea asp-for="Middle.Tax.FeelsTooHighWhy" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Who prepares your taxes?</label>
+                                    <input asp-for="Middle.Tax.Preparer" class="form-control" placeholder="CPA / DIY / Firm / Other" />
+                                </div>
+                                <div class="field">
+                                    <label>Have you done proactive tax planning in the last 12 months?</label>
+                                    <select asp-for="Middle.Tax.ProactivePlanningLast12Mo" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Somewhat</option>
+                                        <option>Yes — consistently</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>30) What do you want to optimize most right now?</label>
+                                <textarea asp-for="Middle.Tax.OptimizeMost" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">College / Education Funding</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you plan to help fund college/education?</label>
+                                    <select asp-for="Middle.College.PlanToFund" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Yes</option>
+                                        <option>Not sure</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Any 529 / education accounts today?</label>
+                                    <input asp-for="Middle.College.CurrentAccounts" class="form-control" placeholder="Yes/No + details" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>31) What is your plan if tuition is higher than expected?</label>
+                                <textarea asp-for="Middle.College.PlanIfHigher" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Real Estate + Business + Equity + Legacy -->
+                        <div class="block">
+                            <div class="block-title">Real Estate, Business, Equity & Legacy</div>
+
+                            <div class="mini-title">Real Estate (excluding primary residence)</div>
+                            <div class="subtle">Starts with one row. Add only what exists.</div>
+                            @{
+                                var reCount = Model.Middle?.RealEstate?.Count ?? 0;
+                                var reRender = Math.Max(1, reCount);
+                            }
+                            <div id="realEstateListMiddle">
+                                @for (int i = 0; i < reRender; i++)
+                                {
+                                    var r = (Model.Middle?.RealEstate != null && Model.Middle.RealEstate.Count > i)
+                                        ? Model.Middle.RealEstate[i]
+                                        : null;
+
+                                    <div class="table-like repeater-item">
+                                        <div class="row four">
+                                            <div class="field"><label>Property Type</label><input name="Middle.RealEstate[@i].Type" value="@(r?.Type ?? "")" class="form-control" placeholder="Rental / Land / Vacation / Other" /></div>
+                                            <div class="field"><label>Location</label><input name="Middle.RealEstate[@i].Location" value="@(r?.Location ?? "")" class="form-control" /></div>
+                                            <div class="field"><label>Approx. Value</label><input name="Middle.RealEstate[@i].Value" value="@(r?.Value?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                            <div class="field"><label>Mortgage Balance</label><input name="Middle.RealEstate[@i].Mortgage" value="@(r?.Mortgage?.ToString() ?? "")" type="number" step="0.01" class="form-control" /></div>
+                                        </div>
+                                        <div class="row two">
+                                            <div class="field"><label>Monthly Cash Flow (Approx.)</label><input name="Middle.RealEstate[@i].CashFlow" value="@(r?.CashFlow ?? "")" class="form-control" placeholder="+/- amount" /></div>
+                                            <div class="field"><label>Notes</label><input name="Middle.RealEstate[@i].Notes" value="@(r?.Notes ?? "")" class="form-control" /></div>
+                                        </div>
+
+                                        <div class="repeater-actions">
+                                            <button type="button" class="btn btn-gold"
+                                                    data-repeater-add="realEstateListMiddle"
+                                                    data-template="tplMiddleRealEstate">+ Add Property</button>
+                                            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="mini-title">Business Ownership</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you own a business (full or partial)?</label>
+                                    <input asp-for="Middle.Business.Ownership" class="form-control" placeholder="Yes/No + % owned" />
+                                </div>
+                                <div class="field">
+                                    <label>Approx. Business Value (if known)</label>
+                                    <input asp-for="Middle.Business.Value" type="number" step="0.01" class="form-control" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>26) If you passed away or became disabled, would your business continue?</label>
+                                <textarea asp-for="Middle.Business.Continuity" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="field">
+                                <label>27) Any buy-sell agreement, key person coverage, or succession plan in place?</label>
+                                <textarea asp-for="Middle.Business.BuySellKeyPersonSuccession" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Equity Compensation (if applicable)</div>
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you receive RSUs/Options/Equity?</label>
+                                    <input asp-for="Middle.EquityComp.HasEquityComp" class="form-control" placeholder="Yes/No + type" />
+                                </div>
+                                <div class="field">
+                                    <label>Approx. Value / Vesting Notes</label>
+                                    <input asp-for="Middle.EquityComp.ValueNotes" class="form-control" placeholder="If known" />
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>28) Do you have a strategy for taxes and timing on equity compensation?</label>
+                                <textarea asp-for="Middle.EquityComp.Strategy" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+
+                            <div class="mini-title">Legacy, Documents & Preparedness</div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Do you have a Will?</label>
+                                    <select asp-for="Middle.Legacy.HasWill" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Do you have a Trust?</label>
+                                    <select asp-for="Middle.Legacy.HasTrust" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Yes</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row two">
+                                <div class="field">
+                                    <label>Power of Attorney (Financial)?</label>
+                                    <select asp-for="Middle.Legacy.HasPOAFinancial" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Yes</option>
+                                    </select>
+                                </div>
+                                <div class="field">
+                                    <label>Health Care Directive?</label>
+                                    <select asp-for="Middle.Legacy.HasHealthDirective" class="form-select">
+                                        <option value="">Select</option>
+                                        <option>No</option>
+                                        <option>Yes</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="field">
+                                <label>32) If you have these documents, when were they last updated?</label>
+                                <input asp-for="Middle.Legacy.LastUpdated" class="form-control" placeholder="MM/YYYY or notes" />
+                            </div>
+
+                            <div class="field">
+                                <label>33) If you died unexpectedly, would your family know where everything is?</label>
+                                <textarea asp-for="Middle.Legacy.FamilyWouldFindEverything" class="form-control" style="min-height:84px;"></textarea>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- Disclaimer + Submit -->
+                    <div class="section-card" style="margin-top:14px; border-width:2px;">
+                        <div class="block" style="border:none; padding:0; background:transparent;">
+                            <div class="checkline" style="background:#fff; color: var(--navy-900); border:1.2px solid var(--gold);">
+                               <input asp-for="Middle.AcknowledgedDisclaimer"
+                                      type="checkbox"
+                                      class="form-check-input"
+                                      id="disclaimerCheckboxMiddle"
+                                      required />
+                                <label for="disclaimerCheckboxMiddle" class="form-check-label ack-text" style="font-weight:900; margin:0; color: var(--navy-900) !important;">
+                                    I acknowledge that by submitting this form, I authorize the company/agent to contact me regarding this Fact Finder intake.<span class="req">*</span>
+                                </label>
+                            </div>
+                            <span asp-validation-for="Middle.AcknowledgedDisclaimer" class="text-danger"></span>
+
+                            <div class="wizard-actions" style="margin-top: 12px;">
+                                <button type="button" class="btn btn-ghost" data-prev>Back</button>
+                                <button type="submit" class="btn btn-gold">Submit & Download PDF</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+        </form>
+    </div> <!-- /#ffMiddleApp -->
+</div> <!-- /.ff-shell -->
+
+@* =========================
+   REPEATER TEMPLATES
+   (Names stay EXACT for binding)
+========================= *@
+<template id="tplMiddleDependents">
+    <div class="table-like repeater-item">
+        <div class="row four">
+            <div class="field">
+                <label>Name</label>
+                <input name="Middle.Dependents[__i__].Name" class="form-control" placeholder="Name" />
+            </div>
+            <div class="field">
+                <label>Age</label>
+                <input name="Middle.Dependents[__i__].Age" type="number" class="form-control" placeholder="Age" />
+            </div>
+            <div class="field">
+                <label>Relationship</label>
+                <input name="Middle.Dependents[__i__].Relationship" class="form-control" placeholder="Child / Parent / Other" />
+            </div>
+            <div class="field">
+                <label>Any special needs / ongoing care?</label>
+                <input name="Middle.Dependents[__i__].SpecialNeeds" class="form-control" placeholder="Yes/No/Describe" />
+            </div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="depListMiddle"
+                    data-template="tplMiddleDependents">+ Add Dependent</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleLifeApplicant">
+    <div class="table-like repeater-item">
+        <div class="mini-title" style="margin-top:0;">Policy</div>
+
+        <div class="row three">
+            <div class="field"><label>Type</label><input name="Middle.Life.Applicant[__i__].Type" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
+            <div class="field"><label>Company</label><input name="Middle.Life.Applicant[__i__].Company" class="form-control" /></div>
+            <div class="field"><label>Face Amount</label><input name="Middle.Life.Applicant[__i__].Face" type="number" step="0.01" class="form-control" /></div>
+        </div>
+
+        <div class="row three">
+            <div class="field"><label>Monthly Premium</label><input name="Middle.Life.Applicant[__i__].Premium" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Duration</label><input name="Middle.Life.Applicant[__i__].Duration" class="form-control" placeholder="10/20/30 yrs or permanent" /></div>
+            <div class="field"><label>Beneficiary</label><input name="Middle.Life.Applicant[__i__].Beneficiary" class="form-control" /></div>
+        </div>
+
+        <div class="row two">
+            <div class="field"><label>Cash Value (if any)</label><input name="Middle.Life.Applicant[__i__].CashValue" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Convertible? / Riders?</label><input name="Middle.Life.Applicant[__i__].Riders" class="form-control" placeholder="Conversion, waiver, child rider, etc." /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="lifeApplicantListMiddle"
+                    data-template="tplMiddleLifeApplicant">+ Add Policy</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleLifeSpouse">
+    <div class="table-like repeater-item">
+        <div class="mini-title" style="margin-top:0;">Policy</div>
+
+        <div class="row three">
+            <div class="field"><label>Type</label><input name="Middle.Life.Spouse[__i__].Type" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
+            <div class="field"><label>Company</label><input name="Middle.Life.Spouse[__i__].Company" class="form-control" /></div>
+            <div class="field"><label>Face Amount</label><input name="Middle.Life.Spouse[__i__].Face" type="number" step="0.01" class="form-control" /></div>
+        </div>
+
+        <div class="row three">
+            <div class="field"><label>Monthly Premium</label><input name="Middle.Life.Spouse[__i__].Premium" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Duration</label><input name="Middle.Life.Spouse[__i__].Duration" class="form-control" placeholder="10/20/30 yrs or permanent" /></div>
+            <div class="field"><label>Beneficiary</label><input name="Middle.Life.Spouse[__i__].Beneficiary" class="form-control" /></div>
+        </div>
+
+        <div class="row two">
+            <div class="field"><label>Cash Value (if any)</label><input name="Middle.Life.Spouse[__i__].CashValue" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Convertible? / Riders?</label><input name="Middle.Life.Spouse[__i__].Riders" class="form-control" placeholder="Conversion, waiver, child rider, etc." /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="lifeSpouseListMiddle"
+                    data-template="tplMiddleLifeSpouse">+ Add Policy</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleDebtOther">
+    <div class="table-like repeater-item">
+        <div class="row five">
+            <div class="field"><label>Type</label><input name="Middle.Debt.Other[__i__].Type" class="form-control" placeholder="Auto / Student / Credit / Personal / Business" /></div>
+            <div class="field"><label>Balance</label><input name="Middle.Debt.Other[__i__].Balance" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Rate</label><input name="Middle.Debt.Other[__i__].Rate" class="form-control" placeholder="%" /></div>
+            <div class="field"><label>Monthly Payment</label><input name="Middle.Debt.Other[__i__].Payment" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Notes</label><input name="Middle.Debt.Other[__i__].Notes" class="form-control" placeholder="Any notes" /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="debtOtherListMiddle"
+                    data-template="tplMiddleDebtOther">+ Add Debt</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleRetirement">
+    <div class="table-like repeater-item">
+        <div class="row four">
+            <div class="field"><label>Account Type</label><input name="Middle.Assets.Retirement[__i__].Type" class="form-control" placeholder="401(k)/403(b)/IRA/Roth/HSA/SEP/Solo401k" /></div>
+            <div class="field"><label>Institution</label><input name="Middle.Assets.Retirement[__i__].Institution" class="form-control" placeholder="Fidelity/Vanguard/etc." /></div>
+            <div class="field"><label>Approx. Value</label><input name="Middle.Assets.Retirement[__i__].Value" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Contribution / Month</label><input name="Middle.Assets.Retirement[__i__].MonthlyContribution" type="number" step="0.01" class="form-control" /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="retirementListMiddle"
+                    data-template="tplMiddleRetirement">+ Add Account</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleBrokerage">
+    <div class="table-like repeater-item">
+        <div class="row three">
+            <div class="field"><label>Institution</label><input name="Middle.Assets.Brokerage[__i__].Institution" class="form-control" /></div>
+            <div class="field"><label>Approx. Value</label><input name="Middle.Assets.Brokerage[__i__].Value" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Notes</label><input name="Middle.Assets.Brokerage[__i__].Notes" class="form-control" placeholder="Taxable, managed, DIY, etc." /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="brokerageListMiddle"
+                    data-template="tplMiddleBrokerage">+ Add Account</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<template id="tplMiddleRealEstate">
+    <div class="table-like repeater-item">
+        <div class="row four">
+            <div class="field"><label>Property Type</label><input name="Middle.RealEstate[__i__].Type" class="form-control" placeholder="Rental / Land / Vacation / Other" /></div>
+            <div class="field"><label>Location</label><input name="Middle.RealEstate[__i__].Location" class="form-control" /></div>
+            <div class="field"><label>Approx. Value</label><input name="Middle.RealEstate[__i__].Value" type="number" step="0.01" class="form-control" /></div>
+            <div class="field"><label>Mortgage Balance</label><input name="Middle.RealEstate[__i__].Mortgage" type="number" step="0.01" class="form-control" /></div>
+        </div>
+        <div class="row two">
+            <div class="field"><label>Monthly Cash Flow (Approx.)</label><input name="Middle.RealEstate[__i__].CashFlow" class="form-control" placeholder="+/- amount" /></div>
+            <div class="field"><label>Notes</label><input name="Middle.RealEstate[__i__].Notes" class="form-control" /></div>
+        </div>
+
+        <div class="repeater-actions">
+            <button type="button" class="btn btn-gold"
+                    data-repeater-add="realEstateListMiddle"
+                    data-template="tplMiddleRealEstate">+ Add Property</button>
+            <button type="button" class="btn btn-danger btn-delete-row" data-repeater-del title="Delete">Delete</button>
+        </div>
+    </div>
+</template>
+
+<script>
+    (function () {
+        const root = document.getElementById('ffMiddleApp');
+        if (!root) return;
+
+        const form = root.querySelector('#factFinderFormMiddle');
+        if (!form) return;
+
+        const steps = Array.from(root.querySelectorAll('.wizard-step'));
+        const total = steps.length;
+
+        const stepNowEl = document.getElementById('ffStepNowMiddle');
+        const stepTotalEl = document.getElementById('ffStepTotalMiddle');
+        const stepLabelEl = document.getElementById('ffStepLabelMiddle');
+        const bar = document.getElementById('ffProgressBarMiddle');
+
+        const summaryHost = document.getElementById('ffErrorSummaryMiddle');
+
+        if (stepTotalEl) stepTotalEl.textContent = String(total);
+
+        function currentStepIndex() {
+            return steps.findIndex(s => s.classList.contains('active'));
+        }
+
+        function updateProgress(idx) {
+            const stepNum = idx + 1;
+
+            if (stepNowEl) stepNowEl.textContent = String(stepNum);
+
+            const label = steps[idx].getAttribute('data-label') || '';
+            if (stepLabelEl) stepLabelEl.textContent = label;
+
+            const pct = Math.round((stepNum / total) * 100);
+            if (bar) bar.style.width = pct + '%';
+
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function showStep(idx) {
+            steps.forEach((s, i) => s.classList.toggle('active', i === idx));
+            updateProgress(idx);
+        }
+
+        // -----------------------------
+        // VALIDATION VISUAL HELPERS
+        // -----------------------------
+        function clearVisualErrors() {
+            if (summaryHost) summaryHost.innerHTML = "";
+            root.querySelectorAll('.ff-field-invalid').forEach(el => el.classList.remove('ff-field-invalid'));
+            root.querySelectorAll('.ff-fix-tag').forEach(el => el.remove());
+        }
+
+        function getFieldLabel(el) {
+            const field = el.closest('.field');
+            if (!field) return "Field";
+            const lbl = field.querySelector('label');
+            return (lbl && lbl.textContent) ? lbl.textContent.replace('*', '').trim() : "Field";
+        }
+
+        function getStepLabel(el) {
+            const stepEl = el.closest('.wizard-step');
+            return (stepEl && stepEl.getAttribute('data-label')) ? stepEl.getAttribute('data-label') : "Form";
+        }
+
+        function markFieldInvalid(el, message) {
+            const field = el.closest('.field') || el.closest('.checkline') || el.parentElement;
+            if (!field) return;
+
+            field.classList.add('ff-field-invalid');
+
+            if (field.querySelector('.ff-fix-tag')) return;
+
+            const tag = document.createElement('div');
+            tag.className = 'ff-fix-tag';
+            tag.textContent = message || 'Required — fix this';
+
+            const label = field.querySelector('label');
+            if (label && label.parentNode) {
+                label.insertAdjacentElement('afterend', tag);
+            } else {
+                field.insertAdjacentElement('afterbegin', tag);
+            }
+        }
+
+        function buildSummary(invalidEls) {
+            if (!summaryHost) return;
+            if (!invalidEls.length) { summaryHost.innerHTML = ""; return; }
+
+            const items = invalidEls.map((el, idx) => {
+                if (!el.id) el.id = "ff_invalid_middle_" + idx;
+                return { id: el.id, step: getStepLabel(el), label: getFieldLabel(el) };
+            });
+
+            summaryHost.innerHTML = `
+                <div class="ff-error-summary">
+                    <div class="title">
+                        <div>Needs attention before submit</div>
+                        <div class="count">${items.length}</div>
+                    </div>
+                    <ul>
+                        ${items.map(i => `<li><a href="#${i.id}" data-jump="${i.id}">${i.step}: ${i.label}</a></li>`).join('')}
+                    </ul>
+                </div>
+            `;
+
+            summaryHost.querySelectorAll('a[data-jump]').forEach(a => {
+                a.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const id = a.getAttribute('data-jump');
+                    const target = document.getElementById(id);
+                    if (!target) return;
+
+                    const stepEl = target.closest('.wizard-step');
+                    if (stepEl) {
+                        const idx = steps.indexOf(stepEl);
+                        if (idx >= 0) showStep(idx);
+                    }
+
+                    setTimeout(() => {
+                        target.scrollIntoView({ behavior: "smooth", block: "center" });
+                        target.focus();
+                    }, 80);
+                });
+            });
+        }
+
+        function getInvalidElements() {
+            const all = Array.from(form.querySelectorAll("input, select, textarea"));
+            return all.filter(el => !el.checkValidity());
+        }
+
+        function revealValidation() {
+            clearVisualErrors();
+
+            const invalidEls = getInvalidElements();
+            invalidEls.forEach(el => markFieldInvalid(el, el.validationMessage || "Fix this field"));
+            buildSummary(invalidEls);
+
+            return invalidEls;
+        }
+
+        function focusFirstInvalid(invalidEls) {
+            const firstInvalid = invalidEls[0];
+            if (!firstInvalid) return;
+
+            const stepEl = firstInvalid.closest('.wizard-step');
+            if (stepEl) {
+                const idx = steps.indexOf(stepEl);
+                if (idx >= 0) showStep(idx);
+            }
+
+            setTimeout(() => {
+                firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+                firstInvalid.focus();
+            }, 80);
+        }
+
+        // -----------------------------
+        // SERVER-SIDE (ModelState) ERROR REVEAL
+        // -----------------------------
+        function revealServerModelStateErrors() {
+            const invalidInputs = Array.from(form.querySelectorAll('.input-validation-error'));
+
+            const msgSpans = Array.from(form.querySelectorAll('span.field-validation-error, span.text-danger'))
+                .filter(s => s && s.getAttribute('data-valmsg-for') && (s.textContent || '').trim().length > 0);
+
+            msgSpans.forEach(sp => {
+                const key = sp.getAttribute('data-valmsg-for');
+                if (!key) return;
+                const el = form.querySelector(`[name="${CSS.escape(key)}"]`);
+                if (el && !invalidInputs.includes(el)) invalidInputs.push(el);
+            });
+
+            if (!invalidInputs.length) return;
+
+            clearVisualErrors();
+
+            invalidInputs.forEach(el => {
+                let msg = el.validationMessage || "Fix this field";
+                const name = el.getAttribute('name');
+                if (name) {
+                    const span = form.querySelector(`span[data-valmsg-for="${CSS.escape(name)}"]`);
+                    if (span && (span.textContent || '').trim().length) msg = span.textContent.trim();
+                }
+                markFieldInvalid(el, msg);
+            });
+
+            buildSummary(invalidInputs);
+            focusFirstInvalid(invalidInputs);
+        }
+
+        // -----------------------------
+        // Repeater (Add/Delete) + Reindex
+        // -----------------------------
+        function getNextIndex(listEl) {
+            const items = listEl.querySelectorAll('.repeater-item');
+            return items.length;
+        }
+
+        function reindexList(listEl) {
+            const items = Array.from(listEl.querySelectorAll('.repeater-item'));
+            items.forEach((item, newIdx) => {
+                item.querySelectorAll('input[name], select[name], textarea[name]').forEach(ctrl => {
+                    const name = ctrl.getAttribute('name');
+                    if (!name) return;
+                    const updated = name.replace(/\[\d+\]/, '[' + newIdx + ']');
+                    ctrl.setAttribute('name', updated);
+                });
+
+                const mini = item.querySelector('.mini-title');
+                if (mini && /Policy\s+\d+/i.test(mini.textContent)) {
+                    mini.textContent = "Policy " + (newIdx + 1);
+                }
+            });
+        }
+
+        function addRepeaterItem(listId, templateId) {
+            const listEl = document.getElementById(listId);
+            const tpl = document.getElementById(templateId);
+            if (!listEl || !tpl) return;
+
+            const idx = getNextIndex(listEl);
+            const html = tpl.innerHTML.replace(/__i__/g, String(idx));
+            const wrap = document.createElement('div');
+            wrap.innerHTML = html.trim();
+            const node = wrap.firstElementChild;
+            if (!node) return;
+
+            listEl.appendChild(node);
+        }
+
+        function ensureAtLeastOne(listEl, templateId) {
+            const count = listEl.querySelectorAll('.repeater-item').length;
+            if (count > 0) return;
+            addRepeaterItem(listEl.id, templateId);
+        }
+
+        root.addEventListener('click', function (e) {
+            const addBtn = e.target.closest('[data-repeater-add]');
+            if (addBtn) {
+                const listId = addBtn.getAttribute('data-repeater-add');
+                const tplId = addBtn.getAttribute('data-template');
+                addRepeaterItem(listId, tplId);
+                return;
+            }
+
+            const delBtn = e.target.closest('[data-repeater-del]');
+            if (delBtn) {
+                const item = delBtn.closest('.repeater-item');
+                const listEl = item ? item.parentElement : null;
+                if (!item || !listEl) return;
+
+                item.remove();
+                reindexList(listEl);
+
+                const map = {
+                    depListMiddle: "tplMiddleDependents",
+                    lifeApplicantListMiddle: "tplMiddleLifeApplicant",
+                    lifeSpouseListMiddle: "tplMiddleLifeSpouse",
+                    debtOtherListMiddle: "tplMiddleDebtOther",
+                    retirementListMiddle: "tplMiddleRetirement",
+                    brokerageListMiddle: "tplMiddleBrokerage",
+                    realEstateListMiddle: "tplMiddleRealEstate"
+                };
+
+                const tplId = map[listEl.id];
+                if (tplId) ensureAtLeastOne(listEl, tplId);
+
+                return;
+            }
+        });
+
+        // -----------------------------
+        // Wizard nav (Next/Back)
+        // -----------------------------
+        root.addEventListener('click', function (e) {
+            const nextBtn = e.target.closest('[data-next]');
+            const prevBtn = e.target.closest('[data-prev]');
+            if (!nextBtn && !prevBtn) return;
+
+            const idx = currentStepIndex();
+            const current = steps[idx];
+
+            if (nextBtn) {
+                const requiredFields = Array.from(current.querySelectorAll("input, select, textarea"))
+                    .filter(el => el.hasAttribute("required"));
+
+                const invalidCurrent = requiredFields.filter(el => !el.checkValidity());
+
+                if (invalidCurrent.length) {
+                    clearVisualErrors();
+                    invalidCurrent.forEach(el => markFieldInvalid(el, el.validationMessage || "Required — fix this"));
+                    buildSummary(invalidCurrent);
+                    focusFirstInvalid(invalidCurrent);
+                    return;
+                }
+
+                showStep(Math.min(idx + 1, total - 1));
+            }
+
+            if (prevBtn) {
+                showStep(Math.max(idx - 1, 0));
+            }
+        });
+
+        function sanitizeNumericInputs() {
+            form.querySelectorAll("input[type='number']").forEach(function (el) {
+                if (!el.value) return;
+
+                let v = el.value.trim();
+                if (/^\(.*\)$/.test(v)) v = "-" + v.slice(1, -1);
+                v = v.replace(/[$,%\s,]/g, "");
+                v = v.replace(/[^\d.-]/g, "");
+                el.value = v;
+            });
+        }
+
+        form.addEventListener('input', function (e) {
+            const el = e.target;
+            if (!el || !(el.matches("input, select, textarea"))) return;
+
+            if (el.checkValidity()) {
+                const field = el.closest('.field') || el.closest('.checkline') || el.parentElement;
+                if (field) {
+                    field.classList.remove('ff-field-invalid');
+                    const tag = field.querySelector('.ff-fix-tag');
+                    if (tag) tag.remove();
+                }
+            }
+        });
+
+        form.addEventListener('submit', function (event) {
+            sanitizeNumericInputs();
+
+            const checkbox = document.getElementById('disclaimerCheckboxMiddle');
+            if (checkbox && !checkbox.checked) {
+                event.preventDefault();
+                clearVisualErrors();
+                markFieldInvalid(checkbox, "Required — acknowledge to proceed");
+                buildSummary([checkbox]);
+
+                alert('Please acknowledge the disclaimer to proceed.');
+                checkbox.scrollIntoView({ behavior: "smooth", block: "center" });
+                checkbox.focus();
+                return;
+            }
+
+            if (!form.checkValidity()) {
+                event.preventDefault();
+                const invalidEls = revealValidation();
+                focusFirstInvalid(invalidEls);
+            }
+        });
+
+        // Init
+        showStep(0);
+        setTimeout(revealServerModelStateErrors, 0);
+
+    })();
+</script>
+
+@section Scripts{
+    <partial name="_ValidationScriptsPartial" />
+}

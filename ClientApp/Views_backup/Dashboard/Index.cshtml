@@ -1,0 +1,397 @@
+@{
+    ViewData["Title"] = "Home";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="home-container">
+
+    <!-- HERO -->
+    <div class="text-center mb-5">
+        <h1 class="display-4 fw-bold">Legend™ Core Dashboard</h1>
+        <p class="lead mb-3">
+            Your Gateway to Our Agency Individual Carriers
+        </p>
+        <hr class="my-3 hero-hr" />
+    </div>
+
+    <!-- SEARCH BAR -->
+    <div class="text-center mb-5 search-container">
+        <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+        <button id="clearSearch" class="btn-clear-search">Clear Search</button>
+        <div id="autocompleteList" class="autocomplete-list"></div>
+    </div>
+
+<!-- LIFE & HEALTH -->
+<div class="category-container mb-5" data-category="Life & Health">
+    <h3 class="text-center mb-4 fw-bold">Life & Health</h3>
+    <div class="centered-tools">
+        @{
+            var lifeHealthTools = new[]
+            {
+                new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+                new { Name = "United of Omaha", Url = "https://producer.mutualofomaha.com/enterprise/myportal/home", Icon = "united.png", Desc = "Life, Disability, Final Expense" },
+            };
+        }
+
+        @foreach (var tool in lifeHealthTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- DISABILITY INSURANCE -->
+<div class="category-container mb-5" data-category="Disability Insurance">
+    <h3 class="text-center mb-4 fw-bold">Disability Insurance</h3>
+    <div class="centered-tools">
+        @{
+            var disabilityTools = new[]
+            {
+                new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+            };
+        }
+
+        @foreach (var tool in disabilityTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- PERSONAL LINES -->
+<div class="category-container mb-5" data-category="Personal Lines">
+    <h3 class="text-center mb-4 fw-bold">Personal Lines</h3>
+    <div class="centered-tools">
+        @{
+            var personalLinesTools = new[]
+            {
+                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+                new { Name = "Mexico Insurance Online", Url = "https://sb.iigins.com/bts/menu/", Icon = "mexico.png", Desc = "Quote and bind Mexico auto & travel insurance" },
+                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+                new { Name = "Orion180", Url = "https://app.orion180.com/", Icon = "orion180.png", Desc = "Homeowners, Dwelling, Personal Property, Liability, + Endorsements For Specific Needs" },
+                new { Name = "Hagerty", Url = "https://www.hagertyagent.com/Agent/Home", Icon = "hagerty.png", Desc = "Classic Cars, Antique, Collector, Modified Vehicles" },
+                new { Name = "EPremium", Url = "https://www.epremiuminsurance.com/DirectToConsumerPartner.aspx?IRISAccountID=PHgYKGChQrc%3d&TopLevelIRISAccountID=pKgVh2ygOEw%3d", Icon = "epremium.png", Desc = "Primarily offers enhanced renters insurance, Personal Property, Liability for Resident Caused damages" },
+                new { Name = "Steadily", Url = "https://agent.steadily.com/policy/start-quote", Icon = "steadily.png", Desc = "Specialized Landlord Insurance | Property Damage (Fire, Water, Wind, Vandalism)" },
+                new { Name = "Common Wealth", Url = "https://agent.commonwealthcasualty.com/dashboard.jsp", Icon = "commonwealth.png", Desc = "Basic Auto Insurance, Liability, Collision, Comprehensive, Uninsured/Underinsured Motorist, Optional Add Ons" },
+                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            };
+        }
+
+        @foreach (var tool in personalLinesTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+<hr class="my-6 hero-hr" />
+
+<!-- COMMERCIAL LINES -->
+<div class="category-container mb-5" data-category="Commercial Lines">
+    <h3 class="text-center mb-4 fw-bold">Commercial Lines</h3>
+    <div class="centered-tools">
+        @{
+            var commercialTools = new[]
+            {
+                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+                new { Name = "Hiscox", Url = "https://portal.hiscox.com/oneshield/sso", Icon = "hiscox.png", Desc = "Small Business General Liability, Professional Liability, E&O, BOP, Cyber Liability, Worker's Comp" },
+                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            };
+        }
+
+        @foreach (var tool in commercialTools)
+        {
+            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
+                <div class="tool-desc">@tool.Desc</div>
+            </a>
+        }
+    </div>
+</div>
+
+
+</div>
+
+<style>
+/* ==============================
+   THEME VARIABLES
+============================== */
+:root {
+    /* Colors */
+    --gold-color: #a68023;
+    --gold-light: rgba(166,128,35,0.3);
+    --text-color: #000;
+    --background-color: #fff;
+
+    /* Tool card dimensions */
+    --tool-width: 180px;
+    --tool-height: 150px;
+    --tool-radius: 10px;
+    --tool-gap: 1.5rem;
+
+    /* Search input */
+    --search-width: 400px;
+    --search-radius: 50px;
+
+    /* Hero divider */
+    --divider-color: #333;
+    --divider-width: 2px;
+    --divider-margin: 1rem auto 1.5rem;
+
+    /* Tool glow on hover */
+    --tool-glow-color: rgba(166,128,35,0.45);
+}
+
+/* ==============================
+   GENERAL CONTAINER
+============================== */
+.home-container {
+    padding: 2rem 1rem;
+}
+
+/* ==============================
+   HERO / TITLE
+============================== */
+.hero-hr {
+    border-color: var(--divider-color);
+    border-width: var(--divider-width);
+    max-width: 1500px;
+    margin: var(--divider-margin);
+}
+
+/* ==============================
+   SEARCH BAR
+============================== */
+.search-container {
+    display: flex;
+    justify-content: center; /* center input + button */
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.search-input {
+    width: var(--search-width);
+    max-width: 90%;
+    padding: 0.6rem 1rem;
+    border-radius: var(--search-radius);
+    border: 2px solid var(--gold-color);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #b2882b;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+}
+
+/* New clear button next to input */
+.btn-clear-search {
+    padding: 0.55rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    border: 2px solid var(--gold-color);
+    background-color: var(--gold-color);
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-clear-search:hover {
+    background-color: #b2882b;
+    color: #fff;
+    box-shadow: 0 0 12px var(--gold-light);
+}
+
+/* ==============================
+   AUTOCOMPLETE
+============================== */
+.autocomplete-list {
+    position: absolute;
+    top: 110%;
+    left: 0;
+    right: 0;
+    background: var(--background-color);
+    border: 1px solid var(--gold-color);
+    border-radius: 8px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+    z-index: 999;
+    max-height: 150px;
+    overflow-y: auto;
+    display: none;
+}
+
+.autocomplete-item {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: background 0.2s;
+}
+
+.autocomplete-item img {
+    width: 30px;
+    height: 30px;
+}
+
+.autocomplete-item:hover {
+    background-color: var(--gold-light);
+}
+
+/* ==============================
+   TOOL CARD
+============================== */
+.dashboard-tool {
+    width: var(--tool-width);
+    max-width: 180px;
+    height: var(--tool-height);
+    border: 1px solid var(--gold-color);
+    border-radius: var(--tool-radius);
+    padding: 0.5rem;
+    text-decoration: none;
+    color: var(--text-color);
+    font-weight: 600;
+    background: var(--background-color);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    position: relative; /* added for overlay */
+}
+
+.dashboard-tool:hover {
+    transform: translateY(-6px);
+    box-shadow: 0 0 20px 4px var(--tool-glow-color);
+    color: var(--gold-color);
+}
+
+.dashboard-tool img {
+    max-width: 80px;
+    max-height: 60px;
+}
+
+/* ==============================
+   TOOL HOVER DESCRIPTION OVERLAY
+============================== */
+.dashboard-tool .tool-desc {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #fff;  /* Silver/grey */
+    color: #a68023;        /* Legend gold */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 0.9rem;
+    padding: 0.5rem;
+    opacity: 0;
+    transition: opacity 0.25s ease-in-out;
+    border-radius: var(--tool-radius);
+    font-weight: 700;
+}
+.dashboard-tool:hover .tool-desc {
+    opacity: 1;
+}
+
+.dashboard-tool:hover img,
+.dashboard-tool:hover .tool-name {
+    opacity: 0.2;
+    transition: opacity 0.25s ease-in-out;
+}
+
+/* ==============================
+   RESPONSIVE
+============================== */
+@@media (max-width: 576px) {
+    .dashboard-tool { width: 160px; height: 130px; }
+    .dashboard-tool img { width: 50px; height: 50px; }
+    .search-input { width: 90%; font-size: 0.95rem; }
+    .btn-clear-search { font-size: 0.9rem; padding: 0.45rem 0.8rem; }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    const searchInput = document.getElementById('toolSearch');
+    const autocompleteList = document.getElementById('autocompleteList');
+    const clearBtn = document.getElementById('clearSearch');
+
+    const tools = Array.from(document.querySelectorAll('.dashboard-tool')).map(tool => ({
+        name: tool.dataset.name || tool.querySelector('.tool-name').textContent.trim(),
+        description: tool.querySelector('.tool-desc')?.textContent.toLowerCase() || '',
+        href: tool.href,
+        imgSrc: tool.querySelector('img').src
+    }));
+
+    clearBtn.addEventListener('click', () => {
+        searchInput.value = '';
+        autocompleteList.style.display = 'none';
+    });
+
+    searchInput.addEventListener('input', () => {
+        const value = searchInput.value.toLowerCase().trim();
+        autocompleteList.innerHTML = '';
+
+        if (!value) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        const matches = tools.filter(t =>
+            t.name.toLowerCase().includes(value) ||
+            t.description.includes(value)
+        );
+
+        if (!matches.length) {
+            autocompleteList.style.display = 'none';
+            return;
+        }
+
+        matches.forEach(tool => {
+            const item = document.createElement('div');
+            item.className = 'autocomplete-item';
+            item.innerHTML = `
+                <img src="${tool.imgSrc}" />
+                <span>${tool.name}</span>
+            `;
+            item.onclick = () => window.open(tool.href, '_blank');
+            autocompleteList.appendChild(item);
+        });
+
+        autocompleteList.style.display = 'block';
+    });
+
+    document.addEventListener('click', e => {
+        if (!searchInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+            autocompleteList.style.display = 'none';
+        }
+    });
+
+});
+</script>

@@ -1,0 +1,51 @@
+# ===============================
+# .NET / C# Build Folders
+# ===============================
+
+# Ignore compiled output
+bin/
+obj/
+
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.pdb
+*.log
+*.vs/
+.vscode/
+
+# Ignore publish output
+publish/
+
+# ===============================
+# Visual Studio / VS Code
+# ===============================
+
+# VS Code settings
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# ===============================
+# Debug / Temporary Files
+# ===============================
+
+# Debug symbols
+*.pdb
+
+# Logs
+*.log
+
+# Other temp files
+*.cache
+publish/publish/publish/publish/appsettings.Development.json
+publish/publish/publish/publish/appsettings.Development.json
+publish/publish/publish/publish/appsettings.Development.json
+git add .
+

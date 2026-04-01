@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <!-- Keep obj/bin off OneDrive while still isolating per-project intermediates -->
+    <BaseIntermediateOutputPath>/tmp/masterapp/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/$(MSBuildProjectName)/</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>/tmp/masterapp/bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <ImportProjectExtensionProps>false</ImportProjectExtensionProps>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+  </PropertyGroup>
+</Project>

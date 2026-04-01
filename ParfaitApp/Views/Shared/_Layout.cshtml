@@ -1,0 +1,213 @@
+﻿@using Microsoft.AspNetCore.Http
+@using System.Security.Claims
+@inject IHttpContextAccessor HttpContextAccessor
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@Html.Raw(ViewData["Title"]) - Parfait</title>
+
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@1,700&display=swap" rel="stylesheet">
+
+    <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
+
+    <style>
+        body { background-color: #fff; color: #000; font-family: 'Inter', sans-serif; margin:0; }
+
+        /* ============================== NAVBAR ============================== */
+        .navbar {
+            background-color: #fff;
+            border: 1.5px solid #926950;
+            padding: 1.5rem 2rem;
+            display: flex;
+            flex-direction: column; /* vertical stacking */
+            align-items: stretch;
+            justify-content: flex-start;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            border-radius: 12px;
+            position: relative;
+        }
+
+        /* ====================== TOP ROW ====================== */
+        .navbar-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+
+        /* ====================== BRAND ====================== */
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100px;
+            text-decoration: none;
+        }
+        .title-nunito-expanded {
+            font-family: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 40px;
+            color: #926950;
+            font-weight: 700;
+            font-style: italic;
+            text-transform: uppercase;
+            font-stretch: expanded;
+            letter-spacing: 0.04em;
+            transform: skew(-8deg);
+            margin: 0;
+            padding: 0;
+            text-align: center;
+        }
+
+        /* ====================== NAV LINKS RIGHT ====================== */
+        .navbar-right {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            white-space: nowrap;
+        }
+        .navbar-right .nav-link {
+            font-weight: 700;
+            color: #1a1a1a !important;
+            white-space: nowrap;
+            padding: 0.5rem 1.25rem;
+            border-radius: 50px;
+            transition: all 0.25s ease;
+            letter-spacing: 0.5px;
+        }
+
+        /* ====================== LOGIN CTA ====================== */
+        .navbar-right .login-link {
+            border: 2px solid #926950;
+            background-color: transparent;
+            color: #926950 !important;
+            font-weight: 800;
+        }
+
+        .navbar-right .login-link:hover {
+            background-color: #926950;
+            color: #ffffff !important;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 18px rgba(146, 105, 80, 0.35);
+        }
+
+        .navbar-right .nav-link:hover,
+        .navbar-right .nav-link.active {
+            color: #926950 !important;
+            background-color: rgba(146, 105, 80, 0.18);
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
+        }
+
+        /* ====================== BOTTOM ROW ====================== */
+        .navbar-bottom {
+            width: 100%;
+            text-align: center;
+            margin-top: 0.75rem;
+        }
+        .header-psalms {
+            font-size: clamp(0.9rem, 2.5vw, 1.4rem);
+            font-weight: 700;
+            color: #926950;
+            letter-spacing: 1.2px;
+        }
+
+        /* ============================== FOOTER ============================== */
+        footer.footer {
+            background-color: #f8f8f8 !important;
+            color: #1a1a1a !important;
+            border-top: 1.5px solid #d0d0d0 !important;
+            font-weight: 500;
+            font-size: 0.95rem;
+            text-align: center;
+        }
+
+                /* ====================== FOOTER LINKS ====================== */
+        .footer-link{
+            color: #926950;              /* your theme color */
+            font-weight: 600;
+            text-decoration: none;
+            transition: all .2s ease;
+        }
+
+        .footer-link:hover{
+            color: #7f5742;              /* slightly darker on hover */
+            text-decoration: underline;
+        }
+
+
+        .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
+
+        /* ============================== RESPONSIVE ============================== */
+        @@media (max-width: 992px) {
+            .navbar-top { flex-wrap: wrap; justify-content: center; gap: 1rem; }
+            .navbar-bottom { margin-top: 0.5rem; }
+        }
+        @@media (max-width: 576px) {
+            .title-nunito-expanded { font-size: 32px; }
+            .navbar-right .nav-link { padding: 0.4rem 0.8rem; font-size: 0.9rem; }
+            .header-psalms { font-size: 1rem; }
+        }
+    </style>
+</head>
+
+<body class="d-flex flex-column min-vh-100">
+
+<header>
+    <nav class="navbar">
+        <!-- TOP ROW: LOGO LEFT, NAV LINKS RIGHT -->
+        <div class="navbar-top">
+            <a class="navbar-brand" asp-controller="Home" asp-action="Index">
+                <h1 class="title-nunito-expanded">PARFAIT</h1>
+            </a>
+
+            <div class="navbar-right">
+                @{
+                    var currentController =
+                        (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName;
+                    string Active(string c) => c == currentController ? "active" : "";
+                }
+
+                <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a>
+                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index">Training Packages</a>
+                <a class="nav-link" asp-controller="Contact" asp-action="Index">Contact</a>
+                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About">About Us</a>
+
+                <!-- Store + Login (same right-side group) -->
+                <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
+                <a class="nav-link login-link" href="https://www.mylegnd.com/account/login" target="_blank">Login</a>
+            </div>
+        </div>
+
+        <!-- BOTTOM ROW: CENTERED HEADER TEXT -->
+        <div class="navbar-bottom">
+            <div class="header-psalms">LIFE HAC | GOD ABOVE ALL</div>
+        </div>
+    </nav>
+</header>
+
+<div class="container layout-content flex-grow-1">
+    <main role="main">
+        @RenderBody()
+    </main>
+</div>
+
+<footer class="footer mt-auto py-3">
+    <div class="container text-center">
+        &copy; 2025 - MYLEGND, LLC. All rights reserved.
+    <br />
+    <a href="https://www.mylegnd.com/privacy-terms" target="_blank" class="footer-link">Terms & Privacy</a>
+</footer>
+
+<script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+@await RenderSectionAsync("Scripts", required:false)
+</body>
+</html>

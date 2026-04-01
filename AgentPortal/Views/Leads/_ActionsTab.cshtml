@@ -1,0 +1,165 @@
+@model IEnumerable<Domain.Entities.ActionItem>
+@{
+    var leadId = ViewBag.LeadId as string ?? string.Empty;
+}
+<div class="d-flex justify-content-between align-items-center mb-2">
+    <h5 class="mb-0">Actions</h5>
+    <div class="text-muted small me-2">Agent tasks; enable “Show in Dashboard” to also track in Command Center.</div>
+    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#quickCreateActionModal">Quick Create</button>
+</div>
+@await Html.PartialAsync("~/Views/Shared/_ActionList.cshtml",
+    Model ?? Enumerable.Empty<Domain.Entities.ActionItem>(),
+    new ViewDataDictionary(ViewData) { { "EmptyMessage", "No lead actions yet. Add the next step to keep this lead moving." }, { "ShowActionControls", true } })
+
+<!-- Quick Create Modal -->
+<div class="modal fade quick-create-action-shell" id="quickCreateActionModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg quick-create-action-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">New Action</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="quickCreateActionForm" method="post" action="/Leads/CreateAction">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="LeadId" value="@leadId" />
+            <div class="mb-3">
+                <label class="form-label">Title</label>
+                <input name="Title" class="form-control" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Description</label>
+                <textarea name="Description" class="form-control" rows="3"></textarea>
+            </div>
+            <style>
+                /* Quick-create modal: navy shell, white inputs, dark text */
+                #quickCreateActionModal .modal-content{
+                    background-color:#0f172a !important;
+                    color:#f8fafc !important;
+                    border:1px solid #8b6f1f !important;
+                }
+                #quickCreateActionForm input,
+                #quickCreateActionForm textarea,
+                #quickCreateActionForm select{
+                    background:#ffffff;
+                    color:#0b1224;
+                    border:1px solid #8b6f1f;
+                }
+                #quickCreateActionForm input::placeholder,
+                #quickCreateActionForm textarea::placeholder,
+                #quickCreateActionForm select::placeholder{
+                    color:#0b1224;
+                    opacity:0.65;
+                }
+                #quickCreateActionForm label.form-label{
+                    color:#8b6f1f;
+                    font-weight:700;
+                }
+            </style>
+            <div class="mb-3 qc-datetime">
+                <label class="form-label">Due date & time (local)</label>
+                <input type="datetime-local" name="DueDateUtc" class="form-control" placeholder="yyyy-mm-ddThh:mm" />
+                <div class="text-muted small">Pick a local date/time; it will convert to UTC on save.</div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Priority</label>
+                <select name="Priority" class="form-select">
+                    <option value="P1">P1</option>
+                    <option value="P2" selected>P2</option>
+                    <option value="P3">P3</option>
+                </select>
+            </div>
+            <div class="form-check mb-4">
+                <input class="form-check-input" type="checkbox" id="showInCommandCenter" name="ShowInCommandCenter" value="true" checked />
+                <label class="form-check-label" for="showInCommandCenter">
+                    Show in Dashboard
+                </label>
+                <div class="text-muted small">Only use this for underwriting, delivery, or time-sensitive tasks.</div>
+            </div>
+            <div class="text-end">
+                <button type="submit" class="btn btn-primary px-4">Create</button>
+            </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+    #quickCreateActionModal{
+        background: rgba(0,0,0,0.75);
+    }
+    .quick-create-action-modal {
+        max-width: 640px;
+        width: 95vw;
+        margin: 0 auto;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        background: transparent;
+    }
+    .quick-create-action-modal .modal-content {
+        background-color: #0b1325 !important;
+        color: #f8fafc !important;
+        border: 1px solid #1f2b3d !important;
+        border-radius: 12px;
+        box-shadow: 0 18px 38px rgba(0,0,0,0.45);
+        max-height: 85vh;
+        overflow: hidden;
+    }
+    .quick-create-action-modal .modal-header,
+    .quick-create-action-modal .modal-footer {
+        border-color: #1f2b3d;
+        background:#0b1325 !important;
+    }
+    .quick-create-action-modal .modal-body {
+        padding: 1.1rem 1.25rem;
+        overflow-y: auto;
+        background:#0b1325 !important;
+    }
+    .quick-create-action-modal .form-control,
+    .quick-create-action-modal .form-select,
+    .quick-create-action-modal textarea {
+        background-color: #ffffff !important;
+        color: #0b1224 !important;
+        border: 1px solid #d1d5db !important;
+    }
+    .quick-create-action-modal .form-check-label{
+        color: #f8fafc !important;
+    }
+    .quick-create-action-modal label.form-label {
+        color: #f1c76a !important;
+        letter-spacing: .01em;
+    }
+    .quick-create-action-modal .form-control::placeholder,
+    .quick-create-action-modal .form-select::placeholder,
+    .quick-create-action-modal textarea::placeholder {
+        color: #0b1224;
+        opacity: 0.7;
+    }
+    .quick-create-action-modal label.form-label {
+        color: #f1f5f9;
+        font-weight: 600;
+    }
+    .quick-create-action-modal .text-muted {
+        color: #9ca3af !important;
+    }
+    .quick-create-action-modal .btn-close {
+        filter: invert(1);
+    }
+    .quick-create-action-modal .form-check-input{
+        position: relative;
+        z-index: 5;
+        pointer-events: auto !important;
+        width: 18px;
+        height: 18px;
+        appearance: auto !important;
+        -webkit-appearance: auto !important;
+    }
+    .quick-create-action-modal .form-check-label{
+        cursor: pointer;
+        user-select: none;
+    }
+</style>

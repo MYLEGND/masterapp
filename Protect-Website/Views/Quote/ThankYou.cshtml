@@ -1,0 +1,179 @@
+@{
+    ViewData["Title"] = "Thank You";
+
+    // Pull quote type from TempData safely
+    var quoteKey = TempData["QuoteType"]?.ToString()?.Trim() ?? "";
+
+    // Map it to a proper display name
+    var quoteDisplayName = quoteKey switch
+    {
+        "Life" => "Life Insurance",
+        "Disability" => "Disability Insurance",
+        "Health" => "Health Insurance",
+        "Home" => "Home Insurance",
+        "Auto" => "Auto Insurance",
+        "Commercial" => "Commercial Insurance",
+        "RiskAssessment" => "Risk Assessment",
+        _ => "Insurance"
+    };
+
+    // Determine main submission and detail messages
+    string submissionMessage;
+    string detailMessage;
+
+    if (quoteKey == "RiskAssessment")
+    {
+        submissionMessage = "Your Risk Assessment form has been completed";
+        detailMessage = "Your Risk Assessment form has been securely recorded. Our team will review your responses and build a personalized report to help you understand your risk profile, protection gaps, and next steps to strengthen your financial security.";
+    }
+    else
+    {
+        submissionMessage = $"Your {quoteDisplayName} Quote has been received";
+        detailMessage = "Your information has been securely recorded. A licensed agent will review your submission and contact you shortly to discuss coverage options aligned with your needs.";
+    }
+}
+
+<div class="thankyou-container">
+    <div class="thankyou-card">
+        <div class="thankyou-header text-center mb-4">
+            <h2 class="text-gold mb-2">Submission Complete</h2>
+            <h4 class="fw-normal">@submissionMessage</h4>
+        </div>
+
+        <p class="text-center lead mb-4">@detailMessage</p>
+
+        <blockquote class="verse text-center mb-5">
+            “Trust in the Lord with all your heart and lean not on your own understanding;
+            in all your ways submit to Him, and He will make your paths straight.”
+            <span class="bible-ref">Proverbs 3:5–6 (NIV)</span>
+        </blockquote>
+
+        <div class="text-center mb-5">
+            <!-- PRIMARY CTA -->
+            <a href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true"
+               target="_blank"
+               rel="noopener noreferrer"
+               class="btn btn-gold btn-lg d-block mb-3">
+                Schedule a Strategy Call
+            </a>
+
+            <!-- SECONDARY CTA -->
+            @if (quoteKey != "RiskAssessment")
+            {
+                <a href="@Url.Action("Index", "Quote")"
+                   class="btn btn-gold btn-lg d-block mb-4">
+                    Submit Another Quote
+                </a>
+            }
+
+            <!-- OUTLIER / UTILITY -->
+            <a href="/" class="btn btn-outline-gold btn-lg d-block">
+                Return Home
+            </a>
+        </div>
+
+        <hr class="divider" />
+
+        <div class="thankyou-footer text-center mt-4">
+            <p class="small text-muted mb-1">
+                Legend Legacy Protection © @DateTime.Now.Year
+            </p>
+            <p class="small text-muted">
+                Your privacy matters. All information is handled with care and confidentiality.
+            </p>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ===================== BRAND ===================== */
+.text-gold { color: #a68023; }
+
+/* ===================== BUTTONS ===================== */
+.btn-gold {
+    background-color: #a68023;
+    color: #fff;
+    font-weight: 600;
+    padding: 12px 36px;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    transition: all 0.25s ease;
+    text-decoration: none;
+}
+.btn-gold:hover {
+    background-color: #8f6f1e;
+    color: #fff;
+}
+
+.btn-outline-gold {
+    border: 2px solid #a68023;
+    color: #a68023;
+    background: transparent;
+    padding: 12px 36px;
+    font-weight: 600;
+    border-radius: 8px;
+    font-size: 1.05rem;
+    text-decoration: none;
+    transition: all 0.25s ease;
+}
+.btn-outline-gold:hover {
+    background-color: #a68023;
+    color: #fff;
+}
+
+/* ===================== LAYOUT ===================== */
+.thankyou-container {
+    min-height: 100vh;
+    padding: 60px 15px;
+    background: #fafafa;
+}
+
+.thankyou-card {
+    max-width: 720px;
+    margin: 0 auto;
+    background: #fff;
+    border: 2px solid #a68023;
+    border-radius: 14px;
+    padding: 45px 35px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    animation: fadeInUp 0.6s ease-out;
+}
+
+/* ===================== VERSE ===================== */
+.verse {
+    font-style: italic;
+    color: #555;
+    font-size: 1.05rem;
+    line-height: 1.6;
+}
+.bible-ref {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.95rem;
+    color: #777;
+}
+
+/* ===================== DIVIDER ===================== */
+.divider {
+    border-top: 1px solid #eee;
+    margin: 35px 0;
+}
+
+/* ===================== ANIMATION ===================== */
+@@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===================== RESPONSIVE ===================== */
+@@media (max-width: 768px) {
+    .thankyou-card {
+        padding: 35px 22px;
+    }
+    .btn-gold,
+    .btn-outline-gold {
+        width: 100%;
+        margin-bottom: 14px;
+    }
+}
+</style>

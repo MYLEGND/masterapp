@@ -1,0 +1,62 @@
+@using Shared.Auth
+@model AgentPortal.Models.ClientQueuePageViewModel
+
+@{
+    ViewData["Title"] = $"{Model.QueueTitle} Queue";
+}
+
+<link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
+
+<div class="wrap density-comfort leads-crm" id="legendWrap">
+    <div class="head">
+        <div>
+            <h2 class="title">@Model.QueueTitle</h2>
+            <div class="subtitle">@Model.QueueDescription</div>
+        </div>
+        <div class="pill">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
+    </div>
+
+    <section class="crm-card" style="margin-bottom:14px;">
+        <div class="crm-card-head">
+            <div>
+                <h3 class="crm-card-title">Lead Queue Workspace</h3>
+                <p class="crm-card-sub">@Model.QueueRule</p>
+            </div>
+        </div>
+        <div class="crm-card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <a class="btn btn-ghost" asp-action="Index">← Back To Leads</a>
+            <span class="pill">Open a lead to continue work in Quick View.</span>
+        </div>
+    </section>
+
+    @if (Model.Items.Count == 0)
+    {
+        <div class="empty">No leads are currently in this queue.</div>
+    }
+    else
+    {
+        <div class="queue-grid">
+            @foreach (var l in Model.Items)
+            {
+                <section class="call-task">
+                    <div class="call-task-head">
+                        <div>
+                            <div class="call-task-name">@l.FirstName @l.LastName</div>
+                            <div class="call-task-sub">@l.Email • @l.Phone</div>
+                            <div class="tiny" style="margin-top:6px;">
+                                Stage: @l.PipelineStage • Priority: @l.CrmPriority • Waiting On: @l.WaitingOn
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(l.AgentNotes))
+                            {
+                                <div class="tiny" style="margin-top:6px;">@l.AgentNotes</div>
+                            }
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <a class="btn btn-gold" asp-action="Index" asp-route-open="@l.ClientUserId">Open In Leads CRM</a>
+                        </div>
+                    </div>
+                </section>
+            }
+        </div>
+    }
+</div>

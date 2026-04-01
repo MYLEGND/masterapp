@@ -1,0 +1,1915 @@
+@model ClientApp.Models.ProtectionSnapshotViewModel
+@using System.Text.Json
+
+@{
+    ViewData["Title"] = "Protection Snapshot";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var defaultStateJson = JsonSerializer.Serialize(Model.DefaultState);
+}
+
+@Html.AntiForgeryToken()
+
+<style>
+    /* Dark navy + gold theme, page-scoped */
+    :root {
+        --ps-navy: #040914;
+        --ps-navy-2: #0a1323;
+        --ps-ink: #0b1529;
+        --ps-ink-muted: #3a4960;
+        --ps-gold: #c5921f;
+        --ps-gold-bright: #e4c066;
+        --ps-border: #c5921f;
+    }
+    .snapshot-page {
+        background: #ffffff !important;
+        color: #0b1529 !important;
+        padding: 24px 18px 32px;
+        border: 2px solid var(--ps-border);
+        border-radius: 18px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.22);
+    }
+    .snapshot-page h1, .snapshot-page h2, .snapshot-page h3, .snapshot-page h4 {
+        color: var(--ps-ink) !important;
+    }
+    .snapshot-page p, .snapshot-page small, .snapshot-page span {
+        color: #fdfdfd !important;
+    }
+    .snapshot-card,
+    .snapshot-journey-card,
+    .snapshot-role-card,
+    .snapshot-start-card,
+    .snapshot-step {
+        background: #0a1323 !important;
+        color: #fdfdfd !important;
+        border: 1.8px solid var(--ps-border) !important;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.35) !important;
+    }
+    .snapshot-card-head h2,
+    .snapshot-card-head p { color: #e4c066 !important; }
+    .snapshot-hero {
+        background: radial-gradient(circle at 18% 22%, rgba(228,192,102,0.24), transparent 38%), var(--ps-navy-2) !important;
+        color: #fdfdfd !important;
+        border: 2px solid var(--ps-border) !important;
+        box-shadow: 0 26px 70px rgba(0,0,0,0.45) !important;
+    }
+    .snapshot-kicker,
+    .snapshot-pill,
+    .snapshot-journey-btn,
+    .snapshot-journey-btn-primary,
+    .snapshot-mode-toggle {
+        color: var(--ps-ink) !important;
+        border-color: var(--ps-border) !important;
+    }
+    .snapshot-pill { background: rgba(197,146,31,0.22) !important; }
+    .snapshot-pill.snapshot-pill-agent { background: rgba(32,181,145,0.26) !important; }
+    .snapshot-journey-btn { background: transparent !important; }
+    .snapshot-journey-btn-primary,
+    .snapshot-mode-toggle {
+        background: linear-gradient(90deg, var(--ps-gold), var(--ps-gold-bright)) !important;
+        color: #070f1d !important;
+        font-weight: 800 !important;
+        border: 1px solid var(--ps-border) !important;
+        box-shadow: 0 10px 24px rgba(0,0,0,0.35) !important;
+    }
+    .snapshot-card .snapshot-start-step strong,
+    .snapshot-card .snapshot-library-title { color: var(--ps-ink); }
+    .snapshot-card .snapshot-start-step span { color: var(--ps-ink-muted); }
+    .snapshot-choice,
+    .snapshot-toggle-card,
+    .snapshot-chip {
+        background: #070f1d !important;
+        color: var(--ps-ink) !important;
+        border: 1.6px solid var(--ps-border) !important;
+    }
+    .snapshot-choice.active,
+    .snapshot-chip.active,
+    .snapshot-toggle-card input:checked + span {
+        background: linear-gradient(90deg, rgba(228,192,102,0.32), rgba(197,146,31,0.34)) !important;
+        border-color: var(--ps-gold-bright) !important;
+        color: var(--ps-ink) !important;
+    }
+    .snapshot-field input,
+    .snapshot-field select,
+    .snapshot-slider-grid input,
+    .snapshot-two-col input,
+    .snapshot-three-col input,
+    .snapshot-three-col select {
+        background: #050b16 !important;
+        color: var(--ps-ink) !important;
+        border: 1.6px solid var(--ps-border) !important;
+        box-shadow: inset 0 1px 5px rgba(0,0,0,0.55) !important;
+    }
+    .snapshot-field input:focus,
+    .snapshot-field select:focus,
+    .snapshot-slider-grid input:focus,
+    .snapshot-two-col input:focus,
+    .snapshot-three-col input:focus,
+    .snapshot-three-col select:focus {
+        outline: 2px solid var(--ps-border) !important;
+        box-shadow: 0 0 0 3px rgba(228,192,102,0.25) !important;
+    }
+    .snapshot-field input::placeholder { color: rgba(226,232,240,0.78) !important; }
+    .snapshot-chip-label { color: var(--ps-ink) !important; }
+    .snapshot-library-group { border-top: 1px solid rgba(197,146,31,0.45) !important; }
+    .snapshot-score-ring { border-color: var(--ps-border) !important; }
+    .snapshot-save-status { color: var(--ps-ink) !important; }
+    .snapshot-journey-progress-track { background: rgba(255,255,255,0.12) !important; }
+    .snapshot-journey-progress-track span { background: linear-gradient(90deg, var(--ps-gold), var(--ps-gold-bright)) !important; }
+</style>
+<div class="snapshot-page"
+     id="protectionSnapshotPage"
+     data-client-profile-id="@Model.ClientProfileId"
+     data-client-user-id="@Model.ClientUserId"
+    data-is-business-client="@(Model.IsBusinessClient ? "true" : "false")"
+    data-is-agent-view="@(Model.IsAgentView ? "true" : "false")"
+     data-default-state='@defaultStateJson'>
+
+    <section class="snapshot-hero">
+        <div class="snapshot-hero-copy">
+            <div class="snapshot-kicker">Interactive Planning</div>
+            <h1>Protection Snapshot</h1>
+            <p>
+                @if (Model.IsAgentView)
+                {
+                    <text>Client-owned setup. Use this snapshot in read-only review mode to identify protection gaps and servicing opportunities.</text>
+                }
+                else
+                {
+                    <text>Client setup workspace. Select what you currently have in place so your agent can review gaps and recommend next steps.</text>
+                }
+            </p>
+            <div class="snapshot-meta-row">
+                <span class="snapshot-pill">@Model.ClientDisplayName</span>
+                @if (Model.Age.HasValue)
+                {
+                    <span class="snapshot-pill">Age @Model.Age</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.MaritalStatus))
+                {
+                    <span class="snapshot-pill">@Model.MaritalStatus</span>
+                }
+                @if (Model.IsAgentView)
+                {
+                    <span class="snapshot-pill snapshot-pill-agent">Agent view</span>
+                }
+            </div>
+        </div>
+
+        <div class="snapshot-hero-score">
+            <div class="snapshot-score-ring" id="snapshotScoreRing">
+                <div>
+                    <span class="snapshot-score-label">Readiness</span>
+                    <strong id="snapshotScoreValue">0</strong>
+                    <small id="snapshotScoreTone">Loading…</small>
+                </div>
+            </div>
+            <div class="snapshot-save-status" id="snapshotSaveStatus">Loading shared snapshot…</div>
+        </div>
+    </section>
+
+    <div class="snapshot-layout">
+        <section class="snapshot-main">
+            <div class="snapshot-card snapshot-journey-card" id="snapshotJourneyCard">
+                <div class="snapshot-journey-top">
+                    <div>
+                        <div class="snapshot-kicker">Guided learning journey</div>
+                        <h2 id="snapshotJourneyTitle" class="mb-1">Step 1</h2>
+                        <p id="snapshotJourneyLesson" class="mb-0">We will walk this one section at a time in plain language.</p>
+                    </div>
+                    <button type="button" class="snapshot-mode-toggle" id="snapshotModeToggle" aria-pressed="true">Guided mode: ON</button>
+                </div>
+
+                <div class="snapshot-journey-progress-track" aria-hidden="true">
+                    <span id="snapshotJourneyProgress"></span>
+                </div>
+
+                <div class="snapshot-journey-meta">
+                    <span class="snapshot-pill" id="snapshotJourneyStepPill">Step 1 of 1</span>
+                    <span class="snapshot-pill" id="snapshotJourneyTipPill">@(Model.IsAgentView ? "Agent review mode: client inputs are read-only." : "Tip: complete each step before moving on.")</span>
+                </div>
+
+                <div class="snapshot-journey-actions">
+                    <button type="button" class="snapshot-journey-btn" id="snapshotJourneyBack">Back</button>
+                    <button type="button" class="snapshot-journey-btn snapshot-journey-btn-primary" id="snapshotJourneyNext">Next</button>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-role-card">
+                <div class="snapshot-card-head">
+                    <h2>How this page is used</h2>
+                    <p>Clear ownership so the process stays simple and actionable.</p>
+                </div>
+                <div class="snapshot-start-grid">
+                    <div class="snapshot-start-step">
+                        <strong>Client responsibility</strong>
+                        <span>Complete selections based on what is currently in force. Keep this snapshot updated as life changes.</span>
+                    </div>
+                    <div class="snapshot-start-step">
+                        <strong>Agent responsibility</strong>
+                        <span>Review submitted inputs, find gaps/opportunities, and drive recommendations and follow-up plan.</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-start-card snapshot-step"
+                 data-step-title="Start Here"
+                 data-step-lesson="Learn the 4-part order first: protect people, property, work, then legal transfer.">
+                <div class="snapshot-card-head">
+                    <h2>Start Here (Plain Language)</h2>
+                    <p>If insurance feels confusing, use this order: your people, your home and cars, your income, and your legal plan.</p>
+                </div>
+                <div class="snapshot-start-grid">
+                    <div class="snapshot-start-step"><strong>1) Protect people</strong><span>Life and disability coverage keep income and goals intact after unexpected events.</span></div>
+                    <div class="snapshot-start-step"><strong>2) Protect property</strong><span>Home/renters and auto insurance shield daily assets from loss and liability.</span></div>
+                    <div class="snapshot-start-step"><strong>3) Protect work</strong><span>Business and professional liability reduce exposure from claims and lawsuits.</span></div>
+                    <div class="snapshot-start-step"><strong>4) Protect transfer</strong><span>Beneficiaries and legal documents ensure assets pass with clarity.</span></div>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Household Position"
+                 data-step-lesson="Define your current life stage and exposure basics so recommendations fit your real situation.">
+                <div class="snapshot-card-head">
+                    <h2>Household Position</h2>
+                    <p>Set the current stage so recommendations stay aligned with this season of life.</p>
+                </div>
+
+                <div class="snapshot-stage-grid" id="householdStageGroup">
+                    <button type="button" class="snapshot-choice" data-field="householdStage" data-value="Foundation">Foundation</button>
+                    <button type="button" class="snapshot-choice" data-field="householdStage" data-value="Growth">Growth</button>
+                    <button type="button" class="snapshot-choice" data-field="householdStage" data-value="Protection Peak">Protection Peak</button>
+                    <button type="button" class="snapshot-choice" data-field="householdStage" data-value="Legacy">Legacy</button>
+                </div>
+
+                <div class="snapshot-two-col">
+                    <label class="snapshot-field">
+                        <span>Primary goal</span>
+                        <select id="primaryGoal">
+                            <option value="Protect income">Protect income</option>
+                            <option value="Strengthen household safety">Strengthen household safety</option>
+                            <option value="Reduce risk exposure">Reduce risk exposure</option>
+                            <option value="Preserve assets">Preserve assets</option>
+                            <option value="Transfer legacy clearly">Transfer legacy clearly</option>
+                        </select>
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Dependents supported</span>
+                        <input id="dependentsCount" type="number" min="0" max="12" value="0" />
+                    </label>
+                </div>
+
+                <div class="snapshot-three-col">
+                    <label class="snapshot-field">
+                        <span>Housing status</span>
+                        <select id="housingStatus">
+                            <option value="Own">Own</option>
+                            <option value="Rent">Rent</option>
+                            <option value="Live with family">Live with family</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </label>
+
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Own or run a business</span>
+                        <input id="ownsBusiness" type="checkbox" />
+                    </label>
+
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Drive for business/work tasks</span>
+                        <input id="drivesForWork" type="checkbox" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Protection Foundation"
+                 data-step-lesson="Answer core people-protection questions first, then tune emergency and income protection levels.">
+                <div class="snapshot-card-head">
+                    <h2>Protection Foundation</h2>
+                    <p>Track what is already in place and quickly expose the most important gaps.</p>
+                </div>
+
+                <div class="snapshot-toggle-grid">
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasLifeInsurance" /><span>Life insurance in place<small>Supports loved ones if income is lost.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasDisabilityCoverage" /><span>Disability income protection<small>Helps replace income if unable to work.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasMortgageProtection" /><span>Mortgage protection<small>Helps keep housing payments covered if income stops.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasEquityProtection" /><span>Equity protection plan<small>Protects built home/business equity from major liability events.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasLongTermCarePlan" /><span>Long-term care strategy<small>Plans for care costs later in life.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasBusinessDisabilityCoverage" /><span>Business disability coverage<small>Supports business continuity if an owner/key person is disabled.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasEstateDocuments" /><span>Estate documents prepared</span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasEmergencyContacts" /><span>Emergency contacts documented</span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasSharedDocumentVault" /><span>Shared document vault organized</span></label>
+                </div>
+
+                <div class="snapshot-slider-grid">
+                    <label class="snapshot-field">
+                        <span>Emergency fund months</span>
+                        <input id="emergencyFundMonths" type="number" min="0" max="24" step="1" placeholder="0" />
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Income protection years</span>
+                        <input id="incomeProtectionYears" type="number" min="0" max="40" step="1" placeholder="0" />
+                    </label>
+                </div>
+
+                <div class="snapshot-chip-section">
+                    <span class="snapshot-chip-label">Coverage library (single source of truth)</span>
+
+                    <div class="snapshot-library-group">
+                        <div class="snapshot-library-title">Personal &amp; Family Protection</div>
+                        <div class="snapshot-chip-wrap snapshot-chip-wrap-wide" id="foundationProtectionLibraryPersonal">
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Life">Life</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Disability">Disability</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Long-Term Care">Long-Term Care</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Health">Health</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Critical Illness">Critical Illness</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Accident">Accident</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Dental & Vision">Dental &amp; Vision</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Travel">Travel</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Pet">Pet</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Identity Theft">Identity Theft</button>
+                        </div>
+                    </div>
+
+                    <div class="snapshot-library-group">
+                        <div class="snapshot-library-title">Property, Vehicle &amp; Asset Protection</div>
+                        <div class="snapshot-chip-wrap snapshot-chip-wrap-wide" id="foundationProtectionLibraryProperty">
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Mortgage Protection">Mortgage Protection</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Equity Protection">Equity Protection</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Home">Home</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Condo">Condo</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Renters">Renters</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Flood">Flood</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Earthquake">Earthquake</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Auto">Auto</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Umbrella">Umbrella</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Motorcycle / RV / Boat">Motorcycle / RV / Boat</button>
+                        </div>
+                    </div>
+
+                    <div class="snapshot-library-group">
+                        <div class="snapshot-library-title">Business Protection (Business Clients)</div>
+                        <div class="snapshot-chip-wrap snapshot-chip-wrap-wide" id="foundationProtectionLibraryBusiness">
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Business Disability">Business Disability</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="General Liability">General Liability</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Professional Liability">Professional Liability</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Business Owners Policy (BOP)">Business Owners Policy (BOP)</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Business Interruption">Business Interruption</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Commercial Property">Commercial Property</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Commercial Auto">Commercial Auto</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Workers' Comp">Workers' Comp</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Cyber">Cyber</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="EPLI">EPLI</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Directors & Officers (D&O)">Directors &amp; Officers (D&amp;O)</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Key Person">Key Person</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Buy-Sell Funding">Buy-Sell Funding</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Surety Bond">Surety Bond</button>
+                        </div>
+                    </div>
+
+                    <div class="snapshot-library-group">
+                        <div class="snapshot-library-title">Legal &amp; Transfer Planning</div>
+                        <div class="snapshot-chip-wrap snapshot-chip-wrap-wide" id="foundationProtectionLibraryLegal">
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Will">Will</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Trust">Trust</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Power of Attorney">Power of Attorney</button>
+                            <button type="button" class="snapshot-chip" data-list-field="protectionNeeds" data-value="Healthcare Directive">Healthcare Directive</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Property, Auto & Liability"
+                 data-step-lesson="Map day-to-day asset and lawsuit risk so home, auto, and liability coverage work together.">
+                <div class="snapshot-card-head">
+                    <h2>Property, Auto &amp; Liability Protection</h2>
+                    <p>Map coverage around home, vehicles, and legal liability so your full risk picture is protected.</p>
+                </div>
+
+                <div class="snapshot-toggle-grid snapshot-toggle-grid-3">
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasHomeInsurance" /><span>Home insurance<small>Protects dwelling and liability as a homeowner.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasRentersInsurance" /><span>Renters insurance<small>Protects belongings and personal liability for renters.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasAutoInsurance" /><span>Auto insurance<small>Protects vehicles and auto-related liability.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasUmbrellaCoverage" /><span>Umbrella liability<small>Adds extra liability limits above base policies.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasGeneralLiability" /><span>General liability<small>Core business liability protection for claims.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasProfessionalLiability" /><span>Professional liability<small>Protects advice/service-based risk.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasCyberCoverage" /><span>Cyber liability<small>Supports breach, ransomware, and data incidents.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasWorkersComp" /><span>Workers' comp<small>Helps with employee injury/illness claims.</small></span></label>
+                    <label class="snapshot-toggle-card"><input type="checkbox" id="hasCommercialAuto" /><span>Commercial auto<small>For vehicles used in business operations.</small></span></label>
+                </div>
+
+                <div class="snapshot-three-col">
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Have employees</span>
+                        <input id="hasEmployees" type="checkbox" />
+                    </label>
+
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Give professional advice/services</span>
+                        <input id="givesProfessionalAdvice" type="checkbox" />
+                    </label>
+
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Store customer/client data</span>
+                        <input id="handlesCustomerData" type="checkbox" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Legal & Legacy"
+                 data-step-lesson="Confirm legal docs and beneficiaries so decisions and transfers happen the way you intend.">
+                <div class="snapshot-card-head">
+                    <h2>Legal, Beneficiaries &amp; Legacy</h2>
+                    <p>Keep estate and transfer readiness visible so nothing mission-critical gets missed.</p>
+                </div>
+
+                <div class="snapshot-three-col">
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Will in place</span>
+                        <input id="hasWillInPlace" type="checkbox" />
+                    </label>
+
+                    <label class="snapshot-field snapshot-toggle-inline">
+                        <span>Trust in place</span>
+                        <input id="hasTrustInPlace" type="checkbox" />
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Legal documents</span>
+                        <select id="legalDocsStatus">
+                            <option value="Not started">Not started</option>
+                            <option value="In progress">In progress</option>
+                            <option value="Complete">Complete</option>
+                        </select>
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Beneficiaries</span>
+                        <select id="beneficiariesStatus">
+                            <option value="Needs review">Needs review</option>
+                            <option value="Partially updated">Partially updated</option>
+                            <option value="Current">Current</option>
+                        </select>
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Legacy plan</span>
+                        <select id="legacyPlanStatus">
+                            <option value="Needs review">Needs review</option>
+                            <option value="In progress">In progress</option>
+                            <option value="Clear and documented">Clear and documented</option>
+                        </select>
+                    </label>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Priority Focus & Events"
+                 data-step-lesson="Select current priorities and life changes so planning stays relevant and not generic.">
+                <div class="snapshot-card-head">
+                    <h2>Priority Focus &amp; Life Events</h2>
+                    <p>Select what matters most right now so both client and agent stay aligned on the next best move. Coverage lines are selected above in Protection Foundation.</p>
+                </div>
+
+                <div class="snapshot-chip-section">
+                    <span class="snapshot-chip-label">Priority focus areas</span>
+                    <div class="snapshot-chip-wrap" id="priorityFocusAreasGroup">
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Income protection">Income protection</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Health planning">Health planning</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Legal readiness">Legal readiness</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Legacy planning">Legacy planning</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Retirement flow">Retirement flow</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Debt strategy">Debt strategy</button>
+                        <button type="button" class="snapshot-chip" data-list-field="priorityFocusAreas" data-value="Emergency preparedness">Emergency preparedness</button>
+                    </div>
+                </div>
+
+                <div class="snapshot-chip-section">
+                    <span class="snapshot-chip-label">Recent or upcoming life events</span>
+                    <div class="snapshot-chip-wrap" id="recentLifeEventsGroup">
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="Marriage or partnership">Marriage or partnership</button>
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="New child or dependent">New child or dependent</button>
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="Home purchase or refinance">Home purchase or refinance</button>
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="Business launch or growth">Business launch or growth</button>
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="Health diagnosis or caregiving">Health diagnosis or caregiving</button>
+                        <button type="button" class="snapshot-chip" data-list-field="recentLifeEvents" data-value="Retirement transition">Retirement transition</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="snapshot-card snapshot-step"
+                 data-step-title="Review Rhythm"
+                 data-step-lesson="Set review cadence and notes so this is an ongoing protection process, not a one-time checklist.">
+                <div class="snapshot-card-head">
+                    <h2>Review Rhythm &amp; Notes</h2>
+                    <p>Keep the follow-up plan visible and easy to maintain.</p>
+                </div>
+
+                <div class="snapshot-three-col">
+                    <label class="snapshot-field">
+                        <span>Review cadence</span>
+                        <select id="reviewCadence">
+                            <option value="Quarterly">Quarterly</option>
+                            <option value="Semiannual">Semiannual</option>
+                            <option value="Annual">Annual</option>
+                            <option value="Event-driven">Event-driven</option>
+                        </select>
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Last review</span>
+                        <input id="lastReviewUtc" type="date" />
+                    </label>
+
+                    <label class="snapshot-field">
+                        <span>Next review target</span>
+                        <input id="nextReviewUtc" type="date" />
+                    </label>
+                </div>
+
+                <div class="snapshot-two-col">
+                    <label class="snapshot-field snapshot-field-full">
+                        <span>Agent follow-up focus</span>
+                        <textarea id="agentFollowUpFocus" rows="4" placeholder="What should be reviewed, clarified, quoted, or coordinated next?"></textarea>
+                    </label>
+
+                    <label class="snapshot-field snapshot-field-full">
+                        <span>Client notes</span>
+                        <textarea id="clientNotes" rows="4" placeholder="Add context that should stay visible for future reviews."></textarea>
+                    </label>
+                </div>
+            </div>
+        </section>
+
+        <aside class="snapshot-side">
+            <div class="snapshot-card snapshot-sticky">
+                <div class="snapshot-card-head">
+                    <h2>Live Summary</h2>
+                    <p>Shared with the connected agent workspace for consistent follow-up.</p>
+                </div>
+
+                <div class="snapshot-summary-list" id="snapshotSummaryList"></div>
+
+                <div class="snapshot-next-steps">
+                    <h3>Next best steps</h3>
+                    <ul id="snapshotNextSteps"></ul>
+                </div>
+            </div>
+        </aside>
+    </div>
+</div>
+
+<style>
+    :root {
+        --snapshot-gold: #c5921f;
+        --snapshot-gold-strong: #e4c066;
+        --snapshot-gold-soft: rgba(197, 146, 31, .12);
+        --snapshot-ink: #fdfdfd;
+        --snapshot-muted: #d8e3ef;
+        --snapshot-border: #c5921f;
+        --snapshot-panel: #0a1323;
+        --snapshot-shadow: 0 20px 48px rgba(0, 0, 0, .45);
+    }
+
+    .snapshot-page {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 24px 18px 32px;
+        color: #0b1529;
+        background: #ffffff;
+        border: 2px solid var(--snapshot-border);
+        border-radius: 20px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.22);
+    }
+
+    .snapshot-hero,
+    .snapshot-card {
+        border: 1.8px solid var(--snapshot-border);
+        background: #ffffff;
+        color: #0b1529;
+        box-shadow: var(--snapshot-shadow);
+    }
+
+    .snapshot-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.45fr) minmax(260px, .8fr);
+        gap: 1.4rem;
+        border-radius: 20px;
+        padding: 1.5rem;
+        margin-bottom: 1.1rem;
+        background: radial-gradient(circle at 18% 22%, rgba(228,192,102,0.18), transparent 38%), #ffffff;
+    }
+
+    .snapshot-kicker {
+        font-size: .76rem;
+        font-weight: 900;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+        color: var(--snapshot-muted);
+        margin-bottom: .45rem;
+    }
+
+    .snapshot-hero h1,
+    .snapshot-card h2,
+    .snapshot-next-steps h3 {
+        font-weight: 900;
+        letter-spacing: -.03em;
+        color: #e4c066 !important;
+    }
+
+    .snapshot-hero p,
+    .snapshot-card-head p {
+        color: var(--snapshot-muted);
+        margin-bottom: 0;
+    }
+
+    .snapshot-meta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .75rem;
+    }
+
+    .snapshot-stage-grid,
+    .snapshot-chip-wrap {
+        display: grid;
+        gap: .75rem;
+    }
+
+    .snapshot-stage-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: .35rem;
+    }
+
+    .snapshot-chip-wrap {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .snapshot-chip-wrap-wide {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .snapshot-meta-row {
+        margin-top: 1rem;
+    }
+
+    .snapshot-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: .45rem .8rem;
+        border-radius: 999px;
+        border: 1px solid rgba(139, 100, 22, .22);
+        background: rgba(197,146,31,.2);
+        font-weight: 800;
+    }
+
+    .snapshot-pill-agent {
+        background: rgba(17,17,17,.9);
+        color: #fff;
+        border-color: rgba(17,17,17,.9);
+    }
+
+    .snapshot-hero-score {
+        display: grid;
+        justify-items: center;
+        align-content: center;
+        gap: .9rem;
+    }
+
+    .snapshot-score-ring {
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: conic-gradient(var(--snapshot-gold-strong) 0deg, rgba(197,146,31,.18) 0deg);
+        padding: 14px;
+    }
+
+    .snapshot-score-ring > div {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #0f1b30, #0a1323);
+        display: grid;
+        place-items: center;
+        text-align: center;
+        gap: .15rem;
+    }
+
+    .snapshot-score-label,
+    .snapshot-chip-label {
+        font-size: .76rem;
+        font-weight: 900;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--snapshot-muted);
+    }
+
+    .snapshot-score-ring strong {
+        font-size: 2.6rem;
+        line-height: 1;
+        color: var(--snapshot-gold);
+    }
+
+    .snapshot-save-status {
+        font-weight: 700;
+        color: var(--snapshot-muted);
+        text-align: center;
+    }
+
+    .snapshot-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.55fr) minmax(320px, .75fr);
+        gap: 1rem;
+        align-items: start;
+    }
+
+    .snapshot-main,
+    .snapshot-side {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .snapshot-start-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .8rem;
+    }
+
+    .snapshot-journey-card {
+        display: grid;
+        gap: .85rem;
+        background: linear-gradient(180deg, #ffffff, #f8fbff);
+    }
+
+    .snapshot-journey-top {
+        display: flex;
+        justify-content: space-between;
+        gap: .75rem;
+        align-items: flex-start;
+    }
+
+    .snapshot-mode-toggle,
+    .snapshot-journey-btn {
+        border: 1px solid #c9d8ef;
+        background: #f8fbff;
+        color: var(--snapshot-ink);
+        border-radius: 999px;
+        font-weight: 800;
+        padding: .55rem .95rem;
+    }
+
+    .snapshot-mode-toggle:hover,
+    .snapshot-journey-btn:hover {
+        border-color: #94b5e6;
+        box-shadow: 0 8px 18px rgba(30,64,175,.12);
+    }
+
+    .snapshot-journey-progress-track {
+        width: 100%;
+        height: 9px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: #e6edf8;
+    }
+
+    .snapshot-journey-progress-track span {
+        display: block;
+        height: 100%;
+        width: 0%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, var(--snapshot-gold), var(--snapshot-gold-strong));
+        transition: width .25s ease;
+    }
+
+    .snapshot-journey-meta,
+    .snapshot-journey-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .65rem;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .snapshot-journey-btn[disabled] {
+        opacity: .45;
+        cursor: not-allowed;
+    }
+
+    .snapshot-journey-btn-primary {
+        background: linear-gradient(135deg, #1d4ed8, #1e40af);
+        color: var(--snapshot-ink);
+        border-color: #1d4ed8;
+    }
+
+    .snapshot-start-step {
+        border: 1.6px solid var(--snapshot-border);
+        background: var(--snapshot-panel);
+        border-radius: 14px;
+        padding: .85rem .9rem;
+        display: grid;
+        gap: .35rem;
+    }
+
+    .snapshot-start-step strong {
+        color: #f8fafc;
+    }
+
+    .snapshot-start-step span {
+        color: #e5edf8;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+
+    .snapshot-card {
+        border-radius: 18px;
+        padding: 1.15rem;
+    }
+
+    .snapshot-card-head {
+        margin-bottom: 1rem;
+        padding-bottom: .75rem;
+        border-bottom: 1px solid #e7eef8;
+    }
+
+    .snapshot-choice,
+    .snapshot-chip {
+        border: 1.6px solid var(--snapshot-border);
+        background: #050b16;
+        color: var(--snapshot-ink);
+        font-weight: 800;
+        border-radius: 12px;
+        padding: .8rem 1rem;
+        width: 100%;
+        min-height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease, background .2s ease;
+    }
+
+    .snapshot-choice:hover,
+    .snapshot-chip:hover {
+        transform: translateY(-1px);
+        border-color: #8cb0e5;
+        box-shadow: 0 8px 18px rgba(29,78,216,.14);
+        background: #eff5ff;
+    }
+
+    .snapshot-choice.is-active,
+    .snapshot-chip.is-active {
+        transform: translateY(-1px);
+        border-color: #0f2f78;
+        box-shadow: 0 10px 22px rgba(15,47,120,.28);
+        background: linear-gradient(135deg, #163d99, #0f2f78);
+        color: #ffffff;
+        text-shadow: 0 1px 0 rgba(0,0,0,.25);
+    }
+
+    .snapshot-two-col,
+    .snapshot-three-col,
+    .snapshot-slider-grid {
+        display: grid;
+        gap: .9rem;
+    }
+
+    .snapshot-two-col,
+    .snapshot-slider-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .snapshot-three-col {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .snapshot-field {
+        display: grid;
+        gap: .5rem;
+        font-weight: 700;
+    }
+
+    .snapshot-field span {
+        color: var(--snapshot-muted);
+    }
+
+    .snapshot-field input,
+    .snapshot-field select,
+    .snapshot-field textarea {
+        width: 100%;
+        border-radius: 10px;
+        border: 1.6px solid var(--snapshot-border);
+        background: #050b16;
+        padding: .85rem .95rem;
+        font-weight: 600;
+        color: var(--snapshot-ink);
+    }
+
+    .snapshot-field input:focus,
+    .snapshot-field select:focus,
+    .snapshot-field textarea:focus {
+        outline: 2px solid rgba(197,146,31,.55);
+        border-color: var(--snapshot-gold-strong);
+        box-shadow: 0 0 0 3px rgba(197,146,31,.25);
+    }
+
+    .snapshot-field textarea {
+        resize: vertical;
+        min-height: 110px;
+    }
+
+    .snapshot-toggle-inline {
+        border: 1.6px solid var(--snapshot-border);
+        border-radius: 12px;
+        background: #050b16;
+        padding: .75rem .85rem;
+        align-content: center;
+    }
+
+    .snapshot-toggle-inline input {
+        width: 20px;
+        height: 20px;
+        accent-color: var(--snapshot-gold-strong);
+    }
+
+    .snapshot-toggle-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .85rem;
+        margin-bottom: 1rem;
+    }
+
+    .snapshot-toggle-card {
+        display: flex;
+        align-items: flex-start;
+        gap: .7rem;
+        padding: .95rem 1rem;
+        min-height: 96px;
+        border-radius: 14px;
+        border: 1.6px solid var(--snapshot-border);
+        background: #050b16;
+        font-weight: 800;
+    }
+
+    .snapshot-toggle-card span {
+        display: grid;
+        gap: .22rem;
+    }
+
+    .snapshot-toggle-card small {
+        font-weight: 700;
+        color: var(--snapshot-muted);
+        line-height: 1.35;
+    }
+
+    .snapshot-toggle-grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .snapshot-toggle-card input {
+        width: 20px;
+        height: 20px;
+        accent-color: var(--snapshot-gold-strong);
+    }
+
+    .snapshot-toggle-card:has(input:checked),
+    .snapshot-toggle-inline:has(input:checked) {
+        border-color: var(--snapshot-gold-strong);
+        background: linear-gradient(135deg, #c5921f, #e4c066);
+        box-shadow: 0 10px 22px rgba(0,0,0,.35);
+        color: #050b16;
+    }
+
+    .snapshot-toggle-card:has(input:checked) span,
+    .snapshot-toggle-card:has(input:checked) small,
+    .snapshot-toggle-inline:has(input:checked) span {
+        color: #050b16;
+    }
+
+    .snapshot-chip-section + .snapshot-chip-section {
+        margin-top: 1rem;
+    }
+
+    .snapshot-library-group + .snapshot-library-group {
+        margin-top: .8rem;
+    }
+
+    .snapshot-library-title {
+        font-weight: 900;
+        color: var(--snapshot-ink);
+        margin-bottom: .45rem;
+        letter-spacing: .01em;
+    }
+
+    .snapshot-sticky {
+        position: sticky;
+        top: 1rem;
+    }
+
+    .snapshot-summary-list {
+        display: grid;
+        gap: .75rem;
+        margin-bottom: 1rem;
+    }
+
+    .snapshot-summary-item {
+        padding: .9rem 1rem;
+        border-radius: 12px;
+        background: #0c1729;
+        border: 1.6px solid var(--snapshot-border);
+    }
+
+    .snapshot-summary-item strong {
+        display: block;
+        font-size: 1rem;
+        margin-bottom: .2rem;
+    }
+
+    .snapshot-summary-item span {
+        color: var(--snapshot-muted);
+        font-weight: 700;
+    }
+
+    .snapshot-next-steps ul {
+        margin: .75rem 0 0;
+        padding-left: 1.05rem;
+        display: grid;
+        gap: .55rem;
+    }
+
+    .snapshot-next-steps li {
+        color: var(--snapshot-ink);
+        font-weight: 700;
+    }
+
+    .snapshot-hidden-by-type {
+        display: none !important;
+    }
+
+    .snapshot-start-grid,
+    .snapshot-two-col,
+    .snapshot-three-col,
+    .snapshot-slider-grid,
+    .snapshot-toggle-grid {
+        align-items: stretch;
+    }
+
+    .snapshot-main.guided-mode .snapshot-step {
+        display: none;
+    }
+
+    .snapshot-main.guided-mode .snapshot-step.is-step-active {
+        display: block;
+    }
+
+    /* --- High contrast adjustments (keep main container white) --- */
+    body .snapshot-page {
+        background: #ffffff !important;
+        color: #0b1529 !important;
+        border: 2px solid #c5921f;
+        border-radius: 18px;
+        box-shadow: 0 18px 36px rgba(0,0,0,0.22);
+        padding: 24px 18px 32px;
+    }
+    .snapshot-page {
+        background: #ffffff !important;
+        color: #0b1529 !important;
+    }
+    .snapshot-page p,
+    .snapshot-page small,
+    .snapshot-page span { color: #fdfdfd !important; }
+    .snapshot-start-step strong,
+    .snapshot-start-step span { color: #fdfdfd !important; }
+    .snapshot-hero,
+    .snapshot-card,
+    .snapshot-toggle-card,
+    .snapshot-start-step,
+    .snapshot-summary-item {
+        background: #0a1323 !important;
+        border: 1.8px solid #c5921f !important;
+        box-shadow: 0 20px 48px rgba(0,0,0,0.45) !important;
+    }
+    .snapshot-card-head,
+    .snapshot-card-head p,
+    .snapshot-library-title { color: #e4c066 !important; border-color: rgba(197,146,31,0.45) !important; }
+    .snapshot-kicker,
+    .snapshot-score-label,
+    .snapshot-chip-label { color: #d8e3ef !important; }
+    .snapshot-pill {
+        background: rgba(197,146,31,0.24) !important;
+        border-color: #c5921f !important;
+        color: #fdfdfd !important;
+    }
+    .snapshot-pill-agent { background: rgba(32,181,145,0.3) !important; }
+    .snapshot-mode-toggle,
+    .snapshot-journey-btn {
+        border: 1.6px solid #c5921f !important;
+        background: #0a1323 !important;
+        color: #fdfdfd !important;
+        box-shadow: 0 12px 24px rgba(0,0,0,0.38) !important;
+    }
+    .snapshot-journey-btn-primary,
+    .snapshot-mode-toggle {
+        background: linear-gradient(90deg, #c5921f, #e4c066) !important;
+        color: #070f1d !important;
+    }
+    .snapshot-journey-progress-track { background: rgba(255,255,255,0.12) !important; }
+    .snapshot-journey-progress-track span { background: linear-gradient(90deg, #c5921f, #e4c066) !important; }
+    .snapshot-choice,
+    .snapshot-chip,
+    .snapshot-toggle-inline {
+        background: #050b16 !important;
+        color: #fdfdfd !important;
+        border: 1.6px solid #c5921f !important;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.35) !important;
+    }
+    .snapshot-choice.is-active,
+    .snapshot-chip.is-active,
+    .snapshot-toggle-card:has(input:checked),
+    .snapshot-toggle-inline:has(input:checked) {
+        background: linear-gradient(135deg, #c5921f, #e4c066) !important;
+        color: #050b16 !important;
+        border-color: #e4c066 !important;
+        box-shadow: 0 12px 26px rgba(0,0,0,0.42) !important;
+        text-shadow: none !important;
+    }
+    .snapshot-field input,
+    .snapshot-field select,
+    .snapshot-field textarea {
+        background: #050b16 !important;
+        color: #fdfdfd !important;
+        border: 1.6px solid #c5921f !important;
+        box-shadow: inset 0 1px 6px rgba(0,0,0,0.55) !important;
+    }
+    .snapshot-field input:focus,
+    .snapshot-field select:focus,
+    .snapshot-field textarea:focus {
+        outline: 2px solid #c5921f !important;
+        border-color: #e4c066 !important;
+        box-shadow: 0 0 0 3px rgba(228,192,102,0.25) !important;
+    }
+    .snapshot-toggle-card small,
+    .snapshot-start-step span,
+    .snapshot-summary-item span,
+    .snapshot-next-steps li { color: #d8e3ef !important; }
+    .snapshot-score-ring > div {
+        background: linear-gradient(180deg, #0f1b30, #0a1323) !important;
+        color: #fdfdfd !important;
+    }
+    .snapshot-score-ring { border: 2px solid #c5921f !important; }
+    .snapshot-score-ring strong { color: #e4c066 !important; }
+    .snapshot-summary-item { background: #0c1729 !important; }
+    .snapshot-summary-item strong { color: #fdfdfd !important; }
+    .snapshot-next-steps h3 { color: #fdfdfd !important; }
+
+    @@media (max-width: 1100px) {
+        .snapshot-layout,
+        .snapshot-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .snapshot-page {
+            padding-left: .75rem;
+            padding-right: .75rem;
+        }
+
+        .snapshot-stage-grid,
+        .snapshot-chip-wrap,
+        .snapshot-chip-wrap-wide,
+        .snapshot-toggle-grid,
+        .snapshot-toggle-grid-3 {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .snapshot-sticky {
+            position: static;
+        }
+    }
+
+    @@media (max-width: 760px) {
+        .snapshot-two-col,
+        .snapshot-three-col,
+        .snapshot-slider-grid,
+        .snapshot-toggle-grid,
+        .snapshot-start-grid,
+        .snapshot-toggle-grid-3,
+        .snapshot-stage-grid,
+        .snapshot-chip-wrap,
+        .snapshot-chip-wrap-wide {
+            grid-template-columns: 1fr;
+        }
+
+        .snapshot-card,
+        .snapshot-hero {
+            padding: 1rem;
+        }
+
+        .snapshot-score-ring {
+            width: 150px;
+            height: 150px;
+        }
+    }
+</style>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const root = document.getElementById("protectionSnapshotPage");
+    if (!root) return;
+
+    const toolId = "ProtectionSnapshot";
+    const antiForgeryToken = document.querySelector('input[name="__RequestVerificationToken"]')?.value || "";
+    const clientProfileId = root.dataset.clientProfileId || "";
+    const clientUserId = root.dataset.clientUserId || "";
+    const isBusinessClient = (root.dataset.isBusinessClient || "").toLowerCase() === "true";
+    const isAgentView = (root.dataset.isAgentView || "").toLowerCase() === "true";
+    const defaults = JSON.parse(root.dataset.defaultState || "{}");
+
+    const stageButtons = Array.from(root.querySelectorAll('[data-field="householdStage"]'));
+    const chipButtons = Array.from(root.querySelectorAll("[data-list-field]"));
+    const scoreRing = document.getElementById("snapshotScoreRing");
+    const scoreValue = document.getElementById("snapshotScoreValue");
+    const scoreTone = document.getElementById("snapshotScoreTone");
+    const saveStatus = document.getElementById("snapshotSaveStatus");
+    const summaryList = document.getElementById("snapshotSummaryList");
+    const nextSteps = document.getElementById("snapshotNextSteps");
+    const journeyTitle = document.getElementById("snapshotJourneyTitle");
+    const journeyLesson = document.getElementById("snapshotJourneyLesson");
+    const journeyProgress = document.getElementById("snapshotJourneyProgress");
+    const journeyStepPill = document.getElementById("snapshotJourneyStepPill");
+    const journeyTipPill = document.getElementById("snapshotJourneyTipPill");
+    const modeToggle = document.getElementById("snapshotModeToggle");
+    const backStepButton = document.getElementById("snapshotJourneyBack");
+    const nextStepButton = document.getElementById("snapshotJourneyNext");
+    const stepCards = Array.from(root.querySelectorAll(".snapshot-step"));
+    const mainColumn = root.querySelector(".snapshot-main");
+
+    const inputs = {
+        primaryGoal: document.getElementById("primaryGoal"),
+        housingStatus: document.getElementById("housingStatus"),
+        dependentsCount: document.getElementById("dependentsCount"),
+        hasLifeInsurance: document.getElementById("hasLifeInsurance"),
+        hasDisabilityCoverage: document.getElementById("hasDisabilityCoverage"),
+        hasMortgageProtection: document.getElementById("hasMortgageProtection"),
+        hasEquityProtection: document.getElementById("hasEquityProtection"),
+        hasLongTermCarePlan: document.getElementById("hasLongTermCarePlan"),
+        hasBusinessDisabilityCoverage: document.getElementById("hasBusinessDisabilityCoverage"),
+        hasEstateDocuments: document.getElementById("hasEstateDocuments"),
+        hasEmergencyContacts: document.getElementById("hasEmergencyContacts"),
+        hasSharedDocumentVault: document.getElementById("hasSharedDocumentVault"),
+        ownsBusiness: document.getElementById("ownsBusiness"),
+        hasEmployees: document.getElementById("hasEmployees"),
+        drivesForWork: document.getElementById("drivesForWork"),
+        givesProfessionalAdvice: document.getElementById("givesProfessionalAdvice"),
+        handlesCustomerData: document.getElementById("handlesCustomerData"),
+        hasHomeInsurance: document.getElementById("hasHomeInsurance"),
+        hasRentersInsurance: document.getElementById("hasRentersInsurance"),
+        hasAutoInsurance: document.getElementById("hasAutoInsurance"),
+        hasUmbrellaCoverage: document.getElementById("hasUmbrellaCoverage"),
+        hasGeneralLiability: document.getElementById("hasGeneralLiability"),
+        hasProfessionalLiability: document.getElementById("hasProfessionalLiability"),
+        hasCyberCoverage: document.getElementById("hasCyberCoverage"),
+        hasWorkersComp: document.getElementById("hasWorkersComp"),
+        hasCommercialAuto: document.getElementById("hasCommercialAuto"),
+        emergencyFundMonths: document.getElementById("emergencyFundMonths"),
+        incomeProtectionYears: document.getElementById("incomeProtectionYears"),
+        legalDocsStatus: document.getElementById("legalDocsStatus"),
+        beneficiariesStatus: document.getElementById("beneficiariesStatus"),
+        legacyPlanStatus: document.getElementById("legacyPlanStatus"),
+        hasWillInPlace: document.getElementById("hasWillInPlace"),
+        hasTrustInPlace: document.getElementById("hasTrustInPlace"),
+        reviewCadence: document.getElementById("reviewCadence"),
+        lastReviewUtc: document.getElementById("lastReviewUtc"),
+        nextReviewUtc: document.getElementById("nextReviewUtc"),
+        agentFollowUpFocus: document.getElementById("agentFollowUpFocus"),
+        clientNotes: document.getElementById("clientNotes")
+    };
+
+    const businessOnlyToggleIds = [
+        "ownsBusiness",
+        "hasEmployees",
+        "givesProfessionalAdvice",
+        "handlesCustomerData",
+        "hasGeneralLiability",
+        "hasProfessionalLiability",
+        "hasCyberCoverage",
+        "hasWorkersComp",
+        "hasCommercialAuto",
+        "hasBusinessDisabilityCoverage"
+    ];
+
+    const businessOnlyProtectionNeeds = new Set([
+        "Business Disability",
+        "General Liability",
+        "Professional Liability",
+        "Business Owners Policy (BOP)",
+        "Business Interruption",
+        "Commercial Property",
+        "Commercial Auto",
+        "Workers' Comp",
+        "Cyber",
+        "EPLI",
+        "Directors & Officers (D&O)",
+        "Key Person",
+        "Buy-Sell Funding",
+        "Surety Bond"
+    ]);
+
+    let state = normalizeState(defaults);
+    let saveTimer = 0;
+    let hasLoadedFromServer = false;
+    let guidedMode = true;
+    let currentStepIndex = 0;
+
+    function normalizeList(value) {
+        return Array.isArray(value)
+            ? value.filter(Boolean).map(item => String(item).trim()).filter(Boolean)
+            : [];
+    }
+
+    function sanitizeForClientType(snapshot) {
+        if (isBusinessClient) return snapshot;
+
+        snapshot.ownsBusiness = false;
+        snapshot.hasEmployees = false;
+        snapshot.givesProfessionalAdvice = false;
+        snapshot.handlesCustomerData = false;
+        snapshot.hasGeneralLiability = false;
+        snapshot.hasProfessionalLiability = false;
+        snapshot.hasCyberCoverage = false;
+        snapshot.hasWorkersComp = false;
+        snapshot.hasCommercialAuto = false;
+        snapshot.hasBusinessDisabilityCoverage = false;
+        snapshot.protectionNeeds = (snapshot.protectionNeeds || []).filter(item => !businessOnlyProtectionNeeds.has(item));
+        return snapshot;
+    }
+
+    function applyClientTypeVisibility() {
+        if (isBusinessClient) return;
+
+        businessOnlyToggleIds.forEach(id => {
+            const input = document.getElementById(id);
+            const card = input?.closest(".snapshot-toggle-card") || input?.closest(".snapshot-field");
+            if (card) card.classList.add("snapshot-hidden-by-type");
+        });
+
+        chipButtons.forEach(button => {
+            if (button.dataset.listField !== "protectionNeeds") return;
+            if (businessOnlyProtectionNeeds.has(button.dataset.value || "")) {
+                button.classList.add("snapshot-hidden-by-type");
+            }
+        });
+    }
+
+    function applyRoleMode() {
+        if (!isAgentView) return;
+
+        guidedMode = false;
+
+        const readonlySelectors = [
+            '[data-field="householdStage"]',
+            '[data-list-field]',
+            'input:not([type="hidden"]):not([name="__RequestVerificationToken"])',
+            'select',
+            'textarea'
+        ];
+
+        readonlySelectors.forEach(selector => {
+            root.querySelectorAll(selector).forEach(element => {
+                element.setAttribute("disabled", "disabled");
+                element.setAttribute("aria-disabled", "true");
+            });
+        });
+
+        [modeToggle, backStepButton, nextStepButton].forEach(button => {
+            if (!button) return;
+            button.setAttribute("disabled", "disabled");
+            button.setAttribute("aria-disabled", "true");
+        });
+
+        saveStatus.textContent = "Agent review mode (read-only): client-owned inputs";
+    }
+
+    function normalizeState(raw) {
+        const source = raw && typeof raw === "object" ? raw : {};
+        return sanitizeForClientType({
+            householdStage: String(source.householdStage || defaults.householdStage || "Foundation"),
+            primaryGoal: String(source.primaryGoal || defaults.primaryGoal || "Protect income"),
+            housingStatus: String(source.housingStatus || defaults.housingStatus || "Own"),
+            dependentsCount: Number.isFinite(Number(source.dependentsCount)) ? Math.max(0, Number(source.dependentsCount)) : Number(defaults.dependentsCount || 0),
+            emergencyFundMonths: Number.isFinite(Number(source.emergencyFundMonths)) ? Math.max(0, Number(source.emergencyFundMonths)) : Number(defaults.emergencyFundMonths || 0),
+            incomeProtectionYears: Number.isFinite(Number(source.incomeProtectionYears)) ? Math.max(0, Number(source.incomeProtectionYears)) : Number(defaults.incomeProtectionYears || 0),
+            legalDocsStatus: String(source.legalDocsStatus || defaults.legalDocsStatus || "Not started"),
+            beneficiariesStatus: String(source.beneficiariesStatus || defaults.beneficiariesStatus || "Needs review"),
+            legacyPlanStatus: String(source.legacyPlanStatus || defaults.legacyPlanStatus || "Needs review"),
+            reviewCadence: String(source.reviewCadence || defaults.reviewCadence || "Semiannual"),
+            hasLifeInsurance: !!source.hasLifeInsurance,
+            hasDisabilityCoverage: !!source.hasDisabilityCoverage,
+            hasMortgageProtection: !!source.hasMortgageProtection,
+            hasEquityProtection: !!source.hasEquityProtection,
+            hasLongTermCarePlan: !!source.hasLongTermCarePlan,
+            hasBusinessDisabilityCoverage: !!source.hasBusinessDisabilityCoverage,
+            hasEstateDocuments: !!source.hasEstateDocuments,
+            hasEmergencyContacts: !!source.hasEmergencyContacts,
+            hasSharedDocumentVault: !!source.hasSharedDocumentVault,
+            ownsBusiness: !!source.ownsBusiness,
+            hasEmployees: !!source.hasEmployees,
+            drivesForWork: !!source.drivesForWork,
+            givesProfessionalAdvice: !!source.givesProfessionalAdvice,
+            handlesCustomerData: !!source.handlesCustomerData,
+            hasHomeInsurance: !!source.hasHomeInsurance,
+            hasRentersInsurance: !!source.hasRentersInsurance,
+            hasAutoInsurance: !!source.hasAutoInsurance,
+            hasUmbrellaCoverage: !!source.hasUmbrellaCoverage,
+            hasGeneralLiability: !!source.hasGeneralLiability,
+            hasProfessionalLiability: !!source.hasProfessionalLiability,
+            hasCyberCoverage: !!source.hasCyberCoverage,
+            hasWorkersComp: !!source.hasWorkersComp,
+            hasCommercialAuto: !!source.hasCommercialAuto,
+            hasWillInPlace: !!source.hasWillInPlace,
+            hasTrustInPlace: !!source.hasTrustInPlace,
+            priorityFocusAreas: normalizeList(source.priorityFocusAreas?.length ? source.priorityFocusAreas : defaults.priorityFocusAreas),
+            protectionNeeds: normalizeList(source.protectionNeeds?.length ? source.protectionNeeds : defaults.protectionNeeds),
+            recentLifeEvents: normalizeList(source.recentLifeEvents),
+            agentFollowUpFocus: String(source.agentFollowUpFocus || ""),
+            clientNotes: String(source.clientNotes || ""),
+            lastReviewUtc: source.lastReviewUtc ? String(source.lastReviewUtc).slice(0, 10) : "",
+            nextReviewUtc: source.nextReviewUtc ? String(source.nextReviewUtc).slice(0, 10) : ""
+        });
+    }
+
+    function computeScore(snapshot) {
+        let total = 0;
+        total += snapshot.hasLifeInsurance ? 16 : 0;
+        total += snapshot.hasDisabilityCoverage ? 14 : 0;
+        total += snapshot.hasMortgageProtection ? 9 : 0;
+        total += snapshot.hasEquityProtection ? 8 : 0;
+        total += snapshot.hasLongTermCarePlan ? 10 : 0;
+        total += snapshot.hasBusinessDisabilityCoverage ? 8 : 0;
+        total += snapshot.hasEstateDocuments ? 12 : 0;
+        total += snapshot.hasEmergencyContacts ? 8 : 0;
+        total += snapshot.hasSharedDocumentVault ? 8 : 0;
+        total += snapshot.hasHomeInsurance ? 6 : 0;
+        total += snapshot.hasRentersInsurance ? 4 : 0;
+        total += snapshot.hasAutoInsurance ? 6 : 0;
+        total += snapshot.hasUmbrellaCoverage ? 6 : 0;
+        total += snapshot.hasGeneralLiability ? 6 : 0;
+        total += snapshot.hasProfessionalLiability ? 6 : 0;
+        total += snapshot.hasCyberCoverage ? 5 : 0;
+        total += snapshot.hasWorkersComp ? 4 : 0;
+        total += snapshot.hasCommercialAuto ? 4 : 0;
+        total += Math.min(snapshot.emergencyFundMonths, 6) * 3;
+        total += Math.min(snapshot.incomeProtectionYears, 12) * 2;
+        total += snapshot.hasWillInPlace ? 5 : 0;
+        total += snapshot.hasTrustInPlace ? 5 : 0;
+        total += snapshot.legalDocsStatus === "Complete" ? 8 : snapshot.legalDocsStatus === "In progress" ? 4 : 0;
+        total += snapshot.beneficiariesStatus === "Current" ? 7 : snapshot.beneficiariesStatus === "Partially updated" ? 3 : 0;
+        total += snapshot.legacyPlanStatus === "Clear and documented" ? 7 : snapshot.legacyPlanStatus === "In progress" ? 3 : 0;
+        return Math.max(0, Math.min(100, total));
+    }
+
+    function buildNextSteps(snapshot) {
+        const steps = [];
+        if (!snapshot.hasLifeInsurance) steps.push("Review life insurance alignment with household obligations and income needs.");
+        if (!snapshot.hasDisabilityCoverage) steps.push("Evaluate disability income protection so a work interruption does not disrupt the plan.");
+        if (snapshot.housingStatus === "Own" && !snapshot.hasMortgageProtection) steps.push("Review mortgage protection options to keep housing payments covered during disruption.");
+        if (snapshot.housingStatus === "Own" && !snapshot.hasEquityProtection) steps.push("Review equity protection strategy to preserve built home equity from major claims.");
+        if (snapshot.housingStatus === "Own" && !snapshot.hasHomeInsurance) steps.push("Confirm homeowners coverage and liability limits for your property.");
+        if (snapshot.housingStatus === "Rent" && !snapshot.hasRentersInsurance) steps.push("Add renters insurance to protect belongings and personal liability.");
+        if (!snapshot.hasAutoInsurance) steps.push("Review auto policy limits and uninsured/underinsured protection.");
+        if (snapshot.ownsBusiness && !snapshot.hasBusinessDisabilityCoverage) steps.push("Add business disability/overhead coverage for continuity if an owner or key person cannot work.");
+        if (snapshot.ownsBusiness && !snapshot.hasGeneralLiability) steps.push("Add general liability coverage for core business claim protection.");
+        if (snapshot.givesProfessionalAdvice && !snapshot.hasProfessionalLiability) steps.push("Evaluate professional liability for advice/service-related errors claims.");
+        if (snapshot.handlesCustomerData && !snapshot.hasCyberCoverage) steps.push("Add cyber liability planning for breach and ransomware response costs.");
+        if (snapshot.hasEmployees && !snapshot.hasWorkersComp) steps.push("Review workers' comp requirements and employee injury protection.");
+        if (snapshot.drivesForWork && !snapshot.hasCommercialAuto) steps.push("Review commercial auto exposure for work-related driving.");
+        if (snapshot.emergencyFundMonths < 3) steps.push("Increase liquid emergency reserves to at least a 3-month baseline.");
+        if (snapshot.legalDocsStatus === "Not started") steps.push("Start core legal documents so decision authority is clear before a crisis.");
+        if (!snapshot.hasWillInPlace) steps.push("Create or update a will so distributions and guardianship instructions are documented.");
+        if (!snapshot.hasTrustInPlace) steps.push("Evaluate trust setup for probate efficiency and controlled distribution.");
+        if (snapshot.beneficiariesStatus !== "Current") steps.push("Update beneficiaries across policies and accounts to match current intent.");
+        if (!steps.length) steps.push("Keep the review cadence active and use life events to trigger mid-cycle updates.");
+        return steps.slice(0, 4);
+    }
+
+    function scoreToneFor(score) {
+        if (score >= 75) return "Strong position";
+        if (score >= 50) return "Good progress";
+        return "Needs attention";
+    }
+
+    function renderSummary(snapshot) {
+        const score = computeScore(snapshot);
+        const angle = Math.round((score / 100) * 360);
+        scoreRing.style.background = `conic-gradient(var(--snapshot-gold-strong) ${angle}deg, rgba(139,100,22,.12) ${angle}deg)`;
+        scoreValue.textContent = String(score);
+        scoreTone.textContent = scoreToneFor(score);
+
+        const focusLabel = snapshot.priorityFocusAreas.length ? snapshot.priorityFocusAreas.join(", ") : "No priority focus selected yet";
+        const protectionLabel = snapshot.protectionNeeds.length ? snapshot.protectionNeeds.join(", ") : "No protection lines selected yet";
+        const lifeEventsLabel = snapshot.recentLifeEvents.length ? snapshot.recentLifeEvents.join(", ") : "No life events selected";
+        const reviewLabel = snapshot.nextReviewUtc ? `${snapshot.reviewCadence} • target ${snapshot.nextReviewUtc}` : snapshot.reviewCadence;
+
+        summaryList.innerHTML = [
+            { title: snapshot.householdStage, detail: `Current stage • ${snapshot.primaryGoal}` },
+            { title: focusLabel, detail: "Priority focus areas" },
+            { title: protectionLabel, detail: "Insurance lines currently in review" },
+            { title: lifeEventsLabel, detail: "Life events influencing planning" },
+            { title: reviewLabel, detail: "Review rhythm" }
+        ].map(item => `
+            <div class="snapshot-summary-item">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.detail)}</span>
+            </div>`).join("");
+
+        nextSteps.innerHTML = buildNextSteps(snapshot)
+            .map(step => `<li>${escapeHtml(step)}</li>`)
+            .join("");
+
+        renderJourney();
+    }
+
+    function getJourneyCompletion(snapshot) {
+        const sections = [
+            true,
+            !!snapshot.householdStage && !!snapshot.primaryGoal && !!snapshot.housingStatus,
+            [
+                snapshot.hasLifeInsurance,
+                snapshot.hasDisabilityCoverage,
+                snapshot.hasMortgageProtection,
+                snapshot.hasEquityProtection,
+                snapshot.hasLongTermCarePlan,
+                snapshot.hasBusinessDisabilityCoverage,
+                snapshot.hasEstateDocuments,
+                snapshot.hasEmergencyContacts,
+                snapshot.hasSharedDocumentVault,
+                snapshot.emergencyFundMonths > 0,
+                snapshot.incomeProtectionYears > 0
+            ].filter(Boolean).length >= 3,
+            [
+                snapshot.hasHomeInsurance,
+                snapshot.hasRentersInsurance,
+                snapshot.hasAutoInsurance,
+                snapshot.hasUmbrellaCoverage,
+                snapshot.hasGeneralLiability,
+                snapshot.hasProfessionalLiability,
+                snapshot.hasCyberCoverage,
+                snapshot.hasWorkersComp,
+                snapshot.hasCommercialAuto
+            ].some(Boolean),
+            snapshot.hasWillInPlace
+                || snapshot.hasTrustInPlace
+                || snapshot.legalDocsStatus !== "Not started"
+                || snapshot.beneficiariesStatus === "Current"
+                || snapshot.legacyPlanStatus === "Clear and documented",
+            snapshot.priorityFocusAreas.length > 0
+                || snapshot.protectionNeeds.length > 0
+                || snapshot.recentLifeEvents.length > 0,
+            !!snapshot.reviewCadence
+                || !!snapshot.nextReviewUtc
+                || !!snapshot.agentFollowUpFocus
+                || !!snapshot.clientNotes
+        ];
+
+        const total = Math.max(1, stepCards.length);
+        const completed = sections.slice(0, total).filter(Boolean).length;
+        const percent = Math.round((completed / total) * 100);
+        return { completed, total, percent };
+    }
+
+    function renderJourney() {
+        if (!stepCards.length || !mainColumn) return;
+
+        const completion = getJourneyCompletion(state);
+
+        if (guidedMode) {
+            mainColumn.classList.add("guided-mode");
+            stepCards.forEach((card, index) => {
+                card.classList.toggle("is-step-active", index === currentStepIndex);
+            });
+
+            const activeCard = stepCards[currentStepIndex];
+            const title = activeCard?.dataset.stepTitle || `Step ${currentStepIndex + 1}`;
+            const lesson = activeCard?.dataset.stepLesson || "Complete this section to keep moving.";
+            const totalSteps = stepCards.length;
+            const stepPercent = Math.round(((currentStepIndex + 1) / totalSteps) * 100);
+            const displayCompletionPercent = Math.max(completion.percent, stepPercent);
+            const displayCompletedSteps = Math.max(completion.completed, currentStepIndex + 1);
+
+            if (journeyTitle) journeyTitle.textContent = title;
+            if (journeyLesson) journeyLesson.textContent = lesson;
+            if (journeyProgress) journeyProgress.style.width = `${stepPercent}%`;
+            if (journeyStepPill) journeyStepPill.textContent = `Step ${currentStepIndex + 1} of ${totalSteps} • Completed ${displayCompletedSteps}/${completion.total}`;
+            if (journeyTipPill) journeyTipPill.textContent = displayCompletionPercent >= 100
+                ? "Great work: journey complete. Keep it current as life changes."
+                : `Progress ${stepPercent}% • completion ${displayCompletionPercent}%`;
+            if (modeToggle) {
+                modeToggle.textContent = "Guided mode: ON";
+                modeToggle.setAttribute("aria-pressed", "true");
+            }
+
+            if (backStepButton) backStepButton.disabled = currentStepIndex === 0;
+            if (nextStepButton) {
+                nextStepButton.textContent = currentStepIndex >= totalSteps - 1 ? "Finish" : "Next";
+            }
+        } else {
+            mainColumn.classList.remove("guided-mode");
+            stepCards.forEach(card => card.classList.remove("is-step-active"));
+            if (journeyTitle) journeyTitle.textContent = "All sections unlocked";
+            if (journeyLesson) journeyLesson.textContent = "Use free browse mode to move anywhere while your updates still autosave.";
+            if (journeyProgress) journeyProgress.style.width = `${completion.percent}%`;
+            if (journeyStepPill) journeyStepPill.textContent = `${completion.completed}/${completion.total} sections complete`;
+            if (journeyTipPill) journeyTipPill.textContent = `Completion ${completion.percent}% • free browse mode`;
+            if (modeToggle) {
+                modeToggle.textContent = "Guided mode: OFF";
+                modeToggle.setAttribute("aria-pressed", "false");
+            }
+            if (backStepButton) backStepButton.disabled = true;
+            if (nextStepButton) nextStepButton.textContent = "Browse";
+        }
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+    }
+
+    function syncInputs(snapshot) {
+        stageButtons.forEach(button => button.classList.toggle("is-active", button.dataset.value === snapshot.householdStage));
+
+        inputs.primaryGoal.value = snapshot.primaryGoal;
+        inputs.housingStatus.value = snapshot.housingStatus;
+        inputs.dependentsCount.value = snapshot.dependentsCount;
+        inputs.hasLifeInsurance.checked = snapshot.hasLifeInsurance;
+        inputs.hasDisabilityCoverage.checked = snapshot.hasDisabilityCoverage;
+        inputs.hasMortgageProtection.checked = snapshot.hasMortgageProtection;
+        inputs.hasEquityProtection.checked = snapshot.hasEquityProtection;
+        inputs.hasLongTermCarePlan.checked = snapshot.hasLongTermCarePlan;
+        inputs.hasBusinessDisabilityCoverage.checked = snapshot.hasBusinessDisabilityCoverage;
+        inputs.hasEstateDocuments.checked = snapshot.hasEstateDocuments;
+        inputs.hasEmergencyContacts.checked = snapshot.hasEmergencyContacts;
+        inputs.hasSharedDocumentVault.checked = snapshot.hasSharedDocumentVault;
+        inputs.ownsBusiness.checked = snapshot.ownsBusiness;
+        inputs.hasEmployees.checked = snapshot.hasEmployees;
+        inputs.drivesForWork.checked = snapshot.drivesForWork;
+        inputs.givesProfessionalAdvice.checked = snapshot.givesProfessionalAdvice;
+        inputs.handlesCustomerData.checked = snapshot.handlesCustomerData;
+        inputs.hasHomeInsurance.checked = snapshot.hasHomeInsurance;
+        inputs.hasRentersInsurance.checked = snapshot.hasRentersInsurance;
+        inputs.hasAutoInsurance.checked = snapshot.hasAutoInsurance;
+        inputs.hasUmbrellaCoverage.checked = snapshot.hasUmbrellaCoverage;
+        inputs.hasGeneralLiability.checked = snapshot.hasGeneralLiability;
+        inputs.hasProfessionalLiability.checked = snapshot.hasProfessionalLiability;
+        inputs.hasCyberCoverage.checked = snapshot.hasCyberCoverage;
+        inputs.hasWorkersComp.checked = snapshot.hasWorkersComp;
+        inputs.hasCommercialAuto.checked = snapshot.hasCommercialAuto;
+        inputs.emergencyFundMonths.value = snapshot.emergencyFundMonths;
+        inputs.incomeProtectionYears.value = snapshot.incomeProtectionYears;
+        inputs.legalDocsStatus.value = snapshot.legalDocsStatus;
+        inputs.beneficiariesStatus.value = snapshot.beneficiariesStatus;
+        inputs.legacyPlanStatus.value = snapshot.legacyPlanStatus;
+        inputs.hasWillInPlace.checked = snapshot.hasWillInPlace;
+        inputs.hasTrustInPlace.checked = snapshot.hasTrustInPlace;
+        inputs.reviewCadence.value = snapshot.reviewCadence;
+        inputs.lastReviewUtc.value = snapshot.lastReviewUtc;
+        inputs.nextReviewUtc.value = snapshot.nextReviewUtc;
+        inputs.agentFollowUpFocus.value = snapshot.agentFollowUpFocus;
+        inputs.clientNotes.value = snapshot.clientNotes;
+
+        chipButtons.forEach(button => {
+            const field = button.dataset.listField;
+            const value = button.dataset.value;
+            button.classList.toggle("is-active", Array.isArray(snapshot[field]) && snapshot[field].includes(value));
+        });
+
+        renderSummary(snapshot);
+    }
+
+    function collectState() {
+        return normalizeState({
+            householdStage: state.householdStage,
+            primaryGoal: inputs.primaryGoal.value,
+            housingStatus: inputs.housingStatus.value,
+            dependentsCount: Number(inputs.dependentsCount.value || 0),
+            hasLifeInsurance: inputs.hasLifeInsurance.checked,
+            hasDisabilityCoverage: inputs.hasDisabilityCoverage.checked,
+            hasMortgageProtection: inputs.hasMortgageProtection.checked,
+            hasEquityProtection: inputs.hasEquityProtection.checked,
+            hasLongTermCarePlan: inputs.hasLongTermCarePlan.checked,
+            hasBusinessDisabilityCoverage: inputs.hasBusinessDisabilityCoverage.checked,
+            hasEstateDocuments: inputs.hasEstateDocuments.checked,
+            hasEmergencyContacts: inputs.hasEmergencyContacts.checked,
+            hasSharedDocumentVault: inputs.hasSharedDocumentVault.checked,
+            ownsBusiness: inputs.ownsBusiness.checked,
+            hasEmployees: inputs.hasEmployees.checked,
+            drivesForWork: inputs.drivesForWork.checked,
+            givesProfessionalAdvice: inputs.givesProfessionalAdvice.checked,
+            handlesCustomerData: inputs.handlesCustomerData.checked,
+            hasHomeInsurance: inputs.hasHomeInsurance.checked,
+            hasRentersInsurance: inputs.hasRentersInsurance.checked,
+            hasAutoInsurance: inputs.hasAutoInsurance.checked,
+            hasUmbrellaCoverage: inputs.hasUmbrellaCoverage.checked,
+            hasGeneralLiability: inputs.hasGeneralLiability.checked,
+            hasProfessionalLiability: inputs.hasProfessionalLiability.checked,
+            hasCyberCoverage: inputs.hasCyberCoverage.checked,
+            hasWorkersComp: inputs.hasWorkersComp.checked,
+            hasCommercialAuto: inputs.hasCommercialAuto.checked,
+            emergencyFundMonths: Number(inputs.emergencyFundMonths.value || 0),
+            incomeProtectionYears: Number(inputs.incomeProtectionYears.value || 0),
+            legalDocsStatus: inputs.legalDocsStatus.value,
+            beneficiariesStatus: inputs.beneficiariesStatus.value,
+            legacyPlanStatus: inputs.legacyPlanStatus.value,
+            hasWillInPlace: inputs.hasWillInPlace.checked,
+            hasTrustInPlace: inputs.hasTrustInPlace.checked,
+            reviewCadence: inputs.reviewCadence.value,
+            priorityFocusAreas: state.priorityFocusAreas,
+            protectionNeeds: state.protectionNeeds,
+            recentLifeEvents: state.recentLifeEvents,
+            agentFollowUpFocus: inputs.agentFollowUpFocus.value,
+            clientNotes: inputs.clientNotes.value,
+            lastReviewUtc: inputs.lastReviewUtc.value,
+            nextReviewUtc: inputs.nextReviewUtc.value
+        });
+    }
+
+    function queueSave(message) {
+        if (isAgentView) {
+            saveStatus.textContent = "Agent review mode (read-only): no edits are saved here.";
+            return;
+        }
+        window.clearTimeout(saveTimer);
+        saveStatus.textContent = message || "Changes pending…";
+        saveTimer = window.setTimeout(saveState, 700);
+    }
+
+    async function saveState() {
+        if (isAgentView) return;
+        state = collectState();
+        renderSummary(state);
+        saveStatus.textContent = "Saving shared snapshot…";
+
+        try {
+            const response = await fetch("/api/finance-state/save", {
+                method: "POST",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json",
+                    "RequestVerificationToken": antiForgeryToken
+                },
+                body: JSON.stringify({
+                    clientProfileId,
+                    clientUserId,
+                    toolId,
+                    jsonState: JSON.stringify(state)
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text() || `Save failed (${response.status})`);
+            }
+
+            saveStatus.textContent = hasLoadedFromServer
+                ? "Shared snapshot saved"
+                : "Initial snapshot saved";
+            hasLoadedFromServer = true;
+        } catch (error) {
+            console.error(error);
+            saveStatus.textContent = "Save failed — please try again";
+        }
+    }
+
+    async function loadState() {
+        try {
+            const params = new URLSearchParams({ clientProfileId, clientUserId, toolId });
+            const response = await fetch(`/api/finance-state/load?${params.toString()}`, {
+                credentials: "include"
+            });
+
+            if (!response.ok) {
+                throw new Error(await response.text() || `Load failed (${response.status})`);
+            }
+
+            const payload = await response.json();
+            const loaded = payload?.jsonState ? JSON.parse(payload.jsonState) : {};
+            state = normalizeState(loaded);
+            hasLoadedFromServer = !!payload?.found;
+            syncInputs(state);
+            if (isAgentView) {
+                saveStatus.textContent = "Agent review mode (read-only): viewing client-submitted snapshot";
+                return;
+            }
+            saveStatus.textContent = payload?.found
+                ? "Shared snapshot loaded"
+                : "No saved snapshot yet — your updates will save automatically";
+        } catch (error) {
+            console.error(error);
+            state = normalizeState(defaults);
+            syncInputs(state);
+            if (isAgentView) {
+                saveStatus.textContent = "Agent review mode (read-only): default snapshot shown";
+                return;
+            }
+            saveStatus.textContent = "Using default snapshot — save will retry automatically";
+        }
+    }
+
+    stageButtons.forEach(button => button.addEventListener("click", () => {
+        state.householdStage = button.dataset.value || "Foundation";
+        syncInputs(state);
+        queueSave();
+    }));
+
+    chipButtons.forEach(button => button.addEventListener("click", () => {
+        const field = button.dataset.listField;
+        const value = button.dataset.value;
+        const current = new Set(Array.isArray(state[field]) ? state[field] : []);
+        if (current.has(value)) current.delete(value); else current.add(value);
+        state[field] = Array.from(current);
+        syncInputs(state);
+        queueSave();
+    }));
+
+    inputs.housingStatus?.addEventListener("change", () => {
+        if (inputs.housingStatus.value === "Own") {
+            inputs.hasRentersInsurance.checked = false;
+        }
+        if (inputs.housingStatus.value === "Rent") {
+            inputs.hasHomeInsurance.checked = false;
+        }
+        state = collectState();
+        renderSummary(state);
+        queueSave();
+    });
+
+    inputs.ownsBusiness?.addEventListener("change", () => {
+        if (!inputs.ownsBusiness.checked) {
+            inputs.hasEmployees.checked = false;
+            inputs.hasGeneralLiability.checked = false;
+            inputs.hasProfessionalLiability.checked = false;
+            inputs.hasCyberCoverage.checked = false;
+            inputs.hasWorkersComp.checked = false;
+            inputs.hasCommercialAuto.checked = false;
+            inputs.hasBusinessDisabilityCoverage.checked = false;
+        }
+        state = collectState();
+        renderSummary(state);
+        queueSave();
+    });
+
+    Object.values(inputs).forEach(input => input?.addEventListener("input", () => {
+        state = collectState();
+        renderSummary(state);
+        queueSave();
+    }));
+
+    Object.values(inputs).forEach(input => input?.addEventListener("change", () => {
+        state = collectState();
+        renderSummary(state);
+        queueSave();
+    }));
+
+    modeToggle?.addEventListener("click", () => {
+        guidedMode = !guidedMode;
+        renderJourney();
+    });
+
+    backStepButton?.addEventListener("click", () => {
+        if (!guidedMode) return;
+        currentStepIndex = Math.max(0, currentStepIndex - 1);
+        renderJourney();
+    });
+
+    nextStepButton?.addEventListener("click", () => {
+        if (!guidedMode) return;
+
+        const atLastStep = currentStepIndex >= stepCards.length - 1;
+        if (atLastStep) {
+            // Finish: mark guided flow complete and switch to browse mode
+            guidedMode = false;
+            if (journeyTitle) journeyTitle.textContent = "All sections complete";
+            if (journeyLesson) journeyLesson.textContent = "Review anything you like or exit — your changes are saved.";
+            if (journeyProgress) journeyProgress.style.width = "100%";
+            if (journeyStepPill) journeyStepPill.textContent = `${stepCards.length}/${stepCards.length} sections complete`;
+            if (journeyTipPill) journeyTipPill.textContent = "Great work: journey complete. You can browse freely.";
+            renderJourney();
+            return;
+        }
+
+        currentStepIndex = Math.min(stepCards.length - 1, currentStepIndex + 1);
+        renderJourney();
+    });
+
+    applyClientTypeVisibility();
+    applyRoleMode();
+    syncInputs(state);
+    renderJourney();
+    void loadState();
+});
+</script>

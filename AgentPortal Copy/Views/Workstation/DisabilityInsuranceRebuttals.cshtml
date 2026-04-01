@@ -1,0 +1,837 @@
+@{
+    ViewData["Title"] = "Workstation — Disability Insurance Rebuttals";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+}
+
+
+<div id="rbShell" class="theme-di">
+    <div class="rb-wrap">
+        <div class="rb-hero">
+            <div class="rb-hero-top">
+                <div class="hero-left">
+                    <h1>Workstation — Disability Insurance</h1>
+                    <p class="hero-sub">Work the next lead, objections, proposals, and underwriting in one place.</p>
+                    <span id="rbCount" style="display:none">0</span>
+                </div>
+                <div class="hero-actions">
+                    <div class="hero-action-group">
+                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
+                        <div class="proposal-menu" id="proposalMenu" hidden>
+                            <div class="proposal-menu-head">
+                                <span>Saved Proposals</span>
+                                <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
+                            </div>
+                            <div class="proposal-menu-list" id="proposalMenuList"></div>
+                        </div>
+                    </div>
+                    <div class="hero-action-group">
+                        <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
+                        <div class="proposal-menu" id="uwMenu" hidden>
+                            <div class="proposal-menu-head">
+                                <span>Saved Underwriting</span>
+                                <button type="button" class="btn-mini" id="btnUwNew">+ New</button>
+                            </div>
+                            <div class="proposal-menu-list" id="uwMenuList"></div>
+                        </div>
+                    </div>
+                    <div class="hero-action-group">
+                        <details class="quick-links">
+                            <summary class="btn gold hero-quick-links">Quick Links ▾</summary>
+                            <div class="proposal-menu quick-links-menu">
+                                <div class="proposal-menu-head"><span>Quick Links</span></div>
+                                <div class="proposal-menu-list">
+                                    <a class="btn gold rb-link" href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true" target="_blank" rel="noopener noreferrer">Book Appointment</a>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    @await Html.PartialAsync("_ScriptSwitcher", "di")
+                </div>
+            </div>
+        </div>
+
+        <div class="rb-link-bar">
+            <a class="btn gold rb-link" href="https://hq-whl.us.auth0.com/login?state=hKFo2SAtbGV5NkRzX1BpSW1MaE52Qy1uOTdidkNuMm5MXzV0MqFupWxvZ2luo3RpZNkgODF2NXpTdHBMeGcxU0VmSVF5Y1ppOVhwWGhOTlo0SzajY2lk2SBjQ3FEb2dNbHNoUlhQWEpvck1EWmdLZEFRUGVCczlJSA&amp;client=cCqDogMlshRXPXJorMDZgKdAQPeBs9IH&amp;protocol=oauth2&amp;audience=http%3A%2F%2Fapi-whl.quility.com&amp;redirect_uri=https%3A%2F%2Fb2b-hq.quility.com&amp;scope=openid%20profile%20email&amp;response_type=code&amp;response_mode=query&amp;nonce=MGhlT1ZOcXVQcC44UlNRZER5NWFUNU1lMEgwfkR2MzlHTXVqeGpkZGlXWA%3D%3D&amp;code_challenge=mmd1hG_9XoAkIByduyMmB1n6fai45wDlZghr5abcNYw&amp;code_challenge_method=S256&amp;auth0Client=eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjIuNiJ9" target="_blank" rel="noopener noreferrer">Quility</a>
+            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">Integrity Marketing</a>
+            <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
+        </div>
+
+        @await Html.PartialAsync("_LeadBridge", "DisabilityInsurance")
+
+        <div class="shell">
+            <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
+            <section class="nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Categories</p>
+                        <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+                    </div>
+                    <div class="count-pill"><span id="catCount">0</span> groups</div>
+                </div>
+                <div class="nav-body" id="rbNav"></div>
+            </section>
+
+            <section class="content-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Scripts</p>
+                        <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                    </div>
+                    <div class="count-pill" id="contentCount">0 scripts</div>
+                </div>
+                <div class="content-body" id="rbContent">
+                    <div class="content-empty">
+                        Click a category on the left and all objections for that category will load here.
+                    </div>
+                </div>
+            </section>
+
+            <section class="nav-card prosper-nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Disability Insurance Guide</p>
+                        <p class="card-sub">Mirror rail for the full disability insurance flow.</p>
+                    </div>
+                    <div class="count-pill"><span id="prosperCount">0</span> steps</div>
+                </div>
+                <div class="nav-body" id="prosperNav">
+                    <div class="content-empty small">
+                        Loading Disability Insurance script steps…
+                    </div>
+                </div>
+            </section>
+            <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+        </div>
+    </div>
+</div>
+
+@await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Disability Insurance" }, { "UwProduct", "DI" } })
+
+<div class="proposal-overlay" id="proposalOverlay" hidden>
+    <div class="proposal-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+        <div class="uw-head">
+            <div class="uw-brand">
+                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
+                <div>
+                    <div class="uw-name" id="proposalTitle">Proposal Builder</div>
+                    <div class="uw-sub">Compare side-by-side options</div>
+                </div>
+            </div>
+            <button type="button" class="uw-close" data-proposal-close aria-label="Close proposal builder">×</button>
+        </div>
+
+        <form id="proposalForm" class="proposal-form">
+            <div class="proposal-meta">
+                <label class="uw-field uw-span-2">Proposal Name
+                    <input id="propName" name="propName" placeholder="Client name or label" />
+                </label>
+                <div class="proposal-actions-inline">
+                    <button type="submit" class="btn gold" id="btnSaveProposal">Save Proposal</button>
+                    <button type="button" class="btn btn-ghost" data-proposal-close>Cancel</button>
+                </div>
+            </div>
+
+            <div class="proposal-buckets">
+                @for (var i = 1; i <= 3; i++)
+                {
+                    <div class="proposal-bucket" data-bucket="@i">
+                        <div class="pb-head">Option @i</div>
+                        <label class="uw-field">Type
+                            <select class="prop-type" id="propType@i">
+                                <option value="">Select</option>
+                                <option value="Own-Occ">Own-Occupation</option>
+                                <option value="Mod Own-Occ">Modified Own-Occ</option>
+                                <option value="Any-Occ">Any Occupation</option>
+                                <option value="Business Overhead">Business Overhead</option>
+                                <option value="Catastrophic">Catastrophic</option>
+                                <option value="Retirement Protector">Retirement Protector</option>
+                            </select>
+                        </label>
+                        @for (var r = 1; r <= 3; r++)
+                        {
+                            <div class="pb-row">
+                                <label class="uw-field">Benefit Amount @r
+                                    <div class="currency-wrap">
+                                        <span>$</span>
+                                        <input class="prop-benefit currency-input" id="propBenefit@i@r" inputmode="decimal" />
+                                    </div>
+                                </label>
+                                <label class="uw-field">Premium @r
+                                    <div class="currency-wrap">
+                                        <span>$</span>
+                                        <input class="prop-premium currency-input" id="propPremium@i@r" inputmode="decimal" />
+                                        <span class="suffix">/mo</span>
+                                    </div>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function(){
+        const categories = [
+        {
+            key: "opening-pushback",
+            rank: 1,
+            navSignal: "bad",
+            name: "Opening Pushback",
+            note: "Workers comp / already covered / not interested.",
+            items: [
+                {
+                    id: "work-comp",
+                    title: "Workers comp covers me",
+                    signal: "warn",
+                    script: `Workers comp only pays if you’re hurt on the job. Most disability claims are from sickness (cancer, back issues, MS). This covers paycheck protection anywhere, on or off the job.`
+                },
+                {
+                    id: "have-ltd",
+                    title: "I already have disability at work",
+                    signal: "info",
+                    script: `Great. Work LTD usually caps at 40–60% of base pay, taxes can apply, and it can end if you change jobs. We add a personal layer so your take-home is whole and portable.`
+                },
+                {
+                    id: "not-interested",
+                    title: "Not interested / sounds salesy",
+                    signal: "bad",
+                    script: `Understood. I’m the field underwriter assigned to your request for income protection. My job is to see what benefit you qualify for and what it costs. Give me 60 seconds; if it’s not valuable we stop. Fair?`
+                },
+                {
+                    id: "no-appointment",
+                    title: "I’m not doing appointments",
+                    signal: "warn",
+                    script: `No problem. I’ll outline Good/Better/Best benefits and cost. If none fit, we’re done. If one fits, we lock it so the rate and health class hold.`
+                }
+            ]
+        },
+        {
+            key: "price-benefit",
+            rank: 2,
+            navSignal: "warn",
+            name: "Price & Benefit Levers",
+            note: "Elimination period, benefit period, and amount.",
+            items: [
+                {
+                    id: "too-expensive",
+                    title: "Too expensive",
+                    signal: "warn",
+                    script: `We control price with two dials: when benefits start and how long they last. Longer wait (90/180 days) lowers cost. Shorter benefit period (2 or 5 years) lowers cost. We’ll set it to what you can comfortably afford.`
+                },
+                {
+                    id: "lower-benefit",
+                    title: "Can we lower the benefit?",
+                    signal: "info",
+                    script: `Yes. Typical target is 50–60% of take-home to keep the lights on. We can start smaller and add future increase options later.`
+                },
+                {
+                    id: "cheapest-only",
+                    title: "Just give me the cheapest",
+                    signal: "warn",
+                    script: `Cheapest often means long waits and short payouts. I’ll show lean (long wait/short payout) and balanced (90-day wait/5-year) so you see the trade-off.`
+                }
+            ]
+        },
+        {
+            key: "existing-coverage",
+            rank: 3,
+            navSignal: "info",
+            name: "Existing Coverage",
+            note: "Group LTD offsets and gaps.",
+            items: [
+                {
+                    id: "offsets",
+                    title: "Work LTD will offset this",
+                    signal: "warn",
+                    script: `We design this as a supplemental layer. We set the benefit so combined it doesn’t exceed 60–70% of income and avoids offsets. I’ll size it around your group plan.`
+                },
+                {
+                    id: "union",
+                    title: "I’m union / have strong benefits",
+                    signal: "info",
+                    script: `Great. We’ll verify waiting period and benefit period on your contract. If there’s a gap (e.g., 180-day wait or 2-year cap), we fill just that gap.`
+                },
+                {
+                    id: "std-only",
+                    title: "I only have short-term disability",
+                    signal: "warn",
+                    script: `STD is weeks. The big risk is long-term loss of income. We set an LTD benefit that starts when STD stops so paychecks keep coming.`
+                }
+            ]
+        },
+        {
+            key: "occupation-fit",
+            rank: 4,
+            navSignal: "good",
+            name: "Occupation & Income Fit",
+            note: "Risk class, self-employed, part-time.",
+            items: [
+                {
+                    id: "self-employed",
+                    title: "I’m self-employed / 1099",
+                    signal: "warn",
+                    script: `We can use 1099s/tax returns to verify income. We’ll keep benefits realistic so underwriting approves. Draft date can match your irregular deposits.`
+                },
+                {
+                    id: "risky-job",
+                    title: "My job is physical / risky",
+                    signal: "warn",
+                    script: `We’ll code the correct occupation class. Benefits may cap a bit lower, but it still protects your paycheck. I’ll keep it honest so claims get paid.`
+                },
+                {
+                    id: "part-time",
+                    title: "I’m part-time",
+                    signal: "info",
+                    script: `Some carriers require 20–30 hours/week. If you meet that, great; if not, we can look at accident/critical illness riders to at least cover major shocks.`
+                }
+            ]
+        },
+        {
+            key: "health-qualify",
+            rank: 5,
+            navSignal: "good",
+            name: "Health & Qualifying",
+            note: "Back issues, mental health, pregnancy, meds.",
+            items: [
+                {
+                    id: "back-issues",
+                    title: "I have back/neck issues",
+                    signal: "warn",
+                    script: `Common. We’ll disclose treatments and imaging. Carriers may exclude the spine but still cover everything else, or we can pick one that’s friendlier. Better to have 90% of income covered than 0%.`
+                },
+                {
+                    id: "mental-health",
+                    title: "I take anxiety/depression meds",
+                    signal: "info",
+                    script: `Many carriers allow it with stable treatment. Some cap benefits for mental/nervous claims; I’ll choose the carrier with the best mental-health terms for you.`
+                },
+                {
+                    id: "pregnancy",
+                    title: "I’m pregnant / planning",
+                    signal: "info",
+                    script: `We can still apply. Pregnancy itself may be excluded short-term, but future sickness/injury is covered. Applying before leave keeps income protected when you return.`
+                }
+            ]
+        },
+        {
+            key: "claims-trust",
+            rank: 6,
+            navSignal: "info",
+            name: "Claims & Payout",
+            note: "Do they pay? How long? Offsets.",
+            items: [
+                {
+                    id: "do-they-pay",
+                    title: "Do these policies actually pay?",
+                    signal: "info",
+                    script: `Yes—same carriers employers use. We align definition (own-occ vs any-occ) and elimination period so claims are clean. I’ll show claims stats if you want.`
+                },
+                {
+                    id: "how-long",
+                    title: "How long will it pay?",
+                    signal: "info",
+                    script: `We pick 2, 5 years, or to age 65/67. Longer costs more. We’ll match it to your runway—enough time to recover or retrain.`
+                },
+                {
+                    id: "offsets-ssa",
+                    title: "Will SSA or LTD reduce this?",
+                    signal: "warn",
+                    script: `We design it so combined benefits stay within limits. Personal policies often don’t offset against your work plan. I’ll size it so you keep the maximum allowed.`
+                }
+            ]
+        },
+        {
+            key: "info-trust",
+            rank: 7,
+            navSignal: "bad",
+            name: "Info & Payment Trust",
+            note: "SSN, bank, income proof.",
+            items: [
+                {
+                    id: "no-ssn",
+                    title: "Not giving SSN",
+                    signal: "bad",
+                    script: `Carriers require SSN for identity and MIB/pharmacy checks. It’s encrypted and not used for billing. Without it they can’t approve coverage, but we can pause if you prefer.`
+                },
+                {
+                    id: "no-bank",
+                    title: "Not giving bank info",
+                    signal: "warn",
+                    script: `Drafts start only after approval and you can cancel anytime. Banks give fraud protection and dispute rights. We can also use a secondary account if you prefer.`
+                },
+                {
+                    id: "income-proof",
+                    title: "Why do you need income proof?",
+                    signal: "info",
+                    script: `Benefit size is tied to income so claims pay correctly. Pay stubs/tax returns prevent over-insuring and make claims smoother. We only request what the carrier needs.`
+                }
+            ]
+        },
+        {
+            key: "timing",
+            rank: 8,
+            navSignal: "info",
+            name: "Timing & Next Steps",
+            note: "Busy, driving, or delaying.",
+            items: [
+                {
+                    id: "busy",
+                    title: "I’m busy / driving",
+                    signal: "info",
+                    script: `Let’s grab 2 items, then schedule a 10-minute slot when you’re free. I’ll text a calendar link and hold the quote.`
+                },
+                {
+                    id: "later",
+                    title: "Check back later",
+                    signal: "warn",
+                    script: `We can schedule for <date> and hold today’s health class. If anything changes, the held quote protects you.`
+                },
+                {
+                    id: "not-today",
+                    title: "Not deciding today",
+                    signal: "info",
+                    script: `All good. I’ll send Good/Better/Best with price, and we’ll only submit if one fits. Nothing drafts until approval and you still have a free-look window.`
+                }
+            ]
+        }
+    ];
+
+    const rbNav = document.getElementById("rbNav");
+    const prosperNav = document.getElementById("prosperNav");
+    const rbContent = document.getElementById("rbContent");
+    const rbSearch = document.getElementById("rbSearch") || { value: "" };
+    const rbTone = document.getElementById("rbTone") || { value: "" };
+    const rbCount = document.getElementById("rbCount");
+    const catCount = document.getElementById("catCount");
+    const prosperCount = document.getElementById("prosperCount");
+    const contentCount = document.getElementById("contentCount");
+    const contentSub = document.getElementById("contentSub");
+    const btnClearAll = document.getElementById("btnClearAll");
+    const shellEl = document.querySelector("#rbShell .shell");
+    const rbNavArrow = document.getElementById("rbNavArrow");
+    const prosperNavArrow = document.getElementById("prosperNavArrow");
+    const prosperUrl = '@Url.Action("DisabilityInsurance", "Workstation")';
+    const defaultProsperId = "sec-aged";
+
+    let activeCategoryKey = null;
+    let activeProsperId = defaultProsperId;
+    let activePane = "prosper";
+    let initializedDefaultProsper = false;
+    let prosperSections = [];
+    let prosperLoaded = false;
+    let prosperLoadFailed = false;
+
+    function escapeHtml(v){
+        return String(v || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function highlightText(text, search){
+        const safe = escapeHtml(text);
+        if(!search) return safe;
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp("(" + escapedSearch + ")", "ig");
+        return safe.replace(regex, '<mark class="hit">$1</mark>');
+    }
+
+    function stripHtml(html){
+        const el = document.createElement("div");
+        el.innerHTML = html || "";
+        return (el.textContent || el.innerText || "").trim();
+    }
+
+    function getSignalLabel(signal){
+        if(signal === "good") return "GO";
+        if(signal === "warn") return "CLARIFY";
+        if(signal === "bad") return "STOP";
+        return "INFO";
+    }
+
+    function getFilteredCategories(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return categories
+            .map(cat => {
+                const filteredItems = cat.items.filter(item => {
+                    const hay = [cat.name, cat.note, item.title, item.script].join(" ").toLowerCase();
+                    const matchesSearch = !searchVal || hay.includes(searchVal);
+                    const matchesTone = !toneVal || item.signal === toneVal;
+                    return matchesSearch && matchesTone;
+                });
+
+                return {
+                    ...cat,
+                    items: filteredItems
+                };
+            })
+            .filter(cat => cat.items.length > 0)
+            .sort((a,b) => a.rank - b.rank);
+    }
+
+    function getFilteredProsperSections(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return prosperSections.filter(section => {
+            const hay = [section.stepLabel, section.flowLabel, section.title, section.sub, section.searchText]
+                .join(" ")
+                .toLowerCase();
+            const matchesSearch = !searchVal || hay.includes(searchVal);
+            const matchesTone = !toneVal || section.signal === toneVal;
+            return matchesSearch && matchesTone;
+        });
+    }
+
+    function ensureActiveSelection(){
+        const filteredCategories = getFilteredCategories();
+        const filteredProsper = getFilteredProsperSections();
+
+        if(!activeCategoryKey || !filteredCategories.some(x => x.key === activeCategoryKey)){
+            activeCategoryKey = filteredCategories[0]?.key || null;
+        }
+
+        if(filteredProsper.some(x => x.id === defaultProsperId)){
+            if(!initializedDefaultProsper){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            } else if(activePane === "prosper" && (!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId))){
+                activeProsperId = defaultProsperId;
+            }
+        }
+
+        if(!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId)){
+            activeProsperId = filteredProsper[0]?.id || null;
+        }
+
+        if(activePane === "rebuttal" && !activeCategoryKey && activeProsperId){
+            activePane = "prosper";
+        } else if(activePane === "prosper" && !activeProsperId && activeCategoryKey){
+            activePane = "rebuttal";
+        }
+    }
+
+    function renderNav(){
+        const filteredCategories = getFilteredCategories();
+
+        rbNav.innerHTML = "";
+        catCount.textContent = String(filteredCategories.length);
+
+        if(!filteredCategories.length){
+            rbNav.innerHTML = `<div class="content-empty small">No rebuttal categories matched your search.</div>`;
+            return;
+        }
+
+        filteredCategories.forEach(cat => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${cat.navSignal}${cat.key === activeCategoryKey ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div class="cat-rank">${cat.rank}</div>
+                        <div class="cat-name">${highlightText(cat.name, (rbSearch.value || "").trim())}</div>
+                    </div>
+                    <span class="cat-count">${cat.items.length}</span>
+                </div>
+                <div class="cat-note">${highlightText(cat.note, (rbSearch.value || "").trim())}</div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "rebuttal";
+                activeCategoryKey = cat.key;
+                rerenderAll();
+            });
+            rbNav.appendChild(btn);
+        });
+    }
+
+    function renderProsperNav(){
+        prosperNav.innerHTML = "";
+        prosperCount.textContent = "0";
+
+        if(!prosperLoaded && !prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Loading Disability Insurance script steps…</div>`;
+            return;
+        }
+
+        if(prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Disability Insurance script steps could not be loaded right now.</div>`;
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        prosperCount.textContent = String(filteredProsper.length);
+
+        if(!filteredProsper.length){
+            prosperNav.innerHTML = `<div class="content-empty small">No Disability Insurance steps matched your search.</div>`;
+            return;
+        }
+
+        filteredProsper.forEach(section => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "prosper";
+                activeProsperId = section.id;
+                rerenderAll();
+            });
+            prosperNav.appendChild(btn);
+        });
+    }
+
+    function renderRebuttalContent(){
+        const filteredCategories = getFilteredCategories();
+        const activeCategory = filteredCategories.find(x => x.key === activeCategoryKey);
+
+        if(!activeCategory){
+            rbContent.innerHTML = `<div class="content-empty">Pick a rebuttal category on the left or a Disability Insurance step on the right.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 scripts";
+            contentSub.textContent = "No category selected.";
+            return;
+        }
+
+        const searchVal = (rbSearch.value || "").trim();
+        rbCount.textContent = String(activeCategory.items.length);
+        contentCount.textContent = `${activeCategory.items.length} scripts`;
+        contentSub.textContent = activeCategory.name;
+
+        let html = `
+            <div class="section-head">
+                <h2 class="section-title">${highlightText(activeCategory.name, searchVal)}</h2>
+                <p class="section-copy">${highlightText(activeCategory.note, searchVal)}</p>
+            </div>
+        `;
+
+        activeCategory.items.forEach(item => {
+            html += `
+                <div class="objection ${item.signal}">
+                    <div class="objection-head">
+                        <h3 class="objection-title">${highlightText(item.title, searchVal)}</h3>
+                        <span class="mini-tag ${item.signal}">${getSignalLabel(item.signal)}</span>
+                    </div>
+                    <div class="objection-body">
+                        <pre class="script">${highlightText(item.script, searchVal)}</pre>
+                    </div>
+                </div>
+            `;
+        });
+
+        rbContent.innerHTML = html;
+    }
+
+    function renderProsperContent(){
+        if(!prosperLoaded && !prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Loading disability insurance steps…</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Disability Insurance Guide";
+            return;
+        }
+
+        if(prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Disability Insurance steps could not be loaded.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Disability Insurance Guide";
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        const activeSection = filteredProsper.find(x => x.id === activeProsperId);
+
+        if(!activeSection){
+            rbContent.innerHTML = `<div class="content-empty">Pick a Disability Insurance step on the right to load it here.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Disability Insurance Guide";
+            return;
+        }
+
+        rbCount.textContent = "1";
+        contentCount.textContent = `Step ${activeSection.step}`;
+        contentSub.textContent = "Disability Insurance Guide";
+
+        rbContent.innerHTML = `
+            <div class="prosper-stage ${activeSection.signal}">
+                <div class="prosper-stage-head">
+                    <div>
+                        <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
+                        <h2 class="prosper-title">${highlightText(activeSection.title, (rbSearch.value || "").trim())}</h2>
+                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the disability insurance guide.", (rbSearch.value || "").trim())}</p>
+                    </div>
+                    <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
+                </div>
+                <div class="prosper-body">${activeSection.bodyHtml}</div>
+            </div>
+        `;
+    }
+
+    function renderContent(){
+        if(activePane === "prosper"){
+            renderProsperContent();
+            return;
+        }
+
+        renderRebuttalContent();
+    }
+
+    function positionRailArrow(navEl, arrowEl, side){
+        if(!navEl || !arrowEl || !shellEl){
+            return;
+        }
+
+        const activeBtn = navEl.querySelector(".cat-btn.active");
+        const navCard = navEl.closest(".nav-card");
+
+        if(!activeBtn || !navCard){
+            arrowEl.style.opacity = "0";
+            return;
+        }
+
+        const shellRect = shellEl.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        const cardRect = navCard.getBoundingClientRect();
+        const arrowSize = arrowEl.offsetHeight || 42;
+        const top = btnRect.top - shellRect.top + ((btnRect.height - arrowSize) / 2);
+
+        if(side === "left"){
+            const left = cardRect.left - shellRect.left - 52;
+            arrowEl.style.left = `${left}px`;
+        } else {
+            const left = cardRect.right - shellRect.left + 10;
+            arrowEl.style.left = `${left}px`;
+        }
+
+        arrowEl.style.top = `${top}px`;
+        arrowEl.style.opacity = "1";
+    }
+
+    function updateRailArrows(){
+        positionRailArrow(rbNav, rbNavArrow, "left");
+        positionRailArrow(prosperNav, prosperNavArrow, "right");
+    }
+
+    function rerenderAll(){
+        ensureActiveSelection();
+        renderNav();
+        renderProsperNav();
+        renderContent();
+        updateRailArrows();
+    }
+
+    async function loadProsperSections(){
+        try{
+            const response = await fetch(prosperUrl, {
+                credentials: "same-origin"
+            });
+
+            if(!response.ok){
+                throw new Error("Unable to load Disability Insurance guide.");
+            }
+
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const nodes = Array.from(doc.querySelectorAll("#mpCard > details.section"));
+
+            prosperSections = nodes.map((node, index) => {
+                const step = (node.getAttribute("data-step") || String(index + 1)).trim();
+                const signal = (node.getAttribute("data-signal") || "good").trim();
+                const flow = (node.getAttribute("data-flow") || "").trim();
+                const title = (node.querySelector(".title")?.textContent || `Step ${step}`).trim();
+                const sub = (node.querySelector(".sub")?.textContent || "").trim();
+                const bodyHtml = node.querySelector(".body")?.innerHTML || "";
+
+                return {
+                    id: node.id || `prosper-step-${index + 1}`,
+                    step,
+                    stepLabel: `Step ${step}${flow ? " · " + flow.replace(/-/g, " ") : ""}`,
+                    signal,
+                    flowLabel: flow ? flow.replace(/-/g, " ") : "",
+                    title,
+                    sub,
+                    bodyHtml,
+                    searchText: stripHtml(bodyHtml)
+                };
+            });
+
+            prosperLoaded = true;
+            prosperLoadFailed = false;
+            if(prosperSections.some(section => section.id === defaultProsperId)){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            }
+        } catch (error){
+            prosperSections = [];
+            prosperLoaded = false;
+            prosperLoadFailed = true;
+        }
+
+        rerenderAll();
+    }
+
+    if(rbSearch.addEventListener){
+        rbSearch.addEventListener("input", rerenderAll);
+    }
+
+    if(rbTone.addEventListener){
+        rbTone.addEventListener("change", rerenderAll);
+    }
+    prosperNav.addEventListener("scroll", updateRailArrows);
+    window.addEventListener("resize", updateRailArrows);
+
+    if(btnClearAll){
+        btnClearAll.addEventListener("click", function(){
+            rbSearch.value = "";
+            rbTone.value = "";
+            activeCategoryKey = null;
+            activeProsperId = defaultProsperId;
+            activePane = "prosper";
+            initializedDefaultProsper = false;
+            rerenderAll();
+        });
+    }
+
+    rbContent.addEventListener("click", function(event){
+        const jumpBtn = event.target.closest("[data-jump]");
+        if(!jumpBtn) return;
+
+        const target = jumpBtn.getAttribute("data-jump") || "";
+        if(!target.startsWith("#")) return;
+
+        const targetId = target.slice(1);
+        if(!prosperSections.some(section => section.id === targetId)) return;
+
+        event.preventDefault();
+        activePane = "prosper";
+        activeProsperId = targetId;
+        rerenderAll();
+        rbContent.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    rerenderAll();
+    loadProsperSections();
+})();
+</script>
+<script src="~/js/uw-intake.js" asp-append-version="true"></script>
+
+@section Scripts {
+    <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
+    <script src="~/js/workstation/dialer.js" asp-append-version="true"></script>
+    <script src="~/js/proposal-uw.js" asp-append-version="true"></script>
+}

@@ -1,0 +1,776 @@
+@{
+    ViewData["Title"] = "Workstation — Medicare Rebuttals";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+}
+
+
+<div id="rbShell" class="theme-med">
+    <div class="rb-wrap">
+        <div class="rb-hero">
+            <div class="rb-hero-top">
+                <div class="hero-left">
+                    <h1>Workstation — Medicare</h1>
+                    <p class="hero-sub">Tackle the next lead, objections, and underwriting from one workstation.</p>
+                    <span id="rbCount" style="display:none">0</span>
+                </div>
+                <div class="hero-actions">
+                    <div class="hero-action-group">
+                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
+                        <div class="proposal-menu" id="proposalMenu" hidden>
+                            <div class="proposal-menu-head">
+                                <span>Saved Proposals</span>
+                                <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
+                            </div>
+                            <div class="proposal-menu-list" id="proposalMenuList"></div>
+                        </div>
+                    </div>
+                    <div class="hero-action-group">
+                        <details class="quick-links">
+                            <summary class="btn gold hero-quick-links">Quick Links ▾</summary>
+                            <div class="proposal-menu quick-links-menu">
+                                <div class="proposal-menu-head"><span>Quick Links</span></div>
+                                <div class="proposal-menu-list">
+                                    <a class="btn gold rb-link" href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true" target="_blank" rel="noopener noreferrer">Book Appointment</a>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+                    @await Html.PartialAsync("_ScriptSwitcher", "med")
+                </div>
+            </div>
+        </div>
+
+        <div class="rb-link-bar">
+            <a class="btn gold rb-link" href="https://hq-whl.us.auth0.com/login?state=hKFo2SAtbGV5NkRzX1BpSW1MaE52Qy1uOTdidkNuMm5MXzV0MqFupWxvZ2luo3RpZNkgODF2NXpTdHBMeGcxU0VmSVF5Y1ppOVhwWGhOTlo0SzajY2lk2SBjQ3FEb2dNbHNoUlhQWEpvck1EWmdLZEFRUGVCczlJSA&amp;client=cCqDogMlshRXPXJorMDZgKdAQPeBs9IH&amp;protocol=oauth2&amp;audience=http%3A%2F%2Fapi-whl.quility.com&amp;redirect_uri=https%3A%2F%2Fb2b-hq.quility.com&amp;scope=openid%20profile%20email&amp;response_type=code&amp;response_mode=query&amp;nonce=MGhlT1ZOcXVQcC44UlNRZER5NWFUNU1lMEgwfkR2MzlHTXVqeGpkZGlXWA%3D%3D&amp;code_challenge=mmd1hG_9XoAkIByduyMmB1n6fai45wDlZghr5abcNYw&amp;code_challenge_method=S256&amp;auth0Client=eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjIuNiJ9" target="_blank" rel="noopener noreferrer">Quility</a>
+            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">Integrity Marketing</a>
+            <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
+        </div>
+
+        @await Html.PartialAsync("_LeadBridge", "Medicare")
+
+        <div class="shell">
+            <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
+            <section class="nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Categories</p>
+                        <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+                    </div>
+                    <div class="count-pill"><span id="catCount">0</span> groups</div>
+                </div>
+                <div class="nav-body" id="rbNav"></div>
+            </section>
+
+            <section class="content-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Scripts</p>
+                        <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                    </div>
+                    <div class="count-pill" id="contentCount">0 scripts</div>
+                </div>
+                <div class="content-body" id="rbContent">
+                    <div class="content-empty">
+                        Click a category on the left and all objections for that category will load here.
+                    </div>
+                </div>
+            </section>
+
+            <section class="nav-card prosper-nav-card">
+                <div class="card-head">
+                    <div>
+                        <p class="card-title">Medicare Guide</p>
+                        <p class="card-sub">Mirror rail for the full medicare flow.</p>
+                    </div>
+                    <div class="count-pill"><span id="prosperCount">0</span> steps</div>
+                </div>
+                <div class="nav-body" id="prosperNav">
+                    <div class="content-empty small">
+                        Loading Medicare script steps…
+                    </div>
+                </div>
+            </section>
+            <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+        </div>
+    </div>
+</div>
+
+@await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Medicare" }, { "UwProduct", "MED" } })
+
+<div class="proposal-overlay" id="proposalOverlay" hidden>
+    <div class="proposal-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+        <div class="uw-head">
+            <div class="uw-brand">
+                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
+                <div>
+                    <div class="uw-name" id="proposalTitle">Proposal Builder</div>
+                    <div class="uw-sub">Compare side-by-side options</div>
+                </div>
+            </div>
+            <button type="button" class="uw-close" data-proposal-close aria-label="Close proposal builder">×</button>
+        </div>
+
+        <form id="proposalForm" class="proposal-form">
+            <div class="proposal-meta">
+                <label class="uw-field uw-span-2">Proposal Name
+                    <input id="propName" name="propName" placeholder="Client name or label" />
+                </label>
+                <div class="proposal-actions-inline">
+                    <button type="submit" class="btn gold" id="btnSaveProposal">Save Proposal</button>
+                    <button type="button" class="btn btn-ghost" id="btnCaptureDecision" data-bs-toggle="modal" data-bs-target="#captureDecisionModal">Capture Decision</button>
+                    <button type="button" class="btn btn-ghost" data-proposal-close>Cancel</button>
+                </div>
+            </div>
+
+            <div class="proposal-latest-decision" id="latestDecisionSummary" hidden style="margin-bottom:12px; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; background:#0f1629;">
+                <div class="tiny text-muted">Latest decision</div>
+                <div class="fw-bold" data-decision-title>-</div>
+                <div class="tiny" data-decision-type></div>
+                <div class="small" data-decision-rationale></div>
+                <div class="tiny text-muted" data-decision-time></div>
+            </div>
+
+            <div class="proposal-buckets">
+                @for (var i = 1; i <= 3; i++)
+                {
+                    <div class="proposal-bucket" data-bucket="@i">
+                        <div class="pb-head">Option @i</div>
+                        <label class="uw-field">Insurance Carrier
+                            <select class="prop-carrier" id="propCarrier@i">
+                                <option value="">Select carrier</option>
+                                <option>UnitedHealthcare</option>
+                                <option>Humana</option>
+                                <option>Aetna / SilverScript</option>
+                                <option>Wellcare</option>
+                                <option>Cigna</option>
+                                <option>Anthem / BCBS</option>
+                                <option>Mutual of Omaha Med Supp</option>
+                                <option>Devoted</option>
+                                <option>Alignment</option>
+                                <option>SCan</option>
+                                <option>Clear Spring</option>
+                                <option>KelseyCare / HMO</option>
+                                <option>Regional / Local HMO</option>
+                                <option>Carrier TBD</option>
+                            </select>
+                        </label>
+                        <label class="uw-field">Type
+                            <select class="prop-type" id="propType@i">
+                                <option value="">Select</option>
+                                <option value="MAPD">MAPD</option>
+                                <option value="Med Supp">Med Supp (Plan G/N/K/L/M)</option>
+                                <option value="PDP">Stand-alone PDP</option>
+                                <option value="D-SNP">D-SNP</option>
+                                <option value="C-SNP">C-SNP</option>
+                            </select>
+                        </label>
+                        @for (var r = 1; r <= 3; r++)
+                        {
+                            <div class="pb-row">
+                                <label class="uw-field">Plan Benefits @r
+                                    <input class="prop-benefit" id="propBenefit@i@r" />
+                                </label>
+                                <label class="uw-field">Premium @r
+                                    <div class="currency-wrap">
+                                        <span>$</span>
+                                        <input class="prop-premium currency-input" id="propPremium@i@r" inputmode="decimal" />
+                                        <span class="suffix">/mo</span>
+                                    </div>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function(){
+        const categories = [
+        {
+            key: "opening-pushback",
+            rank: 1,
+            navSignal: "bad",
+            name: "Opening Pushback",
+            note: "Already have a plan or agent, or think this is salesy.",
+            items: [
+                {
+                    id: "have-agent",
+                    title: "I already have an agent/plan",
+                    signal: "warn",
+                    script: `Great—then this will be quick. My job is to verify if your doctor, drugs, and zip still line up for 2026 rates. If your plan is best, I’ll confirm it. If there’s a gap, I’ll show the one that fixes it. Fair?`
+                },
+                {
+                    id: "not-interested",
+                    title: "Not interested / saw TV ad",
+                    signal: "bad",
+                    script: `Understood. I’m a licensed Medicare specialist in <state>. The TV ads don’t check your doctor list or prescriptions. I’ll take 60 seconds to see if you’re already in the best fit; if yes, we’re done.`
+                },
+                {
+                    id: "who-are-you",
+                    title: "Who are you?",
+                    signal: "info",
+                    script: `I’m <your name>, licensed in <state>. I shop multiple carriers (Humana, Aetna, UHC, etc.) to match your doctors and meds. My role is to prevent surprise co‑pays and pharmacy shocks for the year.`
+                }
+            ]
+        },
+        {
+            key: "plan-fit",
+            rank: 2,
+            navSignal: "warn",
+            name: "Plan Fit: Doctors & Drugs",
+            note: "Keep my doctor, drug costs, giveback confusion.",
+            items: [
+                {
+                    id: "keep-doctor",
+                    title: "Will I keep my doctor?",
+                    signal: "warn",
+                    script: `That’s the first thing I check. Tell me your primary and any specialists; I’ll only show plans where they’re in‑network. If your current plan is the best fit, I’ll confirm it.`
+                },
+                {
+                    id: "drug-costs",
+                    title: "My meds are expensive",
+                    signal: "info",
+                    script: `I’ll run your exact drug list and pharmacy. Often we can cut co‑pays by moving to a better Part D or Advantage formulary. Let’s list the meds so I can show the true annual cost.`
+                },
+                {
+                    id: "giveback",
+                    title: "Is this a giveback plan?",
+                    signal: "info",
+                    script: `Givebacks only help if the network and drugs fit—otherwise you pay more later. I’ll check if a giveback works for your doctors and meds; if not, I’ll show the net‑cheapest option.`
+                }
+            ]
+        },
+        {
+            key: "coverage-confusion",
+            rank: 3,
+            navSignal: "info",
+            name: "Coverage Confusion",
+            note: "Advantage vs Supplement, VA/TRICARE, dental/vision.",
+            items: [
+                {
+                    id: "va-coverage",
+                    title: "I have VA / TRICARE",
+                    signal: "info",
+                    script: `Perfect—VA is great when it’s available. A $0 Advantage plan can add local civilian doctors, dental/vision, and lower max out‑of‑pocket without replacing VA. I’ll show the plan that plays nice with your VA access.`
+                },
+                {
+                    id: "adv-vs-supp",
+                    title: "Advantage vs Supplement?",
+                    signal: "warn",
+                    script: `Supplements = higher premium, low surprises, any doctor who takes Medicare. Advantage = lower premium, but network and prior auth. I’ll show both side‑by‑side with your doctors and meds so you can pick what feels safer.`
+                },
+                {
+                    id: "dental-vision",
+                    title: "Does it include dental/vision?",
+                    signal: "info",
+                    script: `Some Advantage plans include strong dental/vision, some are weak. I’ll filter to the ones that actually cover crowns/partials and real eyewear so you’re not stuck with checkup‑only benefits.`
+                }
+            ]
+        },
+        {
+            key: "enrollment-windows",
+            rank: 4,
+            navSignal: "info",
+            name: "Enrollment Timing",
+            note: "AEP/OEP/SEP, moving zip, new to Part B.",
+            items: [
+                {
+                    id: "too-early",
+                    title: "I can’t change right now",
+                    signal: "info",
+                    script: `Depends on your window. If you’re in AEP/OEP we can change now. If you moved zip codes, lost coverage, or are new to Part B, you likely have a Special Enrollment. Let me check your dates so we don’t miss it.`
+                },
+                {
+                    id: "just-moved",
+                    title: "I just moved / new county",
+                    signal: "info",
+                    script: `That opens a Special Enrollment. Plans change by county. I’ll re‑run your doctors and meds for your new ZIP so you don’t end up out of network.`
+                }
+            ]
+        },
+        {
+            key: "cost-budget",
+            rank: 5,
+            navSignal: "warn",
+            name: "Cost & Budget",
+            note: "Premium anxiety, fixed income, penalties/IRMAA.",
+            items: [
+                {
+                    id: "cant-afford",
+                    title: "I can’t afford more premium",
+                    signal: "warn",
+                    script: `We’ll start with $0 or low‑premium options first. The goal is lowest total cost after co‑pays, not just the lowest premium. I’ll show the net cheapest for your doctors and meds.`
+                },
+                {
+                    id: "penalties",
+                    title: "Will I get penalties?",
+                    signal: "info",
+                    script: `Late penalties depend on Part B/D start dates. I’ll check your Part A/B start and see if any SEP removes penalties. Quick check so you’re not surprised.`
+                }
+            ]
+        },
+        {
+            key: "decision-support",
+            rank: 6,
+            navSignal: "info",
+            name: "Decision Support",
+            note: "Spouse/kids review, email proof, agent trust.",
+            items: [
+                {
+                    id: "talk-to-family",
+                    title: "I need to talk to my spouse/kids",
+                    signal: "info",
+                    script: `Absolutely. I’ll shortlist the top 2 plans with doctor/drug check and email the side‑by‑side. Share it with them, and we’ll finalize together so nothing gets missed.`
+                },
+                {
+                    id: "email-first",
+                    title: "Can you just email me?",
+                    signal: "warn",
+                    script: `I’ll email the summary, but Medicare requires we verify doctors, meds, and eligibility before it’s valid. Takes a few minutes live—then I send the proof so you can read it over.`
+                }
+            ]
+        }
+    ];
+
+    const rbNav = document.getElementById("rbNav");
+    const prosperNav = document.getElementById("prosperNav");
+    const rbContent = document.getElementById("rbContent");
+    const rbSearch = document.getElementById("rbSearch") || { value: "" };
+    const rbTone = document.getElementById("rbTone") || { value: "" };
+    const rbCount = document.getElementById("rbCount");
+    const catCount = document.getElementById("catCount");
+    const prosperCount = document.getElementById("prosperCount");
+    const contentCount = document.getElementById("contentCount");
+    const contentSub = document.getElementById("contentSub");
+    const btnClearAll = document.getElementById("btnClearAll");
+    const shellEl = document.querySelector("#rbShell .shell");
+    const rbNavArrow = document.getElementById("rbNavArrow");
+    const prosperNavArrow = document.getElementById("prosperNavArrow");
+    const prosperUrl = '@Url.Action("Medicare", "Workstation")';
+    const defaultProsperId = "sec-aged";
+
+    let activeCategoryKey = null;
+    let activeProsperId = defaultProsperId;
+    let activePane = "prosper";
+    let initializedDefaultProsper = false;
+    let prosperSections = [];
+    let prosperLoaded = false;
+    let prosperLoadFailed = false;
+
+    function escapeHtml(v){
+        return String(v || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+    }
+
+    function highlightText(text, search){
+        const safe = escapeHtml(text);
+        if(!search) return safe;
+        const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp("(" + escapedSearch + ")", "ig");
+        return safe.replace(regex, '<mark class="hit">$1</mark>');
+    }
+
+    function stripHtml(html){
+        const el = document.createElement("div");
+        el.innerHTML = html || "";
+        return (el.textContent || el.innerText || "").trim();
+    }
+
+    function getSignalLabel(signal){
+        if(signal === "good") return "GO";
+        if(signal === "warn") return "CLARIFY";
+        if(signal === "bad") return "STOP";
+        return "INFO";
+    }
+
+    function getFilteredCategories(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return categories
+            .map(cat => {
+                const filteredItems = cat.items.filter(item => {
+                    const hay = [cat.name, cat.note, item.title, item.script].join(" ").toLowerCase();
+                    const matchesSearch = !searchVal || hay.includes(searchVal);
+                    const matchesTone = !toneVal || item.signal === toneVal;
+                    return matchesSearch && matchesTone;
+                });
+
+                return {
+                    ...cat,
+                    items: filteredItems
+                };
+            })
+            .filter(cat => cat.items.length > 0)
+            .sort((a,b) => a.rank - b.rank);
+    }
+
+    function getFilteredProsperSections(){
+        const searchVal = (rbSearch.value || "").trim().toLowerCase();
+        const toneVal = rbTone.value || "";
+
+        return prosperSections.filter(section => {
+            const hay = [section.stepLabel, section.flowLabel, section.title, section.sub, section.searchText]
+                .join(" ")
+                .toLowerCase();
+            const matchesSearch = !searchVal || hay.includes(searchVal);
+            const matchesTone = !toneVal || section.signal === toneVal;
+            return matchesSearch && matchesTone;
+        });
+    }
+
+    function ensureActiveSelection(){
+        const filteredCategories = getFilteredCategories();
+        const filteredProsper = getFilteredProsperSections();
+
+        if(!activeCategoryKey || !filteredCategories.some(x => x.key === activeCategoryKey)){
+            activeCategoryKey = filteredCategories[0]?.key || null;
+        }
+
+        if(filteredProsper.some(x => x.id === defaultProsperId)){
+            if(!initializedDefaultProsper){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            } else if(activePane === "prosper" && (!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId))){
+                activeProsperId = defaultProsperId;
+            }
+        }
+
+        if(!activeProsperId || !filteredProsper.some(x => x.id === activeProsperId)){
+            activeProsperId = filteredProsper[0]?.id || null;
+        }
+
+        if(activePane === "rebuttal" && !activeCategoryKey && activeProsperId){
+            activePane = "prosper";
+        } else if(activePane === "prosper" && !activeProsperId && activeCategoryKey){
+            activePane = "rebuttal";
+        }
+    }
+
+    function renderNav(){
+        const filteredCategories = getFilteredCategories();
+
+        rbNav.innerHTML = "";
+        catCount.textContent = String(filteredCategories.length);
+
+        if(!filteredCategories.length){
+            rbNav.innerHTML = `<div class="content-empty small">No rebuttal categories matched your search.</div>`;
+            return;
+        }
+
+        filteredCategories.forEach(cat => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${cat.navSignal}${cat.key === activeCategoryKey ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top">
+                    <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                        <div class="cat-rank">${cat.rank}</div>
+                        <div class="cat-name">${highlightText(cat.name, (rbSearch.value || "").trim())}</div>
+                    </div>
+                    <span class="cat-count">${cat.items.length}</span>
+                </div>
+                <div class="cat-note">${highlightText(cat.note, (rbSearch.value || "").trim())}</div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "rebuttal";
+                activeCategoryKey = cat.key;
+                rerenderAll();
+            });
+            rbNav.appendChild(btn);
+        });
+    }
+
+    function renderProsperNav(){
+        prosperNav.innerHTML = "";
+        prosperCount.textContent = "0";
+
+        if(!prosperLoaded && !prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Loading Medicare script steps…</div>`;
+            return;
+        }
+
+        if(prosperLoadFailed){
+            prosperNav.innerHTML = `<div class="content-empty small">Medicare script steps could not be loaded right now.</div>`;
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        prosperCount.textContent = String(filteredProsper.length);
+
+        if(!filteredProsper.length){
+            prosperNav.innerHTML = `<div class="content-empty small">No Medicare steps matched your search.</div>`;
+            return;
+        }
+
+        filteredProsper.forEach(section => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}`;
+            btn.innerHTML = `
+                <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
+            `;
+            btn.addEventListener("click", function(){
+                activePane = "prosper";
+                activeProsperId = section.id;
+                rerenderAll();
+            });
+            prosperNav.appendChild(btn);
+        });
+    }
+
+    function renderRebuttalContent(){
+        const filteredCategories = getFilteredCategories();
+        const activeCategory = filteredCategories.find(x => x.key === activeCategoryKey);
+
+        if(!activeCategory){
+            rbContent.innerHTML = `<div class="content-empty">Pick a rebuttal category on the left or a Medicare step on the right.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 scripts";
+            contentSub.textContent = "No category selected.";
+            return;
+        }
+
+        const searchVal = (rbSearch.value || "").trim();
+        rbCount.textContent = String(activeCategory.items.length);
+        contentCount.textContent = `${activeCategory.items.length} scripts`;
+        contentSub.textContent = activeCategory.name;
+
+        let html = `
+            <div class="section-head">
+                <h2 class="section-title">${highlightText(activeCategory.name, searchVal)}</h2>
+                <p class="section-copy">${highlightText(activeCategory.note, searchVal)}</p>
+            </div>
+        `;
+
+        activeCategory.items.forEach(item => {
+            html += `
+                <div class="objection ${item.signal}">
+                    <div class="objection-head">
+                        <h3 class="objection-title">${highlightText(item.title, searchVal)}</h3>
+                        <span class="mini-tag ${item.signal}">${getSignalLabel(item.signal)}</span>
+                    </div>
+                    <div class="objection-body">
+                        <pre class="script">${highlightText(item.script, searchVal)}</pre>
+                    </div>
+                </div>
+            `;
+        });
+
+        rbContent.innerHTML = html;
+    }
+
+    function renderProsperContent(){
+        if(!prosperLoaded && !prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Loading medicare steps…</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Medicare Guide";
+            return;
+        }
+
+        if(prosperLoadFailed){
+            rbContent.innerHTML = `<div class="content-empty">Medicare steps could not be loaded.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Medicare Guide";
+            return;
+        }
+
+        const filteredProsper = getFilteredProsperSections();
+        const activeSection = filteredProsper.find(x => x.id === activeProsperId);
+
+        if(!activeSection){
+            rbContent.innerHTML = `<div class="content-empty">Pick a Medicare step on the right to load it here.</div>`;
+            rbCount.textContent = "0";
+            contentCount.textContent = "0 steps";
+            contentSub.textContent = "Medicare Guide";
+            return;
+        }
+
+        rbCount.textContent = "1";
+        contentCount.textContent = `Step ${activeSection.step}`;
+        contentSub.textContent = "Medicare Guide";
+
+        rbContent.innerHTML = `
+            <div class="prosper-stage ${activeSection.signal}">
+                <div class="prosper-stage-head">
+                    <div>
+                        <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
+                        <h2 class="prosper-title">${highlightText(activeSection.title, (rbSearch.value || "").trim())}</h2>
+                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the medicare guide.", (rbSearch.value || "").trim())}</p>
+                    </div>
+                    <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
+                </div>
+                <div class="prosper-body">${activeSection.bodyHtml}</div>
+            </div>
+        `;
+    }
+
+    function renderContent(){
+        if(activePane === "prosper"){
+            renderProsperContent();
+            return;
+        }
+
+        renderRebuttalContent();
+    }
+
+    function positionRailArrow(navEl, arrowEl, side){
+        if(!navEl || !arrowEl || !shellEl){
+            return;
+        }
+
+        const activeBtn = navEl.querySelector(".cat-btn.active");
+        const navCard = navEl.closest(".nav-card");
+
+        if(!activeBtn || !navCard){
+            arrowEl.style.opacity = "0";
+            return;
+        }
+
+        const shellRect = shellEl.getBoundingClientRect();
+        const btnRect = activeBtn.getBoundingClientRect();
+        const cardRect = navCard.getBoundingClientRect();
+        const arrowSize = arrowEl.offsetHeight || 42;
+        const top = btnRect.top - shellRect.top + ((btnRect.height - arrowSize) / 2);
+
+        if(side === "left"){
+            const left = cardRect.left - shellRect.left - 52;
+            arrowEl.style.left = `${left}px`;
+        } else {
+            const left = cardRect.right - shellRect.left + 10;
+            arrowEl.style.left = `${left}px`;
+        }
+
+        arrowEl.style.top = `${top}px`;
+        arrowEl.style.opacity = "1";
+    }
+
+    function updateRailArrows(){
+        positionRailArrow(rbNav, rbNavArrow, "left");
+        positionRailArrow(prosperNav, prosperNavArrow, "right");
+    }
+
+    function rerenderAll(){
+        ensureActiveSelection();
+        renderNav();
+        renderProsperNav();
+        renderContent();
+        updateRailArrows();
+    }
+
+    async function loadProsperSections(){
+        try{
+            const response = await fetch(prosperUrl, {
+                credentials: "same-origin"
+            });
+
+            if(!response.ok){
+                throw new Error("Unable to load Medicare guide.");
+            }
+
+            const html = await response.text();
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const nodes = Array.from(doc.querySelectorAll("#mpCard > details.section"));
+
+            prosperSections = nodes.map((node, index) => {
+                const step = (node.getAttribute("data-step") || String(index + 1)).trim();
+                const signal = (node.getAttribute("data-signal") || "good").trim();
+                const flow = (node.getAttribute("data-flow") || "").trim();
+                const title = (node.querySelector(".title")?.textContent || `Step ${step}`).trim();
+                const sub = (node.querySelector(".sub")?.textContent || "").trim();
+                const bodyHtml = node.querySelector(".body")?.innerHTML || "";
+
+                return {
+                    id: node.id || `prosper-step-${index + 1}`,
+                    step,
+                    stepLabel: `Step ${step}${flow ? " · " + flow.replace(/-/g, " ") : ""}`,
+                    signal,
+                    flowLabel: flow ? flow.replace(/-/g, " ") : "",
+                    title,
+                    sub,
+                    bodyHtml,
+                    searchText: stripHtml(bodyHtml)
+                };
+            });
+
+            prosperLoaded = true;
+            prosperLoadFailed = false;
+            if(prosperSections.some(section => section.id === defaultProsperId)){
+                activePane = "prosper";
+                activeProsperId = defaultProsperId;
+                initializedDefaultProsper = true;
+            }
+        } catch (error){
+            prosperSections = [];
+            prosperLoaded = false;
+            prosperLoadFailed = true;
+        }
+
+        rerenderAll();
+    }
+
+    if(rbSearch.addEventListener){
+        rbSearch.addEventListener("input", rerenderAll);
+    }
+
+    if(rbTone.addEventListener){
+        rbTone.addEventListener("change", rerenderAll);
+    }
+    prosperNav.addEventListener("scroll", updateRailArrows);
+    window.addEventListener("resize", updateRailArrows);
+
+    if(btnClearAll){
+        btnClearAll.addEventListener("click", function(){
+            rbSearch.value = "";
+            rbTone.value = "";
+            activeCategoryKey = null;
+            activeProsperId = defaultProsperId;
+            activePane = "prosper";
+            initializedDefaultProsper = false;
+            rerenderAll();
+        });
+    }
+
+    rbContent.addEventListener("click", function(event){
+        const jumpBtn = event.target.closest("[data-jump]");
+        if(!jumpBtn) return;
+
+        const target = jumpBtn.getAttribute("data-jump") || "";
+        if(!target.startsWith("#")) return;
+
+        const targetId = target.slice(1);
+        if(!prosperSections.some(section => section.id === targetId)) return;
+
+        event.preventDefault();
+        activePane = "prosper";
+        activeProsperId = targetId;
+        rerenderAll();
+        rbContent.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    rerenderAll();
+    loadProsperSections();
+})();
+</script>
+<script src="~/js/uw-intake.js" asp-append-version="true"></script>
+
+@await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
+
+@section Scripts {
+    <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
+    <script src="~/js/workstation/dialer.js" asp-append-version="true"></script>
+    <script src="~/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/proposal-uw.js" asp-append-version="true"></script>
+}

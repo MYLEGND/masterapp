@@ -1,0 +1,19 @@
+@{
+    ViewData["Title"] = "Logged Out";
+}
+
+<div class="container mt-5" style="max-width:500px;text-align:center;">
+    <h2 class="mb-4">You have been signed out</h2>
+    <p class="mb-4">
+        For your security, it’s a good idea to close all browser windows.
+    </p>
+
+    <form asp-controller="Account"
+          asp-action="Login"
+          method="get">
+        <button class="btn"
+                style="background-color:#a68023;color:#fff;font-weight:700;padding:1rem 2rem;">
+            Login Again
+        </button>
+    </form>
+</div>

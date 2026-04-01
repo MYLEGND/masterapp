@@ -1,0 +1,177 @@
+@{
+    ViewData["Title"] = "Resources";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="finance-page container mt-4 finance-container">
+
+    <h1 class="mb-4">@ViewData["Title"]</h1>
+    <p class="lead mb-4">
+        Browse or search available financial education resources.
+    </p>
+
+    <!-- CONTROLS -->
+    <div class="row mb-4">
+        <!-- LEFT: DROPDOWN -->
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <label class="mb-2 fw-bold">Browse Resources</label>
+            <select id="resourceDropdown" class="form-select w-75">
+                <option value="">-- Select a resource --</option>
+                @foreach (var r in ViewBag.Resources)
+                {
+                    <option value="@r.File">@r.Name</option>
+                }
+            </select>
+        </div>
+
+        <!-- RIGHT: SEARCH -->
+        <div class="col-md-6 d-flex flex-column align-items-center">
+            <label class="mb-2 fw-bold">Search Resources</label>
+            <input id="resourceSearch"
+                   type="text"
+                   class="form-control w-75"
+                   placeholder="Search file names..." />
+            <ul id="searchResults"
+                class="list-group mt-2 w-75"
+                style="max-height:280px; overflow-y:auto;"></ul>
+        </div>
+    </div>
+
+    <!-- RESOURCE OUTPUT -->
+    <div id="resourceContainer" style="display:none;">
+        <hr />
+        <h3 id="resourceTitle" class="mb-4"></h3>
+
+        <div id="resourceContent" class="row g-4"></div>
+    </div>
+
+</div>
+
+<style>
+.finance-container {
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+.finance-page h1 {
+    font-weight: 700;
+    border-bottom: 2px solid #926950;
+    padding-bottom: 0.5rem;
+    color: #926950;
+}
+.form-select, .form-control {
+    border: 1px solid #f0e6d2;
+    border-radius: 8px;
+    padding: 0.6rem;
+}
+.form-select:focus, .form-control:focus {
+    border-color: #926950;
+    box-shadow: 0 0 0 0.2rem rgba(166,128,35,0.25);
+}
+.resource-card {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 14px;
+    padding: 1rem;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.05);
+}
+.resource-card img,
+.resource-card video,
+.resource-card iframe {
+    width: 100%;
+    border-radius: 10px;
+}
+.resource-card a {
+    font-weight: 600;
+    text-decoration: none;
+    color: #926950;
+}
+</style>
+
+@section Scripts {
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+    const resources = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(ViewBag.Resources));
+
+    const dropdown = document.getElementById("resourceDropdown");
+    const searchInput = document.getElementById("resourceSearch");
+    const searchResults = document.getElementById("searchResults");
+    const container = document.getElementById("resourceContainer");
+    const title = document.getElementById("resourceTitle");
+    const content = document.getElementById("resourceContent");
+
+    function renderResource(r) {
+        container.style.display = "block";
+        title.textContent = r.Name;
+        content.innerHTML = "";
+
+        let body = "";
+        const url = `/resources/${r.File}`;
+        const ext = r.Extension;
+
+        if (ext === ".pdf") {
+            body = `<iframe src="${url}" height="800"></iframe>`;
+        }
+        else if ([".png", ".jpg", ".jpeg", ".webp"].includes(ext)) {
+            body = `<img src="${url}" alt="${r.Name}" />`;
+        }
+        else if (ext === ".mp4") {
+            body = `
+                <video controls>
+                    <source src="${url}" type="video/mp4">
+                </video>`;
+        }
+        else {
+            body = `<a href="${url}" target="_blank">${r.Name}</a>`;
+        }
+
+        content.innerHTML = `
+            <div class="col-12">
+                <div class="resource-card">
+                    ${body}
+                </div>
+            </div>`;
+    }
+
+    // DROPDOWN
+    dropdown.addEventListener("change", function () {
+        const file = this.value;
+        searchInput.value = "";
+        searchResults.innerHTML = "";
+
+        if (!file) {
+            container.style.display = "none";
+            return;
+        }
+
+        const r = resources.find(x => x.File === file);
+        if (r) renderResource(r);
+    });
+
+    // SEARCH (partial match)
+    searchInput.addEventListener("input", function () {
+        const q = this.value.toLowerCase();
+        searchResults.innerHTML = "";
+
+        if (!q) return;
+
+        const matches = resources.filter(r =>
+            r.Name.toLowerCase().includes(q)
+        );
+
+        matches.forEach(r => {
+            const li = document.createElement("li");
+            li.className = "list-group-item list-group-item-action";
+            li.textContent = r.Name;
+            li.onclick = () => {
+                renderResource(r);
+                searchResults.innerHTML = "";
+                dropdown.value = r.File;
+            };
+            searchResults.appendChild(li);
+        });
+    });
+
+});
+</script>
+}

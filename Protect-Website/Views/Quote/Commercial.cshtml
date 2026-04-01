@@ -1,0 +1,1711 @@
+@model Protect_Website.Models.CommercialQuoteFormModel
+
+@{
+    ViewData["Title"] = "Commercial Insurance Quote";
+    ViewData["PageKey"] = "quote_commercial";
+
+    var states = new[]{
+        "AZ","CA","IA","KS","LA","MD","MS","OH","SC","SD","TX","WA"
+    };
+
+    var interestedInOptions = new[]{
+        "Commercial Property & Liability","Workers Compensation","Commercial Auto","Inland Marine",
+        "Bond","Cyber","E&O","D&O","EPLI","Other"
+    };
+
+    var contactMethodOptions = new[]{ "Call","Text","Email" };
+    var bestTimeOptions = new[]{ "Morning","Afternoon","Evening" };
+
+    var totalSteps = 14;
+}
+
+<style>
+    /* ============================================================
+       QUOTE WIZARD — match Finance theme (white + subtle gold)
+       ============================================================ */
+
+    body { background: #ffffff; }
+
+    .container-narrow{
+        width: 100%;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 14px 40px;
+    }
+
+    /* Top header area like Finance */
+    .wizard-top{
+        position: relative;
+        padding: 18px 16px;
+        border-radius: 18px;
+        border: 1px solid rgba(166,128,35,0.28);
+        background: #ffffff;
+        box-shadow: 0 18px 55px rgba(0,0,0,0.07);
+        margin: 18px auto 16px;
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap: 14px;
+    }
+    .wizard-top:before{
+        content:"";
+        position:absolute;
+        inset:0;
+        border-radius: 18px;
+        pointer-events:none;
+        background: radial-gradient(700px 240px at 18% 0%, rgba(166,128,35,0.10), transparent 55%);
+    }
+
+    .wizard-steptext{
+        font-weight: 900;
+        color: #111;
+        white-space: nowrap;
+        position: relative;
+        z-index: 1;
+    }
+
+    .wizard-progress{
+        width: 100%;
+        height: 10px;
+        background: #eee;
+        border-radius: 999px;
+        overflow:hidden;
+        border: 1px solid #e2e2e2;
+        position: relative;
+        z-index: 1;
+    }
+    .wizard-progress-fill{
+        height: 100%;
+        width: 0%;
+        background: #a68023;
+        transition: width .25s ease;
+    }
+
+    .required-note{
+        margin: 14px auto 0;
+    }
+
+    /* Step cards like Finance side/main cards */
+    .section-card{
+        position: relative;
+        background: #ffffff;
+        border: 1px solid rgba(166,128,35,0.28);
+        border-radius: 20px;
+        padding: 22px 18px;
+        margin-bottom: 20px;
+        box-shadow:
+            0 20px 60px rgba(0,0,0,0.08),
+            inset 0 1px 0 rgba(255,255,255,0.85);
+        overflow: hidden;
+    }
+    .section-card:before{
+        content:"";
+        position:absolute;
+        inset:0;
+        border-radius: 20px;
+        pointer-events:none;
+        background: radial-gradient(700px 260px at 12% 0%, rgba(166,128,35,0.10), transparent 60%);
+    }
+    .section-card > *{ position: relative; z-index: 1; }
+
+    .section-title{
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: #131313;
+        margin-bottom: 14px;
+        letter-spacing: .2px;
+    }
+
+    /* Inputs / selects like Finance */
+    .form-control, .form-select{
+        border: 2px solid rgba(166,128,35,0.45) !important;
+        border-radius: 14px !important;
+        padding: 12px 14px !important;
+        font-weight: 800 !important;
+        color: #222 !important;
+        background: #ffffff !important;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.06) !important;
+        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+        margin-bottom: 15px;
+    }
+    .form-control:hover, .form-select:hover{
+        transform: translateY(-1px);
+        border-color: rgba(166,128,35,0.70) !important;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
+    }
+    .form-control:focus, .form-select:focus{
+        outline: none !important;
+        box-shadow: 0 0 0 .2rem rgba(166,128,35,0.18) !important;
+    }
+
+    .required-star{ color: #b42318; margin-left: 2px; font-weight: 900; }
+
+    /* Buttons */
+    .btn-gold{
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+        font-weight: 900;
+        padding: 10px 30px;
+        border-radius: 12px;
+        font-size: 1.05rem;
+        border: 1.4px solid #c79931;
+        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
+        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+    }
+    .btn-gold:hover{
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(0,0,0,0.12);
+        filter: brightness(0.99);
+    }
+
+    .btn-outline-gold{
+        border: 2px solid #c79931;
+        color: #f8fafc;
+        background: #0b1529;
+        font-weight: 900;
+        padding: 10px 24px;
+        border-radius: 12px;
+        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+        box-shadow: 0 12px 30px rgba(0,0,0,0.14);
+    }
+    .btn-outline-gold:hover{
+        background: #0b1529;
+        border-color: #c79931;
+        color: #f8fafc;
+        transform: translateY(-1px);
+        box-shadow: 0 12px 26px rgba(0,0,0,0.12);
+        filter: brightness(0.99);
+    }
+
+    /* Gold checkboxes */
+    .form-check-input{
+        width: 20px;
+        height: 20px;
+        border: 2px solid #000;
+        border-radius: 6px;
+        background-color: #fff;
+        transition: all 0.2s ease;
+    }
+    .form-check-input:checked{ background-color: #a68023; border-color: #a68023; }
+    .form-check-input:hover, .form-check-input:focus{
+        outline: 2px solid rgba(166,128,35,0.65);
+        box-shadow: 0 0 2px rgba(166,128,35,0.65);
+    }
+    .form-check-label{ margin-left: 8px; font-weight: 700; color: #222; }
+
+    /* Wizard steps */
+    .form-step{ display:none; }
+    .form-step.active{ display:block; }
+
+    .wizard-actions{
+        display:flex;
+        gap: 10px;
+        justify-content: space-between;
+        align-items:center;
+        margin-top: 12px;
+    }
+
+    /* Better error visibility */
+    .input-validation-error{
+        border-color: rgba(180,35,24,0.85) !important;
+        box-shadow: 0 0 0 .2rem rgba(180,35,24,0.12) !important;
+    }
+    .field-validation-error{ font-weight: 800; }
+
+    @@media (max-width: 575.98px){
+        .wizard-top{ border-radius: 16px; }
+        .section-card{ border-radius: 18px; padding: 18px 14px; }
+        .section-title{ font-size: 1.15rem; }
+    }
+</style>
+
+<div class="container-narrow">
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2.4rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Commercial Insurance Quote
+        </h1>
+    </div>
+
+    <p class="required-note text-center">
+        <strong>
+            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+        </strong>
+    </p>
+
+
+    <div class="wizard-top">
+        <div class="wizard-steptext" id="stepLabel"></div>
+        <div class="wizard-progress">
+            <div class="wizard-progress-fill" id="progressFill"></div>
+        </div>
+    </div>
+
+<form action="/Quote/Commercial"
+      method="post"
+      id="commercialQuoteForm"
+      data-form-key="quote_commercial_form">
+
+
+        @Html.AntiForgeryToken()
+
+        <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
+
+        <div asp-validation-summary="ModelOnly" class="text-danger mb-3"></div>
+
+        <!-- ===================== STEP 1: ACCOUNT DETAILS ===================== -->
+        <div class="form-step" data-step="1">
+            <div class="section-card">
+                <div class="section-title">Account Details</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Risk State<span class="required-star">*</span></label>
+                        <select asp-for="State" class="form-select">
+                            <option value="">Select Risk State</option>
+                            @foreach (var state in states)
+                            {
+                                <option value="@state">@state</option>
+                            }
+                        </select>
+                        <span asp-validation-for="State" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <span></span>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 2: BUSINESS OPERATIONS ===================== -->
+        <div class="form-step" data-step="2">
+            <div class="section-card">
+                <div class="section-title">Business Operations</div>
+
+                <label class="fw-bold">
+                    Please describe your business operations<span class="required-star">*</span>
+                </label>
+                <small class="text-muted d-block mb-3">
+                    Tell us what your business does, the type of work performed, and the services you provide.
+                </small>
+
+                <textarea asp-for="BusinessDescription"
+                          class="form-control"
+                          rows="5"
+                          placeholder="Example: We are a commercial HVAC contractor specializing in installation, service, and maintenance for retail and office properties."></textarea>
+                <span asp-validation-for="BusinessDescription" class="text-danger"></span>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Business Name<span class="required-star">*</span></label>
+                        <input asp-for="BusinessName" class="form-control" placeholder="Legal business name" />
+                        <span asp-validation-for="BusinessName" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Years in Business</label>
+                        <input asp-for="YearsInBusiness" class="form-control" placeholder="Optional" />
+                        <span asp-validation-for="YearsInBusiness" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Years of Experience</label>
+                        <input asp-for="YearsOfExperience" class="form-control" placeholder="Optional" />
+                        <span asp-validation-for="YearsOfExperience" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-2">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Gross Sales<span class="required-star">*</span></label>
+                        <input asp-for="GrossSales" class="form-control" placeholder="Annual gross sales" inputmode="decimal" />
+                        <span asp-validation-for="GrossSales" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Total Payroll<span class="required-star">*</span></label>
+                        <input asp-for="TotalPayroll" class="form-control" placeholder="Annual payroll" inputmode="decimal" />
+                        <span asp-validation-for="TotalPayroll" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold"># of Employees<span class="required-star">*</span></label>
+                        <input asp-for="NumberOfEmployees" class="form-control" placeholder="Total employees" />
+                        <span asp-validation-for="NumberOfEmployees" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 3: CONTACT ===================== -->
+        <div class="form-step" data-step="3">
+            <div class="section-card">
+                <div class="section-title">Insured &amp; Business Contact</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">First Name<span class="required-star">*</span></label>
+                        <input asp-for="InsuredFirstName" class="form-control" />
+                        <span asp-validation-for="InsuredFirstName" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Last Name<span class="required-star">*</span></label>
+                        <input asp-for="InsuredLastName" class="form-control" />
+                        <span asp-validation-for="InsuredLastName" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Business Phone<span class="required-star">*</span></label>
+                        <input asp-for="BusinessPhone" class="form-control" />
+                        <span asp-validation-for="BusinessPhone" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-2">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Business Email<span class="required-star">*</span></label>
+                        <input asp-for="BusinessEmail" class="form-control" />
+                        <span asp-validation-for="BusinessEmail" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-8">
+                        <label class="fw-bold">Website or Facebook URL</label>
+                        <input asp-for="BusinessWebsiteOrFacebook" class="form-control" placeholder="Optional" />
+                        <span asp-validation-for="BusinessWebsiteOrFacebook" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 4: ADDRESS ===================== -->
+        <div class="form-step" data-step="4">
+            <div class="section-card">
+                <div class="section-title">Physical Address (No PO Boxes)</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Street Address<span class="required-star">*</span></label>
+                        <input asp-for="StreetAddress" class="form-control" />
+                        <span asp-validation-for="StreetAddress" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Address Line 2</label>
+                        <input asp-for="AddressLine2" class="form-control" placeholder="Optional" />
+                        <span asp-validation-for="AddressLine2" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">City<span class="required-star">*</span></label>
+                        <input asp-for="City" class="form-control" />
+                        <span asp-validation-for="City" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-2">
+                    <div class="col-md-4">
+                        <label class="fw-bold">ZIP Code<span class="required-star">*</span></label>
+                        <input asp-for="ZipCode" class="form-control" />
+                        <span asp-validation-for="ZipCode" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 5: COVERAGE & TIMING ===================== -->
+        <div class="form-step" data-step="5">
+            <div class="section-card">
+                <div class="section-title">Coverage &amp; Timing</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Effective Date<span class="required-star">*</span></label>
+                        <input asp-for="EffectiveDate" type="date" class="form-control" />
+                        <span asp-validation-for="EffectiveDate" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <label class="fw-bold mt-4">
+                    Coverage Types Needed<span class="required-star">*</span>
+                </label>
+
+                @foreach (var option in interestedInOptions)
+                {
+                    var id = "interest_" + option.Replace(" ", "").Replace("&", "").Replace("/", "").Replace("-", "");
+                    var isChecked = Model.InterestedIn != null && Model.InterestedIn.Contains(option);
+
+                    <div class="form-check">
+                        <input class="form-check-input"
+                               type="checkbox"
+                               name="InterestedIn"
+                               value="@option"
+                               id="@id"
+                               @(isChecked ? "checked" : "") />
+                        <label class="form-check-label" for="@id">@option</label>
+                    </div>
+                }
+
+                <span asp-validation-for="InterestedIn" class="text-danger d-block mt-2"></span>
+
+                <label class="fw-bold mt-3">Additional Comments</label>
+                <textarea asp-for="Comments" class="form-control" rows="4" placeholder="Optional"></textarea>
+                <span asp-validation-for="Comments" class="text-danger"></span>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 6: CONTACT PREFERENCE ===================== -->
+        <div class="form-step" data-step="6">
+            <div class="section-card">
+                <div class="section-title">Preferred Contact Method</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Contact Method<span class="required-star">*</span></label>
+                        <select asp-for="PreferredContactMethod" class="form-select">
+                            <option value="">Select</option>
+                            @foreach (var method in contactMethodOptions)
+                            {
+                                <option value="@method">@method</option>
+                            }
+                        </select>
+                        <span asp-validation-for="PreferredContactMethod" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Best Time<span class="required-star">*</span></label>
+                        <select asp-for="BestTimeToContact" class="form-select">
+                            <option value="">Select</option>
+                            @foreach (var time in bestTimeOptions)
+                            {
+                                <option value="@time">@time</option>
+                            }
+                        </select>
+                        <span asp-validation-for="BestTimeToContact" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 7: ENTITY & GENERAL INFO ===================== -->
+        <div class="form-step" data-step="7">
+            <div class="section-card">
+                <div class="section-title">Entity &amp; General Info</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Entity Type</label>
+                        <select asp-for="EntityType" class="form-select">
+                            <option value="">Select Entity Type</option>
+                            <option value="Limited Liability Company">Limited Liability Company</option>
+                            <option value="S Corporation">S Corporation</option>
+                            <option value="C Corporation">C Corporation</option>
+                            <option value="Partnership">Partnership</option>
+                            <option value="Sole Proprietorship">Sole Proprietorship</option>
+                            <option value="Non-Profit">Non-Profit</option>
+                            <option value="Other">Other</option>
+                        </select>
+                        <span asp-validation-for="EntityType" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Federal Tax ID</label>
+                        <input asp-for="FederalTaxId" class="form-control" placeholder="EIN" />
+                        <span asp-validation-for="FederalTaxId" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Has Active Property Liability Policy</label>
+                        <select asp-for="HasActivePropertyLiabilityPolicy" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="HasActivePropertyLiabilityPolicy" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Prior Coverage End Date</label>
+                        <input asp-for="PriorCoverageEndDate" type="date" class="form-control" />
+                        <span asp-validation-for="PriorCoverageEndDate" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Officers / Members / Partners</label>
+                        <input asp-for="OfficersMembersPartners" class="form-control" placeholder="Names / Titles" />
+                        <span asp-validation-for="OfficersMembersPartners" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Current Renewal Date</label>
+                        <input asp-for="CurrentRenewalDate" type="date" class="form-control" />
+                        <span asp-validation-for="CurrentRenewalDate" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Owns Other Businesses</label>
+                        <select asp-for="OwnsOtherBusinesses" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="OwnsOtherBusinesses" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Other Business Types</label>
+                        <input asp-for="OtherBusinessTypes" class="form-control" placeholder="Describe other businesses" />
+                        <span asp-validation-for="OtherBusinessTypes" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Has High Public Profile</label>
+                        <select asp-for="HasHighPublicProfile" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="HasHighPublicProfile" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Is Social Media Influencer</label>
+                        <select asp-for="IsSocialMediaInfluencer" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="IsSocialMediaInfluencer" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 8: LIABILITY, PAYROLL & AUTO ===================== -->
+        <div class="form-step" data-step="8">
+            <div class="section-card">
+                <div class="section-title">Liability, Payroll &amp; Auto</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Liability Occurrence Limit</label>
+                        <select asp-for="LiabilityOccurrenceLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="300000">$300,000</option>
+                            <option value="500000">$500,000</option>
+                            <option value="1000000">$1,000,000</option>
+                        </select>
+                        <span asp-validation-for="LiabilityOccurrenceLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Medical Expense Limit</label>
+                        <select asp-for="MedicalExpenseLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="5000">$5,000</option>
+                            <option value="10000">$10,000</option>
+                        </select>
+                        <span asp-validation-for="MedicalExpenseLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Property Damage Deductible</label>
+                        <select asp-for="PropertyDamageDeductible" class="form-select">
+                            <option value="">Select</option>
+                            <option value="250">$250</option>
+                            <option value="500">$500</option>
+                            <option value="1000">$1,000</option>
+                            <option value="2500">$2,500</option>
+                        </select>
+                        <span asp-validation-for="PropertyDamageDeductible" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Property Damage Deductible Type</label>
+                        <select asp-for="PropertyDamageDeductibleType" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Per Claim">Per Claim</option>
+                            <option value="Per Occurrence">Per Occurrence</option>
+                        </select>
+                        <span asp-validation-for="PropertyDamageDeductibleType" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Bodily Injury Deductible</label>
+                        <select asp-for="BodilyInjuryDeductible" class="form-select">
+                            <option value="">Select</option>
+                            <option value="500">$500</option>
+                            <option value="1000">$1,000</option>
+                            <option value="1500">$1,500</option>
+                            <option value="2500">$2,500</option>
+                        </select>
+                        <span asp-validation-for="BodilyInjuryDeductible" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Full Time Employees</label>
+                        <input asp-for="FullTimeEmployees" type="number" class="form-control" placeholder="Enter # of employees" />
+                        <span asp-validation-for="FullTimeEmployees" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Part Time Employees</label>
+                        <input asp-for="PartTimeEmployees" type="number" class="form-control" placeholder="Enter # of employees" />
+                        <span asp-validation-for="PartTimeEmployees" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Hired / Non-Owned Auto Requested</label>
+                        <select asp-for="HiredNonOwnedAutoRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="HiredNonOwnedAutoRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Delivery Percentage</label>
+                        <input asp-for="DeliveryPercentage" type="number" class="form-control" placeholder="Enter %" />
+                        <span asp-validation-for="DeliveryPercentage" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Has Driver Monitoring Program</label>
+                        <select asp-for="HasDriverMonitoringProgram" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="HasDriverMonitoringProgram" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Drivers Have 3+ Years Experience</label>
+                        <select asp-for="DriversHaveThreeYearsExperience" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="DriversHaveThreeYearsExperience" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 9: OPTIONAL & PROFESSIONAL COVERAGES ===================== -->
+        <div class="form-step" data-step="9">
+            <div class="section-card">
+                <div class="section-title">Optional &amp; Professional Coverages</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Damage to Premises Limit</label>
+                        <select asp-for="DamageToPremisesLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                            <option value="250000">$250,000</option>
+                            <option value="500000">$500,000</option>
+                            <option value="1000000">$1,000,000</option>
+                            <option value="2000000">$2,000,000</option>
+                        </select>
+                        <span asp-validation-for="DamageToPremisesLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Data Compromise Requested</label>
+                        <select asp-for="DataCompromiseRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="DataCompromiseRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Data Compromise Limit</label>
+                        <select asp-for="DataCompromiseLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                            <option value="250000">$250,000</option>
+                        </select>
+                        <span asp-validation-for="DataCompromiseLimit" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Had Data Breach Last 12 Months</label>
+                        <select asp-for="HadDataBreachLast12Months" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="HadDataBreachLast12Months" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Electronic Data Limit</label>
+                        <input asp-for="ElectronicDataLimit" class="form-control" placeholder="Enter amount" />
+                        <span asp-validation-for="ElectronicDataLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Employee Dishonesty Limit</label>
+                        <select asp-for="EmployeeDishonestyLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="10000">$10,000</option>
+                            <option value="25000">$25,000</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                        </select>
+                        <span asp-validation-for="EmployeeDishonestyLimit" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Forgery / Alteration Limit</label>
+                        <select asp-for="ForgeryAlterationLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="10000">$10,000</option>
+                            <option value="25000">$25,000</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                        </select>
+                        <span asp-validation-for="ForgeryAlterationLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Computer Interruption Limit</label>
+                        <input asp-for="ComputerInterruptionLimit" class="form-control" placeholder="Enter amount" />
+                        <span asp-validation-for="ComputerInterruptionLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Off Premises Personal Property Limit</label>
+                        <select asp-for="OffPremisesPersonalPropertyLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="25000">$25,000</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                            <option value="250000">$250,000</option>
+                            <option value="500000">$500,000</option>
+                            <option value="1000000">$1,000,000</option>
+                        </select>
+                        <span asp-validation-for="OffPremisesPersonalPropertyLimit" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Terrorism Coverage Requested</label>
+                        <select asp-for="TerrorismCoverageRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="TerrorismCoverageRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Misc Professional Liability Requested</label>
+                        <select asp-for="MiscProfessionalLiabilityRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="MiscProfessionalLiabilityRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Misc Professional Liability Limit</label>
+                        <select asp-for="MiscProfessionalLiabilityLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="100000">$100,000</option>
+                            <option value="250000">$250,000</option>
+                            <option value="500000">$500,000</option>
+                            <option value="1000000">$1,000,000</option>
+                        </select>
+                        <span asp-validation-for="MiscProfessionalLiabilityLimit" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Misc Professional Retro Date</label>
+                        <input asp-for="MiscProfessionalRetroDate" type="date" class="form-control" />
+                        <span asp-validation-for="MiscProfessionalRetroDate" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Misc Professional Claims Last 5 Years</label>
+                        <select asp-for="MiscProfessionalClaimsLast5Years" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="MiscProfessionalClaimsLast5Years" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Cyber Suite Requested</label>
+                        <select asp-for="CyberSuiteRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="CyberSuiteRequested" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Cyber Suite Limit</label>
+                        <select asp-for="CyberSuiteLimit" class="form-select">
+                            <option value="">Select</option>
+                            <option value="50000">$50,000</option>
+                            <option value="100000">$100,000</option>
+                            <option value="250000">$250,000</option>
+                        </select>
+                        <span asp-validation-for="CyberSuiteLimit" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 10: HR / EPLI ===================== -->
+        <div class="form-step" data-step="10">
+            <div class="section-card">
+                <div class="section-title">HR, Legal &amp; Employment Practices Liability Insurance</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Background Checks Performed</label>
+                        <select asp-for="BackgroundChecksPerformed" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="BackgroundChecksPerformed" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Document Retention Policy</label>
+                        <select asp-for="DocumentRetentionPolicy" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="DocumentRetentionPolicy" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Cyber Security Measures In Place</label>
+                        <select asp-for="CyberSecurityMeasuresInPlace" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="CyberSecurityMeasuresInPlace" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Records Stored Securely</label>
+                        <select asp-for="RecordsStoredSecurely" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="RecordsStoredSecurely" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Blanket Additional Insured Requested</label>
+                        <select asp-for="BlanketAdditionalInsuredRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="BlanketAdditionalInsuredRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Waiver of Subrogation Requested</label>
+                        <select asp-for="WaiverOfSubrogationRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="WaiverOfSubrogationRequested" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Employee Benefits Liability Requested</label>
+                        <select asp-for="EmployeeBenefitsLiabilityRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="EmployeeBenefitsLiabilityRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Employee Benefits Limit</label>
+                        <input asp-for="EmployeeBenefitsLimit" class="form-control" placeholder="Enter amount" />
+                        <span asp-validation-for="EmployeeBenefitsLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Employee Benefits Retro Date</label>
+                        <input asp-for="EmployeeBenefitsRetroDate" type="date" class="form-control" />
+                        <span asp-validation-for="EmployeeBenefitsRetroDate" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">EPLI Requested</label>
+                        <select asp-for="EPLIRequested" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="EPLIRequested" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">EPLI Limit</label>
+                        <input asp-for="EPLILimit" class="form-control" placeholder="Enter amount" />
+                        <span asp-validation-for="EPLILimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">EPLI Deductible</label>
+                        <input asp-for="EPLIDeductible" class="form-control" placeholder="Enter amount" />
+                        <span asp-validation-for="EPLIDeductible" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">EPLI Retro Date</label>
+                        <input asp-for="EPLIRetroDate" type="date" class="form-control" />
+                        <span asp-validation-for="EPLIRetroDate" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 11: LOSS HISTORY ===================== -->
+        <div class="form-step" data-step="11">
+            <div class="section-card">
+                <div class="section-title">Loss History</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Policy Cancelled Last 3 Years</label>
+                        <select asp-for="PolicyCancelledLast3Years" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="PolicyCancelledLast3Years" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Losses Last 4 Years</label>
+                        <select asp-for="LossesLast4Years" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="LossesLast4Years" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Loss History Details</label>
+                        <textarea asp-for="LossHistoryDetails" class="form-control" rows="3" placeholder="Provide details about prior claims or incidents"></textarea>
+                        <span asp-validation-for="LossHistoryDetails" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Past Fraud Convictions</label>
+                        <select asp-for="PastFraudConvictions" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="PastFraudConvictions" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Past Financial Issues</label>
+                        <select asp-for="PastFinancialIssues" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="PastFinancialIssues" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Past Abuse Claims</label>
+                        <select asp-for="PastAbuseClaims" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="PastAbuseClaims" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 12: BUILDING INFO ===================== -->
+        <div class="form-step" data-step="12">
+            <div class="section-card">
+                <div class="section-title">Building Information</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Near Fire Station</label>
+                        <select asp-for="BuildingNearFireStation" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="BuildingNearFireStation" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Near Fire Hydrant</label>
+                        <select asp-for="BuildingNearFireHydrant" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="BuildingNearFireHydrant" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Years in Business at Location</label>
+                        <input asp-for="YearsInBusinessAtLocation" type="number" class="form-control" placeholder="Years at this location" />
+                        <span asp-validation-for="YearsInBusinessAtLocation" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Occupancy</label>
+                        <select asp-for="Occupancy" class="form-select">
+                            <option value="">Select</option>
+                            <option value="NO">Non-owner Occupied Building/lessors risk (NO)</option>
+                            <option value="OM">Owner Occupied Building - more than 10% (OM)</option>
+                            <option value="OL">Owner Occupied Building - 10% or less (OL)</option>
+                            <option value="TE">Tenant (TE)</option>
+                        </select>
+                        <span asp-validation-for="Occupancy" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Type</label>
+                        <select asp-for="BuildingType" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Enclosed Mall">Located in enclosed mall</option>
+                            <option value="Strip Mall">Located in strip mall</option>
+                            <option value="Standalone">Standalone building</option>
+                        </select>
+                        <span asp-validation-for="BuildingType" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Sole Occupant</label>
+                        <select asp-for="SoleOccupant" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="SoleOccupant" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Industry</label>
+                        <select asp-for="BuildingIndustry" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Apartments & Condo Association">Apartments & Condo Association</option>
+                            <option value="Auto Repair/Service & Car Washes">Auto repair/service & car washes</option>
+                            <option value="Contractors and Landscapers">Contractors and landscapers</option>
+                            <option value="Grocery, Convenience Stores & Gas Stations">Grocery, Convenience Stores, & Gas Stations</option>
+                            <option value="Offices">Offices</option>
+                            <option value="Restaurants & Hotels">Restaurants & Hotels</option>
+                            <option value="Retail Stores & Service Providers">Retail Stores & Service Providers</option>
+                            <option value="Wholesalers">Wholesalers</option>
+                        </select>
+                        <span asp-validation-for="BuildingIndustry" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Restaurant Occupied Part</label>
+                        <select asp-for="RestaurantOccupiedPart" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="RestaurantOccupiedPart" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Construction Type</label>
+                        <select asp-for="ConstructionType" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Fire Resistive">Fire Resistive</option>
+                            <option value="Frame">Frame</option>
+                            <option value="Joisted Masonry">Joisted masonry</option>
+                            <option value="Masonry Non-Combustible">Masonry Non-Combustible</option>
+                            <option value="Modified Fire Resistive">Modified Fire Resistive</option>
+                            <option value="Non-Combustible">Non-Combustible</option>
+                        </select>
+                        <span asp-validation-for="ConstructionType" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Year Built</label>
+                        <input asp-for="YearBuilt" type="number" class="form-control" placeholder="YYYY" />
+                        <span asp-validation-for="YearBuilt" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Total Building SF</label>
+                        <input asp-for="TotalBuildingSF" type="number" class="form-control" placeholder="Total square feet" />
+                        <span asp-validation-for="TotalBuildingSF" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Occupied SF</label>
+                        <input asp-for="OccupiedSF" type="number" class="form-control" placeholder="Occupied square feet" />
+                        <span asp-validation-for="OccupiedSF" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="row g-4 mt-3">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Automatic Sprinkler System</label>
+                        <select asp-for="AutomaticSprinklerSystem" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="AutomaticSprinklerSystem" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Burglar Alarm</label>
+                        <select asp-for="BurglarAlarm" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Central Station">Central Station</option>
+                            <option value="Local">Local</option>
+                            <option value="None">None</option>
+                        </select>
+                        <span asp-validation-for="BurglarAlarm" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Fire Alarm</label>
+                        <select asp-for="FireAlarm" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Central Station">Central Station</option>
+                            <option value="Local">Local</option>
+                            <option value="None">None</option>
+                        </select>
+                        <span asp-validation-for="FireAlarm" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 13: CLASS SPECIFIC ===================== -->
+        <div class="form-step" data-step="13">
+            <div class="section-card">
+                <div class="section-title">Class Specific Questions</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Coverage Needed</label>
+                        <select asp-for="BuildingCoverageNeeded" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="BuildingCoverageNeeded" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Occupancy Percent</label>
+                        <input asp-for="BuildingOccupancyPercent" type="number" class="form-control" placeholder="%" />
+                        <span asp-validation-for="BuildingOccupancyPercent" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Structural Renovations</label>
+                        <select asp-for="StructuralRenovations" class="form-select">
+                            <option value="">Select</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                        </select>
+                        <span asp-validation-for="StructuralRenovations" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <div class="wizard-actions">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <button type="button" class="btn btn-gold btn-next">Next</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===================== STEP 14: BUILDING COVERAGES + DISCLAIMER (SUBMIT) ===================== -->
+        <div class="form-step" data-step="14">
+            <div class="section-card">
+                <div class="section-title">Building &amp; Personal Property Coverages</div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <label class="fw-bold">Building Coverage Limit</label>
+                        <input asp-for="BuildingCoverageLimit" type="number" class="form-control" placeholder="Coverage Limit Amount" />
+                        <span asp-validation-for="BuildingCoverageLimit" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Valuation Type</label>
+                        <select asp-for="ValuationType" class="form-select">
+                            <option value="">Select</option>
+                            <option value="Replacement Cost">Replacement Cost</option>
+                            <option value="Actual Cash Value">Actual Cash Value</option>
+                            <option value="Functional Building Valuation">Functional Building Valuation</option>
+                        </select>
+                        <span asp-validation-for="ValuationType" class="text-danger"></span>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="fw-bold">Inflation Guard Percent</label>
+                        <select asp-for="InflationGuardPercent" class="form-select">
+                            <option value="">Select</option>
+                            <option value="2">2%</option>
+                            <option value="4">4%</option>
+                            <option value="6">6%</option>
+                            <option value="8">8%</option>
+                            <option value="10">10%</option>
+                            <option value="12">12%</option>
+                            <option value="14">14%</option>
+                            <option value="16">16%</option>
+                        </select>
+                        <span asp-validation-for="InflationGuardPercent" class="text-danger"></span>
+                    </div>
+                </div>
+
+                <hr />
+
+                <style>
+                    .disclaimer-check{
+                        display:flex;
+                        align-items:flex-start;
+                        gap:10px;
+                        padding:10px 0;
+                    }
+                    .disclaimer-check .form-check-input{
+                        width:18px;
+                        height:18px;
+                        margin-top:2px;
+                        margin-left:0;
+                        margin-right:0;
+                        position:static;
+                        flex-shrink:0;
+                    }
+                    .disclaimer-check .form-check-label{
+                        line-height:1.5;
+                        white-space:normal;
+                        color:#222;
+                        font-weight:700;
+                    }
+                </style>
+                <div class="form-check mt-2 disclaimer-check">
+                    <input asp-for="AcknowledgedDisclaimer" class="form-check-input" required />
+                    <label asp-for="AcknowledgedDisclaimer" class="form-check-label">
+                        I acknowledge that by submitting this form, I authorize the company to contact me regarding my commercial insurance quote request<span class="required-star">*</span>.
+                    </label>
+                </div>
+                <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger d-block mt-1"></span>
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-gold">
+                        Submit Commercial Quote Request
+                    </button>
+                </div>
+
+                <div class="wizard-actions mt-3">
+                    <button type="button" class="btn btn-outline-gold btn-prev">Back</button>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        (function () {
+            const totalSteps = @totalSteps;
+            const form = document.getElementById('commercialQuoteForm');
+            const stepLabel = document.getElementById('stepLabel');
+            const progressFill = document.getElementById('progressFill');
+            const currentStepInput = document.getElementById('CurrentStep');
+
+            if (!form) return;
+
+            // -----------------------------
+            // Helpers
+            // -----------------------------
+            function getStep() {
+                const n = parseInt(currentStepInput?.value || '1', 10);
+                return isNaN(n) ? 1 : Math.min(Math.max(n, 1), totalSteps);
+            }
+
+            function setStep(step) {
+                step = Math.min(Math.max(step, 1), totalSteps);
+                if (currentStepInput) currentStepInput.value = step;
+
+                document.querySelectorAll('.form-step').forEach(el => {
+                    el.classList.toggle('active', el.getAttribute('data-step') == step);
+                });
+
+                if (stepLabel) stepLabel.textContent = `Step ${step} of ${totalSteps}`;
+                if (progressFill) progressFill.style.width = Math.round((step / totalSteps) * 100) + '%';
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            function scrollAndFocus(el) {
+                if (!el) return;
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                setTimeout(() => {
+                    try { el.focus({ preventScroll: true }); } catch { el.focus(); }
+                }, 50);
+            }
+
+            function getActiveStepEl(stepNumber) {
+                return document.querySelector(`.form-step[data-step="${stepNumber}"]`);
+            }
+
+            function getStepForElement(el) {
+                const stepEl = el?.closest?.('.form-step');
+                if (!stepEl) return null;
+                const n = parseInt(stepEl.getAttribute('data-step') || '', 10);
+                return isNaN(n) ? null : n;
+            }
+
+            // -----------------------------
+            // Make "required-star" actually required in HTML
+            // (so native validity works even if you forgot required attrs)
+            // -----------------------------
+function enforceRequiredByLabels() {
+    // Only set required when the asterisk is INSIDE the same label as the field’s label.
+    // Never “guess” required across a whole card (prevents Step 14 building limits getting marked required).
+    document.querySelectorAll('label').forEach(label => {
+        // If this label doesn’t contain the required-star, skip
+        if (!label.querySelector('.required-star')) return;
+
+        // Find the associated control:
+        // 1) If label has "for", use it (best + precise)
+        const forId = label.getAttribute('for');
+        let control = null;
+
+        if (forId) {
+            control = document.getElementById(forId);
+        }
+
+        // 2) Otherwise, pick the next input/select/textarea sibling
+        if (!control) {
+            let next = label.nextElementSibling;
+            while (next && !(next.matches && next.matches('input, select, textarea'))) {
+                next = next.nextElementSibling;
+            }
+            control = next;
+        }
+
+        // 3) Last fallback: search only within the same immediate wrapper, NOT the entire card
+        if (!control) {
+            const wrapper = label.parentElement;
+            if (wrapper) {
+                control = wrapper.querySelector('input, select, textarea');
+            }
+        }
+
+        if (!control) return;
+
+        if (control.type === 'hidden' || control.type === 'button' || control.type === 'submit') return;
+
+        // Checkbox group handled separately
+        if (control.name === 'InterestedIn') return;
+
+        // IMPORTANT: Do NOT force required on Step 14 building fields (or any field) unless its own label has the star.
+        control.setAttribute('required', 'required');
+    });
+}
+
+            // -----------------------------
+            // Custom rules
+            // -----------------------------
+            function validateInterestedIn(stepEl) {
+                if (!stepEl) return true;
+
+                const inputs = stepEl.querySelectorAll('input[name="InterestedIn"]');
+                if (!inputs || inputs.length === 0) return true;
+
+                const checked = stepEl.querySelectorAll('input[name="InterestedIn"]:checked').length;
+                const msg = stepEl.querySelector('[data-valmsg-for="InterestedIn"], span[data-valmsg-for="InterestedIn"]');
+
+                if (checked < 1) {
+                    if (msg) {
+                        msg.classList.remove('field-validation-valid');
+                        msg.classList.add('field-validation-error');
+                        msg.textContent = "Please select at least one coverage type.";
+                    }
+                    scrollAndFocus(inputs[0]);
+                    return false;
+                }
+
+                if (msg) {
+                    msg.classList.remove('field-validation-error');
+                    msg.classList.add('field-validation-valid');
+                    msg.textContent = "";
+                }
+                return true;
+            }
+
+            function validateDisclaimer(stepEl) {
+                if (!stepEl) return true;
+
+                const cb = stepEl.querySelector('input[name="AcknowledgedDisclaimer"]');
+                if (!cb) return true;
+
+                const msg = stepEl.querySelector('[data-valmsg-for="AcknowledgedDisclaimer"], span[data-valmsg-for="AcknowledgedDisclaimer"]');
+
+                if (!cb.checked) {
+                    if (msg) {
+                        msg.classList.remove('field-validation-valid');
+                        msg.classList.add('field-validation-error');
+                        msg.textContent = "You must acknowledge the disclaimer.";
+                    }
+                    scrollAndFocus(cb);
+                    return false;
+                }
+
+                if (msg) {
+                    msg.classList.remove('field-validation-error');
+                    msg.classList.add('field-validation-valid');
+                    msg.textContent = "";
+                }
+                return true;
+            }
+
+            // -----------------------------
+            // Native per-step validation
+            // -----------------------------
+            function validateStep(stepNumber) {
+                const stepEl = getActiveStepEl(stepNumber);
+                if (!stepEl) return true;
+
+                // custom: coverage checkboxes
+                if (stepNumber === 5 && !validateInterestedIn(stepEl)) return false;
+
+                // custom: disclaimer checkbox (step 14)
+                if (stepNumber === 14 && !validateDisclaimer(stepEl)) return false;
+
+                // Validate ONLY fields in this step
+                const fields = Array.from(stepEl.querySelectorAll('input, select, textarea'))
+                    .filter(el =>
+                        el.type !== 'hidden' &&
+                        el.type !== 'button' &&
+                        el.type !== 'submit' &&
+                        !el.disabled &&
+                        // Don't let hidden steps fields trigger validity checks
+                        el.offsetParent !== null
+                    );
+
+                for (const el of fields) {
+                    // Skip InterestedIn individual checkboxes (handled above)
+                    if (el.name === 'InterestedIn') continue;
+
+                    if (!el.checkValidity()) {
+                        // Shows browser message + blocks next
+                        el.reportValidity();
+                        scrollAndFocus(el);
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            function validateAllStepsAndJumpToFirstInvalid() {
+                // Temporarily activate each step, validate, jump to the first invalid
+                const original = getStep();
+
+                for (let s = 1; s <= totalSteps; s++) {
+                    setStep(s);
+
+                    // step-level custom validations
+                    const stepEl = getActiveStepEl(s);
+
+                    if (s === 5 && !validateInterestedIn(stepEl)) return false;
+                    if (s === 14 && !validateDisclaimer(stepEl)) return false;
+
+                    const fields = Array.from(stepEl.querySelectorAll('input, select, textarea'))
+                        .filter(el => el.type !== 'hidden' && el.type !== 'button' && el.type !== 'submit' && !el.disabled);
+
+                    for (const el of fields) {
+                        if (el.name === 'InterestedIn') continue;
+
+                        if (!el.checkValidity()) {
+                            el.reportValidity();
+                            scrollAndFocus(el);
+                            return false;
+                        }
+                    }
+                }
+
+                // restore step if all good
+                setStep(original);
+                return true;
+            }
+
+            // -----------------------------
+            // Events
+            // -----------------------------
+            // Ensure required attrs exist for all "starred" label fields
+            enforceRequiredByLabels();
+
+            document.addEventListener('click', function (e) {
+                const nextBtn = e.target.closest('.btn-next');
+                const prevBtn = e.target.closest('.btn-prev');
+
+                if (nextBtn) {
+                    const step = getStep();
+                    if (!validateStep(step)) return;
+                    setStep(step + 1);
+                }
+
+                if (prevBtn) {
+                    setStep(getStep() - 1);
+                }
+            });
+
+            form.addEventListener('submit', function (e) {
+                // Strip $ and commas before submit so decimals bind clean
+                document.querySelectorAll('input').forEach(function (input) {
+                    if (typeof input.value === 'string' && (input.value.includes('$') || input.value.includes(','))) {
+                        input.value = input.value.replace(/[$,]/g, '');
+                    }
+                });
+
+                // Hard-stop + jump to first missed required field anywhere
+                if (!validateAllStepsAndJumpToFirstInvalid()) {
+                    e.preventDefault();
+                }
+            });
+
+            // Initial step (supports postback keeping CurrentStep)
+            setStep(getStep());
+        })();
+    </script>
+}
