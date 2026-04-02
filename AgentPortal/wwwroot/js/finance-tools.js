@@ -1033,7 +1033,7 @@ markNeutral(savingsTipsOut);
                 const row = document.getElementById('wfd_priorityRow');
                 const strat = document.getElementById('wfd_strategy');
                 if (!row || !strat) return;
-                const show = ['priority','downmarket'].includes(strat.value);
+                const show = ['priority','guardrail'].includes(strat.value);
                 row.style.display = show ? 'block' : 'none';
             }
 
@@ -1051,7 +1051,7 @@ markNeutral(savingsTipsOut);
                 distCheckIds.forEach(id=>{
                     const el = document.getElementById(id);
                     if (!el) return;
-                    if (id === 'wfd_manualOverride' || id === 'wfd_downMktSim') el.checked = false;
+                    if (id === 'wfd_manualOverride') el.checked = false;
                     else el.checked = true;
                 });
                 document.getElementById('wfd_strategy').value = 'proportional';
@@ -1477,9 +1477,9 @@ markNeutral(savingsTipsOut);
         <div class="wfd-col">
           <label class="wfd-lbl" for="wfd_strategy">Withdrawal Strategy</label>
           <select id="wfd_strategy" class="wfd-inp" style="cursor:pointer;">
-            <option value="proportional">Proportional — fund gap from all buckets in proportion to their allocation</option>
-            <option value="priority">Priority-Based — fund fully from Investments, then Life Ins, then Annuities</option>
-            <option value="downmarket">Down-Market Pivot — redirect away from Investments when stress is active</option>
+            <option value="proportional">Proportional — fund gap across active buckets based on allocation</option>
+            <option value="priority">Priority Order — draw in the sequence you set below</option>
+            <option value="guardrail">Market-Defense / Guardrails — pivot to safer buckets in down years</option>
           </select>
         </div>
       </div>
@@ -1506,14 +1506,50 @@ markNeutral(savingsTipsOut);
           </div>
         </div>
       </div>
-      <div class="wfd-row" style="margin-top:14px;align-items:center;flex-wrap:wrap;gap:20px;">
-        <div class="wfd-tog-wrap" style="margin-top:0;">
-          <label class="wfd-tog"><input type="checkbox" id="wfd_downMktSim" /><span class="wfd-tog-sl"></span></label>
-          <span class="wfd-tog-lbl" style="font-size:.9rem;font-weight:700;color:#0f172a;">Down Market Simulation</span>
+      <div class="wfd-row" style="margin-top:14px;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="wfd-col">
+          <div class="wfd-tog-wrap" style="margin-top:0;">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_protectInvest" checked /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl" style="font-size:.88rem;font-weight:700;color:#0f172a;">Protect Investments During Down Markets</span>
+          </div>
+          <p class="wfd-mini-note" style="margin-top:6px;">When on, investments pause in down years unless fallback is required.</p>
         </div>
-        <div id="wfd_stressRow" style="display:none;flex:1;min-width:200px;">
-          <label class="wfd-lbl" for="wfd_stressReturn" style="margin-top:0;">Investment Stress Return % <span style="color:#dc2626;font-weight:400;font-size:.72rem;">e.g. -10 for a drawdown year</span></label>
-          <input id="wfd_stressReturn" class="wfd-inp" type="number" step="0.1" placeholder="-10" />
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_downThreshold" style="margin-top:0;">Down-Market Threshold % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">e.g. 0 = negative years only</span></label>
+          <input id="wfd_downThreshold" class="wfd-inp" type="number" step="0.1" placeholder="0" value="0" />
+        </div>
+      </div>
+
+      <div class="wfd-row" style="margin-top:10px;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_gapSource">Gap Funding Source (Down Years)</label>
+          <select id="wfd_gapSource" class="wfd-inp" style="cursor:pointer;">
+            <option value="life">Life Insurance first</option>
+            <option value="annuities">Annuities first</option>
+            <option value="lifeThenAnnuities">Life then Annuities</option>
+            <option value="annThenLife">Annuities then Life</option>
+            <option value="split">Split Life + Annuities</option>
+            <option value="custom">Use Custom Priority Order</option>
+          </select>
+        </div>
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_scenarioMode">Market Scenario Mode</label>
+          <select id="wfd_scenarioMode" class="wfd-inp" style="cursor:pointer;">
+            <option value="fixed">Fixed return each year</option>
+            <option value="random">Randomized yearly path</option>
+            <option value="manual">Manual yearly returns</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="wfd-row" style="margin-top:10px;gap:12px;flex-wrap:wrap;">
+        <div class="wfd-col" style="flex:2 1 340px;">
+          <label class="wfd-lbl" for="wfd_manualReturns" style="margin-top:0;">Manual / Scenario Returns (% per year, comma or line separated)</label>
+          <textarea id="wfd_manualReturns" class="wfd-inp" style="height:86px;resize:vertical;" placeholder="7, 6.5, -12, 8, 5, ..."></textarea>
+          <p class="wfd-mini-note" style="margin-top:4px;">Illustration only — randomized paths are not predictions or guarantees.</p>
+        </div>
+        <div class="wfd-col" style="flex:1 1 200px;display:flex;align-items:flex-end;">
+          <button id="wfd_genScenario" class="wfd-calc-btn" type="button" style="margin-top:0;">Generate Market Scenario</button>
         </div>
       </div>
     </div>
@@ -1568,15 +1604,15 @@ markNeutral(savingsTipsOut);
 
                 // Persistence + defaults
                 const DIST_KEY = 'DistributionPlanner';
-    const distInputIds = [
+                const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invWithdraw','wfd_invTax',
         'wfd_liAlloc','wfd_liGrowth','wfd_liWithdraw','wfd_liTax','wfd_liEfficiency',
         'wfd_annAlloc','wfd_annReturn','wfd_annWithdraw','wfd_annTax',
-        'wfd_stressReturn'
+        'wfd_downThreshold','wfd_manualReturns'
                 ];
-                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_downMktSim','wfd_annType'];
-                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4'];
+                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
+                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
 
                 const priorityOptions = [
                     { v:'emergency',  l:'Emergency Savings' },
@@ -1809,22 +1845,9 @@ markNeutral(savingsTipsOut);
                     });
                 }
 
-                // Down market simulation toggle
-                gid('wfd_downMktSim').addEventListener('change', function() {
-                    gid('wfd_stressRow').style.display = this.checked ? 'flex' : 'none';
-                    // Enable/disable down-market toggles when simulation is off to avoid inert controls
-                    ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_stressReturn'].forEach(id=>{
-                        const el = gid(id);
-                        if (!el) return;
-                        el.disabled = !gid('wfd_downMktSim').checked;
-                        el.parentElement?.classList.toggle('opacity-60', !gid('wfd_downMktSim').checked);
-                    });
-                    saveDistState();
-                });
-
                 // Strategy change
                 const togglePriorityRow = () => {
-                    const show = ['priority','downmarket'].includes(gid('wfd_strategy').value);
+                    const show = ['priority','guardrail'].includes(gid('wfd_strategy').value);
                     gid('wfd_priorityRow').style.display = show ? 'block' : 'none';
                 };
                 gid('wfd_strategy').addEventListener('change', () => { togglePriorityRow(); saveDistState(); });
@@ -1858,7 +1881,6 @@ markNeutral(savingsTipsOut);
                     togglePriorityRow();
                     setPriorityOrder(getPriorityOrder());
                     gid('wfd_annType').dispatchEvent(new Event('change'));
-                    gid('wfd_stressRow').style.display = gid('wfd_downMktSim').checked ? 'flex' : 'none';
                     updateYrs();
                     updateGap();
                     updateBktAmounts();
