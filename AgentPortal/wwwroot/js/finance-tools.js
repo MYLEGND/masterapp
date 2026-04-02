@@ -1589,6 +1589,7 @@ markNeutral(savingsTipsOut);
           <div class="wfd-acc collapsed">
             <button class="wfd-acc-btn" data-target="wfd_tipsWrap">Year-by-Year Audit</button>
             <div id="wfd_tipsWrap" class="wfd-acc-body">
+              <div id="wfd_bktTiles" style="display:none;margin-bottom:14px;"></div>
               <div id="wfd_tips" style="margin-top:0;"></div>
             </div>
           </div>
@@ -2259,6 +2260,250 @@ markNeutral(savingsTipsOut);
                               <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
+                    }
+
+                    // Bucket drill-down tiles + modal
+                    const tilesEl = gid('wfd_bktTiles');
+                    if (tilesEl) {
+                        const rows = audit.rows || [];
+                        const bktDefs = [
+                            {
+                                key: 'inv',  label: 'Investments',    color: '#3b82f6', bg: 'rgba(59,130,246,.12)',
+                                border: 'rgba(59,130,246,.45)', rateLabel: 'Return %',
+                                rateOf: r => r.invReturnPct,
+                                startOf: r => r.inv ? r.inv.start : null,
+                                wOf:     r => r.inv ? r.inv.w     : 0,
+                                endOf:   r => r.inv ? r.inv.end   : null,
+                                seriesKey: 'inv'
+                            },
+                            {
+                                key: 'life', label: 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
+                                border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
+                                rateOf: _ => null,
+                                startOf: r => r.life ? r.life.start : null,
+                                wOf:     r => r.life ? r.life.w     : 0,
+                                endOf:   r => r.life ? r.life.end   : null,
+                                seriesKey: 'li'
+                            },
+                            {
+                                key: 'ann',  label: 'Annuities',      color: '#22c55e', bg: 'rgba(22,163,74,.12)',
+                                border: 'rgba(22,163,74,.45)',  rateLabel: 'Rate %',
+                                rateOf: _ => null,
+                                startOf: r => r.ann ? r.ann.start : null,
+                                wOf:     r => r.ann ? r.ann.w     : 0,
+                                endOf:   r => r.ann ? r.ann.end   : null,
+                                seriesKey: 'ann'
+                            }
+                        ];
+
+                        // Compute per-bucket aggregates
+                        const bktStats = {};
+                        bktDefs.forEach(def => {
+                            let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = null, depAge = null;
+                            rows.forEach(r => {
+                                const w   = def.wOf(r);
+                                const end = def.endOf(r);
+                                const st  = def.startOf(r);
+                                if (firstStart === null && st !== null) firstStart = st;
+                                totalW   += w;
+                                if (w > 0) yearsUsed++;
+                                if (end !== null) lastEnd = end;
+                                if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
+                            });
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge };
+                        });
+
+                        // Build tile HTML
+                        const activeDefs = bktDefs.filter(d => active[d.key]);
+                        if (activeDefs.length) {
+                            tilesEl.style.display = '';
+                            tilesEl.innerHTML = `
+                              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+                                ${activeDefs.map(def => {
+                                    const st = bktStats[def.key];
+                                    const longevity = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
+                                    const longevityColor = st.depAge ? '#f87171' : '#4ade80';
+                                    return `<button
+                                      class="wfd-bkt-tile"
+                                      data-bkt="${def.key}"
+                                      style="flex:1;min-width:160px;max-width:240px;
+                                             background:${def.bg};border:1.5px solid ${def.border};
+                                             border-radius:12px;padding:12px 14px;cursor:pointer;
+                                             text-align:left;color:#e2e8f0;font-family:inherit;">
+                                      <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
+                                      <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
+                                      <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
+                                      <div style="display:flex;gap:14px;margin-top:6px;">
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total W/D</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#f87171;">${fmtD(st.totalW)}</div>
+                                        </div>
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Remaining</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#4ade80;">${fmtD(st.lastEnd)}</div>
+                                        </div>
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Yrs Used</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#e2e8f0;">${st.yearsUsed}</div>
+                                        </div>
+                                      </div>
+                                      <div style="margin-top:7px;font-size:.7rem;font-weight:700;color:${longevityColor};">${longevity}</div>
+                                      <div style="margin-top:5px;font-size:.68rem;color:${def.color};font-weight:600;">View Breakdown →</div>
+                                    </button>`;
+                                }).join('')}
+                              </div>`;
+
+                            // Bucket drill-down modal — built once, reused
+                            const DRILL_ID = 'wfd_bktDrill';
+                            if (!document.getElementById(DRILL_ID)) {
+                                const drillEl = document.createElement('div');
+                                drillEl.id = DRILL_ID;
+                                drillEl.style.cssText = 'display:none;position:fixed;inset:0;z-index:999999;background:rgba(5,10,20,.88);align-items:flex-start;justify-content:center;padding:20px 16px 48px;overflow-y:auto;';
+                                drillEl.innerHTML = `
+                                  <div id="wfd_bktDrill_panel" style="background:linear-gradient(145deg,#0b1529,#0d1c36);color:#e2e8f0;border-radius:20px;box-shadow:0 28px 70px rgba(0,0,0,.6);border:1.5px solid rgba(166,128,35,.5);width:100%;max-width:900px;font-family:'Inter',sans-serif;position:relative;margin:auto;overflow:hidden;">
+                                    <div id="wfd_bktDrill_hdr" style="padding:20px 22px 16px;border-bottom:1.5px solid rgba(166,128,35,.35);">
+                                      <button id="wfd_bktDrill_close" style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:32px;height:32px;border-radius:50%;cursor:pointer;">×</button>
+                                      <div id="wfd_bktDrill_title" style="font-size:1.4rem;font-weight:900;color:#d9b35a;"></div>
+                                      <div id="wfd_bktDrill_sub"   style="font-size:.82rem;color:#64748b;margin-top:2px;"></div>
+                                    </div>
+                                    <div style="padding:18px 22px 22px;">
+                                      <div id="wfd_bktDrill_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;"></div>
+                                      <div id="wfd_bktDrill_chartWrap" style="width:100%;height:200px;margin-bottom:18px;"></div>
+                                      <div id="wfd_bktDrill_table"></div>
+                                    </div>
+                                  </div>`;
+                                document.body.appendChild(drillEl);
+                                document.getElementById('wfd_bktDrill_close').addEventListener('click', () => {
+                                    drillEl.style.display = 'none';
+                                    document.body.style.overflow = '';
+                                });
+                                drillEl.addEventListener('click', e => { if (e.target === drillEl) { drillEl.style.display = 'none'; document.body.style.overflow = ''; } });
+                            }
+
+                            let drillChart = null;
+
+                            const openDrill = async (def) => {
+                                const st   = bktStats[def.key];
+                                const drillEl = document.getElementById(DRILL_ID);
+                                if (!drillEl) return;
+
+                                // Header
+                                document.getElementById('wfd_bktDrill_title').textContent = def.label + ' — Bucket Breakdown';
+                                document.getElementById('wfd_bktDrill_sub').textContent   = `Full retirement timeline · ${rows.length} year${rows.length !== 1 ? 's' : ''}`;
+
+                                // Stat cards
+                                const longevityTxt = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
+                                const statCards = [
+                                    { l: 'Starting Balance',  v: fmtD(st.firstStart) },
+                                    { l: 'Total Withdrawn',   v: fmtD(st.totalW), cls: 'color:#f87171' },
+                                    { l: 'Remaining Balance', v: fmtD(st.lastEnd), cls: 'color:#4ade80' },
+                                    { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
+                                    { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'color:#f87171' : 'color:#4ade80' }
+                                ];
+                                document.getElementById('wfd_bktDrill_stats').innerHTML = statCards.map(c =>
+                                    `<div style="background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.35);border-radius:10px;padding:10px 12px;">
+                                       <div style="font-size:.68rem;font-weight:700;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase;">${c.l}</div>
+                                       <div style="font-size:1rem;font-weight:900;margin-top:2px;${c.cls || 'color:#f8fafc'}">${c.v}</div>
+                                     </div>`
+                                ).join('');
+
+                                // Mini chart
+                                const chartWrap = document.getElementById('wfd_bktDrill_chartWrap');
+                                chartWrap.innerHTML = '<canvas id="wfd_bktDrill_canvas" style="width:100%;height:200px;"></canvas>';
+                                try { await ensureChartJs(); } catch(_) {}
+                                if (typeof Chart !== 'undefined') {
+                                    if (drillChart) { drillChart.destroy(); drillChart = null; }
+                                    const bktSeries = (chart.series[def.seriesKey] || []);
+                                    const usedFlags = [false, ...rows.map(r => def.wOf(r) > 0)];
+                                    const ptColor   = bktSeries.map((_, i) => usedFlags[i] ? def.color : 'rgba(148,163,184,.4)');
+                                    const ptRadius  = bktSeries.map((_, i) => usedFlags[i] ? 3 : 1);
+                                    drillChart = new Chart(document.getElementById('wfd_bktDrill_canvas'), {
+                                        type: 'line',
+                                        data: {
+                                            labels: chart.labels,
+                                            datasets: [{
+                                                label: def.label + ' Balance',
+                                                data: bktSeries,
+                                                borderColor: def.color,
+                                                borderWidth: 2.5,
+                                                tension: 0.2,
+                                                fill: false,
+                                                pointRadius: ptRadius,
+                                                pointBackgroundColor: ptColor,
+                                                pointBorderColor: ptColor
+                                            }]
+                                        },
+                                        options: {
+                                            responsive: true, maintainAspectRatio: false,
+                                            plugins: {
+                                                legend: { display: false },
+                                                tooltip: { callbacks: {
+                                                    label: ctx => ` Balance: $${Math.round(Number(ctx.raw)).toLocaleString()}`,
+                                                    afterLabel: ctx => {
+                                                        const i = ctx.dataIndex;
+                                                        if (i === 0) return '';
+                                                        const r = rows[i - 1];
+                                                        const w = def.wOf(r);
+                                                        return w > 0 ? ` Withdrawal: $${Math.round(w).toLocaleString()}` : ' No withdrawal';
+                                                    }
+                                                }}
+                                            },
+                                            scales: {
+                                                x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,.04)' } },
+                                                y: { ticks: { color: '#64748b', callback: v => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(255,255,255,.04)' } }
+                                            }
+                                        }
+                                    });
+                                }
+
+                                // Per-year table
+                                const tableRows = rows.map(r => {
+                                    const w   = def.wOf(r);
+                                    const st0 = def.startOf(r);
+                                    const end = def.endOf(r);
+                                    const rate = def.rateOf(r);
+                                    const used = w > 0;
+                                    return `<tr style="opacity:${used ? '1' : '.55'};">
+                                      <td style="padding:4px 7px;">${r.age}</td>
+                                      <td style="padding:4px 7px;">${st0 !== null ? fmtD(st0) : '—'}</td>
+                                      <td style="padding:4px 7px;${rate !== null && rate < -0.001 ? 'color:#f87171' : rate !== null && rate > 0.001 ? 'color:#4ade80' : 'color:#94a3b8'}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
+                                      <td style="padding:4px 7px;${used ? 'color:#f87171;font-weight:700;' : 'color:#475569;'}">${used ? fmtD(w) : '—'}</td>
+                                      <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
+                                      <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
+                                    </tr>`;
+                                }).join('');
+                                document.getElementById('wfd_bktDrill_table').innerHTML = `
+                                  <div style="max-height:300px;overflow:auto;border:1px solid rgba(217,179,90,.3);border-radius:10px;background:#0f172a;">
+                                    <table style="width:100%;font-size:.73rem;color:#e2e8f0;border-collapse:collapse;">
+                                      <thead style="position:sticky;top:0;background:#0b1529;">
+                                        <tr>
+                                          <th style="padding:5px 7px;text-align:left;">Age</th>
+                                          <th style="padding:5px 7px;">Start Balance</th>
+                                          <th style="padding:5px 7px;">${def.rateLabel}</th>
+                                          <th style="padding:5px 7px;">Withdrawal</th>
+                                          <th style="padding:5px 7px;">End Balance</th>
+                                          <th style="padding:5px 7px;">Used</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>${tableRows}</tbody>
+                                    </table>
+                                  </div>`;
+
+                                drillEl.style.display = 'flex';
+                                document.body.style.overflow = 'hidden';
+                            };
+
+                            // Wire tile clicks — re-wire each render so closures stay fresh
+                            tilesEl.querySelectorAll('.wfd-bkt-tile').forEach(btn => {
+                                btn.addEventListener('click', () => {
+                                    const key = btn.dataset.bkt;
+                                    const def = bktDefs.find(d => d.key === key);
+                                    if (def) openDrill(def);
+                                });
+                            });
+                        } else {
+                            tilesEl.style.display = 'none';
+                        }
                     }
 
                     // Chart
