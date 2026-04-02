@@ -1327,6 +1327,8 @@ markNeutral(savingsTipsOut);
       </div>
     </div><!-- end foundation -->
 
+    </div><!-- end step 1 -->
+
     <!-- STEP 2: Three Bucket Allocation -->
     <div class="wfd-step-wrap" data-step="2">
       <div class="wfd-sec">
