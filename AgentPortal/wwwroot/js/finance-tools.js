@@ -1061,7 +1061,6 @@ markNeutral(savingsTipsOut);
                 wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
                 setPriorityOrder(defaultPriority);
                 document.getElementById('wfd_warnArea').innerHTML = '';
-                resetSummary();
                 syncBase();
                 updateDMState();
                 validateAndGate();
@@ -1694,7 +1693,7 @@ markNeutral(savingsTipsOut);
                         w.style.display = isActive ? 'block' : 'none';
                     });
                 }
-                function setStep(step){
+                function setStep(step, { skipHydrate = false } = {}){
                     activeStep = step;
                     document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
                         chip.classList.toggle('active', chip.dataset.step === step);
@@ -1717,7 +1716,7 @@ markNeutral(savingsTipsOut);
                             run.style.display = 'none';
                         }
                     }
-                    if (step === '4') {
+                    if (step === '4' && !skipHydrate) {
                         hydrateResultsFromMeta();
                     }
                 }
@@ -2131,7 +2130,7 @@ markNeutral(savingsTipsOut);
                     const el = gid(id); if (el) el.addEventListener('change', saveDistState);
                 });
 
-                const goResults = () => setStep('4');
+                const goResults = () => setStep('4', { skipHydrate: true });
 
                 function renderEmptyResults(){
                     const ctaHtml = `
@@ -2238,8 +2237,8 @@ markNeutral(savingsTipsOut);
                     const auditEl = gid('wfd_tips');
                     if (auditEl){
                         const rtnClass = (pct) => {
-                            if (pct < -0.01) return 'wfd-return-neg';
-                            if (pct <= 0.15) return 'wfd-return-flat';
+                            if (pct < -0.001) return 'wfd-return-neg';
+                            if (pct <= 0.001) return 'wfd-return-flat';
                             return 'wfd-return-pos';
                         };
                         const rows = (audit.rows||[]).map(r => `
@@ -2368,8 +2367,7 @@ markNeutral(savingsTipsOut);
                     showBlock(preErrs);
                     if (preErrs.length) return;
 
-                    let chartReady = true;
-                    try { await ensureChartJs(); } catch (_) { chartReady = false; }
+                    try { await ensureChartJs(); } catch (_) { /* chart unavailable; renderResults handles gracefully */ }
 
                     const base          = pf(gid('wfd_base').value);
                     const retAge        = pf(gid('wfd_retAge').value);
@@ -2410,13 +2408,6 @@ markNeutral(savingsTipsOut);
                     const manualReturnTxt = gid('wfd_manualReturns').value || '';
                     const priOrder      = getPriorityOrder();
                     const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
-
-                    const resetSummary = () => {
-                        ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff','wfd_emNow','wfd_emUsed','wfd_emRemain'].forEach(id => {
-                            const el = gid(id); if (el) { el.textContent = '—'; el.classList.remove('wfd-sum-good','wfd-sum-warn','wfd-sum-bad'); }
-                        });
-                        const emBadge = gid('wfd_emStatus'); if (emBadge) { emBadge.textContent = '—'; emBadge.className = 'wfd-badge'; }
-                    };
 
                     // --- Validation ---
                     const errs = validateDist();
@@ -2488,6 +2479,7 @@ markNeutral(savingsTipsOut);
                     };
 
                     for (let y = 1; y <= years; y++) {
+                        const startBalTotal = invBal + liBal + annBal + emBal; // capture before any withdrawal or growth
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
                         invReturnSeries.push(invYearR);
                         const effInvR = invYearR;
@@ -2707,9 +2699,7 @@ markNeutral(savingsTipsOut);
                         { l: 'Asset Longevity',            v: assetsLast ? `Lasts to Age ${endAge}` : `Depletes @ Age ${depAge}`, c: assetsLast ? 'green' : 'red' },
                         { l: 'Income Sufficiency',         v: incomeSufficient ? `Fully funded to Age ${endAge}` : `Income fails @ Age ${lastFundedAge ? lastFundedAge + 1 : retAge}`, c: incomeSufficient ? 'green' : 'red' },
                     ].filter(Boolean);
-                    gid('wfd_resGrid').innerHTML = cards.map(c =>
-                        `<div class="wfd-res-card"><p class="wfd-res-lbl">${c.l}</p><p class="wfd-res-val ${c.c}">${c.v}</p></div>`
-                    ).join('');
+                    // --- Source parts (used in canonical result) ---
                     const srcParts = [];
                     if (active.em)  srcParts.push(`From Emergency: ${fmtD(fy_emW)}`);
                     if (active.inv) srcParts.push(`From Investments: ${fmtD(fy_invW)}`);
@@ -2719,58 +2709,11 @@ markNeutral(savingsTipsOut);
                     srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
                     if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
-                    gid('wfd_sourceBreak').innerHTML = srcParts.join(' • ');
 
-                    // --- Top summary strip ---
-                    const setSum = (id, val, cls) => {
-                        const el = gid(id);
-                        if (!el) return;
-                        el.textContent = val;
-                        el.classList.remove('wfd-sum-good','wfd-sum-warn','wfd-sum-bad');
-                        if (cls) el.classList.add(cls);
-                    };
-                    const healthSumCls = health === 'Healthy' ? 'wfd-sum-good' : (health === 'Tight' ? 'wfd-sum-warn' : 'wfd-sum-bad');
-                    setSum('wfd_sumIncome', fmtD(atSpend), incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
-                    setSum('wfd_sumHealth', health, healthSumCls);
-                    setSum('wfd_sumLongevity', depAge ? `Depletes @ Age ${depAge}` : `Lasts to Age ${endAge}`, depAge ? 'wfd-sum-bad' : 'wfd-sum-good');
+                    // --- failAge (used in canonical result summary) ---
                     const failAge = firstFailureYear ? (retAge + firstFailureYear - 1) : null;
-                    setSum('wfd_sumIncomeSuff',
-                        incomeSufficient ? `Fully funded to Age ${endAge}` :
-                        failAge ? `Income fails @ Age ${failAge}` : `Underfunded (${fmtD(cumulativeShortfall)})`,
-                        incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
 
-                    // --- Emergency mini-card ---
-                    setSum('wfd_emNow', fmtD(emergencyBal));
-                    setSum('wfd_emUsed', fmtD(fy_emW));
-                    setSum('wfd_emTotal', fmtD(totalEmUsed));
-                    setSum('wfd_emRemain', fmtD(emBal));
-                    setSum('wfd_emDeplete', depletionEmergAge ? `Depletes @ Age ${depletionEmergAge}` : `Active to Age ${endAge}`);
-                    const emBadge = gid('wfd_emStatus');
-                    if (emBadge){
-                        const emHealthy = emBal > 0;
-                        emBadge.textContent = emHealthy ? 'Reserve Active' : 'Reserve Exhausted';
-                        emBadge.className = 'wfd-badge ' + (emHealthy ? 'wfd-hlthy' : 'wfd-risk');
-                    }
-
-                    // --- Withdrawal breakdown bars ---
-                    const barSet = [
-                        active.em  ? { bar:'wfd_emWBar',  lbl:'wfd_emWLbl',  txt:'Emergency',   val:fy_emW } : null,
-                        active.inv ? { bar:'wfd_invWBar', lbl:'wfd_invWLbl', txt:'Investments', val:fy_invW } : null,
-                        active.li  ? { bar:'wfd_liWBar',  lbl:'wfd_liWLbl',  txt:'Life Ins',    val:fy_liW } : null,
-                        active.ann ? { bar:'wfd_annWBar', lbl:'wfd_annWLbl', txt:'Annuities',   val:fy_annW } : null,
-                    ].filter(Boolean);
-                    const mxW = Math.max(...barSet.map(b=>b.val), 1);
-                    barSet.forEach(b=>{
-                        gid(b.bar).style.height = Math.max(b.val / mxW * 100, 3) + '%';
-                        gid(b.lbl).innerHTML = `${b.txt}<br>${fmtD(b.val)}`;
-                        gid(b.bar).parentElement.style.display = '';
-                    });
-                    ['wfd_emWBar','wfd_invWBar','wfd_liWBar','wfd_annWBar'].forEach(id=>{
-                        const el = gid(id)?.parentElement;
-                        if (el && !barSet.some(b=>b.bar===id)) el.style.display='none';
-                    });
-
-                    // --- Warnings ---
+                    // --- Warnings (used in canonical result) ---
                     const warns = [];
                     if (!incomeSufficient)
                         warns.push({ type:'warn', msg:`Income target underfunded by ${fmtD(shortfall)} in year 1; plan longevity alone does not meet the desired cash flow.` });
@@ -2790,87 +2733,6 @@ markNeutral(savingsTipsOut);
                         warns.push({ type:'info', msg:`Investment bucket was protected in ${downYearCount} down-market year(s); safer buckets filled the gap first.` });
                     if (scenarioMode === 'random')
                         warns.push({ type:'info', msg:`Randomized market path is an illustration for stress-testing only — not a prediction or guarantee.` });
-
-                    gid('wfd_warnArea').innerHTML = warns.map(w =>
-                        `<div class="${w.type === 'warn' ? 'wfd-warn-box' : 'wfd-info-box'}">${w.type === 'warn' ? '⚠️' : 'ℹ️'} ${w.msg}</div>`
-                    ).join('');
-
-                    // --- Audit table (year-by-year) ---
-                    const auditEl = gid('wfd_tips');
-                    if (auditEl){
-                        const rtnClass = (pct) => {
-                            if (pct < -0.01) return 'wfd-return-neg';
-                            if (pct <= 0.15) return 'wfd-return-flat';
-                            return 'wfd-return-pos';
-                        };
-                        const rows = auditRows.slice(0, 25).map(r => `
-                            <tr>
-                              <td>${r.age}</td>
-                              <td>${fmtD(r.startTotal)}</td>
-                              <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
-                              <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
-                              <td>${r.sourceFunded || r.fundingSource || '—'}</td>
-                              <td class="wfd-neg">${fmtD(r.withdrawTotal)}</td>
-                              <td class="wfd-pos">${fmtD(r.netIncome)}</td>
-                              <td class="wfd-neg">${fmtD(r.shortfall)}</td>
-                              <td class="wfd-grow">${fmtD(r.endTotal)}</td>
-                            </tr>`).join('');
-                        auditEl.innerHTML = `
-                          <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
-                            <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
-                              <thead style="position:sticky;top:0;background:#0b1529;">
-                                <tr>
-                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Source Funded</th><th>Withdrawals</th><th>Net Income</th><th>Shortfall</th><th>End Bal</th>
-                                </tr>
-                              </thead>
-                              <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
-                            </table>
-                          </div>`;
-                    }
-
-                    // --- Longevity chart ---
-                    const chartCanvas = gid('wfd_chart');
-                    if (!chartReady || typeof Chart === 'undefined') {
-                        if (chartCanvas) chartCanvas.outerHTML = '<div style="padding:14px;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-weight:700;">Chart unavailable. Please retry or check your connection.</div>';
-                    } else if (chartCanvas) {
-                        if (distChart) { distChart.destroy(); distChart = null; }
-                        const downRadius = yLabels.map((_, idx) => idx === 0 ? 0 : (marketStates[idx-1] === 'down' ? 4 : 0));
-                        const downColor = yLabels.map((_, idx) => idx === 0 ? '#d9b35a' : (marketStates[idx-1] === 'down' ? '#dc2626' : '#d9b35a'));
-                        const datasets = [
-                            { label: 'Total Assets', data: totalPts, borderColor: '#d9b35a', borderWidth: 3, tension: 0.2, fill: false, pointRadius: downRadius, pointHoverRadius: 5, pointBackgroundColor: downColor, pointBorderColor: downColor }
-                        ];
-                        if (active.em)  datasets.push({ label: 'Emergency',    data: emPts,  borderColor: '#0f172a', borderWidth: 2, borderDash: [4,4], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
-                        if (active.inv) datasets.push({ label: 'Investments',  data: invPts, borderColor: '#3b82f6', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
-                        if (active.li)  datasets.push({ label: 'Life Ins',     data: liPts,  borderColor: '#a68023', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
-                        if (active.ann) datasets.push({ label: 'Annuities',    data: annPts, borderColor: '#16a34a', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
-
-                        distChart = new Chart(chartCanvas, {
-                            type: 'line',
-                            data: { labels: yLabels, datasets },
-                            options: {
-                                responsive: true, maintainAspectRatio: false,
-                                plugins: {
-                                    legend: { labels: { color: '#334155', usePointStyle: true, padding: 14 } },
-                                    tooltip: { 
-                                        callbacks: { 
-                                            label: ctx => ` ${ctx.dataset.label}: $${Math.round(Number(ctx.raw)).toLocaleString()}`,
-                                            afterBody: (items) => {
-                                                const idx = items?.[0]?.dataIndex || 0;
-                                                if (idx === 0) return '';
-                                                const m = marketStates[idx-1] === 'down' ? 'Down-Market (defense)' : 'Normal year';
-                                                const f = fundingSources[idx-1] || '—';
-                                                return [`Market: ${m}`, `Funding: ${f}`];
-                                            }
-                                        } 
-                                    }
-                                },
-                                scales: {
-                                    x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: 'rgba(0,0,0,.05)' } },
-                                    y: { ticks: { color: '#64748b', callback: v => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(0,0,0,.05)' } }
-                                }
-                            }
-                        });
-                    }
 
                     // --- Persist + hydrate canonical result ---
                     const result = {
