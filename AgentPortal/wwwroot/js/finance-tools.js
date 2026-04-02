@@ -2242,32 +2242,27 @@ markNeutral(savingsTipsOut);
                             if (pct <= 0.15) return 'wfd-return-flat';
                             return 'wfd-return-pos';
                         };
-                        const actCols = audit.actCols || [];
-                        const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
-                        const headStart = actCols.map(k => `<th>Start ${headLabel(k)}</th>`).join('');
-                        const headWithdraw = actCols.map(k => `<th>W/D ${headLabel(k)}</th>`).join('');
-                        const headEnd = actCols.map(k => `<th>End ${headLabel(k)}</th>`).join('');
                         const rows = (audit.rows||[]).map(r => `
                             <tr>
                               <td>${r.age}</td>
+                              <td>${fmtD(r.startTotal)}</td>
                               <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
                               <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
-                              <td>${r.fundingSource}</td>
-                              ${actCols.includes('inv')?`<td>${fmtD(r.start.inv)}</td>`:''}${actCols.includes('li')?`<td>${fmtD(r.start.li)}</td>`:''}${actCols.includes('ann')?`<td>${fmtD(r.start.ann)}</td>`:''}${actCols.includes('em')?`<td>${fmtD(r.start.em)}</td>`:''}
-                              ${actCols.includes('inv')?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}${actCols.includes('em')?`<td class="wfd-neg">${fmtD(r.withdraw.em)}</td>`:''}
-                              <td class="wfd-pos">${fmtD(r.netTotal)}</td>
+                              <td>${r.sourceFunded || r.fundingSource || '—'}</td>
+                              <td class="wfd-neg">${fmtD(r.withdrawTotal)}</td>
+                              <td class="wfd-pos">${fmtD(r.netIncome)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
-                              ${actCols.includes('inv')?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}${actCols.includes('em')?`<td class="wfd-grow">${fmtD(r.end.em)}</td>`:''}
+                              <td class="wfd-grow">${fmtD(r.endTotal)}</td>
                             </tr>`).join('');
                         auditEl.innerHTML = `
                           <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
-                            <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
+                            <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Source Order Used</th>${headStart}${headWithdraw}<th>Net Income</th><th>Shortfall</th>${headEnd}
+                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Source Funded</th><th>Withdrawals</th><th>Net Income</th><th>Shortfall</th><th>End Bal</th>
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan=\"${4 + (actCols.length*3) + 2}\" style=\"text-align:center;padding:8px;\">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -2633,11 +2628,12 @@ markNeutral(savingsTipsOut);
                             marketState,
                             policy: activePolicy,
                             fundingSource,
-                            start: { inv: invPts[invPts.length-2], li: liPts[liPts.length-2], ann: annPts[annPts.length-2], em: emPts[emPts.length-2] },
-                            withdraw: { inv: invW, li: liW, ann: annW, em: emUse },
-                            end: { inv: invBal, li: liBal, ann: annBal, em: emBal },
-                            shortfall: yearShort,
-                            netTotal: fundedNet
+                            sourceFunded: fundingSource,
+                            startTotal: startBalTotal,
+                            withdrawTotal: invW + liW + annW + emUse,
+                            netIncome: fundedNet,
+                            endTotal: invBal + liBal + annBal + emBal,
+                            shortfall: yearShort
                         });
                     }
 
@@ -2798,32 +2794,27 @@ markNeutral(savingsTipsOut);
                             if (pct <= 0.15) return 'wfd-return-flat';
                             return 'wfd-return-pos';
                         };
-                        const actCols = ['inv','li','ann','em'].filter(key => auditRows.some(r => (r.withdraw?.[key] || 0) > 0));
-                        const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
-                        const headStart = actCols.map(k => `<th>Start ${headLabel(k)}</th>`).join('');
-                        const headWithdraw = actCols.map(k => `<th>W/D ${headLabel(k)}</th>`).join('');
-                        const headEnd = actCols.map(k => `<th>End ${headLabel(k)}</th>`).join('');
                         const rows = auditRows.slice(0, 25).map(r => `
                             <tr>
                               <td>${r.age}</td>
+                              <td>${fmtD(r.startTotal)}</td>
                               <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
                               <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
-                              <td>${r.fundingSource}</td>
-                              ${actCols.includes('inv')?`<td>${fmtD(r.start.inv)}</td>`:''}${actCols.includes('li')?`<td>${fmtD(r.start.li)}</td>`:''}${actCols.includes('ann')?`<td>${fmtD(r.start.ann)}</td>`:''}
-                              ${actCols.includes('inv')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.ann)}</td>`:''}
-                              <td class="wfd-pos">${fmtD(r.netTotal)}</td>
+                              <td>${r.sourceFunded || r.fundingSource || '—'}</td>
+                              <td class="wfd-neg">${fmtD(r.withdrawTotal)}</td>
+                              <td class="wfd-pos">${fmtD(r.netIncome)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
-                              ${actCols.includes('inv')?`<td class=\"wfd-grow\">${fmtD(r.end.inv)}</td>`:''}${actCols.includes('li')?`<td class=\"wfd-grow\">${fmtD(r.end.li)}</td>`:''}${actCols.includes('ann')?`<td class=\"wfd-grow\">${fmtD(r.end.ann)}</td>`:''}
+                              <td class="wfd-grow">${fmtD(r.endTotal)}</td>
                             </tr>`).join('');
                         auditEl.innerHTML = `
                           <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
-                            <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
+                            <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Source Order Used</th>${headStart}${headWithdraw}<th>Net Income</th><th>Shortfall</th>${headEnd}
+                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Source Funded</th><th>Withdrawals</th><th>Net Income</th><th>Shortfall</th><th>End Bal</th>
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan=\"${4 + (actCols.length*3) + 2}\" style=\"text-align:center;padding:8px;\">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -2873,7 +2864,6 @@ markNeutral(savingsTipsOut);
                     }
 
                     // --- Persist + hydrate canonical result ---
-                    const usedBuckets = ['inv','li','ann','em'].filter(key => auditRows.some(r => (r.withdraw?.[key] || 0) > 0));
                     const result = {
                         summary: {
                             atSpend,
@@ -2891,7 +2881,7 @@ markNeutral(savingsTipsOut);
                         active,
                         emCard: { emergencyBal, fy_emW, totalEmUsed, emBal, depletionEmergAge },
                         warns,
-                        audit: { actCols: usedBuckets, rows: auditRows },
+                        audit: { rows: auditRows },
                         chart: {
                             labels: yLabels,
                             series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts },
