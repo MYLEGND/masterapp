@@ -2800,8 +2800,9 @@ markNeutral(savingsTipsOut);
                         };
                         const actCols = ['inv','li','ann','em'].filter(key => auditRows.some(r => (r.withdraw?.[key] || 0) > 0));
                         const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
-                        const headWithdraw = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
-                        const headEnd = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
+                        const headStart = actCols.map(k => `<th>Start ${headLabel(k)}</th>`).join('');
+                        const headWithdraw = actCols.map(k => `<th>W/D ${headLabel(k)}</th>`).join('');
+                        const headEnd = actCols.map(k => `<th>End ${headLabel(k)}</th>`).join('');
                         const rows = auditRows.slice(0, 25).map(r => `
                             <tr>
                               <td>${r.age}</td>
@@ -2809,20 +2810,20 @@ markNeutral(savingsTipsOut);
                               <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
                               <td>${r.fundingSource}</td>
                               ${actCols.includes('inv')?`<td>${fmtD(r.start.inv)}</td>`:''}${actCols.includes('li')?`<td>${fmtD(r.start.li)}</td>`:''}${actCols.includes('ann')?`<td>${fmtD(r.start.ann)}</td>`:''}
-                              ${actCols.includes('inv')?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}
+                              ${actCols.includes('inv')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class=\"wfd-neg\">${fmtD(r.withdraw.ann)}</td>`:''}
                               <td class="wfd-pos">${fmtD(r.netTotal)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
-                              ${actCols.includes('inv')?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}
+                              ${actCols.includes('inv')?`<td class=\"wfd-grow\">${fmtD(r.end.inv)}</td>`:''}${actCols.includes('li')?`<td class=\"wfd-grow\">${fmtD(r.end.li)}</td>`:''}${actCols.includes('ann')?`<td class=\"wfd-grow\">${fmtD(r.end.ann)}</td>`:''}
                             </tr>`).join('');
                         auditEl.innerHTML = `
                           <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
                             <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Funding Source</th>${headWithdraw ? `<th colspan=\"${actCols.length}\">Withdrawals</th>`:''}<th>Net Income</th><th>Shortfall</th>${headEnd ? `<th colspan=\"${actCols.length}\">End Bal</th>`:''}
+                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Source Order Used</th>${headStart}${headWithdraw}<th>Net Income</th><th>Shortfall</th>${headEnd}
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan="${5 + actCols.length + 2 + actCols.length}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan=\"${4 + (actCols.length*3) + 2}\" style=\"text-align:center;padding:8px;\">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
