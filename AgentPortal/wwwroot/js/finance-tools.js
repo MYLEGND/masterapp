@@ -1674,15 +1674,19 @@ markNeutral(savingsTipsOut);
                 // Step navigation
                 const steps = ['1','2','3','4'];
                 let activeStep = '1';
+                function syncStepVisibility() {
+                    document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
+                        const isActive = w.dataset.step === activeStep;
+                        w.classList.toggle('active', isActive);
+                        w.style.display = isActive ? 'block' : 'none';
+                    });
+                }
                 function setStep(step){
                     activeStep = step;
                     document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
                         chip.classList.toggle('active', chip.dataset.step === step);
                     });
-                    document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
-                        w.classList.toggle('active', w.dataset.step === step);
-                        w.style.display = w.classList.contains('active') ? 'block' : 'none';
-                    });
+                    syncStepVisibility();
                     gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
                     const next = gid('wfd_next');
                     const run  = gid('wfd_run');
@@ -2068,6 +2072,7 @@ markNeutral(savingsTipsOut);
                     syncBase();
                     validateAndGate();
                     setStep('1');
+                    syncStepVisibility();
                 })();
 
                 // ========================
@@ -2651,6 +2656,7 @@ markNeutral(savingsTipsOut);
                 document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
                 togglePriorityRow();
                 setStep('1');
+                syncStepVisibility();
             });
 
             // Initial calculation
