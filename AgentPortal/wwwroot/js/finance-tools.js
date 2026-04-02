@@ -1055,6 +1055,11 @@ markNeutral(savingsTipsOut);
                     else el.checked = true;
                 });
                 document.getElementById('wfd_strategy').value = 'proportional';
+                const gapSel = document.getElementById('wfd_gapSource'); if (gapSel) gapSel.value = 'life';
+                const scenSel = document.getElementById('wfd_scenarioMode'); if (scenSel) scenSel.value = 'fixed';
+                const downT = document.getElementById('wfd_downThreshold'); if (downT) downT.value = '0';
+                const manu = document.getElementById('wfd_manualReturns'); if (manu) manu.value = '';
+                wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
                 setPriorityOrder(defaultPriority);
                 document.getElementById('wfd_warnArea').innerHTML = '';
                 document.getElementById('wfd_results').style.display = 'none';
@@ -1614,6 +1619,47 @@ markNeutral(savingsTipsOut);
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
 
+                // Market scenario helpers
+                let wfdScenarioCache = [];
+                let wfdScenarioMeta = { mode:'fixed', years:0 };
+                function parseManualReturns(txt){
+                    return (txt || '').split(/[\n,]+/).map(pf).filter(v => !isNaN(v));
+                }
+                function generateRandomReturns(years, meanPct){
+                    const arr = [];
+                    const mean = isFinite(meanPct) ? meanPct : 6;
+                    for (let i=0; i<Math.max(years,1); i++){
+                        const drift = (Math.random() * 12) - 6; // +/-6%
+                        const shock = (Math.random() < 0.2) ? (Math.random()*-15 - 5) : 0; // occasional drawdown
+                        arr.push(Math.max(-40, mean + drift + shock));
+                    }
+                    return arr;
+                }
+                function buildScenarioReturns(years, mode, baseReturnDec, manualTxt){
+                    if (years <= 0) return [];
+                    const basePct = (baseReturnDec || 0) * 100;
+                    if (mode === 'manual'){
+                        const vals = parseManualReturns(manualTxt);
+                        if (vals.length === 0) return Array(years).fill(baseReturnDec);
+                        while (vals.length < years) vals.push(vals[vals.length-1]);
+                        return vals.slice(0, years).map(v => v / 100);
+                    }
+                    if (mode === 'random'){
+                        if (wfdScenarioCache.length === years && wfdScenarioMeta.mode === 'random') {
+                            return wfdScenarioCache.map(v => v / 100);
+                        }
+                        const gen = generateRandomReturns(years, basePct);
+                        wfdScenarioCache = gen;
+                        wfdScenarioMeta = { mode:'random', years };
+                        const txtArea = document.getElementById('wfd_manualReturns');
+                        if (txtArea) txtArea.value = gen.map(v=>v.toFixed(1)).join(', ');
+                        saveDistState();
+                        return gen.map(v => v / 100);
+                    }
+                    // fixed
+                    return Array(years).fill(baseReturnDec);
+                }
+
                 const priorityOptions = [
                     { v:'emergency',  l:'Emergency Savings' },
                     { v:'investments',l:'Investments' },
@@ -1674,6 +1720,11 @@ markNeutral(savingsTipsOut);
                     distInputIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
                     distCheckIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).checked = !!state[id]; });
                     distSelectIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                    const stratEl = gid('wfd_strategy');
+                    if (stratEl && stratEl.value === 'downmarket') stratEl.value = 'guardrail';
+                    if (gid('wfd_gapSource') && !gid('wfd_gapSource').value) gid('wfd_gapSource').value = 'life';
+                    if (gid('wfd_scenarioMode') && !gid('wfd_scenarioMode').value) gid('wfd_scenarioMode').value = 'fixed';
+                    if (gid('wfd_downThreshold') && gid('wfd_downThreshold').value === '') gid('wfd_downThreshold').value = '0';
                 }
 
                 // Integration from Wealth Forecast
@@ -1894,6 +1945,27 @@ markNeutral(savingsTipsOut);
                 // ========================
                 let distChart = null;
 
+                // Scenario generator button + controls
+                const genBtn = gid('wfd_genScenario');
+                if (genBtn) genBtn.addEventListener('click', () => {
+                    const retVal = pf(gid('wfd_retAge').value);
+                    const endVal = pf(gid('wfd_endAge').value);
+                    const yrs = Math.max(1, Math.floor(endVal - retVal || 0));
+                    const basePct = pf(gid('wfd_invReturn').value);
+                    const list = generateRandomReturns(yrs, basePct);
+                    wfdScenarioCache = list;
+                    wfdScenarioMeta = { mode:'random', years: yrs };
+                    const area = gid('wfd_manualReturns');
+                    if (area) area.value = list.map(v=>v.toFixed(1)).join(', ');
+                    gid('wfd_scenarioMode').value = 'random';
+                    saveDistState();
+                });
+                const manualArea = gid('wfd_manualReturns');
+                if (manualArea) manualArea.addEventListener('input', saveDistState);
+                ['wfd_gapSource','wfd_scenarioMode'].forEach(id=>{
+                    const el = gid(id); if (el) el.addEventListener('change', saveDistState);
+                });
+
                 gid('wfd_calcBtn').addEventListener('click', async () => {
                     const preErrs = validateDist();
                     showBlock(preErrs);
@@ -1914,7 +1986,6 @@ markNeutral(savingsTipsOut);
                     const invAllocPct   = pf(gid('wfd_invAlloc').value);
                     const liAllocPct    = pf(gid('wfd_liAlloc').value);
                     const annAllocPct   = pf(gid('wfd_annAlloc').value);
-                    const totalAlloc    = invAllocPct + liAllocPct + annAllocPct;
 
                     const invReturn     = pf(gid('wfd_invReturn').value)   / 100;
                     const invWR         = pf(gid('wfd_invWithdraw').value) / 100;
@@ -1931,20 +2002,26 @@ markNeutral(savingsTipsOut);
                     const annWR         = pf(gid('wfd_annWithdraw').value) / 100;
                     const annTax        = pf(gid('wfd_annTax').value)      / 100;
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
+                    const annTypeVar    = gid('wfd_annType').checked;
 
-                    const strategy      = gid('wfd_strategy').value;
-                    const useStress     = gid('wfd_downMktSim').checked;
-                    const stressR       = useStress ? pf(gid('wfd_stressReturn').value) / 100 : null;
+                    let strategy        = gid('wfd_strategy').value;
+                    if (strategy === 'downmarket') strategy = 'guardrail'; // legacy persisted value
+                    const protectInvest = gid('wfd_protectInvest').checked;
+                    const gapSource     = gid('wfd_gapSource').value || 'life';
+                    const scenarioMode  = gid('wfd_scenarioMode').value || 'fixed';
+                    const downThreshold = pf(gid('wfd_downThreshold').value) / 100;
+                    const manualReturnTxt = gid('wfd_manualReturns').value || '';
                     const priOrder      = getPriorityOrder();
+                    const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
 
-                const resetSummary = () => {
+                    const resetSummary = () => {
                         ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff','wfd_emNow','wfd_emUsed','wfd_emRemain'].forEach(id => {
                             const el = gid(id); if (el) { el.textContent = '—'; el.classList.remove('wfd-sum-good','wfd-sum-warn','wfd-sum-bad'); }
                         });
                         const emBadge = gid('wfd_emStatus'); if (emBadge) { emBadge.textContent = '—'; emBadge.className = 'wfd-badge'; }
                     };
 
-                // --- Validation ---
+                    // --- Validation ---
                     const errs = validateDist();
                     gid('wfd_warnArea').innerHTML = '';
                     if (errs.length > 0) {
@@ -1971,6 +2048,9 @@ markNeutral(savingsTipsOut);
                     const emPts    = [emBal];
                     const yLabels  = ['Age ' + retAge];
                     const auditRows = [];
+                    const marketStates = [];
+                    const fundingSources = [];
+                    const invReturnSeries = [];
 
                     let depletionYr = null;
                     let depletionEmerg = null;
@@ -1984,86 +2064,107 @@ markNeutral(savingsTipsOut);
                     let totalEmUsed = 0;
                     let totalInvDraw = 0, totalLiDraw = 0, totalAnnDraw = 0;
                     let depletionEmergAge = null;
+                    let downYearCount = 0;
+
+                    const grossCap = (bal, wr, access=1)=> Math.min(Math.max(0, bal), Math.max(0, bal * (wr||1)), Math.max(0, bal * access));
 
                     for (let y = 1; y <= years; y++) {
-                        const effInvR = (useStress && stressR !== null) ? stressR : invReturn;
-                        const effAnnR = (useStress && stressR !== null && gid('wfd_annType').checked) ? stressR : annReturn;
+                        const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
+                        invReturnSeries.push(invYearR);
+                        const effInvR = invYearR;
+                        const effAnnR = annTypeVar ? invYearR : annReturn;
+                        const marketState = invYearR <= downThreshold ? 'down' : 'normal';
+                        if (marketState === 'down') downYearCount += 1;
+                        marketStates.push(marketState);
+                        const activePolicy = strategy === 'guardrail' ? (marketState === 'down' ? 'guardrail-down' : 'guardrail-normal') : strategy;
+
                         let invW = 0, liW = 0, annW = 0;
-
-                        let needNet = incGap; // net gap after guaranteed income
-
-                        const allowInvest = !(useStress && !invDownMkt);
-                        const allowLife   = !(useStress && !liDownMkt);
-                        const allowAnn    = !(useStress && !annDownMkt);
-
-                        let needLeftNet = needNet; // net income still needed this year
+                        let needLeftNet = incGap; // net gap after guaranteed income
                         const liAccessCap = liEff > 0 ? liEff : 1;
-                        const grossCap = (bal, wr, access=1)=> Math.min(bal, bal * (wr||1), bal * access);
+
+                        const allowInvest = (marketState === 'down' ? invDownMkt : true);
+                        const allowLife   = (marketState === 'down' ? liDownMkt : true);
+                        const allowAnn    = (marketState === 'down' ? annDownMkt : true);
+                        const investGuarded = protectInvest && marketState === 'down';
+
+                        const takeFromBucket = (bucket) => {
+                            if (needLeftNet <= 0) return;
+                            if (bucket === 'investments' && allowInvest) {
+                                const maxGross = grossCap(invBal, invWR);
+                                const grossNeed = needLeftNet / (1 - invTax || 1);
+                                const amt = Math.min(maxGross, grossNeed);
+                                invW += amt; needLeftNet -= netFromGross(amt, invTax);
+                            } else if (bucket === 'life' && allowLife) {
+                                const maxGross = grossCap(liBal, liWR, liAccessCap);
+                                const grossNeed = needLeftNet / (1 - liTax || 1);
+                                const amt = Math.min(maxGross, grossNeed);
+                                liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                            } else if (bucket === 'annuities' && allowAnn) {
+                                const maxGross = grossCap(annBal, annWR);
+                                const grossNeed = needLeftNet / (1 - annTax || 1);
+                                const amt = Math.min(maxGross, grossNeed);
+                                annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                            }
+                        };
+
                         if (strategy === 'proportional') {
-                            const allocSum = (allowInvest ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
+                            const allocSum = (allowInvest && !investGuarded ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
                             const weight = pct => allocSum > 0 ? pct / allocSum : 0;
-                            const invShareNet = allowInvest ? needLeftNet * weight(invAllocPct) : 0;
+                            const invShareNet = (allowInvest && !investGuarded) ? needLeftNet * weight(invAllocPct) : 0;
                             const liShareNet  = allowLife   ? needLeftNet * weight(liAllocPct) : 0;
                             const annShareNet = allowAnn    ? needLeftNet * weight(annAllocPct) : 0;
-                            const invGross = allowInvest ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
+                            const invGross = (allowInvest && !investGuarded) ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
                             const liGross  = allowLife   ? Math.min(grossCap(liBal, liWR, liAccessCap), liShareNet / (1 - liTax || 1)) : 0;
                             const annGross = allowAnn    ? Math.min(grossCap(annBal, annWR), annShareNet / (1 - annTax || 1)) : 0;
                             invW = invGross;
                             liW  = liGross;
                             annW = annGross;
                             needLeftNet -= (netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax));
-                        } else if (strategy === 'priority') {
-                            normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(bucket => {
-                                if (needLeftNet <= 0) return;
-                                if (bucket === 'investments' && allowInvest) {
-                                    const maxGross = grossCap(invBal, invWR);
-                                    const grossNeed = needLeftNet / (1 - invTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    invW += amt; needLeftNet -= netFromGross(amt, invTax);
-                                } else if (bucket === 'life' && allowLife) {
-                                    const maxGross = grossCap(liBal, liWR, liAccessCap);
-                                    const grossNeed = needLeftNet / (1 - liTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    liW += amt; needLeftNet -= netFromGross(amt, liTax);
-                                } else if (bucket === 'annuities' && allowAnn) {
-                                    const maxGross = grossCap(annBal, annWR);
-                                    const grossNeed = needLeftNet / (1 - annTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    annW += amt; needLeftNet -= netFromGross(amt, annTax);
-                                }
-                            });
-                        } else {
-                            // Down-market pivot with order and per-bucket toggles
-                            let order = normalizePriority(priOrder).filter(x => x !== 'emergency');
-                            if (!allowInvest) order = order.filter(x => x !== 'investments');
-                            if (!allowLife)   order = order.filter(x => x !== 'life');
-                            if (!allowAnn)    order = order.filter(x => x !== 'annuities');
-                            order.forEach(bucket => {
-                                if (needLeftNet <= 0) return;
-                                if (bucket === 'life' && allowLife) {
-                                    const maxGross = grossCap(liBal, liWR, liAccessCap);
-                                    const grossNeed = needLeftNet / (1 - liTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    liW += amt; needLeftNet -= netFromGross(amt, liTax);
-                                } else if (bucket === 'annuities' && allowAnn) {
-                                    const maxGross = grossCap(annBal, annWR);
-                                    const grossNeed = needLeftNet / (1 - annTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    annW += amt; needLeftNet -= netFromGross(amt, annTax);
-                                } else if (bucket === 'investments' && allowInvest) {
-                                    const maxGross = grossCap(invBal, invWR);
-                                    const grossNeed = needLeftNet / (1 - invTax || 1);
-                                    const amt = Math.min(maxGross, grossNeed);
-                                    invW += amt; needLeftNet -= netFromGross(amt, invTax);
-                                }
-                            });
-                            if (needLeftNet > 0 && !allowInvest && invBal > 0) {
-                                const maxGross = grossCap(invBal, invWR);
+
+                            if (needLeftNet > 0 && investGuarded && allowInvest) {
                                 const grossNeed = needLeftNet / (1 - invTax || 1);
-                                const amt = Math.min(maxGross, grossNeed);
+                                const amt = Math.min(grossCap(invBal, invWR), grossNeed);
                                 invW += amt; needLeftNet -= netFromGross(amt, invTax);
                             }
-                            needLeftNet = Math.max(0, needLeftNet);
+                        } else if (strategy === 'priority') {
+                            normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(bucket => {
+                                if (investGuarded && bucket === 'investments') return;
+                                takeFromBucket(bucket);
+                            });
+                            if (needLeftNet > 0 && investGuarded && allowInvest) takeFromBucket('investments');
+                        } else { // guardrail
+                            if (marketState === 'down' && protectInvest) {
+                                if (gapSource === 'split') {
+                                    const lifeCapNet = allowLife ? netFromGross(grossCap(liBal, liWR, liAccessCap), liTax) : 0;
+                                    const annCapNet  = allowAnn ? netFromGross(grossCap(annBal, annWR), annTax) : 0;
+                                    const capSum = lifeCapNet + annCapNet;
+                                    if (capSum > 0) {
+                                        const lifeNeed = capSum ? needLeftNet * (lifeCapNet / capSum) : 0;
+                                        const annNeed  = needLeftNet - lifeNeed;
+                                        if (allowLife) {
+                                            const grossNeed = lifeNeed / (1 - liTax || 1);
+                                            const amt = Math.min(grossCap(liBal, liWR, liAccessCap), grossNeed);
+                                            liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                                        }
+                                        if (allowAnn && needLeftNet > 0) {
+                                            const grossNeed = annNeed / (1 - annTax || 1);
+                                            const amt = Math.min(grossCap(annBal, annWR), grossNeed);
+                                            annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                                        }
+                                    }
+                                } else {
+                                    let order = [];
+                                    if (gapSource === 'life' || gapSource === 'lifeThenAnnuities') order = ['life','annuities'];
+                                    else if (gapSource === 'annuities' || gapSource === 'annThenLife') order = ['annuities','life'];
+                                    else if (gapSource === 'custom') order = normalizePriority(priOrder).filter(x => x !== 'emergency' && x !== 'investments');
+                                    else order = ['life','annuities'];
+                                    order.forEach(takeFromBucket);
+                                }
+                                if (needLeftNet > 0 && allowInvest) takeFromBucket('investments');
+                            } else {
+                                // normal year guardrail behaves like priority
+                                normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(takeFromBucket);
+                            }
                         }
 
                         if (y === 1) { fy_invW = invW; fy_liW = liW; fy_annW = annW; }
@@ -2084,11 +2185,21 @@ markNeutral(savingsTipsOut);
                         if (yearShort > shortfallTol) anyYearShortfall = true;
                         if (yearShort <= shortfallTol) lastFullyFundedAge = retAge + y;
 
+                        const fundingParts = [];
+                        if (invW > 0) fundingParts.push(investGuarded ? 'Investments (fallback)' : 'Investments');
+                        if (liW > 0)  fundingParts.push('Life Insurance');
+                        if (annW > 0) fundingParts.push('Annuities');
+                        if (emUse > 0) fundingParts.push('Emergency');
+                        const fundingSource = fundingParts.length ? fundingParts.join(' + ') : 'None';
+                        fundingSources.push(fundingSource);
+
                         // Withdrawal first, then growth
                         invBal  = Math.max(0, invBal  - invW)  * (1 + effInvR);
                         liBal   = Math.max(0, liBal   - liW)   * (1 + liGrowth) * liEff;
                         annBal  = Math.max(0, annBal  - annW)  * (1 + effAnnR);
                         emBal   = Math.max(0, emBal); // cash reserve, no growth
+
+                        totalInvDraw += invW; totalLiDraw += liW; totalAnnDraw += annW;
 
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
@@ -2101,12 +2212,17 @@ markNeutral(savingsTipsOut);
 
                         auditRows.push({
                             age: retAge + y,
+                            invReturnPct: invYearR * 100,
+                            marketState,
+                            policy: activePolicy,
+                            fundingSource,
                             start: { inv: invPts[invPts.length-2], li: liPts[liPts.length-2], ann: annPts[annPts.length-2], em: emPts[emPts.length-2] },
                             growth: { inv: invPts[invPts.length-1] - Math.max(0, invPts[invPts.length-2] - invW), li: liPts[liPts.length-1] - Math.max(0, liPts[liPts.length-2] - liW), ann: annPts[annPts.length-1] - Math.max(0, annPts[annPts.length-2] - annW) },
                             withdraw: { inv: invW, li: liW, ann: annW, em: emUse },
                             net: { inv: netFromGross(invW,invTax), li: netFromGross(liW,liTax), ann: netFromGross(annW,annTax), em: emUse },
                             shortfall: yearShort,
-                            end: { inv: invBal, li: liBal, ann: annBal, em: emBal }
+                            end: { inv: invBal, li: liBal, ann: annBal, em: emBal },
+                            netTotal: fundedNet
                         });
                     }
 
@@ -2182,6 +2298,7 @@ markNeutral(savingsTipsOut);
                     srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
                     srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
+                    if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
                     gid('wfd_sourceBreak').innerHTML = srcParts.join(' • ');
 
                     // --- Top summary strip ---
@@ -2243,14 +2360,16 @@ markNeutral(savingsTipsOut);
                         warns.push({ type:'warn', msg:`Investment withdrawal rate of ${(invWR * 100).toFixed(1)}% exceeds the historically sustainable 4–5% range. Longevity risk increases materially.` });
                     if (depAge && endAge - depAge > 5)
                         warns.push({ type:'warn', msg:`Assets deplete ${endAge - depAge} years before the plan horizon. Reduce withdrawals, extend guaranteed income, or increase the retirement base.` });
-                    if (useStress && !invDownMkt && strategy !== 'downmarket')
-                        warns.push({ type:'info', msg:`Investment bucket is flagged "not use in down market" but strategy is not set to Down-Market Pivot — the flag has no effect until you switch the strategy.` });
                     if (totalGrW < incGap * 0.8 && incGap > 0)
                         warns.push({ type:'warn', msg:`Total first-year withdrawals (${fmtD(totalGrW)}) are below the income gap (${fmtD(incGap)}). Withdrawal rates may be too low to fund the desired income.` });
                     if (depletionEmerg && depletionEmerg < years)
                         warns.push({ type:'warn', msg:`Emergency reserve depletes by year ${depletionEmerg}. Remaining needs are covered by other buckets thereafter.` });
                     if (shortfall > 0)
                         warns.push({ type:'warn', msg:`Unfunded shortfall of ${fmtD(shortfall)} remains after withdrawals; reduce income target or increase protected sources.` });
+                    if (downYearCount > 0 && protectInvest)
+                        warns.push({ type:'info', msg:`Investment bucket was protected in ${downYearCount} down-market year(s); safer buckets filled the gap first.` });
+                    if (scenarioMode === 'random')
+                        warns.push({ type:'info', msg:`Randomized market path is an illustration for stress-testing only — not a prediction or guarantee.` });
 
                     gid('wfd_warnArea').innerHTML = warns.map(w =>
                         `<div class="${w.type === 'warn' ? 'wfd-warn-box' : 'wfd-info-box'}">${w.type === 'warn' ? '⚠️' : 'ℹ️'} ${w.msg}</div>`
@@ -2261,15 +2380,16 @@ markNeutral(savingsTipsOut);
                     if (auditEl){
                         const actCols = ['inv','li','ann','em'].filter(key => active[key]);
                         const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
-                        const headStart = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
-                        const headW = headStart;
-                        const headEnd = headStart;
+                        const headWithdraw = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
+                        const headEnd = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
                         const rows = auditRows.slice(0, 25).map(r => `
                             <tr>
                               <td>Age ${r.age}</td>
-                              ${active.inv?`<td>${fmtD(r.start.inv)}</td>`:''}${active.li?`<td>${fmtD(r.start.li)}</td>`:''}${active.ann?`<td>${fmtD(r.start.ann)}</td>`:''}${active.em?`<td>${fmtD(r.start.em)}</td>`:''}
+                              <td>${(r.invReturnPct).toFixed(1)}%</td>
+                              <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
+                              <td>${r.fundingSource}</td>
                               ${active.inv?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${active.li?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${active.ann?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}${active.em?`<td class="wfd-neg">${fmtD(r.withdraw.em)}</td>`:''}
-                              <td class="wfd-pos">${fmtD(r.net.inv + r.net.li + r.net.ann + r.net.em)}</td>
+                              <td class="wfd-pos">${fmtD(r.netTotal)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
                               ${active.inv?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${active.li?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${active.ann?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}${active.em?`<td class="wfd-grow">${fmtD(r.end.em)}</td>`:''}
                             </tr>`).join('');
@@ -2278,13 +2398,10 @@ markNeutral(savingsTipsOut);
                             <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th colspan="${actCols.length}">Start Bal</th><th colspan="${actCols.length}">Withdrawals</th><th>Net Income</th><th>Shortfall</th><th colspan="${actCols.length}">End Bal</th>
-                                </tr>
-                                <tr>
-                                  <th></th>${headStart}${headW}<th></th><th></th>${headEnd}
+                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Funding Source</th>${headWithdraw ? `<th colspan=\"${actCols.length}\">Withdrawals</th>`:''}<th>Net Income</th><th>Shortfall</th>${headEnd ? `<th colspan=\"${actCols.length}\">End Bal</th>`:''}
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan="${actCols.length*3 + 3}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan="${4 + actCols.length + 2 + actCols.length}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -2295,8 +2412,10 @@ markNeutral(savingsTipsOut);
                         if (chartCanvas) chartCanvas.outerHTML = '<div style="padding:14px;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-weight:700;">Chart unavailable. Please retry or check your connection.</div>';
                     } else if (chartCanvas) {
                         if (distChart) { distChart.destroy(); distChart = null; }
+                        const downRadius = yLabels.map((_, idx) => idx === 0 ? 0 : (marketStates[idx-1] === 'down' ? 4 : 0));
+                        const downColor = yLabels.map((_, idx) => idx === 0 ? '#d9b35a' : (marketStates[idx-1] === 'down' ? '#dc2626' : '#d9b35a'));
                         const datasets = [
-                            { label: 'Total Assets', data: totalPts, borderColor: '#d9b35a', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 4 }
+                            { label: 'Total Assets', data: totalPts, borderColor: '#d9b35a', borderWidth: 3, tension: 0.2, fill: false, pointRadius: downRadius, pointHoverRadius: 5, pointBackgroundColor: downColor, pointBorderColor: downColor }
                         ];
                         if (active.em)  datasets.push({ label: 'Emergency',    data: emPts,  borderColor: '#0f172a', borderWidth: 2, borderDash: [4,4], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
                         if (active.inv) datasets.push({ label: 'Investments',  data: invPts, borderColor: '#3b82f6', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
@@ -2310,7 +2429,18 @@ markNeutral(savingsTipsOut);
                                 responsive: true, maintainAspectRatio: false,
                                 plugins: {
                                     legend: { labels: { color: '#334155', usePointStyle: true, padding: 14 } },
-                                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $${Math.round(Number(ctx.raw)).toLocaleString()}` } }
+                                    tooltip: { 
+                                        callbacks: { 
+                                            label: ctx => ` ${ctx.dataset.label}: $${Math.round(Number(ctx.raw)).toLocaleString()}`,
+                                            afterBody: (items) => {
+                                                const idx = items?.[0]?.dataIndex || 0;
+                                                if (idx === 0) return '';
+                                                const m = marketStates[idx-1] === 'down' ? 'Down-Market (defense)' : 'Normal year';
+                                                const f = fundingSources[idx-1] || '—';
+                                                return [`Market: ${m}`, `Funding: ${f}`];
+                                            }
+                                        } 
+                                    }
                                 },
                                 scales: {
                                     x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: 'rgba(0,0,0,.05)' } },
