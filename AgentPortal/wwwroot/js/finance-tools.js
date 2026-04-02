@@ -2023,6 +2023,33 @@ markNeutral(savingsTipsOut);
                     btn.addEventListener('click', ()=>{ gid('wfd_strategy').value = id==='wfd_strat_prop'?'proportional':id==='wfd_strat_pri'?'priority':'guardrail'; togglePriorityRow(); markStrategyButtons(); saveDistState(); });
                 });
                 gid('wfd_strategy').addEventListener('change', () => { togglePriorityRow(); markStrategyButtons(); saveDistState(); });
+                function clearDistribution(){
+                    const manualOn = document.getElementById('wfd_manualOverride')?.checked;
+                    const keepIds = new Set(['wfd_desiredIncome','wfd_invTax','wfd_annTax']);
+                    if (!manualOn) keepIds.add('wfd_base');
+                    distInputIds.forEach(id=>{
+                        if (keepIds.has(id)) return;
+                        const el = gid(id); if (el) el.value = '';
+                    });
+                    distCheckIds.forEach(id=>{
+                        const el = gid(id); if (el) el.checked = false;
+                    });
+                    gid('wfd_strategy').value = 'proportional';
+                    togglePriorityRow();
+                    wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
+                    setPriorityOrder(defaultPriority);
+                    gid('wfd_warnArea').innerHTML = '';
+                    syncBase();
+                    updateDMState();
+                    validateAndGate();
+                    distMeta.hasValidResults = false;
+                    distMeta.stale = false;
+                    distMeta.result = null;
+                    distMeta.lastStep = '1';
+                    saveMeta();
+                    renderEmptyResults();
+                    saveDistState();
+                }
                 gid('wfd_clearBtn').addEventListener('click', clearDistribution);
 
                 // Priority selectors
