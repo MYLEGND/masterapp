@@ -2330,7 +2330,16 @@ markNeutral(savingsTipsOut);
                     setStep(steps[idx]);
                 });
                 gid('wfd_next').addEventListener('click', () => {
-                    if (activeStep === '3') { gid('wfd_calcBtn').click(); return; }
+                    if (activeStep === '3') {
+                        // If we already have a valid run, jump straight to Results; otherwise trigger a run.
+                        if (distMeta.hasValidResults && distMeta.result) {
+                            setStep('4');
+                            hydrateResultsFromMeta();
+                            return;
+                        }
+                        gid('wfd_calcBtn').click();
+                        return;
+                    }
                     const idx = Math.min(steps.length-1, steps.indexOf(activeStep)+1);
                     setStep(steps[idx]);
                 });
