@@ -1012,12 +1012,15 @@ markNeutral(savingsTipsOut);
             }
             function showBlock(errs){
                 const block = document.getElementById('wfd_block');
-                if (!block) return;
-                if (!errs.length){
-                    block.style.display = 'none';
-                } else {
-                    block.style.display = 'block';
-                    block.innerHTML = errs.map(e=>`⚠️ ${e}`).join('<br>');
+                const block2 = document.getElementById('wfd_block_top');
+                const setBlock = (el) => {
+                    if (!el) return;
+                    if (!errs.length){ el.style.display='none'; return; }
+                    el.style.display='block';
+                    el.innerHTML = errs.map(e=>`⚠️ ${e}`).join('<br>');
+                };
+                setBlock(block); setBlock(block2);
+                if (errs.length){
                     const res = document.getElementById('wfd_results');
                     if (res) res.style.display = 'none';
                 }
@@ -1100,14 +1103,39 @@ markNeutral(savingsTipsOut);
     width:100%;max-width:980px;
     font-family:'Inter',sans-serif;
     position:relative;margin:auto;
+    overflow:hidden;
 }
 .wfd-hdr{
     background:linear-gradient(135deg,#0b1529 0%,#0f2040 100%);
     border-bottom:1.5px solid #a68023;
     border-radius:20px 20px 0 0;
-    padding:26px 36px 22px;
+    padding:22px 22px 18px;
 }
-.wfd-body{padding:30px 36px 36px;}
+.wfd-steps{
+    display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;
+}
+.wfd-step-chip{
+    padding:9px 12px;border-radius:10px;
+    background:rgba(255,255,255,.06);color:#cbd5e1;
+    font-weight:800;font-size:.83rem;border:1px solid rgba(166,128,35,.35);
+    cursor:pointer;display:flex;align-items:center;gap:8px;
+}
+.wfd-step-chip.active{background:#d9b35a;color:#0f172a;border-color:#d9b35a;}
+.wfd-step-chip .step-num{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(0,0,0,.25);font-weight:900;}
+.wfd-step-chip.active .step-num{background:#0f172a;color:#d9b35a;}
+.wfd-body{padding:18px 22px 22px;}
+.wfd-step-wrap{display:none;min-height:320px;}
+.wfd-step-wrap.active{display:block;}
+.wfd-footer{
+    position:sticky;bottom:0;left:0;right:0;
+    padding:12px 18px;
+    background:linear-gradient(180deg, rgba(11,21,41,.94) 0%, rgba(11,21,41,1) 100%);
+    border-top:1px solid rgba(166,128,35,.35);
+    display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
+    box-shadow:0 -10px 30px rgba(0,0,0,.25);
+}
+.wfd-footer .wfd-calc-btn{margin-top:0;flex:1 1 160px;max-width:240px;}
+.wfd-footer .wfd-secondary{background:#0f172a;border-color:rgba(166,128,35,.6);color:#d9b35a;}
 .wfd-sec{
     margin-bottom:28px;
     padding-bottom:24px;
@@ -1198,11 +1226,17 @@ markNeutral(savingsTipsOut);
         .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
         /* Emergency reserve card */
         .wfd-em-card{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#0b1529;border:1px solid rgba(166,128,35,.55);border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18);}
-        .wfd-em-card .wfd-res-val{color:#eaf2ff;}
-        .wfd-em-card .wfd-sum-value{color:#d9b35a;}
-        /* Inputs de-emphasis */
-        .wfd-sec input.wfd-inp, .wfd-sec select.wfd-inp{background:#0f172a;border-color:rgba(217,179,90,.55);color:#f8fafc;}
-        .wfd-sec input.wfd-inp:focus, .wfd-sec select.wfd-inp:focus{background:#111e3a;border-color:#d9b35a;}
+.wfd-em-card .wfd-res-val{color:#eaf2ff;}
+.wfd-em-card .wfd-sum-value{color:#d9b35a;}
+/* Inputs de-emphasis */
+.wfd-sec input.wfd-inp, .wfd-sec select.wfd-inp{background:#0f172a;border-color:rgba(217,179,90,.55);color:#f8fafc;}
+.wfd-sec input.wfd-inp:focus, .wfd-sec select.wfd-inp:focus{background:#111e3a;border-color:#d9b35a;}
+.wfd-acc{border:1px solid rgba(217,179,90,.35);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.02);}
+.wfd-acc-btn{width:100%;text-align:left;padding:12px 14px;border:none;background:linear-gradient(135deg,#0f172a 0%,#111f2f 100%);color:#e2e8f0;font-weight:800;font-size:.9rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+.wfd-acc-btn:after{content:'▾';font-size:.9rem;color:#d9b35a;}
+.wfd-acc-body{padding:12px 14px;display:block;}
+.wfd-acc.collapsed .wfd-acc-body{display:none;}
+.wfd-acc.collapsed .wfd-acc-btn:after{content:'▸';}
 @media(max-width:640px){
     #wfDist_panel{border-radius:16px;}
     .wfd-hdr{padding:18px 18px 16px;border-radius:16px 16px 0 0;}
@@ -1219,95 +1253,21 @@ markNeutral(savingsTipsOut);
     <h2 style="color:#d9b35a;font-weight:900;font-size:1.75rem;margin:0 0 4px;">Distribution Planner</h2>
     <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
     <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
+    <div class="wfd-steps" id="wfd_stepsNav">
+      <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
+      <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Buckets</div>
+      <div class="wfd-step-chip" data-step="3"><span class="step-num">3</span> Strategy</div>
+      <div class="wfd-step-chip" data-step="4"><span class="step-num">4</span> Results</div>
+    </div>
   </div>
 
   <!-- BODY -->
   <div class="wfd-body">
     <div id="wfd_block" class="wfd-warn-box" style="display:none;margin-bottom:12px;"></div>
 
-    <!-- TOP SUMMARY STRIP -->
-    <div id="wfd_summary" class="wfd-summary" style="margin-bottom:18px;">
-          <div class="wfd-sum-card">
-            <p class="wfd-sum-label">After-Tax Annual Income</p>
-            <p id="wfd_sumIncome" class="wfd-sum-value">—</p>
-          </div>
-      <div class="wfd-sum-card">
-        <p class="wfd-sum-label">Plan Health</p>
-        <p id="wfd_sumHealth" class="wfd-sum-value">—</p>
-      </div>
-      <div class="wfd-sum-card">
-        <p class="wfd-sum-label">Longevity</p>
-        <p id="wfd_sumLongevity" class="wfd-sum-value">—</p>
-      </div>
-      <div class="wfd-sum-card">
-        <p class="wfd-sum-label">Income Sufficiency</p>
-        <p id="wfd_sumIncomeSuff" class="wfd-sum-value">—</p>
-      </div>
-    </div>
-
-    <!-- RESULTS FIRST -->
-        <div id="wfd_results" style="display:none;margin-top:0;">
-      <div class="wfd-sec" style="border-bottom:none;margin-bottom:16px;padding-bottom:0;">
-        <p class="wfd-sec-title">Results & Funding</p>
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-          <span style="font-size:.88rem;font-weight:700;color:#475569;">Plan Health:</span>
-          <span id="wfd_healthBadge" class="wfd-badge">—</span>
-        </div>
-        <div class="wfd-res-grid" id="wfd_resGrid"></div>
-        <div id="wfd_sourceBreak" class="wfd-mini-note" style="margin-top:6px;"></div>
-
-        <div class="wfd-bkt-vis" id="wfd_wdrlVis" style="height:90px;margin:12px 0 10px;">
-          <div class="wfd-bkt-bar-wrap">
-            <div id="wfd_emWBar" class="wfd-bkt-bar" style="background:#0f172a;height:3px;"></div>
-            <div id="wfd_emWLbl" class="wfd-bkt-bar-lbl">Emergency<br>$0</div>
-          </div>
-          <div class="wfd-bkt-bar-wrap">
-            <div id="wfd_invWBar" class="wfd-bkt-bar" style="background:#3b82f6;height:3px;"></div>
-            <div id="wfd_invWLbl" class="wfd-bkt-bar-lbl">Investments<br>$0</div>
-          </div>
-          <div class="wfd-bkt-bar-wrap">
-            <div id="wfd_liWBar" class="wfd-bkt-bar" style="background:#a68023;height:3px;"></div>
-            <div id="wfd_liWLbl" class="wfd-bkt-bar-lbl">Life Ins<br>$0</div>
-          </div>
-          <div class="wfd-bkt-bar-wrap">
-            <div id="wfd_annWBar" class="wfd-bkt-bar" style="background:#16a34a;height:3px;"></div>
-            <div id="wfd_annWLbl" class="wfd-bkt-bar-lbl">Annuities<br>$0</div>
-          </div>
-        </div>
-
-        <div id="wfd_emCard" class="wfd-em-card" style="margin-bottom:10px;">
-          <div>
-            <p class="wfd-res-lbl" style="margin:0;">Emergency Reserve</p>
-            <p id="wfd_emNow" class="wfd-sum-value" style="font-size:1rem;margin:0;">—</p>
-          </div>
-          <div>
-            <p class="wfd-mini-note" style="margin:0;">Year 1 Used</p>
-            <p id="wfd_emUsed" class="wfd-res-val" style="margin:0;">—</p>
-          </div>
-          <div>
-            <p class="wfd-mini-note" style="margin:0;">Total Used (Plan)</p>
-            <p id="wfd_emTotal" class="wfd-res-val" style="margin:0;">—</p>
-          </div>
-          <div>
-            <p class="wfd-mini-note" style="margin:0;">Remaining</p>
-            <p id="wfd_emRemain" class="wfd-res-val" style="margin:0;">—</p>
-          </div>
-          <div>
-            <p class="wfd-mini-note" style="margin:0;">Depletion</p>
-            <p id="wfd_emDeplete" class="wfd-res-val" style="margin:0;">—</p>
-          </div>
-          <div id="wfd_emStatus" class="wfd-badge" style="margin-left:auto;">—</div>
-        </div>
-
-        <p style="font-weight:700;color:#334155;font-size:.86rem;margin:12px 0 6px;">Asset Longevity Over Distribution Period</p>
-        <div class="wfd-chart-wrap"><canvas id="wfd_chart"></canvas></div>
-
-        <div id="wfd_tips" style="margin-top:12px;"></div>
-        <div id="wfd_warnArea"></div>
-      </div>
-    </div>
-
-    <!-- No-base warning -->
+    <!-- STEP 1: Foundation -->
+    <div class="wfd-step-wrap active" data-step="1">
+      <div id="wfd_block_top" class="wfd-warn-box" style="display:none;margin-bottom:12px;"></div>
     <div id="wfd_noBaseWarn" class="wfd-warn-box" style="display:none;margin-bottom:16px;">
       ⚠️ Wealth Forecast has no valid result yet. Complete the Wealth Forecast inputs above first, or enable <strong>Manual Override</strong> below to enter a base manually.
     </div>
@@ -1362,10 +1322,11 @@ markNeutral(savingsTipsOut);
           <input id="wfd_incomeGap" class="wfd-inp" type="text" readonly placeholder="$0" />
         </div>
       </div>
-    </div>
+    </div><!-- end foundation -->
 
-    <!-- SECTION 2: Three Bucket Allocation -->
-    <div class="wfd-sec">
+    <!-- STEP 2: Three Bucket Allocation -->
+    <div class="wfd-step-wrap" data-step="2">
+      <div class="wfd-sec">
       <p class="wfd-sec-title">2 — Three Bucket Allocation</p>
       <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
 
@@ -1473,21 +1434,19 @@ markNeutral(savingsTipsOut);
         </div>
 
       </div>
-    </div>
+      </div><!-- end sec -->
+    </div><!-- end buckets -->
 
-    <!-- SECTION 3: Strategy Controls -->
-    <div class="wfd-sec">
+    <!-- STEP 3: Strategy Controls -->
+    <div class="wfd-step-wrap" data-step="3">
+      <div class="wfd-sec">
       <p class="wfd-sec-title">3 — Strategy Controls</p>
-      <div class="wfd-row">
-        <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_strategy">Withdrawal Strategy</label>
-          <select id="wfd_strategy" class="wfd-inp" style="cursor:pointer;">
-            <option value="proportional">Proportional — fund gap across active buckets based on allocation</option>
-            <option value="priority">Priority Order — draw in the sequence you set below</option>
-            <option value="guardrail">Market-Defense / Guardrails — pivot to safer buckets in down years</option>
-          </select>
-        </div>
+      <div class="wfd-row" style="gap:10px;flex-wrap:wrap;">
+        <button type="button" class="wfd-calc-btn" id="wfd_strat_prop" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Proportional</button>
+        <button type="button" class="wfd-calc-btn" id="wfd_strat_pri" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Priority Order</button>
+        <button type="button" class="wfd-calc-btn" id="wfd_strat_guard" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Protect Investments</button>
       </div>
+      <input type="hidden" id="wfd_strategy" value="proportional" />
       <div id="wfd_priorityRow" class="wfd-row" style="margin-top:12px;display:none;">
         <div class="wfd-col" style="flex:1 1 100%;">
           <label class="wfd-lbl" for="wfd_pri1" style="margin-bottom:6px;">Withdrawal Priority (1 = first)</label>
@@ -1557,15 +1516,134 @@ markNeutral(savingsTipsOut);
           <button id="wfd_genScenario" class="wfd-calc-btn" type="button" style="margin-top:0;">Generate Market Scenario</button>
         </div>
       </div>
+    </div><!-- end strat -->
     </div>
 
-    <!-- CALCULATE BUTTON -->
-    <div style="display:flex;gap:12px;flex-wrap:wrap;">
-      <button id="wfd_clearBtn" class="wfd-calc-btn" type="button" style="flex:1;max-width:180px;background:#fff;color:#0f172a;border-color:#d9b35a;">Clear</button>
-      <button id="wfd_calcBtn" class="wfd-calc-btn" type="button" style="flex:1;">Calculate Distribution Plan</button>
-    </div>
+    <!-- STEP 4: RESULTS -->
+    <div class="wfd-step-wrap" data-step="4" id="wfd_results">
+      <div class="wfd-sec" style="border-bottom:none;margin-bottom:12px;padding-bottom:0;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
+          <button class="wfd-calc-btn" id="wfd_editFoundation" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Foundation</button>
+          <button class="wfd-calc-btn" id="wfd_editBuckets" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Buckets</button>
+          <button class="wfd-calc-btn" id="wfd_editStrategy" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Strategy</button>
+          <button class="wfd-calc-btn" id="wfd_recalcBtn" type="button" style="flex:1;min-width:140px;max-width:200px;">Recalculate</button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          <button class="wfd-calc-btn" type="button" id="wfd_runBase" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Run Base Case</button>
+          <button class="wfd-calc-btn" type="button" id="wfd_runDown" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Simulate Down Market</button>
+          <button class="wfd-calc-btn" type="button" id="wfd_runScenario" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Generate Market Scenario</button>
+        </div>
+        <div class="accordion" style="display:grid;gap:10px;">
+          <div class="wfd-acc">
+            <button class="wfd-acc-btn" data-target="wfd_summaryWrap">Summary</button>
+            <div id="wfd_summaryWrap" class="wfd-acc-body">
+              <div id="wfd_summary" class="wfd-summary" style="margin-bottom:12px;">
+                    <div class="wfd-sum-card">
+                      <p class="wfd-sum-label">After-Tax Annual Income</p>
+                      <p id="wfd_sumIncome" class="wfd-sum-value">—</p>
+                    </div>
+                <div class="wfd-sum-card">
+                  <p class="wfd-sum-label">Plan Health</p>
+                  <p id="wfd_sumHealth" class="wfd-sum-value">—</p>
+                </div>
+                <div class="wfd-sum-card">
+                  <p class="wfd-sum-label">Longevity</p>
+                  <p id="wfd_sumLongevity" class="wfd-sum-value">—</p>
+                </div>
+                <div class="wfd-sum-card">
+                  <p class="wfd-sum-label">Income Sufficiency</p>
+                  <p id="wfd_sumIncomeSuff" class="wfd-sum-value">—</p>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+                <span style="font-size:.88rem;font-weight:700;color:#475569;">Plan Health:</span>
+                <span id="wfd_healthBadge" class="wfd-badge">—</span>
+              </div>
+            </div>
+          </div>
+          <div class="wfd-acc">
+            <button class="wfd-acc-btn" data-target="wfd_fundingWrap">Funding Breakdown</button>
+            <div id="wfd_fundingWrap" class="wfd-acc-body">
+              <div class="wfd-res-grid" id="wfd_resGrid"></div>
+              <div id="wfd_sourceBreak" class="wfd-mini-note" style="margin-top:6px;"></div>
+              <div class="wfd-bkt-vis" id="wfd_wdrlVis" style="height:90px;margin:12px 0 10px;">
+                <div class="wfd-bkt-bar-wrap">
+                  <div id="wfd_emWBar" class="wfd-bkt-bar" style="background:#0f172a;height:3px;"></div>
+                  <div id="wfd_emWLbl" class="wfd-bkt-bar-lbl">Emergency<br>$0</div>
+                </div>
+                <div class="wfd-bkt-bar-wrap">
+                  <div id="wfd_invWBar" class="wfd-bkt-bar" style="background:#3b82f6;height:3px;"></div>
+                  <div id="wfd_invWLbl" class="wfd-bkt-bar-lbl">Investments<br>$0</div>
+                </div>
+                <div class="wfd-bkt-bar-wrap">
+                  <div id="wfd_liWBar" class="wfd-bkt-bar" style="background:#a68023;height:3px;"></div>
+                  <div id="wfd_liWLbl" class="wfd-bkt-bar-lbl">Life Ins<br>$0</div>
+                </div>
+                <div class="wfd-bkt-bar-wrap">
+                  <div id="wfd_annWBar" class="wfd-bkt-bar" style="background:#16a34a;height:3px;"></div>
+                  <div id="wfd_annWLbl" class="wfd-bkt-bar-lbl">Annuities<br>$0</div>
+                </div>
+              </div>
+              <div id="wfd_emCard" class="wfd-em-card" style="margin-bottom:10px;">
+                <div>
+                  <p class="wfd-res-lbl" style="margin:0;">Emergency Reserve</p>
+                  <p id="wfd_emNow" class="wfd-sum-value" style="font-size:1rem;margin:0;">—</p>
+                </div>
+                <div>
+                  <p class="wfd-mini-note" style="margin:0;">Year 1 Used</p>
+                  <p id="wfd_emUsed" class="wfd-res-val" style="margin:0;">—</p>
+                </div>
+                <div>
+                  <p class="wfd-mini-note" style="margin:0;">Total Used (Plan)</p>
+                  <p id="wfd_emTotal" class="wfd-res-val" style="margin:0;">—</p>
+                </div>
+                <div>
+                  <p class="wfd-mini-note" style="margin:0;">Remaining</p>
+                  <p id="wfd_emRemain" class="wfd-res-val" style="margin:0;">—</p>
+                </div>
+                <div>
+                  <p class="wfd-mini-note" style="margin:0;">Depletion</p>
+                  <p id="wfd_emDeplete" class="wfd-res-val" style="margin:0;">—</p>
+                </div>
+                <div id="wfd_emStatus" class="wfd-badge" style="margin-left:auto;">—</div>
+              </div>
+            </div>
+          </div>
+          <div class="wfd-acc">
+            <button class="wfd-acc-btn" data-target="wfd_chartWrapAcc">Longevity Chart</button>
+            <div id="wfd_chartWrapAcc" class="wfd-acc-body">
+              <p style="font-weight:700;color:#334155;font-size:.86rem;margin:0 0 6px;">Asset Longevity Over Distribution Period</p>
+              <div class="wfd-chart-wrap"><canvas id="wfd_chart"></canvas></div>
+            </div>
+          </div>
+          <div class="wfd-acc collapsed">
+            <button class="wfd-acc-btn" data-target="wfd_tipsWrap">Year-by-Year Audit</button>
+            <div id="wfd_tipsWrap" class="wfd-acc-body">
+              <div id="wfd_tips" style="margin-top:0;"></div>
+            </div>
+          </div>
+          <div class="wfd-acc collapsed">
+            <button class="wfd-acc-btn" data-target="wfd_warnWrap">Warnings / Stress Points</button>
+            <div id="wfd_warnWrap" class="wfd-acc-body">
+              <div id="wfd_warnArea"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- end results -->
+
+    <!-- HIDDEN legacy calc button -->
+    <button id="wfd_calcBtn" type="button" style="display:none;">Calculate</button>
 
   </div><!-- end body -->
+
+  <!-- STICKY FOOTER NAV -->
+  <div class="wfd-footer">
+    <button id="wfd_clearBtn" class="wfd-calc-btn wfd-secondary" type="button" style="max-width:120px;">Clear</button>
+    <button id="wfd_prev" class="wfd-calc-btn wfd-secondary" type="button" style="max-width:160px;">Back</button>
+    <button id="wfd_next" class="wfd-calc-btn" type="button" style="max-width:200px;">Continue</button>
+    <button id="wfd_run" class="wfd-calc-btn" type="button" style="max-width:220px;">Run Plan</button>
+  </div>
 </div><!-- end panel -->`;
 
                 // ========================
@@ -1598,6 +1676,46 @@ markNeutral(savingsTipsOut);
                     if (lastActiveEl) lastActiveEl.focus();
                 };
                 gid('wfd_close').addEventListener('click', closeDistModal);
+                // Step navigation
+                const steps = ['1','2','3','4'];
+                let activeStep = '1';
+                function setStep(step){
+                    activeStep = step;
+                    document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
+                        chip.classList.toggle('active', chip.dataset.step === step);
+                    });
+                    document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
+                        w.classList.toggle('active', w.dataset.step === step);
+                    });
+                    gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
+                    const next = gid('wfd_next');
+                    const run  = gid('wfd_run');
+                    const nextLabels = { '1':'Next: Build Buckets', '2':'Next: Choose Strategy', '3':'View Results', '4':'View Results' };
+                    if (next) {
+                        next.textContent = nextLabels[step] || 'Continue';
+                        next.style.display = step === '4' ? 'none' : 'inline-flex';
+                    }
+                    if (run) {
+                        if (step === '3' || step === '4') {
+                            run.style.display = 'inline-flex';
+                            run.textContent = step === '4' ? 'Run Again' : 'Run Plan';
+                        } else {
+                            run.style.display = 'none';
+                        }
+                    }
+                }
+                document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
+                    chip.addEventListener('click', ()=>setStep(chip.dataset.step));
+                });
+
+                // Accordions
+                document.querySelectorAll('.wfd-acc-btn').forEach(btn=>{
+                    btn.addEventListener('click', ()=>{
+                        const parent = btn.closest('.wfd-acc');
+                        if (!parent) return;
+                        parent.classList.toggle('collapsed');
+                    });
+                });
 
                 // Parse float helper — strips $, %, commas
                 function pf(str) {
@@ -1901,7 +2019,21 @@ markNeutral(savingsTipsOut);
                     const show = ['priority','guardrail'].includes(gid('wfd_strategy').value);
                     gid('wfd_priorityRow').style.display = show ? 'block' : 'none';
                 };
-                gid('wfd_strategy').addEventListener('change', () => { togglePriorityRow(); saveDistState(); });
+                const markStrategyButtons = () => {
+                    const strat = gid('wfd_strategy').value;
+                    [['wfd_strat_prop','proportional'],['wfd_strat_pri','priority'],['wfd_strat_guard','guardrail']].forEach(([id,val])=>{
+                        const btn = gid(id);
+                        if (!btn) return;
+                        btn.style.background = strat===val ? 'linear-gradient(135deg,#d9b35a 0%,#c08a1f 100%)' : '#0f172a';
+                        btn.style.color = strat===val ? '#0f172a' : '#d9b35a';
+                    });
+                };
+                ['wfd_strat_prop','wfd_strat_pri','wfd_strat_guard'].forEach(id=>{
+                    const btn = gid(id);
+                    if (!btn) return;
+                    btn.addEventListener('click', ()=>{ gid('wfd_strategy').value = id==='wfd_strat_prop'?'proportional':id==='wfd_strat_pri'?'priority':'guardrail'; togglePriorityRow(); markStrategyButtons(); saveDistState(); });
+                });
+                gid('wfd_strategy').addEventListener('change', () => { togglePriorityRow(); markStrategyButtons(); saveDistState(); });
                 gid('wfd_clearBtn').addEventListener('click', clearDistribution);
 
                 // Priority selectors
@@ -1930,6 +2062,7 @@ markNeutral(savingsTipsOut);
                 (async () => {
                     await loadDistState();
                     togglePriorityRow();
+                    markStrategyButtons();
                     setPriorityOrder(getPriorityOrder());
                     gid('wfd_annType').dispatchEvent(new Event('change'));
                     updateYrs();
@@ -1938,6 +2071,7 @@ markNeutral(savingsTipsOut);
                     updateDMState();
                     syncBase();
                     validateAndGate();
+                    setStep('1');
                 })();
 
                 // ========================
@@ -1964,6 +2098,39 @@ markNeutral(savingsTipsOut);
                 if (manualArea) manualArea.addEventListener('input', saveDistState);
                 ['wfd_gapSource','wfd_scenarioMode'].forEach(id=>{
                     const el = gid(id); if (el) el.addEventListener('change', saveDistState);
+                });
+
+                const goResults = () => setStep('4');
+
+                gid('wfd_run').addEventListener('click', () => gid('wfd_calcBtn').click());
+                gid('wfd_recalcBtn')?.addEventListener('click', () => gid('wfd_calcBtn').click());
+                gid('wfd_prev').addEventListener('click', () => {
+                    const idx = Math.max(0, steps.indexOf(activeStep)-1);
+                    setStep(steps[idx]);
+                });
+                gid('wfd_next').addEventListener('click', () => {
+                    if (activeStep === '3') { gid('wfd_calcBtn').click(); return; }
+                    const idx = Math.min(steps.length-1, steps.indexOf(activeStep)+1);
+                    setStep(steps[idx]);
+                });
+                gid('wfd_editFoundation')?.addEventListener('click', ()=>setStep('1'));
+                gid('wfd_editBuckets')?.addEventListener('click', ()=>setStep('2'));
+                gid('wfd_editStrategy')?.addEventListener('click', ()=>setStep('3'));
+                gid('wfd_runBase')?.addEventListener('click', ()=>{
+                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'fixed';
+                    gid('wfd_manualReturns').value = '';
+                    gid('wfd_calcBtn').click();
+                });
+                gid('wfd_runDown')?.addEventListener('click', ()=>{
+                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'random';
+                    const threshold = gid('wfd_downThreshold'); if (threshold) threshold.value = '0';
+                    gid('wfd_protectInvest').checked = true;
+                    gid('wfd_calcBtn').click();
+                });
+                gid('wfd_runScenario')?.addEventListener('click', ()=>{
+                    if (typeof wfdScenarioCache === 'object') wfdScenarioCache = [];
+                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'random';
+                    gid('wfd_genScenario')?.click();
                 });
 
                 gid('wfd_calcBtn').addEventListener('click', async () => {
@@ -2451,7 +2618,7 @@ markNeutral(savingsTipsOut);
                     }
 
                     gid('wfd_results').style.display = 'block';
-                    setTimeout(() => gid('wfd_results').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+                    goResults();
                     saveDistState();
                 });
             } // end: if (!document.getElementById(DIST_OVR_ID))
@@ -2489,6 +2656,7 @@ markNeutral(savingsTipsOut);
                 document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
                 document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
                 togglePriorityRow();
+                setStep('1');
             });
 
             // Initial calculation
