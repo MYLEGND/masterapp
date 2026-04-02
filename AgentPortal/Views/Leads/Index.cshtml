@@ -516,9 +516,17 @@
 </div>
 
 <!-- Hybrid command bar (only shown when Hybrid view selected) -->
-@if (Model != null && Model.Count > 0)
+@if (Model == null || Model.Count == 0)
 {
-    <div class="card" id="tableView">
+    <div class="legend-empty-state">
+        <div class="legend-empty-icon">&#128466;</div>
+        <p class="legend-empty-title">No leads in this bucket yet</p>
+        <p class="legend-empty-sub">Import leads or change the selected bucket to see your pipeline.</p>
+    </div>
+}
+else
+{
+<div class="card" id="tableView">
         <table id="clientsTable">
             <thead>
                 <tr>

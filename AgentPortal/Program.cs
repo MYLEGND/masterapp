@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using AgentPortal.Services.Tracking;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.EntityFrameworkCore;
 using LegendApp.Services.Budget;
 using LegendApp.Services.Budget.Interfaces;
@@ -76,7 +77,12 @@ builder.Services.AddScoped<EffectiveAgentContext>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();
 builder.Services.AddSingleton<IBudgetCalculator, BudgetCalculator>();
-builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
+var redisConn = builder.Configuration["SignalR:RedisConnectionString"];
+// LeadBridge state: Redis-backed (multi-instance ready) when Redis is configured; in-memory fallback for local dev
+if (!string.IsNullOrWhiteSpace(redisConn))
+    builder.Services.AddSingleton<ILeadBridgeStateService, DistributedLeadBridgeStateService>();
+else
+    builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
@@ -89,17 +95,29 @@ builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
 builder.Services.AddSingleton<PiiProtector>();
-builder.Services.AddHealthChecks()
+var hcBuilder = builder.Services.AddHealthChecks()
     .AddCheck<DbReadinessCheck>("db", tags: ["ready"]);
+// Redis health check registered only when Redis is configured (redisConn declared above)
+if (!string.IsNullOrWhiteSpace(redisConn))
+    hcBuilder.AddCheck<RedisReadinessCheck>("redis", tags: ["ready"]);
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-// Application Insights telemetry (activated when APPLICATIONINSIGHTS_CONNECTION_STRING is set)
-builder.Services.AddApplicationInsightsTelemetry();
+// Application Insights telemetry — only registered when connection string is present
+if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+    builder.Services.AddApplicationInsightsTelemetry();
 
-var signalRBuilder = builder.Services.AddSignalR();
-var redisConn = builder.Configuration["SignalR:RedisConnectionString"];
+var signalRBuilder = builder.Services.AddSignalR(o =>
+{
+    o.MaximumReceiveMessageSize = 64 * 1024; // 64 KB per message — guard against oversized payloads
+});
 if (!string.IsNullOrWhiteSpace(redisConn))
     signalRBuilder.AddStackExchangeRedis(redisConn);
+
+// Distributed cache: Redis when available; in-memory fallback for local dev
+if (!string.IsNullOrWhiteSpace(redisConn))
+    builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConn);
+else
+    builder.Services.AddDistributedMemoryCache();
 
 // CORS for ingest endpoints (allow local testing + portal host)
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();

@@ -7,7 +7,11 @@
       "Bash(echo \"=== $db ===\")",
       "Bash(sqlite3 \"$db\" \"SELECT COUNT\\(*\\) || '' profiles'' FROM AgentProfiles;\")",
       "Bash(done)",
-      "Bash(az ad:*)"
+      "Bash(az ad:*)",
+      "Bash(dotnet test:*)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(dotnet /tmp/testout/AgentPortal.Tests.dll)"
     ]
   }
 }

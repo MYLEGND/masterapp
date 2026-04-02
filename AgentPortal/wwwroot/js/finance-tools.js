@@ -231,20 +231,28 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     // ------------------- Clear Button -------------------
-    function addClearButton(container, onClear) {
+    function addClearButton(container, onClear, host) {
         if (!container) return;
-        container.style.position = 'relative';
-
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = 'Clear';
         btn.className = 'btn btn-outline-secondary btn-sm clear-btn';
-        btn.style.position = 'absolute';
-        btn.style.top = '20px';
-        btn.style.right = '10px';
-        btn.style.zIndex = '10';
+        if (host) {
+            btn.classList.add('wf-action-btn');
+            btn.style.position = '';
+            btn.style.top = '';
+            btn.style.right = '';
+            btn.style.zIndex = '';
+            host.appendChild(btn);
+        } else {
+            container.style.position = 'relative';
+            btn.style.position = 'absolute';
+            btn.style.top = '20px';
+            btn.style.right = '10px';
+            btn.style.zIndex = '10';
+            container.appendChild(btn);
+        }
         btn.addEventListener('click', onClear);
-        container.appendChild(btn);
     }
 
     // ------------------- Tool Box Sizing -------------------
@@ -454,13 +462,76 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
             color:#c9d7ff !important;
             font-style:italic;
         }
+        .wfd-pos{color:#22c55e;}
+        .wfd-neg{color:#ef4444;}
+        .wfd-grow{color:#38bdf8;}
+        .wf-header-row{
+            display:grid;
+            grid-template-columns:1fr auto;
+            align-items:center;
+            gap:12px;
+            width:100%;
+            margin-bottom:20px;
+            position:relative;
+            z-index:6;
+        }
+        .wf-title-stack h3{
+            margin:0;
+        }
+        .wf-title-stack{flex:1;}
+        .wf-actions{
+            display:flex;
+            align-items:center;
+            gap:16px;
+            flex-wrap:nowrap;
+            justify-content:flex-end;
+            flex-shrink:0;
+            align-self:start;
+            position:relative;
+            z-index:7;
+        }
+        .wf-actions > button{flex:0 0 auto;margin:0; border-radius:12px !important;}
+        .wf-actions .clear-btn{
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            height:36px;
+            padding:6px 14px;
+            border-radius:12px !important;
+            font-weight:700;
+            font-size:.82rem;
+            margin:0;
+        }
+        .wf-action-btn{
+            background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
+            color:#d9b35a;
+            border:1.5px solid #a68023;
+            font-weight:700;
+            letter-spacing:.3px;
+            border-radius:8px;
+            padding:6px 14px;
+            box-shadow:0 4px 12px rgba(166,128,35,.18);
+            cursor:pointer;
+            font-family:Inter,sans-serif;
+            font-size:.82rem;
+            transition:background .15s;
+            min-width:110px;
+            pointer-events:auto;
+            position:relative;
+            z-index:5;
+        }
+        .wf-action-btn:hover{background:linear-gradient(135deg,#1e293b 0%,#2d3f5c 100%);}
     </style>
 
     <div id="wbTipLayer"></div>
-
-    <h3 style="color:#a68023; font-weight:900; font-size:2.2rem; margin-bottom:30px; letter-spacing:0.5px;">
-        ${t.name}
-    </h3>
+    <div class="wf-header-row">
+      <div class="wf-title-stack">
+        <h3 style="color:#a68023; font-weight:900; font-size:2.2rem; letter-spacing:0.5px;">
+            ${t.name}
+        </h3>
+      </div>
+      <div id="wfActions" class="wf-actions"></div>
+    </div>
     <div style="display:flex; flex-wrap:wrap; gap:50px;">
         <!-- Inputs Column -->
         <div style="flex:1; min-width:400px;">
@@ -529,6 +600,14 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
 
         <!-- Outputs + Chart -->
         <div style="flex:1; min-width:420px;" class="wf-output-col">
+            <div style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:800;color:#22c55e;font-size:.9rem;">
+                    <input id="wf_toggleWealth" type="checkbox" checked style="width:16px;height:16px;"> Projected Wealth
+                </label>
+                <label style="display:flex;align-items:center;gap:6px;font-weight:800;color:#f87171;font-size:.9rem;">
+                    <input id="wf_toggleSpend" type="checkbox" style="width:16px;height:16px;"> Cumulative Spending
+                </label>
+            </div>
             <div class="wf-chart-wrap">
                 <canvas id="wfChart" aria-label="Wealth forecast chart" role="img"></canvas>
             </div>
@@ -570,6 +649,15 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
             const savingsTipsOut = document.getElementById("wbSavingsTips");
             const chartEl = document.getElementById("wfChart");
             let wfChart = null;
+            const wealthToggle = document.getElementById('wf_toggleWealth');
+            const spendToggle  = document.getElementById('wf_toggleSpend');
+
+            function applyChartVisibility(update=true){
+                if (!wfChart) return;
+                wfChart.getDatasetMeta(0).hidden = wealthToggle && !wealthToggle.checked;
+                wfChart.getDatasetMeta(1).hidden = spendToggle && !spendToggle.checked;
+                if (update) wfChart.update();
+            }
             const wfLabelPlugin = {
                 id: "wfLabelPlugin",
                 afterDatasetsDraw(chart){
@@ -582,7 +670,8 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                     ctx.save();
                     data.datasets.forEach((ds, i) => {
                         const val = ds.data?.[ds.data.length - 1];
-                        if (val == null) return;
+                        const meta = chart.getDatasetMeta(i);
+                        if (val == null || meta.hidden) return;
                         const label = `$${Number(val).toLocaleString()}`;
                         const slot = slots[i % slots.length];
                         const padX = 6;
@@ -716,6 +805,24 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                 // Update outputs
                 earningsOut.textContent = `$${(income * years).toLocaleString()}`;
                 wealthOut.textContent = `$${investedBalance.toLocaleString()}`;
+                // Expose final balance for Distribution modal
+                window.__wfFinalBalance = investedBalance > 0 ? investedBalance : null;
+                if (typeof window.__wfOnBalanceUpdate === 'function') window.__wfOnBalanceUpdate(window.__wfFinalBalance);
+                window.__wfState = {
+                    annualIncome: income,
+                    workingYears: years,
+                    inflationPct: inflation * 100,
+                    returnPct: nominalReturn * 100,
+                    taxPct: tax * 100,
+                    liabilitiesPct: liabilities * 100,
+                    lifestylePct: lifestyle * 100,
+                    annualSavings,
+                    annualSpend,
+                    realGrowthPct: realGrowthRate * 100
+                };
+                if (typeof window.__wfUpdateDistributionDefaults === 'function') {
+                    window.__wfUpdateDistributionDefaults(window.__wfState);
+                }
                 realGrowthOut.textContent = `${(realGrowthRate * 100).toFixed(2)}%`;
                 savingsPercentOut.textContent = `${(savingsRate * 100).toFixed(2)}%`;
                 actualSavingsOut.textContent = `$${annualSavings.toLocaleString()}`;
@@ -816,10 +923,15 @@ markNeutral(savingsTipsOut);
                             },
                             plugins: [wfLabelPlugin]
                         });
+                        [wealthToggle, spendToggle].forEach(el => {
+                            if (el) el.addEventListener('change', () => applyChartVisibility());
+                        });
+                        applyChartVisibility(false);
                     } else {
                         wfChart.data.labels = labels;
                         wfChart.data.datasets[0].data = wealthPoints;
                         wfChart.data.datasets[1].data = spendPoints;
+                        applyChartVisibility(false);
                         wfChart.update("none");
                     }
                 }
@@ -840,6 +952,8 @@ markNeutral(savingsTipsOut);
             });
 
             // Clear button
+            const wfActionsHost = document.getElementById('wfActions');
+
             addClearButton(container, () => {
                 [incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => el.value = '');
                 earningsOut.textContent = '$0';
@@ -852,10 +966,1377 @@ markNeutral(savingsTipsOut);
                     wfChart.data.labels = ["Year 0"];
                     wfChart.data.datasets[0].data = [0];
                     wfChart.data.datasets[1].data = [0];
+                    applyChartVisibility(false);
                     wfChart.update();
                 }
+                window.__wfFinalBalance = null;
+                if (typeof window.__wfOnBalanceUpdate === 'function') window.__wfOnBalanceUpdate(null);
                 clearToolState(TOOL_KEY);
                 hideTip();
+            }, wfActionsHost);
+
+            // ========================
+            // DISTRIBUTION BUTTON (left of Clear)
+            // ========================
+            const distBtn = document.createElement('button');
+            distBtn.type = 'button';
+            distBtn.textContent = 'Distribution';
+            distBtn.className = 'wf-action-btn';
+            if (wfActionsHost) {
+                const clearBtn = wfActionsHost.querySelector('.clear-btn');
+                if (clearBtn) wfActionsHost.insertBefore(distBtn, clearBtn);
+                else wfActionsHost.appendChild(distBtn);
+            } else {
+                container.appendChild(distBtn);
+            }
+
+            // Validation helpers (hoisted so they are always available)
+            function validateDist(){
+                const errs = [];
+                const base          = pf(document.getElementById('wfd_base')?.value);
+                const retAge        = pf(document.getElementById('wfd_retAge')?.value);
+                const endAge        = pf(document.getElementById('wfd_endAge')?.value);
+                const years         = Math.floor(endAge - retAge);
+                const desiredInc    = pf(document.getElementById('wfd_desiredIncome')?.value);
+                const invAllocPct   = pf(document.getElementById('wfd_invAlloc')?.value);
+                const liAllocPct    = pf(document.getElementById('wfd_liAlloc')?.value);
+                const annAllocPct   = pf(document.getElementById('wfd_annAlloc')?.value);
+                const totalAlloc    = invAllocPct + liAllocPct + annAllocPct;
+                if (desiredInc <= 0) errs.push('Desired annual income is required.');
+                if (!base || base <= 0)             errs.push('Retirement Base is required. Run Wealth Forecast or enable Manual Override.');
+                if (retAge <= 0 || endAge <= 0)     errs.push('Retirement Age and Plan End Age are required.');
+                if (retAge >= endAge)               errs.push('Retirement Age must be less than Plan End Age.');
+                if (years <= 0)                     errs.push('Distribution period must be at least 1 year.');
+                if (Math.abs(totalAlloc - 100) > 0.11) errs.push(`Bucket allocations must total 100%. Current total: ${totalAlloc.toFixed(1)}%.`);
+                return errs;
+            }
+            function showBlock(errs){
+                const block = document.getElementById('wfd_block');
+                if (!block) return;
+                if (!errs.length){
+                    block.style.display = 'none';
+                } else {
+                    block.style.display = 'block';
+                    block.innerHTML = errs.map(e=>`⚠️ ${e}`).join('<br>');
+                    const res = document.getElementById('wfd_results');
+                    if (res) res.style.display = 'none';
+                }
+                lastValidationErrors = errs;
+            }
+            function validateAndGate(){
+                const errs = validateDist();
+                showBlock(errs);
+            }
+
+            // Priority-row toggler (hoisted so it exists even if modal already exists)
+            function togglePriorityRow(){
+                const row = document.getElementById('wfd_priorityRow');
+                const strat = document.getElementById('wfd_strategy');
+                if (!row || !strat) return;
+                const show = ['priority','downmarket'].includes(strat.value);
+                row.style.display = show ? 'block' : 'none';
+            }
+
+            // Clear handler (defined once, safe even if modal already exists)
+                function clearDistribution(){
+                    const manualOn = document.getElementById('wfd_manualOverride')?.checked;
+                    const keepIds = new Set(['wfd_desiredIncome','wfd_invTax','wfd_annTax']);
+                    if (!manualOn) keepIds.add('wfd_base');
+                    distInputIds.forEach(id=>{
+                        const el = document.getElementById(id);
+                    if (!el) return;
+                    if (keepIds.has(id)) return;
+                    el.value = '';
+                });
+                distCheckIds.forEach(id=>{
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (id === 'wfd_manualOverride' || id === 'wfd_downMktSim') el.checked = false;
+                    else el.checked = true;
+                });
+                document.getElementById('wfd_strategy').value = 'proportional';
+                setPriorityOrder(defaultPriority);
+                document.getElementById('wfd_warnArea').innerHTML = '';
+                document.getElementById('wfd_results').style.display = 'none';
+                resetSummary();
+                syncBase();
+                updateDMState();
+                validateAndGate();
+                saveDistState();
+            }
+
+            // ========================
+            // DISTRIBUTION MODAL — built once, lives in body
+            // ========================
+            const DIST_OVR_ID = 'wfDist_overlay';
+            if (!document.getElementById(DIST_OVR_ID)) {
+                const ovr = document.createElement('div');
+                ovr.id = DIST_OVR_ID;
+                ovr.setAttribute('role', 'dialog');
+                ovr.setAttribute('aria-modal', 'true');
+                ovr.setAttribute('aria-label', 'Distribution Planner');
+                document.body.appendChild(ovr);
+
+                ovr.innerHTML = `
+<style>
+#wfDist_overlay{
+    display:none;position:fixed;inset:0;z-index:99999;
+    background:rgba(5,10,20,.80);
+    align-items:flex-start;justify-content:center;
+    padding:20px 16px 48px;overflow-y:auto;
+}
+#wfDist_overlay.wfd-open{display:flex;}
+#wfDist_panel{
+    background:linear-gradient(145deg,#0b1529 0%,#0d1c36 100%);
+    color:#e2e8f0;
+    border-radius:20px;
+    box-shadow:0 28px 70px rgba(0,0,0,.55);
+    border:1.5px solid rgba(166,128,35,.55);
+    width:100%;max-width:980px;
+    font-family:'Inter',sans-serif;
+    position:relative;margin:auto;
+}
+.wfd-hdr{
+    background:linear-gradient(135deg,#0b1529 0%,#0f2040 100%);
+    border-bottom:1.5px solid #a68023;
+    border-radius:20px 20px 0 0;
+    padding:26px 36px 22px;
+}
+.wfd-body{padding:30px 36px 36px;}
+.wfd-sec{
+    margin-bottom:28px;
+    padding-bottom:24px;
+    border-bottom:1px solid rgba(166,128,35,.25);
+    background:rgba(255,255,255,.02);
+    border-radius:12px;
+    padding:20px;
+}
+.wfd-sec:last-child{border-bottom:none;margin-bottom:0;}
+.wfd-sec-title{color:#d9b35a;font-weight:900;font-size:1.1rem;margin:0 0 16px;letter-spacing:.4px;}
+.wfd-lbl{display:block;font-weight:650;font-size:.82rem;color:#e2e8f0;margin:12px 0 3px;}
+        .wfd-inp{
+    width:100%;padding:8px 11px;
+    border:1.5px solid rgba(217,179,90,.7);border-radius:8px;
+    font-size:.92rem;font-weight:700;color:#d9b35a;
+    background:#0f172a;box-sizing:border-box;
+    transition:border-color .15s, box-shadow .15s;
+}
+.wfd-inp::placeholder{color:#94a3b8;}
+.wfd-inp[readonly]{color:#d9b35a;}
+.wfd-inp:focus{outline:none;border-color:#d9b35a;background:#111e3a;box-shadow:0 0 0 2px rgba(217,179,90,.22);}
+.wfd-inp[readonly]{background:#0d1a30;color:#94a3b8;cursor:default;}
+.wfd-inp.wfd-good{border-color:#16a34a;color:#4ade80;}
+.wfd-inp.wfd-bad{border-color:#dc2626;color:#f87171;}
+.wfd-row{display:flex;gap:14px;flex-wrap:wrap;}
+.wfd-col{flex:1;min-width:130px;}
+.wfd-half{flex:0 0 calc(50% - 7px);min-width:130px;}
+.wfd-bkt-grid{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;}
+.wfd-bkt{flex:1;min-width:230px;background:#0f172a;border:1.5px solid rgba(166,128,35,.45);border-radius:14px;padding:16px 14px;box-shadow:0 8px 24px rgba(0,0,0,.22);}
+.wfd-bkt-title{font-weight:800;font-size:.97rem;color:#e2e8f0;margin:0 0 2px;}
+.wfd-bkt-sub{font-size:.73rem;color:#cbd5e1;margin:0 0 8px;line-height:1.4;}
+.wfd-tog-wrap{display:flex;align-items:center;gap:10px;margin-top:12px;}
+.wfd-tog{position:relative;width:38px;height:20px;display:inline-block;flex-shrink:0;}
+.wfd-tog input{opacity:0;width:0;height:0;}
+        .wfd-tog-sl{position:absolute;inset:0;background:#1f2937;border-radius:99px;cursor:pointer;transition:background .2s;border:1px solid rgba(217,179,90,.5);}
+        .wfd-tog input:checked + .wfd-tog-sl{background:#d9b35a;}
+.wfd-tog-sl:before{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;left:3px;top:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+.wfd-tog input:checked + .wfd-tog-sl:before{transform:translateX(18px);}
+.wfd-tog-lbl{font-size:.8rem;font-weight:600;color:#475569;}
+.wfd-alloc-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+.wfd-alloc-good{color:#16a34a;font-weight:800;}
+.wfd-alloc-bad{color:#dc2626;font-weight:800;}
+        .wfd-bkt-vis{display:flex;gap:10px;align-items:flex-end;height:110px;margin:12px 0 0;justify-content:center;color:#e5e7eb;}
+.wfd-bkt-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;}
+.wfd-bkt-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;transition:height .3s ease;}
+        .wfd-bkt-bar-lbl{font-size:.7rem;font-weight:700;text-align:center;color:#e5e7eb;line-height:1.3;}
+.wfd-calc-btn{
+    display:block;width:100%;padding:13px;
+    background:linear-gradient(135deg,#0b1529 0%,#1e3a5f 100%);
+    color:#d9b35a;border:1.5px solid #a68023;
+    border-radius:12px;font-weight:800;font-size:1rem;
+    cursor:pointer;letter-spacing:.4px;
+    box-shadow:0 6px 20px rgba(166,128,35,.18);
+    transition:background .15s;margin-top:6px;
+}
+.wfd-calc-btn:hover{background:linear-gradient(135deg,#162540 0%,#264a75 100%);}
+.wfd-calc-btn:disabled{background:#e2e8f0;color:#94a3b8;border-color:#cbd5e1;box-shadow:none;cursor:not-allowed;}
+.wfd-res-grid{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
+.wfd-res-card{flex:1;min-width:140px;background:linear-gradient(145deg,#0f172a 0%,#111f38 100%);border:1px solid rgba(166,128,35,.5);border-radius:11px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.18);}
+.wfd-res-lbl{font-size:.7rem;font-weight:700;color:#cbd5e1;margin:0 0 3px;text-transform:uppercase;letter-spacing:.5px;}
+.wfd-res-val{font-size:1.08rem;font-weight:900;color:#f8fafc;margin:0;}
+.wfd-res-val.green{color:#4ade80;}
+.wfd-res-val.gold{color:#d9b35a;}
+.wfd-res-val.red{color:#f87171;}
+.wfd-badge{display:inline-flex;align-items:center;padding:5px 14px;border-radius:99px;font-size:.87rem;font-weight:800;letter-spacing:.4px;}
+.wfd-hlthy{background:#dcfce7;color:#15803d;}
+.wfd-tight{background:#fef9c3;color:#a16207;}
+.wfd-risk{background:#fee2e2;color:#b91c1c;}
+.wfd-warn-box{background:#fff7ed;border:1px solid #fdba74;border-left:4px solid #f97316;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#7c2d12;font-weight:600;margin-top:8px;}
+.wfd-info-box{background:#eff6ff;border:1px solid #93c5fd;border-left:4px solid #3b82f6;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#1e3a5f;font-weight:600;margin-top:8px;}
+.wfd-chart-wrap{width:100%;height:240px;margin-top:6px;}
+.wfd-chart-wrap canvas{width:100%!important;height:240px!important;}
+        .wfd-priority-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px;}
+        .wfd-pri-label{font-size:.8rem;font-weight:700;color:#334155;margin-bottom:4px;}
+.wfd-mini-note{font-size:.75rem;color:#e2e8f0;font-weight:600;margin-top:6px;}
+.wfd-inline-note{font-size:.76rem;color:#d9b35a;font-weight:700;margin-top:4px;}
+        /* Summary strip */
+        .wfd-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;background:#0b1529;border:1px solid rgba(166,128,35,.55);border-radius:12px;padding:12px 14px;box-shadow:0 10px 26px rgba(0,0,0,.2);}
+        .wfd-sum-card{background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.45);border-radius:10px;padding:10px 12px;min-height:78px;display:flex;flex-direction:column;justify-content:center;}
+        .wfd-sum-label{margin:0;color:#e5e7eb;font-size:.78rem;font-weight:700;letter-spacing:.4px;}
+        .wfd-sum-value{margin:2px 0 0;color:#d9b35a;font-size:1.15rem;font-weight:900;}
+        .wfd-sum-good{color:#4ade80 !important;}
+        .wfd-sum-warn{color:#fbbf24 !important;}
+        .wfd-sum-bad{color:#f87171 !important;}
+        /* Down-market state */
+        .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
+        .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
+        .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
+        /* Emergency reserve card */
+        .wfd-em-card{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#0b1529;border:1px solid rgba(166,128,35,.55);border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18);}
+        .wfd-em-card .wfd-res-val{color:#eaf2ff;}
+        .wfd-em-card .wfd-sum-value{color:#d9b35a;}
+        /* Inputs de-emphasis */
+        .wfd-sec input.wfd-inp, .wfd-sec select.wfd-inp{background:#0f172a;border-color:rgba(217,179,90,.55);color:#f8fafc;}
+        .wfd-sec input.wfd-inp:focus, .wfd-sec select.wfd-inp:focus{background:#111e3a;border-color:#d9b35a;}
+@media(max-width:640px){
+    #wfDist_panel{border-radius:16px;}
+    .wfd-hdr{padding:18px 18px 16px;border-radius:16px 16px 0 0;}
+    .wfd-body{padding:18px;}
+    .wfd-bkt-grid,.wfd-res-grid{flex-direction:column;}
+}
+</style>
+
+<div id="wfDist_panel">
+  <!-- HEADER -->
+  <div class="wfd-hdr">
+    <button id="wfd_close" type="button" aria-label="Close"
+      style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">×</button>
+    <h2 style="color:#d9b35a;font-weight:900;font-size:1.75rem;margin:0 0 4px;">Distribution Planner</h2>
+    <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
+    <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
+  </div>
+
+  <!-- BODY -->
+  <div class="wfd-body">
+    <div id="wfd_block" class="wfd-warn-box" style="display:none;margin-bottom:12px;"></div>
+
+    <!-- TOP SUMMARY STRIP -->
+    <div id="wfd_summary" class="wfd-summary" style="margin-bottom:18px;">
+          <div class="wfd-sum-card">
+            <p class="wfd-sum-label">After-Tax Annual Income</p>
+            <p id="wfd_sumIncome" class="wfd-sum-value">—</p>
+          </div>
+      <div class="wfd-sum-card">
+        <p class="wfd-sum-label">Plan Health</p>
+        <p id="wfd_sumHealth" class="wfd-sum-value">—</p>
+      </div>
+      <div class="wfd-sum-card">
+        <p class="wfd-sum-label">Longevity</p>
+        <p id="wfd_sumLongevity" class="wfd-sum-value">—</p>
+      </div>
+      <div class="wfd-sum-card">
+        <p class="wfd-sum-label">Income Sufficiency</p>
+        <p id="wfd_sumIncomeSuff" class="wfd-sum-value">—</p>
+      </div>
+    </div>
+
+    <!-- RESULTS FIRST -->
+        <div id="wfd_results" style="display:none;margin-top:0;">
+      <div class="wfd-sec" style="border-bottom:none;margin-bottom:16px;padding-bottom:0;">
+        <p class="wfd-sec-title">Results & Funding</p>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+          <span style="font-size:.88rem;font-weight:700;color:#475569;">Plan Health:</span>
+          <span id="wfd_healthBadge" class="wfd-badge">—</span>
+        </div>
+        <div class="wfd-res-grid" id="wfd_resGrid"></div>
+        <div id="wfd_sourceBreak" class="wfd-mini-note" style="margin-top:6px;"></div>
+
+        <div class="wfd-bkt-vis" id="wfd_wdrlVis" style="height:90px;margin:12px 0 10px;">
+          <div class="wfd-bkt-bar-wrap">
+            <div id="wfd_emWBar" class="wfd-bkt-bar" style="background:#0f172a;height:3px;"></div>
+            <div id="wfd_emWLbl" class="wfd-bkt-bar-lbl">Emergency<br>$0</div>
+          </div>
+          <div class="wfd-bkt-bar-wrap">
+            <div id="wfd_invWBar" class="wfd-bkt-bar" style="background:#3b82f6;height:3px;"></div>
+            <div id="wfd_invWLbl" class="wfd-bkt-bar-lbl">Investments<br>$0</div>
+          </div>
+          <div class="wfd-bkt-bar-wrap">
+            <div id="wfd_liWBar" class="wfd-bkt-bar" style="background:#a68023;height:3px;"></div>
+            <div id="wfd_liWLbl" class="wfd-bkt-bar-lbl">Life Ins<br>$0</div>
+          </div>
+          <div class="wfd-bkt-bar-wrap">
+            <div id="wfd_annWBar" class="wfd-bkt-bar" style="background:#16a34a;height:3px;"></div>
+            <div id="wfd_annWLbl" class="wfd-bkt-bar-lbl">Annuities<br>$0</div>
+          </div>
+        </div>
+
+        <div id="wfd_emCard" class="wfd-em-card" style="margin-bottom:10px;">
+          <div>
+            <p class="wfd-res-lbl" style="margin:0;">Emergency Reserve</p>
+            <p id="wfd_emNow" class="wfd-sum-value" style="font-size:1rem;margin:0;">—</p>
+          </div>
+          <div>
+            <p class="wfd-mini-note" style="margin:0;">Year 1 Used</p>
+            <p id="wfd_emUsed" class="wfd-res-val" style="margin:0;">—</p>
+          </div>
+          <div>
+            <p class="wfd-mini-note" style="margin:0;">Total Used (Plan)</p>
+            <p id="wfd_emTotal" class="wfd-res-val" style="margin:0;">—</p>
+          </div>
+          <div>
+            <p class="wfd-mini-note" style="margin:0;">Remaining</p>
+            <p id="wfd_emRemain" class="wfd-res-val" style="margin:0;">—</p>
+          </div>
+          <div>
+            <p class="wfd-mini-note" style="margin:0;">Depletion</p>
+            <p id="wfd_emDeplete" class="wfd-res-val" style="margin:0;">—</p>
+          </div>
+          <div id="wfd_emStatus" class="wfd-badge" style="margin-left:auto;">—</div>
+        </div>
+
+        <p style="font-weight:700;color:#334155;font-size:.86rem;margin:12px 0 6px;">Asset Longevity Over Distribution Period</p>
+        <div class="wfd-chart-wrap"><canvas id="wfd_chart"></canvas></div>
+
+        <div id="wfd_tips" style="margin-top:12px;"></div>
+        <div id="wfd_warnArea"></div>
+      </div>
+    </div>
+
+    <!-- No-base warning -->
+    <div id="wfd_noBaseWarn" class="wfd-warn-box" style="display:none;margin-bottom:16px;">
+      ⚠️ Wealth Forecast has no valid result yet. Complete the Wealth Forecast inputs above first, or enable <strong>Manual Override</strong> below to enter a base manually.
+    </div>
+
+    <!-- No-base warning -->
+    <!-- SECTION 1: Retirement Foundation -->
+    <div class="wfd-sec">
+      <p class="wfd-sec-title">1 — Retirement Foundation</p>
+      <div class="wfd-row">
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_base">Retirement Base (from Wealth Forecast) <span style="color:#94a3b8;font-weight:400;font-size:.75rem;">read-only</span></label>
+          <input id="wfd_base" class="wfd-inp" type="text" readonly placeholder="Run Wealth Forecast above" />
+        </div>
+        <div class="wfd-col" style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px;">
+          <div class="wfd-tog-wrap" style="margin-top:20px;">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_manualOverride" /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl" style="font-size:.82rem;">Manual Override (what-if)</span>
+          </div>
+        </div>
+      </div>
+      <div class="wfd-row">
+        <div class="wfd-half">
+          <label class="wfd-lbl" for="wfd_retAge">Retirement Age</label>
+          <input id="wfd_retAge" class="wfd-inp" type="number" min="40" max="90" placeholder="65" />
+        </div>
+        <div class="wfd-half">
+          <label class="wfd-lbl" for="wfd_endAge">Plan End Age / Life Expectancy</label>
+          <input id="wfd_endAge" class="wfd-inp" type="number" min="41" max="120" placeholder="90" />
+        </div>
+      </div>
+      <div class="wfd-row">
+        <div class="wfd-half">
+          <label class="wfd-lbl" for="wfd_yrsInDist">Years in Distribution <span style="color:#94a3b8;font-weight:400;font-size:.75rem;">auto-calc</span></label>
+          <input id="wfd_yrsInDist" class="wfd-inp" type="text" readonly placeholder="—" />
+        </div>
+        <div class="wfd-half">
+          <label class="wfd-lbl" for="wfd_emergency">Emergency Savings Reserve ($)</label>
+          <input id="wfd_emergency" class="wfd-inp" type="text" placeholder="0" />
+        </div>
+      </div>
+      <div class="wfd-row">
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_desiredIncome">Desired Annual Retirement Income ($)</label>
+          <input id="wfd_desiredIncome" class="wfd-inp" type="text" placeholder="80,000" />
+        </div>
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_guaranteedIncome">Other Guaranteed Income ($) <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">Social Security, pension, rental</span></label>
+          <input id="wfd_guaranteedIncome" class="wfd-inp" type="text" placeholder="20,000" />
+        </div>
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_incomeGap">Net Income Gap to Fund From Assets <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">auto-calc</span></label>
+          <input id="wfd_incomeGap" class="wfd-inp" type="text" readonly placeholder="$0" />
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Three Bucket Allocation -->
+    <div class="wfd-sec">
+      <p class="wfd-sec-title">2 — Three Bucket Allocation</p>
+      <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
+
+      <div class="wfd-alloc-row">
+        <span style="font-size:.85rem;font-weight:600;color:#475569;">Total Allocated:</span>
+        <span id="wfd_allocTotal" class="wfd-alloc-bad">0%</span>
+        <span id="wfd_allocStatus" style="font-size:.78rem;font-weight:600;color:#dc2626;">— must equal 100%</span>
+      </div>
+
+      <!-- Allocation bar visual -->
+      <div class="wfd-bkt-vis" id="wfd_allocVis">
+        <div class="wfd-bkt-bar-wrap">
+          <div id="wfd_invBar" class="wfd-bkt-bar" style="height:3px;background:#3b82f6;"></div>
+          <div class="wfd-bkt-bar-lbl">Investments</div>
+        </div>
+        <div class="wfd-bkt-bar-wrap">
+          <div id="wfd_liBar" class="wfd-bkt-bar" style="height:3px;background:#a68023;"></div>
+          <div class="wfd-bkt-bar-lbl">Life Ins</div>
+        </div>
+        <div class="wfd-bkt-bar-wrap">
+          <div id="wfd_annBar" class="wfd-bkt-bar" style="height:3px;background:#16a34a;"></div>
+          <div class="wfd-bkt-bar-lbl">Annuities</div>
+        </div>
+      </div>
+
+      <div class="wfd-bkt-grid">
+
+        <!-- A: Investments -->
+        <div id="wfd_invCard" class="wfd-bkt" style="border-color:rgba(59,130,246,.4);">
+          <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
+          <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
+          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+            <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+          </div>
+          <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
+          <input id="wfd_invAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="60" />
+          <label class="wfd-lbl" for="wfd_invAmt">Starting Dollar Amount</label>
+          <input id="wfd_invAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+          <label class="wfd-lbl" for="wfd_invReturn">Expected Annual Return %</label>
+          <input id="wfd_invReturn" class="wfd-inp" type="number" step="0.1" placeholder="7.0" />
+          <label class="wfd-lbl" for="wfd_invWithdraw">Withdrawal Rate %</label>
+          <input id="wfd_invWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
+          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_invWDollars">$0</span></div>
+          <label class="wfd-lbl" for="wfd_invTax">Tax Rate %</label>
+          <input id="wfd_invTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
+          <div class="wfd-tog-wrap">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_invDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Use in Down Market?</span>
+          </div>
+        </div>
+
+        <!-- B: Life Insurance -->
+        <div id="wfd_liCard" class="wfd-bkt" style="border-color:rgba(166,128,35,.45);">
+          <p class="wfd-bkt-title" style="color:#a68023;">B — Life Insurance / Equivalent</p>
+          <p class="wfd-bkt-sub">Stability Buffer — Cash value life insurance, overfunded permanent insurance, protected strategies</p>
+          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+            <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+          </div>
+          <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
+          <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
+          <label class="wfd-lbl" for="wfd_liAmt">Starting Dollar Amount</label>
+          <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+          <label class="wfd-lbl" for="wfd_liGrowth">Growth / Credited Rate %</label>
+          <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
+          <label class="wfd-lbl" for="wfd_liWithdraw">Withdrawal / Loan Rate %</label>
+          <input id="wfd_liWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
+          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_liWDollars">$0</span></div>
+          <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
+          <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
+          <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
+          <input id="wfd_liEfficiency" class="wfd-inp" type="number" step="0.1" placeholder="100" />
+          <div class="wfd-tog-wrap">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_liDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Use in Down Market?</span>
+          </div>
+        </div>
+
+        <!-- C: Annuities -->
+        <div id="wfd_annCard" class="wfd-bkt" style="border-color:rgba(22,163,74,.4);">
+          <p class="wfd-bkt-title" style="color:#15803d;">C — Annuities</p>
+          <p class="wfd-bkt-sub">Income Floor — Protected income / accumulation hybrid</p>
+          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+            <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+          </div>
+          <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
+          <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
+          <label class="wfd-lbl" for="wfd_annAmt">Starting Dollar Amount</label>
+          <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+          <div class="wfd-tog-wrap" style="margin-top:12px;margin-bottom:4px;">
+            <span class="wfd-tog-lbl" style="margin-right:6px;">Annuity Type:</span>
+            <label class="wfd-tog"><input type="checkbox" id="wfd_annType" /><span class="wfd-tog-sl"></span></label>
+            <span id="wfd_annTypeLbl" class="wfd-tog-lbl">Fixed</span>
+          </div>
+          <label class="wfd-lbl" for="wfd_annReturn">Credited / Expected Return %</label>
+          <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
+          <label class="wfd-lbl" for="wfd_annWithdraw">Withdrawal Rate %</label>
+          <input id="wfd_annWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
+          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_annWDollars">$0</span></div>
+          <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
+          <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
+          <div class="wfd-tog-wrap">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_annDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Use in Down Market?</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- SECTION 3: Strategy Controls -->
+    <div class="wfd-sec">
+      <p class="wfd-sec-title">3 — Strategy Controls</p>
+      <div class="wfd-row">
+        <div class="wfd-col">
+          <label class="wfd-lbl" for="wfd_strategy">Withdrawal Strategy</label>
+          <select id="wfd_strategy" class="wfd-inp" style="cursor:pointer;">
+            <option value="proportional">Proportional — fund gap from all buckets in proportion to their allocation</option>
+            <option value="priority">Priority-Based — fund fully from Investments, then Life Ins, then Annuities</option>
+            <option value="downmarket">Down-Market Pivot — redirect away from Investments when stress is active</option>
+          </select>
+        </div>
+      </div>
+      <div id="wfd_priorityRow" class="wfd-row" style="margin-top:12px;display:none;">
+        <div class="wfd-col" style="flex:1 1 100%;">
+          <label class="wfd-lbl" for="wfd_pri1" style="margin-bottom:6px;">Withdrawal Priority (1 = first)</label>
+          <div class="wfd-priority-grid">
+            <div>
+              <div class="wfd-pri-label">1st</div>
+              <select id="wfd_pri1" class="wfd-inp"></select>
+            </div>
+            <div>
+              <div class="wfd-pri-label">2nd</div>
+              <select id="wfd_pri2" class="wfd-inp"></select>
+            </div>
+            <div>
+              <div class="wfd-pri-label">3rd</div>
+              <select id="wfd_pri3" class="wfd-inp"></select>
+            </div>
+            <div>
+              <div class="wfd-pri-label">4th</div>
+              <select id="wfd_pri4" class="wfd-inp"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="wfd-row" style="margin-top:14px;align-items:center;flex-wrap:wrap;gap:20px;">
+        <div class="wfd-tog-wrap" style="margin-top:0;">
+          <label class="wfd-tog"><input type="checkbox" id="wfd_downMktSim" /><span class="wfd-tog-sl"></span></label>
+          <span class="wfd-tog-lbl" style="font-size:.9rem;font-weight:700;color:#0f172a;">Down Market Simulation</span>
+        </div>
+        <div id="wfd_stressRow" style="display:none;flex:1;min-width:200px;">
+          <label class="wfd-lbl" for="wfd_stressReturn" style="margin-top:0;">Investment Stress Return % <span style="color:#dc2626;font-weight:400;font-size:.72rem;">e.g. -10 for a drawdown year</span></label>
+          <input id="wfd_stressReturn" class="wfd-inp" type="number" step="0.1" placeholder="-10" />
+        </div>
+      </div>
+    </div>
+
+    <!-- CALCULATE BUTTON -->
+    <div style="display:flex;gap:12px;flex-wrap:wrap;">
+      <button id="wfd_clearBtn" class="wfd-calc-btn" type="button" style="flex:1;max-width:180px;background:#fff;color:#0f172a;border-color:#d9b35a;">Clear</button>
+      <button id="wfd_calcBtn" class="wfd-calc-btn" type="button" style="flex:1;">Calculate Distribution Plan</button>
+    </div>
+
+  </div><!-- end body -->
+</div><!-- end panel -->`;
+
+                // ========================
+                // Wire up modal interactivity
+                // ========================
+                const gid = id => document.getElementById(id);
+                let lastValidationErrors = [];
+
+                let lastActiveEl = null;
+                let focusTrapHandler = null;
+                const focusableSelector = 'a[href], area[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex="0"]';
+                function trapFocus(modal){
+                    const nodes = modal.querySelectorAll(focusableSelector);
+                    if (!nodes.length) return;
+                    let first = nodes[0], last = nodes[nodes.length -1];
+                    focusTrapHandler = (e)=>{
+                        if (e.key !== 'Tab') return;
+                        if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+                        else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+                    };
+                    modal.addEventListener('keydown', focusTrapHandler);
+                    first.focus();
+                }
+
+                const closeDistModal = () => {
+                    const modal = gid(DIST_OVR_ID);
+                    modal.classList.remove('wfd-open');
+                    document.body.style.overflow = '';
+                    if (focusTrapHandler) modal.removeEventListener('keydown', focusTrapHandler);
+                    if (lastActiveEl) lastActiveEl.focus();
+                };
+                gid('wfd_close').addEventListener('click', closeDistModal);
+
+                // Parse float helper — strips $, %, commas
+                function pf(str) {
+                    const v = parseFloat(String(str || '').replace(/[$%]/g, '').replace(/,/g, ''));
+                    return isNaN(v) ? 0 : v;
+                }
+                function fmtD(n) { return '$' + Math.round(n || 0).toLocaleString(); }
+                function netFromGross(gross, taxRate){ return (gross || 0) * (1 - (taxRate || 0)); }
+
+                // Persistence + defaults
+                const DIST_KEY = 'DistributionPlanner';
+    const distInputIds = [
+        'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+        'wfd_invAlloc','wfd_invReturn','wfd_invWithdraw','wfd_invTax',
+        'wfd_liAlloc','wfd_liGrowth','wfd_liWithdraw','wfd_liTax','wfd_liEfficiency',
+        'wfd_annAlloc','wfd_annReturn','wfd_annWithdraw','wfd_annTax',
+        'wfd_stressReturn'
+                ];
+                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_downMktSim','wfd_annType'];
+                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4'];
+
+                const priorityOptions = [
+                    { v:'emergency',  l:'Emergency Savings' },
+                    { v:'investments',l:'Investments' },
+                    { v:'life',       l:'Life Insurance / Equivalent' },
+                    { v:'annuities',  l:'Annuities' }
+                ];
+                const defaultPriority = ['emergency','investments','life','annuities'];
+
+                function populatePrioritySelects() {
+                    ['wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4'].forEach(id => {
+                        const sel = gid(id);
+                        if (!sel || sel.options.length) return;
+                        priorityOptions.forEach(opt => {
+                            const o = document.createElement('option');
+                            o.value = opt.v; o.textContent = opt.l;
+                            sel.appendChild(o);
+                        });
+                    });
+                }
+
+                function normalizePriority(order) {
+                    const filled = [];
+                    order.forEach(o => { if (o && !filled.includes(o)) filled.push(o); });
+                    defaultPriority.forEach(o => { if (!filled.includes(o)) filled.push(o); });
+                    return filled.slice(0,4);
+                }
+
+                function setPriorityOrder(order){
+                    const norm = normalizePriority(order || []);
+                    ['wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4'].forEach((id, idx) => {
+                        const sel = gid(id);
+                        if (sel) sel.value = norm[idx];
+                    });
+                }
+
+                function getPriorityOrder(){
+                    return normalizePriority([
+                        gid('wfd_pri1')?.value,
+                        gid('wfd_pri2')?.value,
+                        gid('wfd_pri3')?.value,
+                        gid('wfd_pri4')?.value
+                    ]);
+                }
+
+                function distState() {
+                    const obj = {};
+                    distInputIds.forEach(id => { const el = gid(id); if (el) obj[id] = el.value; });
+                    distCheckIds.forEach(id => { const el = gid(id); if (el) obj[id] = !!el.checked; });
+                    distSelectIds.forEach(id => { const el = gid(id); if (el) obj[id] = el.value; });
+                    return obj;
+                }
+                function saveDistState() {
+                    savePersistedState(DIST_KEY, distState());
+                }
+                async function loadDistState() {
+                    const state = await loadPersistedState(DIST_KEY);
+                    if (!state || Object.keys(state).length === 0) return;
+                    distInputIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                    distCheckIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).checked = !!state[id]; });
+                    distSelectIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                }
+
+                // Integration from Wealth Forecast
+                window.__wfUpdateDistributionDefaults = function(st){
+                    if (!st) return;
+                    const setIfEmpty = (id, val, fmt=true) => {
+                        const el = gid(id);
+                        if (!el || (el.value && el.value.trim() !== '')) return;
+                        el.value = fmt ? Math.round(val || 0).toLocaleString() : val;
+                    };
+                    if (st.annualSpend > 0) {
+                        setIfEmpty('wfd_desiredIncome', st.annualSpend);
+                    }
+                    if (st.taxPct > 0) {
+                        setIfEmpty('wfd_invTax', st.taxPct, false);
+                        setIfEmpty('wfd_annTax', st.taxPct, false);
+                    }
+                };
+
+                // Sync retirement base from WF result
+                function syncBase() {
+                    const manualOn = gid('wfd_manualOverride').checked;
+                    const baseInp = gid('wfd_base');
+                    const warnEl = gid('wfd_noBaseWarn');
+                    if (!manualOn) {
+                        const bal = window.__wfFinalBalance;
+                        if (bal && bal > 0) {
+                            baseInp.value = Math.round(bal).toLocaleString();
+                            baseInp.readOnly = true;
+                            baseInp.classList.add('wfd-good'); baseInp.classList.remove('wfd-bad');
+                            warnEl.style.display = 'none';
+                        } else {
+                            baseInp.value = '';
+                            baseInp.readOnly = true;
+                            baseInp.classList.add('wfd-bad'); baseInp.classList.remove('wfd-good');
+                            warnEl.style.display = 'block';
+                        }
+                    } else {
+                        baseInp.readOnly = false;
+                        baseInp.classList.remove('wfd-good', 'wfd-bad');
+                        warnEl.style.display = 'none';
+                    }
+                    saveDistState();
+                    updateBktAmounts();
+                }
+
+                // Called by calcWealthForecast whenever it recalculates
+                window.__wfOnBalanceUpdate = function(bal) {
+                    if (!gid('wfd_manualOverride').checked) syncBase();
+                };
+
+                gid('wfd_manualOverride').addEventListener('change', syncBase);
+                gid('wfd_base').addEventListener('input', () => { updateBktAmounts(); saveDistState(); });
+
+                // Auto-calc: years in distribution
+                function updateYrs() {
+                    const ret = pf(gid('wfd_retAge').value);
+                    const end = pf(gid('wfd_endAge').value);
+                    const el = gid('wfd_yrsInDist');
+                    if (ret > 0 && end > 0 && end > ret) {
+                        el.value = (end - ret).toFixed(0);
+                        el.classList.add('wfd-good'); el.classList.remove('wfd-bad');
+                    } else if (ret > 0 && end > 0) {
+                        el.value = '';
+                        el.classList.add('wfd-bad'); el.classList.remove('wfd-good');
+                    } else {
+                        el.value = '';
+                        el.classList.remove('wfd-good', 'wfd-bad');
+                    }
+                    saveDistState();
+                }
+                gid('wfd_retAge').addEventListener('input', updateYrs);
+                gid('wfd_endAge').addEventListener('input', updateYrs);
+
+                // Auto-calc: income gap
+                function updateGap() {
+                    const desired = pf(gid('wfd_desiredIncome').value);
+                    const guar = pf(gid('wfd_guaranteedIncome').value);
+                    const gap = Math.max(desired - guar, 0);
+                    gid('wfd_incomeGap').value = fmtD(gap);
+                    const el = gid('wfd_incomeGap');
+                    if (gap === 0) { el.classList.add('wfd-good'); el.classList.remove('wfd-bad'); }
+                    else if (desired > 0 && gap > desired * 0.85) { el.classList.add('wfd-bad'); el.classList.remove('wfd-good'); }
+                    else { el.classList.remove('wfd-good', 'wfd-bad'); }
+                    saveDistState();
+                }
+                gid('wfd_desiredIncome').addEventListener('input', updateGap);
+                gid('wfd_guaranteedIncome').addEventListener('input', updateGap);
+
+                // Bucket dollar amounts + allocation bar visual
+                function updateBktAmounts() {
+                    const base = pf(gid('wfd_base').value);
+                    const inv = pf(gid('wfd_invAlloc').value);
+                    const li  = pf(gid('wfd_liAlloc').value);
+                    const ann = pf(gid('wfd_annAlloc').value);
+                    const total = inv + li + ann;
+
+                    const totEl = gid('wfd_allocTotal');
+                    const stEl  = gid('wfd_allocStatus');
+                    totEl.textContent = total.toFixed(1) + '%';
+                    if (Math.abs(total - 100) < 0.11) {
+                        totEl.className = 'wfd-alloc-good';
+                        stEl.textContent = '✓ Ready'; stEl.style.color = '#16a34a';
+                    } else {
+                        totEl.className = 'wfd-alloc-bad';
+                        stEl.textContent = '— must equal 100%'; stEl.style.color = '#dc2626';
+                    }
+
+                    if (base > 0) {
+                        gid('wfd_invAmt').value = fmtD(base * inv / 100);
+                        gid('wfd_liAmt').value  = fmtD(base * li  / 100);
+                        gid('wfd_annAmt').value = fmtD(base * ann / 100);
+                    } else {
+                        ['wfd_invAmt','wfd_liAmt','wfd_annAmt'].forEach(id => { gid(id).value = 'Enter Retirement Base'; });
+                    }
+
+                    // Withdrawal dollars per bucket
+                    const invWD = base * inv / 100 * (pf(gid('wfd_invWithdraw').value)/100);
+                    const liWD  = base * li  / 100 * (pf(gid('wfd_liWithdraw').value)/100);
+                    const annWD = base * ann / 100 * (pf(gid('wfd_annWithdraw').value)/100);
+                    gid('wfd_invWDollars').textContent = fmtD(invWD);
+                    gid('wfd_liWDollars').textContent  = fmtD(liWD);
+                    gid('wfd_annWDollars').textContent = fmtD(annWD);
+
+                    // Proportional bar heights
+                    const mx = Math.max(inv, li, ann, 1);
+                    gid('wfd_invBar').style.height = Math.max(inv / mx * 100, 3) + '%';
+                    gid('wfd_liBar').style.height  = Math.max(li  / mx * 100, 3) + '%';
+                    gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
+                }
+                ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
+                    gid(id).addEventListener('input', updateBktAmounts);
+                });
+                ['wfd_invWithdraw','wfd_liWithdraw','wfd_annWithdraw'].forEach(id => {
+                    gid(id).addEventListener('input', () => { updateBktAmounts(); });
+                });
+                ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
+                    const el = gid(id);
+                    if (el) el.addEventListener('change', () => { updateDMState(); saveDistState(); });
+                });
+
+                // Annuity type label
+                gid('wfd_annType').addEventListener('change', function() {
+                    gid('wfd_annTypeLbl').textContent = this.checked ? 'Variable' : 'Fixed';
+                    saveDistState();
+                });
+
+                // Down-market badge + dim state
+                function updateDMState(){
+                    const rows = [
+                        {chk:'wfd_invDownMkt', badge:'wfd_invDmBadge', card:'wfd_invCard'},
+                        {chk:'wfd_liDownMkt',  badge:'wfd_liDmBadge',  card:'wfd_liCard'},
+                        {chk:'wfd_annDownMkt', badge:'wfd_annDmBadge', card:'wfd_annCard'}
+                    ];
+                    rows.forEach(r => {
+                        const on = gid(r.chk)?.checked;
+                        const badge = gid(r.badge);
+                        const card = gid(r.card);
+                        if (!badge) return;
+                        if (on) {
+                            badge.textContent = 'Down-Market: On';
+                            badge.classList.remove('off');
+                            if (card) card.classList.remove('wfd-dm-off');
+                        } else {
+                            badge.textContent = 'Down-Market: Off';
+                            badge.classList.add('off');
+                            if (card) card.classList.add('wfd-dm-off');
+                        }
+                    });
+                }
+
+                // Down market simulation toggle
+                gid('wfd_downMktSim').addEventListener('change', function() {
+                    gid('wfd_stressRow').style.display = this.checked ? 'flex' : 'none';
+                    // Enable/disable down-market toggles when simulation is off to avoid inert controls
+                    ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_stressReturn'].forEach(id=>{
+                        const el = gid(id);
+                        if (!el) return;
+                        el.disabled = !gid('wfd_downMktSim').checked;
+                        el.parentElement?.classList.toggle('opacity-60', !gid('wfd_downMktSim').checked);
+                    });
+                    saveDistState();
+                });
+
+                // Strategy change
+                const togglePriorityRow = () => {
+                    const show = ['priority','downmarket'].includes(gid('wfd_strategy').value);
+                    gid('wfd_priorityRow').style.display = show ? 'block' : 'none';
+                };
+                gid('wfd_strategy').addEventListener('change', () => { togglePriorityRow(); saveDistState(); });
+                gid('wfd_clearBtn').addEventListener('click', clearDistribution);
+
+                // Priority selectors
+                populatePrioritySelects();
+                setPriorityOrder(defaultPriority);
+                ['wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4'].forEach(id => {
+                    const el = gid(id);
+                    if (el) el.addEventListener('change', () => {
+                        setPriorityOrder(getPriorityOrder());
+                        saveDistState();
+                    });
+                });
+
+                // Persist on input/changes
+                distInputIds.forEach(id => {
+                    const el = gid(id);
+                    if (!el) return;
+                    ['input','change','blur'].forEach(evt => el.addEventListener(evt, () => { saveDistState(); validateAndGate(); }));
+                });
+                distCheckIds.forEach(id => {
+                    const el = gid(id);
+                    if (!el) return;
+                    el.addEventListener('change', () => { saveDistState(); validateAndGate(); });
+                });
+
+                (async () => {
+                    await loadDistState();
+                    togglePriorityRow();
+                    setPriorityOrder(getPriorityOrder());
+                    gid('wfd_annType').dispatchEvent(new Event('change'));
+                    gid('wfd_stressRow').style.display = gid('wfd_downMktSim').checked ? 'flex' : 'none';
+                    updateYrs();
+                    updateGap();
+                    updateBktAmounts();
+                    updateDMState();
+                    syncBase();
+                    validateAndGate();
+                })();
+
+                // ========================
+                // Main Distribution Calculation
+                // ========================
+                let distChart = null;
+
+                gid('wfd_calcBtn').addEventListener('click', async () => {
+                    const preErrs = validateDist();
+                    showBlock(preErrs);
+                    if (preErrs.length) return;
+
+                    let chartReady = true;
+                    try { await ensureChartJs(); } catch (_) { chartReady = false; }
+
+                    const base          = pf(gid('wfd_base').value);
+                    const retAge        = pf(gid('wfd_retAge').value);
+                    const endAge        = pf(gid('wfd_endAge').value);
+                    const years         = Math.floor(endAge - retAge);
+                    const desiredInc    = pf(gid('wfd_desiredIncome').value);
+                    const guarInc       = pf(gid('wfd_guaranteedIncome').value);
+                    const incGap        = Math.max(desiredInc - guarInc, 0);
+                    let emergencyBal    = Math.max(0, pf(gid('wfd_emergency').value));
+
+                    const invAllocPct   = pf(gid('wfd_invAlloc').value);
+                    const liAllocPct    = pf(gid('wfd_liAlloc').value);
+                    const annAllocPct   = pf(gid('wfd_annAlloc').value);
+                    const totalAlloc    = invAllocPct + liAllocPct + annAllocPct;
+
+                    const invReturn     = pf(gid('wfd_invReturn').value)   / 100;
+                    const invWR         = pf(gid('wfd_invWithdraw').value) / 100;
+                    const invTax        = pf(gid('wfd_invTax').value)      / 100;
+                    const invDownMkt    = gid('wfd_invDownMkt').checked;
+
+                    const liGrowth      = pf(gid('wfd_liGrowth').value)    / 100;
+                    const liWR          = pf(gid('wfd_liWithdraw').value)  / 100;
+                    const liTax         = pf(gid('wfd_liTax').value)       / 100;
+                    const liEff         = (pf(gid('wfd_liEfficiency').value) || 100) / 100;
+                    const liDownMkt     = gid('wfd_liDownMkt').checked;
+
+                    const annReturn     = pf(gid('wfd_annReturn').value)   / 100;
+                    const annWR         = pf(gid('wfd_annWithdraw').value) / 100;
+                    const annTax        = pf(gid('wfd_annTax').value)      / 100;
+                    const annDownMkt    = gid('wfd_annDownMkt').checked;
+
+                    const strategy      = gid('wfd_strategy').value;
+                    const useStress     = gid('wfd_downMktSim').checked;
+                    const stressR       = useStress ? pf(gid('wfd_stressReturn').value) / 100 : null;
+                    const priOrder      = getPriorityOrder();
+
+                const resetSummary = () => {
+                        ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff','wfd_emNow','wfd_emUsed','wfd_emRemain'].forEach(id => {
+                            const el = gid(id); if (el) { el.textContent = '—'; el.classList.remove('wfd-sum-good','wfd-sum-warn','wfd-sum-bad'); }
+                        });
+                        const emBadge = gid('wfd_emStatus'); if (emBadge) { emBadge.textContent = '—'; emBadge.className = 'wfd-badge'; }
+                    };
+
+                // --- Validation ---
+                    const errs = validateDist();
+                    gid('wfd_warnArea').innerHTML = '';
+                    if (errs.length > 0) {
+                        gid('wfd_warnArea').innerHTML = errs.map(e => `<div class="wfd-warn-box">⚠️ ${e}</div>`).join('');
+                        gid('wfd_results').style.display = 'none';
+                        resetSummary();
+                        return;
+                    }
+
+                    // --- Starting balances ---
+                    let invBal  = base * invAllocPct  / 100;
+                    let liBal   = base * liAllocPct   / 100;
+                    let annBal  = base * annAllocPct  / 100;
+                    let emBal   = emergencyBal;
+                    const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
+
+                    const shortfallTol = Math.max(100, incGap * 0.02); // small tolerance reused
+
+                    // --- Year-by-year simulation ---
+                    const totalPts = [invBal + liBal + annBal + emBal];
+                    const invPts   = [invBal];
+                    const liPts    = [liBal];
+                    const annPts   = [annBal];
+                    const emPts    = [emBal];
+                    const yLabels  = ['Age ' + retAge];
+                    const auditRows = [];
+
+                    let depletionYr = null;
+                    let depletionEmerg = null;
+                    let fy_emW = 0, fy_invW = 0, fy_liW = 0, fy_annW = 0; // first-year withdrawals
+                    let year1Shortfall = 0;
+                    let anyYearShortfall = false;
+                    let cumulativeShortfall = 0;
+                    let firstFailureYear = null;
+                    let lastFullyFundedAge = null;
+                    let lastPositiveAge = retAge;
+                    let totalEmUsed = 0;
+                    let totalInvDraw = 0, totalLiDraw = 0, totalAnnDraw = 0;
+                    let depletionEmergAge = null;
+
+                    for (let y = 1; y <= years; y++) {
+                        const effInvR = (useStress && stressR !== null) ? stressR : invReturn;
+                        const effAnnR = (useStress && stressR !== null && gid('wfd_annType').checked) ? stressR : annReturn;
+                        let invW = 0, liW = 0, annW = 0;
+
+                        let needNet = incGap; // net gap after guaranteed income
+
+                        const allowInvest = !(useStress && !invDownMkt);
+                        const allowLife   = !(useStress && !liDownMkt);
+                        const allowAnn    = !(useStress && !annDownMkt);
+
+                        let needLeftNet = needNet; // net income still needed this year
+                        const liAccessCap = liEff > 0 ? liEff : 1;
+                        const grossCap = (bal, wr, access=1)=> Math.min(bal, bal * (wr||1), bal * access);
+                        if (strategy === 'proportional') {
+                            const allocSum = (allowInvest ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
+                            const weight = pct => allocSum > 0 ? pct / allocSum : 0;
+                            const invShareNet = allowInvest ? needLeftNet * weight(invAllocPct) : 0;
+                            const liShareNet  = allowLife   ? needLeftNet * weight(liAllocPct) : 0;
+                            const annShareNet = allowAnn    ? needLeftNet * weight(annAllocPct) : 0;
+                            const invGross = allowInvest ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
+                            const liGross  = allowLife   ? Math.min(grossCap(liBal, liWR, liAccessCap), liShareNet / (1 - liTax || 1)) : 0;
+                            const annGross = allowAnn    ? Math.min(grossCap(annBal, annWR), annShareNet / (1 - annTax || 1)) : 0;
+                            invW = invGross;
+                            liW  = liGross;
+                            annW = annGross;
+                            needLeftNet -= (netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax));
+                        } else if (strategy === 'priority') {
+                            normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(bucket => {
+                                if (needLeftNet <= 0) return;
+                                if (bucket === 'investments' && allowInvest) {
+                                    const maxGross = grossCap(invBal, invWR);
+                                    const grossNeed = needLeftNet / (1 - invTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    invW += amt; needLeftNet -= netFromGross(amt, invTax);
+                                } else if (bucket === 'life' && allowLife) {
+                                    const maxGross = grossCap(liBal, liWR, liAccessCap);
+                                    const grossNeed = needLeftNet / (1 - liTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                                } else if (bucket === 'annuities' && allowAnn) {
+                                    const maxGross = grossCap(annBal, annWR);
+                                    const grossNeed = needLeftNet / (1 - annTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                                }
+                            });
+                        } else {
+                            // Down-market pivot with order and per-bucket toggles
+                            let order = normalizePriority(priOrder).filter(x => x !== 'emergency');
+                            if (!allowInvest) order = order.filter(x => x !== 'investments');
+                            if (!allowLife)   order = order.filter(x => x !== 'life');
+                            if (!allowAnn)    order = order.filter(x => x !== 'annuities');
+                            order.forEach(bucket => {
+                                if (needLeftNet <= 0) return;
+                                if (bucket === 'life' && allowLife) {
+                                    const maxGross = grossCap(liBal, liWR, liAccessCap);
+                                    const grossNeed = needLeftNet / (1 - liTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                                } else if (bucket === 'annuities' && allowAnn) {
+                                    const maxGross = grossCap(annBal, annWR);
+                                    const grossNeed = needLeftNet / (1 - annTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                                } else if (bucket === 'investments' && allowInvest) {
+                                    const maxGross = grossCap(invBal, invWR);
+                                    const grossNeed = needLeftNet / (1 - invTax || 1);
+                                    const amt = Math.min(maxGross, grossNeed);
+                                    invW += amt; needLeftNet -= netFromGross(amt, invTax);
+                                }
+                            });
+                            if (needLeftNet > 0 && !allowInvest && invBal > 0) {
+                                const maxGross = grossCap(invBal, invWR);
+                                const grossNeed = needLeftNet / (1 - invTax || 1);
+                                const amt = Math.min(maxGross, grossNeed);
+                                invW += amt; needLeftNet -= netFromGross(amt, invTax);
+                            }
+                            needLeftNet = Math.max(0, needLeftNet);
+                        }
+
+                        if (y === 1) { fy_invW = invW; fy_liW = liW; fy_annW = annW; }
+
+                        // Emergency LAST, only for remaining gap
+                        const grossNeededAfterBuckets = Math.max(0, needLeftNet);
+                        const emUse = Math.min(grossNeededAfterBuckets, emBal);
+                        emBal -= emUse;
+                        totalEmUsed += emUse;
+                        if (emBal <= 0 && depletionEmerg === null && emergencyBal > 0) depletionEmerg = y;
+                        if (y === 1) fy_emW = emUse;
+
+                        const fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax) + emUse;
+                        const yearShort = Math.max(incGap - fundedNet, 0);
+                        if (y === 1) year1Shortfall = yearShort;
+                        cumulativeShortfall += yearShort;
+                        if (yearShort > shortfallTol && firstFailureYear === null) firstFailureYear = y;
+                        if (yearShort > shortfallTol) anyYearShortfall = true;
+                        if (yearShort <= shortfallTol) lastFullyFundedAge = retAge + y;
+
+                        // Withdrawal first, then growth
+                        invBal  = Math.max(0, invBal  - invW)  * (1 + effInvR);
+                        liBal   = Math.max(0, liBal   - liW)   * (1 + liGrowth) * liEff;
+                        annBal  = Math.max(0, annBal  - annW)  * (1 + effAnnR);
+                        emBal   = Math.max(0, emBal); // cash reserve, no growth
+
+                        const totalNow = invBal + liBal + annBal + emBal;
+                        invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
+                        totalPts.push(totalNow);
+                        if (totalNow > 0) lastPositiveAge = retAge + y;
+                        yLabels.push('Age ' + (retAge + y));
+
+                        if (invBal + liBal + annBal + emBal <= 0 && !depletionYr) depletionYr = y;
+                        if (emBal <= 0 && depletionEmerg !== null && !depletionEmergAge) depletionEmergAge = retAge + depletionEmerg;
+
+                        auditRows.push({
+                            age: retAge + y,
+                            start: { inv: invPts[invPts.length-2], li: liPts[liPts.length-2], ann: annPts[annPts.length-2], em: emPts[emPts.length-2] },
+                            growth: { inv: invPts[invPts.length-1] - Math.max(0, invPts[invPts.length-2] - invW), li: liPts[liPts.length-1] - Math.max(0, liPts[liPts.length-2] - liW), ann: annPts[annPts.length-1] - Math.max(0, annPts[annPts.length-2] - annW) },
+                            withdraw: { inv: invW, li: liW, ann: annW, em: emUse },
+                            net: { inv: netFromGross(invW,invTax), li: netFromGross(liW,liTax), ann: netFromGross(annW,annTax), em: emUse },
+                            shortfall: yearShort,
+                            end: { inv: invBal, li: liBal, ann: annBal, em: emBal }
+                        });
+                    }
+
+                    // --- Tax-aware first-year outputs ---
+                    const net_invW  = fy_invW  * (1 - invTax);
+                    const net_liW   = fy_liW   * (1 - liTax);
+                    const net_annW  = fy_annW  * (1 - annTax);
+                    const net_emW   = fy_emW;
+                    const totalNetW = net_invW + net_liW + net_annW + net_emW;
+                    const totalGrW  = fy_invW + fy_liW + fy_annW + fy_emW;
+                    // --- Horizon-wide tracking ---
+                    const shortfall = Math.max(incGap - (netFromGross(fy_invW,invTax)+netFromGross(fy_liW,liTax)+netFromGross(fy_annW,annTax)+fy_emW), 0); // year 1 shortfall (net)
+                    const atSpend   = guarInc + totalNetW;
+                    const finalTot  = totalPts[totalPts.length - 1];
+                    const depAge    = depletionYr ? retAge + depletionYr : null;
+
+                    // --- Additional horizon metrics ---
+                    const incomeSufficient = !anyYearShortfall && cumulativeShortfall <= shortfallTol;
+                    const assetsLast = !depAge;
+                    const firstYearShortfall = year1Shortfall;
+                    const anyYearFailure = anyYearShortfall;
+                    const lastFundedAge = lastFullyFundedAge || (anyYearFailure ? retAge + (firstFailureYear || 0) - 1 : endAge);
+                    const depletionAge = depAge || null;
+                    const cumulativeShort = cumulativeShortfall;
+
+                    let health = 'Healthy', healthCls = 'wfd-hlthy';
+                    if (assetsLast && incomeSufficient) {
+                        health = 'Healthy'; healthCls = 'wfd-hlthy';
+                    } else if (assetsLast && !incomeSufficient && cumulativeShort <= incGap * Math.max(0.15, years ? 0.05 * years : 0.15)) {
+                        health = 'Tight'; healthCls = 'wfd-tight';
+                    } else {
+                        health = 'At Risk'; healthCls = 'wfd-risk';
+                    }
+
+                    const badge = gid('wfd_healthBadge');
+                    badge.textContent = health;
+                    badge.className = 'wfd-badge ' + healthCls;
+
+                    // --- Active buckets: only show those used/allocated
+                    const active = {
+                        inv: (invAllocPct > 0) || (startInvBal > 0) || (totalInvDraw > 0),
+                        li:  (liAllocPct  > 0) || (startLiBal  > 0) || (totalLiDraw  > 0),
+                        ann: (annAllocPct > 0) || (startAnnBal > 0) || (totalAnnDraw > 0),
+                        em:  (startEmBal   > 0) || (totalEmUsed > 0)
+                    };
+
+                    // --- Result cards ---
+                    const cards = [
+                        { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: '' },
+                        { l: 'Guaranteed Income',          v: fmtD(guarInc),      c: 'green' },
+                        { l: 'Income Gap (from Assets)',   v: fmtD(incGap),       c: incGap > desiredInc * 0.85 ? 'red' : '' },
+                        active.em  ? { l: 'Yr 1 Emergency W/D',   v: fmtD(fy_emW),  c: '' } : null,
+                        active.inv ? { l: 'Yr 1 Investments W/D', v: fmtD(fy_invW), c: '' } : null,
+                        active.li  ? { l: 'Yr 1 Life Ins W/D',    v: fmtD(fy_liW),  c: '' } : null,
+                        active.ann ? { l: 'Yr 1 Annuity W/D',     v: fmtD(fy_annW), c: '' } : null,
+                        { l: 'Total Yr 1 Withdrawals',     v: fmtD(totalGrW),     c: '' },
+                        { l: 'After-Tax Spendable (Yr1)',  v: fmtD(atSpend),      c: incomeSufficient ? 'green' : 'red' },
+                        { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : '' },
+                        { l: 'Cumulative Shortfall',       v: fmtD(cumulativeShortfall), c: cumulativeShortfall > 0 ? 'red' : '' },
+                        { l: 'Any-Year Funding Failure',   v: anyYearFailure ? 'Yes' : 'No', c: anyYearFailure ? 'red' : 'green' },
+                        { l: 'Last Fully Funded Age',      v: lastFundedAge ? `Age ${lastFundedAge}` : '—', c: anyYearFailure ? 'red' : 'green' },
+                        { l: 'Asset Longevity',            v: assetsLast ? `Lasts to Age ${endAge}` : `Depletes @ Age ${depAge}`, c: assetsLast ? 'green' : 'red' },
+                        { l: 'Income Sufficiency',         v: incomeSufficient ? `Fully funded to Age ${endAge}` : `Income fails @ Age ${lastFundedAge ? lastFundedAge + 1 : retAge}`, c: incomeSufficient ? 'green' : 'red' },
+                    ].filter(Boolean);
+                    gid('wfd_resGrid').innerHTML = cards.map(c =>
+                        `<div class="wfd-res-card"><p class="wfd-res-lbl">${c.l}</p><p class="wfd-res-val ${c.c}">${c.v}</p></div>`
+                    ).join('');
+                    const srcParts = [];
+                    if (active.em)  srcParts.push(`From Emergency: ${fmtD(fy_emW)}`);
+                    if (active.inv) srcParts.push(`From Investments: ${fmtD(fy_invW)}`);
+                    if (active.li)  srcParts.push(`From Life Insurance: ${fmtD(fy_liW)}`);
+                    if (active.ann) srcParts.push(`From Annuities: ${fmtD(fy_annW)}`);
+                    srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
+                    srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
+                    if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
+                    gid('wfd_sourceBreak').innerHTML = srcParts.join(' • ');
+
+                    // --- Top summary strip ---
+                    const setSum = (id, val, cls) => {
+                        const el = gid(id);
+                        if (!el) return;
+                        el.textContent = val;
+                        el.classList.remove('wfd-sum-good','wfd-sum-warn','wfd-sum-bad');
+                        if (cls) el.classList.add(cls);
+                    };
+                    const healthSumCls = health === 'Healthy' ? 'wfd-sum-good' : (health === 'Tight' ? 'wfd-sum-warn' : 'wfd-sum-bad');
+                    setSum('wfd_sumIncome', fmtD(atSpend), incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
+                    setSum('wfd_sumHealth', health, healthSumCls);
+                    setSum('wfd_sumLongevity', depAge ? `Depletes @ Age ${depAge}` : `Lasts to Age ${endAge}`, depAge ? 'wfd-sum-bad' : 'wfd-sum-good');
+                    const failAge = firstFailureYear ? (retAge + firstFailureYear - 1) : null;
+                    setSum('wfd_sumIncomeSuff',
+                        incomeSufficient ? `Fully funded to Age ${endAge}` :
+                        failAge ? `Income fails @ Age ${failAge}` : `Underfunded (${fmtD(cumulativeShortfall)})`,
+                        incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
+
+                    // --- Emergency mini-card ---
+                    setSum('wfd_emNow', fmtD(emergencyBal));
+                    setSum('wfd_emUsed', fmtD(fy_emW));
+                    setSum('wfd_emTotal', fmtD(totalEmUsed));
+                    setSum('wfd_emRemain', fmtD(emBal));
+                    setSum('wfd_emDeplete', depletionEmergAge ? `Depletes @ Age ${depletionEmergAge}` : `Active to Age ${endAge}`);
+                    const emBadge = gid('wfd_emStatus');
+                    if (emBadge){
+                        const emHealthy = emBal > 0;
+                        emBadge.textContent = emHealthy ? 'Reserve Active' : 'Reserve Exhausted';
+                        emBadge.className = 'wfd-badge ' + (emHealthy ? 'wfd-hlthy' : 'wfd-risk');
+                    }
+
+                    // --- Withdrawal breakdown bars ---
+                    const barSet = [
+                        active.em  ? { bar:'wfd_emWBar',  lbl:'wfd_emWLbl',  txt:'Emergency',   val:fy_emW } : null,
+                        active.inv ? { bar:'wfd_invWBar', lbl:'wfd_invWLbl', txt:'Investments', val:fy_invW } : null,
+                        active.li  ? { bar:'wfd_liWBar',  lbl:'wfd_liWLbl',  txt:'Life Ins',    val:fy_liW } : null,
+                        active.ann ? { bar:'wfd_annWBar', lbl:'wfd_annWLbl', txt:'Annuities',   val:fy_annW } : null,
+                    ].filter(Boolean);
+                    const mxW = Math.max(...barSet.map(b=>b.val), 1);
+                    barSet.forEach(b=>{
+                        gid(b.bar).style.height = Math.max(b.val / mxW * 100, 3) + '%';
+                        gid(b.lbl).innerHTML = `${b.txt}<br>${fmtD(b.val)}`;
+                        gid(b.bar).parentElement.style.display = '';
+                    });
+                    ['wfd_emWBar','wfd_invWBar','wfd_liWBar','wfd_annWBar'].forEach(id=>{
+                        const el = gid(id)?.parentElement;
+                        if (el && !barSet.some(b=>b.bar===id)) el.style.display='none';
+                    });
+
+                    // --- Warnings ---
+                    const warns = [];
+                    if (!incomeSufficient)
+                        warns.push({ type:'warn', msg:`Income target underfunded by ${fmtD(shortfall)} in year 1; plan longevity alone does not meet the desired cash flow.` });
+                    if (atSpend < desiredInc * 0.9)
+                        warns.push({ type:'warn', msg:`After-tax spendable (${fmtD(atSpend)}) is below the desired income target. Consider increasing allocations, adjusting withdrawal rates, or boosting guaranteed income.` });
+                    if (invWR > 0.05 && invAllocPct > 0)
+                        warns.push({ type:'warn', msg:`Investment withdrawal rate of ${(invWR * 100).toFixed(1)}% exceeds the historically sustainable 4–5% range. Longevity risk increases materially.` });
+                    if (depAge && endAge - depAge > 5)
+                        warns.push({ type:'warn', msg:`Assets deplete ${endAge - depAge} years before the plan horizon. Reduce withdrawals, extend guaranteed income, or increase the retirement base.` });
+                    if (useStress && !invDownMkt && strategy !== 'downmarket')
+                        warns.push({ type:'info', msg:`Investment bucket is flagged "not use in down market" but strategy is not set to Down-Market Pivot — the flag has no effect until you switch the strategy.` });
+                    if (totalGrW < incGap * 0.8 && incGap > 0)
+                        warns.push({ type:'warn', msg:`Total first-year withdrawals (${fmtD(totalGrW)}) are below the income gap (${fmtD(incGap)}). Withdrawal rates may be too low to fund the desired income.` });
+                    if (depletionEmerg && depletionEmerg < years)
+                        warns.push({ type:'warn', msg:`Emergency reserve depletes by year ${depletionEmerg}. Remaining needs are covered by other buckets thereafter.` });
+                    if (shortfall > 0)
+                        warns.push({ type:'warn', msg:`Unfunded shortfall of ${fmtD(shortfall)} remains after withdrawals; reduce income target or increase protected sources.` });
+
+                    gid('wfd_warnArea').innerHTML = warns.map(w =>
+                        `<div class="${w.type === 'warn' ? 'wfd-warn-box' : 'wfd-info-box'}">${w.type === 'warn' ? '⚠️' : 'ℹ️'} ${w.msg}</div>`
+                    ).join('');
+
+                    // --- Audit table (year-by-year) ---
+                    const auditEl = gid('wfd_tips');
+                    if (auditEl){
+                        const actCols = ['inv','li','ann','em'].filter(key => active[key]);
+                        const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
+                        const headStart = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
+                        const headW = headStart;
+                        const headEnd = headStart;
+                        const rows = auditRows.slice(0, 25).map(r => `
+                            <tr>
+                              <td>Age ${r.age}</td>
+                              ${active.inv?`<td>${fmtD(r.start.inv)}</td>`:''}${active.li?`<td>${fmtD(r.start.li)}</td>`:''}${active.ann?`<td>${fmtD(r.start.ann)}</td>`:''}${active.em?`<td>${fmtD(r.start.em)}</td>`:''}
+                              ${active.inv?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${active.li?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${active.ann?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}${active.em?`<td class="wfd-neg">${fmtD(r.withdraw.em)}</td>`:''}
+                              <td class="wfd-pos">${fmtD(r.net.inv + r.net.li + r.net.ann + r.net.em)}</td>
+                              <td class="wfd-neg">${fmtD(r.shortfall)}</td>
+                              ${active.inv?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${active.li?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${active.ann?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}${active.em?`<td class="wfd-grow">${fmtD(r.end.em)}</td>`:''}
+                            </tr>`).join('');
+                        auditEl.innerHTML = `
+                          <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
+                            <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
+                              <thead style="position:sticky;top:0;background:#0b1529;">
+                                <tr>
+                                  <th>Age</th><th colspan="${actCols.length}">Start Bal</th><th colspan="${actCols.length}">Withdrawals</th><th>Net Income</th><th>Shortfall</th><th colspan="${actCols.length}">End Bal</th>
+                                </tr>
+                                <tr>
+                                  <th></th>${headStart}${headW}<th></th><th></th>${headEnd}
+                                </tr>
+                              </thead>
+                              <tbody>${rows || `<tr><td colspan="${actCols.length*3 + 3}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                            </table>
+                          </div>`;
+                    }
+
+                    // --- Longevity chart ---
+                    const chartCanvas = gid('wfd_chart');
+                    if (!chartReady || typeof Chart === 'undefined') {
+                        if (chartCanvas) chartCanvas.outerHTML = '<div style="padding:14px;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-weight:700;">Chart unavailable. Please retry or check your connection.</div>';
+                    } else if (chartCanvas) {
+                        if (distChart) { distChart.destroy(); distChart = null; }
+                        const datasets = [
+                            { label: 'Total Assets', data: totalPts, borderColor: '#d9b35a', borderWidth: 3, tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 4 }
+                        ];
+                        if (active.em)  datasets.push({ label: 'Emergency',    data: emPts,  borderColor: '#0f172a', borderWidth: 2, borderDash: [4,4], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
+                        if (active.inv) datasets.push({ label: 'Investments',  data: invPts, borderColor: '#3b82f6', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
+                        if (active.li)  datasets.push({ label: 'Life Ins',     data: liPts,  borderColor: '#a68023', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
+                        if (active.ann) datasets.push({ label: 'Annuities',    data: annPts, borderColor: '#16a34a', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
+
+                        distChart = new Chart(chartCanvas, {
+                            type: 'line',
+                            data: { labels: yLabels, datasets },
+                            options: {
+                                responsive: true, maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { labels: { color: '#334155', usePointStyle: true, padding: 14 } },
+                                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: $${Math.round(Number(ctx.raw)).toLocaleString()}` } }
+                                },
+                                scales: {
+                                    x: { ticks: { color: '#64748b', maxTicksLimit: 10 }, grid: { color: 'rgba(0,0,0,.05)' } },
+                                    y: { ticks: { color: '#64748b', callback: v => '$' + Number(v).toLocaleString() }, grid: { color: 'rgba(0,0,0,.05)' } }
+                                }
+                            }
+                        });
+                    }
+
+                    gid('wfd_results').style.display = 'block';
+                    setTimeout(() => gid('wfd_results').scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80);
+                    saveDistState();
+                });
+            } // end: if (!document.getElementById(DIST_OVR_ID))
+
+            // Distribution button opens modal and syncs base
+            distBtn.addEventListener('click', () => {
+                const overlay = document.getElementById(DIST_OVR_ID);
+                if (!overlay) {
+                    console.error('Distribution overlay not found.');
+                    return;
+                }
+                lastActiveEl = document.activeElement;
+                overlay.classList.add('wfd-open');
+                document.body.style.overflow = 'hidden';
+                trapFocus(overlay);
+                updateDMState();
+                // Sync retirement base on every open
+                const manualOn = document.getElementById('wfd_manualOverride').checked;
+                if (!manualOn) {
+                    const bal = window.__wfFinalBalance;
+                    const baseInp = document.getElementById('wfd_base');
+                    const warnEl  = document.getElementById('wfd_noBaseWarn');
+                    if (bal && bal > 0) {
+                        baseInp.value = Math.round(bal).toLocaleString();
+                        baseInp.classList.add('wfd-good'); baseInp.classList.remove('wfd-bad');
+                        warnEl.style.display = 'none';
+                    } else {
+                        baseInp.value = '';
+                        baseInp.classList.add('wfd-bad'); baseInp.classList.remove('wfd-good');
+                        warnEl.style.display = 'block';
+                    }
+                }
+                // Refresh derived auto-calcs
+                document.getElementById('wfd_invAlloc').dispatchEvent(new Event('input'));
+                document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
+                document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
+                togglePriorityRow();
             });
 
             // Initial calculation

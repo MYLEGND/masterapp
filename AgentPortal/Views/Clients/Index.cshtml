@@ -504,7 +504,11 @@
 
 @if (Model == null || Model.Count == 0)
 {
-    <div class="empty">No clients yet.</div>
+    <div class="legend-empty-state">
+        <div class="legend-empty-icon">&#128101;</div>
+        <p class="legend-empty-title">No clients yet</p>
+        <p class="legend-empty-sub">Add your first client to get started. They'll appear here once created.</p>
+    </div>
 }
 else
 {
