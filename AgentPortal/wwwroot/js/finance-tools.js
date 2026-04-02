@@ -1036,43 +1036,6 @@ markNeutral(savingsTipsOut);
                 row.style.display = show ? 'block' : 'none';
             }
 
-            // Clear handler (defined once, safe even if modal already exists)
-                function clearDistribution(){
-                    const manualOn = document.getElementById('wfd_manualOverride')?.checked;
-                    const keepIds = new Set(['wfd_desiredIncome','wfd_invTax','wfd_annTax']);
-                    if (!manualOn) keepIds.add('wfd_base');
-                    distInputIds.forEach(id=>{
-                        const el = document.getElementById(id);
-                    if (!el) return;
-                    if (keepIds.has(id)) return;
-                    el.value = '';
-                });
-                distCheckIds.forEach(id=>{
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    if (id === 'wfd_manualOverride') el.checked = false;
-                    else el.checked = true;
-                });
-                document.getElementById('wfd_strategy').value = 'proportional';
-                const gapSel = document.getElementById('wfd_gapSource'); if (gapSel) gapSel.value = 'life';
-                const scenSel = document.getElementById('wfd_scenarioMode'); if (scenSel) scenSel.value = 'fixed';
-                const downT = document.getElementById('wfd_downThreshold'); if (downT) downT.value = '0';
-                const manu = document.getElementById('wfd_manualReturns'); if (manu) manu.value = '';
-                wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
-                setPriorityOrder(defaultPriority);
-                document.getElementById('wfd_warnArea').innerHTML = '';
-                syncBase();
-                updateDMState();
-                validateAndGate();
-                distMeta.hasValidResults = false;
-                distMeta.stale = false;
-                distMeta.result = null;
-                distMeta.lastStep = '1';
-                saveMeta();
-                renderEmptyResults();
-                saveDistState();
-            }
-
             // ========================
             // DISTRIBUTION MODAL — built once, lives in body
             // ========================
@@ -2241,24 +2204,56 @@ markNeutral(savingsTipsOut);
                             if (pct <= 0.001) return 'wfd-return-flat';
                             return 'wfd-return-pos';
                         };
-                        const rows = (audit.rows||[]).map(r => `
-                            <tr>
+                        // Build per-bucket detail chips — only for buckets with actual withdrawals
+                        const bktDetail = (r) => {
+                            const chips = [];
+                            if (r.inv)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end)}</span>`);
+                            if (r.life) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.start)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.end)}</span>`);
+                            if (r.ann)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end)}</span>`);
+                            if (r.em)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
+                            return chips.length ? chips.join('') : '';
+                        };
+                        const rows = (audit.rows||[]).map(r => {
+                            const detail = bktDetail(r);
+                            return `
+                            <tr class="wfd-audit-main">
                               <td>${r.age}</td>
                               <td>${fmtD(r.startTotal)}</td>
                               <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
-                              <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
-                              <td>${r.sourceFunded || r.fundingSource || '—'}</td>
+                              <td>${r.marketState === 'down' ? '⬇ Down' : 'Normal'}</td>
+                              <td><strong>${r.sourceFunded || '—'}</strong></td>
                               <td class="wfd-neg">${fmtD(r.withdrawTotal)}</td>
                               <td class="wfd-pos">${fmtD(r.netIncome)}</td>
-                              <td class="wfd-neg">${fmtD(r.shortfall)}</td>
+                              <td class="${r.shortfall > 0 ? 'wfd-neg' : ''}">${r.shortfall > 0 ? fmtD(r.shortfall) : '—'}</td>
                               <td class="wfd-grow">${fmtD(r.endTotal)}</td>
-                            </tr>`).join('');
+                            </tr>${detail ? `<tr class="wfd-audit-detail"><td colspan="9"><div class="wfd-bkt-chips">${detail}</div></td></tr>` : ''}`;
+                        }).join('');
                         auditEl.innerHTML = `
-                          <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
+                          <style>
+                            .wfd-audit-main td { padding: 5px 7px; border-bottom: 1px solid rgba(217,179,90,.12); vertical-align: middle; }
+                            .wfd-audit-main th { padding: 6px 7px; }
+                            .wfd-audit-detail td { padding: 0 7px 7px; border-bottom: 1px solid rgba(217,179,90,.18); }
+                            .wfd-bkt-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
+                            .wfd-bkt-chip { font-size: .7rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
+                            .wfd-bkt-inv  { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
+                            .wfd-bkt-li   { background: rgba(166,128,35,.15); border: 1px solid rgba(166,128,35,.4); color: #d9b35a; }
+                            .wfd-bkt-ann  { background: rgba(22,163,74,.15);  border: 1px solid rgba(22,163,74,.4);  color: #86efac; }
+                            .wfd-bkt-em   { background: rgba(148,163,184,.12);border: 1px solid rgba(148,163,184,.3);color: #cbd5e1; }
+                            .wfd-bkt-chip .wfd-neg { color: #f87171; }
+                          </style>
+                          <div style="max-height:380px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
                             <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
-                              <thead style="position:sticky;top:0;background:#0b1529;">
+                              <thead style="position:sticky;top:0;background:#0b1529;z-index:1;">
                                 <tr>
-                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Source Funded</th><th>Withdrawals</th><th>Net Income</th><th>Shortfall</th><th>End Bal</th>
+                                  <th style="padding:6px 7px;">Age</th>
+                                  <th>Start Bal</th>
+                                  <th>Inv Return</th>
+                                  <th>Market</th>
+                                  <th>Source Funded</th>
+                                  <th>Withdrawals</th>
+                                  <th>Net Income</th>
+                                  <th>Shortfall</th>
+                                  <th>End Bal</th>
                                 </tr>
                               </thead>
                               <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
@@ -2479,7 +2474,12 @@ markNeutral(savingsTipsOut);
                     };
 
                     for (let y = 1; y <= years; y++) {
-                        const startBalTotal = invBal + liBal + annBal + emBal; // capture before any withdrawal or growth
+                        // Snapshot each bucket before any withdrawal or growth this iteration
+                        const invStart0 = invBal;
+                        const liStart0  = liBal;
+                        const annStart0 = annBal;
+                        const emStart0  = emBal;
+                        const startBalTotal = invStart0 + liStart0 + annStart0 + emStart0;
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
                         invReturnSeries.push(invYearR);
                         const effInvR = invYearR;
@@ -2487,7 +2487,6 @@ markNeutral(savingsTipsOut);
                         const marketState = invYearR <= downThreshold ? 'down' : 'normal';
                         if (marketState === 'down') downYearCount += 1;
                         marketStates.push(marketState);
-                        const activePolicy = strategy === 'guardrail' ? (marketState === 'down' ? 'guardrail-down' : 'guardrail-normal') : strategy;
 
                         let invW = 0, liW = 0, annW = 0;
                         let needLeftNet = incGap; // net gap after guaranteed income
@@ -2623,18 +2622,29 @@ markNeutral(savingsTipsOut);
                         if (invBal + liBal + annBal + emBal <= 0 && !depletionYr) depletionYr = y;
                         if (emBal <= 0 && depletionEmerg !== null && !depletionEmergAge) depletionEmergAge = retAge + depletionEmerg;
 
+                        // Build source label strictly from nonzero withdrawals — no strategy language
+                        const usedBuckets = [];
+                        if (emUse > 0) usedBuckets.push('Emergency');
+                        if (invW  > 0) usedBuckets.push('Investments');
+                        if (liW   > 0) usedBuckets.push('Life Insurance');
+                        if (annW  > 0) usedBuckets.push('Annuities');
+                        const sourceFundedLabel = usedBuckets.length ? usedBuckets.join(' + ') : (yearShort > 0 ? 'Unfunded' : 'None');
+
                         auditRows.push({
                             age: retAge + y,
                             invReturnPct: invYearR * 100,
                             marketState,
-                            policy: activePolicy,
-                            fundingSource,
-                            sourceFunded: fundingSource,
+                            sourceFunded: sourceFundedLabel,
                             startTotal: startBalTotal,
                             withdrawTotal: invW + liW + annW + emUse,
                             netIncome: fundedNet,
                             endTotal: invBal + liBal + annBal + emBal,
-                            shortfall: yearShort
+                            shortfall: yearShort,
+                            // per-bucket detail — start is pre-withdrawal snapshot; end is post-growth balance
+                            inv:  invW  > 0 ? { start: invStart0, w: invW,  end: invBal  } : null,
+                            life: liW   > 0 ? { start: liStart0,  w: liW,   end: liBal   } : null,
+                            ann:  annW  > 0 ? { start: annStart0, w: annW,  end: annBal  } : null,
+                            em:   emUse > 0 ? { start: emStart0,  w: emUse, end: emBal   } : null
                         });
                     }
 

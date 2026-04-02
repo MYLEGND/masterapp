@@ -1,9 +1,12 @@
 ﻿@using Microsoft.AspNetCore.Http
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
 @{
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
     var isFounderPath = ViewData["IsFounderPath"] as bool? ?? false;
+    var trackingSecretFallback = Config["Tracking:SharedSecret"] ?? string.Empty;
+    var trackingApiBaseFallback = Config["Tracking:ApiBase"] ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -591,12 +594,14 @@ footer.footer {
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        window.TRACKING_SECRET = "@(Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? "")";
-        window.TRACKING_API_BASE = "@(Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? "")";
+        // Prefer env vars; fallback to appsettings values
+        window.TRACKING_SECRET = "@(Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? trackingSecretFallback)";
+        window.TRACKING_API_BASE = "@(Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? trackingApiBaseFallback)";
         (function () {
             if (!window.TRACKING_API_BASE || window.TRACKING_API_BASE === "") {
-                // Local dev fallback: use current origin or default dev portal
-                window.TRACKING_API_BASE = window.location.origin || "https://localhost:6205";
+                // Fallback: use portal host when on protect domain, else current origin
+                const origin = window.location.origin || "";
+                window.TRACKING_API_BASE = origin.includes('protect') ? 'https://portal.mylegnd.com' : origin || "https://localhost:6205";
             }
             window.LEAD_API_BASE = window.TRACKING_API_BASE;
         })();
