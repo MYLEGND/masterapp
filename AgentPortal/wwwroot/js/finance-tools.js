@@ -1201,6 +1201,9 @@ markNeutral(savingsTipsOut);
 .wfd-res-val.green{color:#4ade80;}
 .wfd-res-val.gold{color:#d9b35a;}
 .wfd-res-val.red{color:#f87171;}
+.wfd-return-pos{color:#22c55e;font-weight:800;}
+.wfd-return-flat{color:#94a3b8;font-weight:700;}
+.wfd-return-neg{color:#ef4444;font-weight:800;}
 .wfd-badge{display:inline-flex;align-items:center;padding:5px 14px;border-radius:99px;font-size:.87rem;font-weight:800;letter-spacing:.4px;}
 .wfd-hlthy{background:#dcfce7;color:#15803d;}
 .wfd-tight{background:#fef9c3;color:#a16207;}
@@ -2234,16 +2237,23 @@ markNeutral(savingsTipsOut);
                     // Audit
                     const auditEl = gid('wfd_tips');
                     if (auditEl){
+                        const rtnClass = (pct) => {
+                            if (pct < -0.01) return 'wfd-return-neg';
+                            if (pct <= 0.15) return 'wfd-return-flat';
+                            return 'wfd-return-pos';
+                        };
                         const actCols = audit.actCols || [];
                         const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
-                        const headWithdraw = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
-                        const headEnd = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
+                        const headStart = actCols.map(k => `<th>Start ${headLabel(k)}</th>`).join('');
+                        const headWithdraw = actCols.map(k => `<th>W/D ${headLabel(k)}</th>`).join('');
+                        const headEnd = actCols.map(k => `<th>End ${headLabel(k)}</th>`).join('');
                         const rows = (audit.rows||[]).map(r => `
                             <tr>
-                              <td>Age ${r.age}</td>
-                              <td>${(r.invReturnPct).toFixed(1)}%</td>
+                              <td>${r.age}</td>
+                              <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
                               <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
                               <td>${r.fundingSource}</td>
+                              ${actCols.includes('inv')?`<td>${fmtD(r.start.inv)}</td>`:''}${actCols.includes('li')?`<td>${fmtD(r.start.li)}</td>`:''}${actCols.includes('ann')?`<td>${fmtD(r.start.ann)}</td>`:''}${actCols.includes('em')?`<td>${fmtD(r.start.em)}</td>`:''}
                               ${actCols.includes('inv')?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}${actCols.includes('em')?`<td class="wfd-neg">${fmtD(r.withdraw.em)}</td>`:''}
                               <td class="wfd-pos">${fmtD(r.netTotal)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
@@ -2254,10 +2264,10 @@ markNeutral(savingsTipsOut);
                             <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Funding Source</th>${headWithdraw ? `<th colspan=\"${actCols.length}\">Withdrawals</th>`:''}<th>Net Income</th><th>Shortfall</th>${headEnd ? `<th colspan=\"${actCols.length}\">End Bal</th>`:''}
+                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Source Order Used</th>${headStart}${headWithdraw}<th>Net Income</th><th>Shortfall</th>${headEnd}
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan="${4 + actCols.length + 2 + actCols.length}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan=\"${4 + (actCols.length*3) + 2}\" style=\"text-align:center;padding:8px;\">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -2453,6 +2463,25 @@ markNeutral(savingsTipsOut);
                     let downYearCount = 0;
 
                     const grossCap = (bal, wr, access=1)=> Math.min(Math.max(0, bal), Math.max(0, bal * (wr||1)), Math.max(0, bal * access));
+                    const bucketLabels = { investments:'Investments', life:'Life Insurance', annuities:'Annuities', emergency:'Emergency' };
+                    const uniqSeq = (arr) => arr.filter((v,i) => v && (i === 0 || arr[i-1] !== v));
+                    const joinArrow = (arr) => arr.map(b => bucketLabels[b] || b).join(' → ');
+                    const joinPlus  = (arr) => arr.map(b => bucketLabels[b] || b).join(' + ');
+                    const buildFundingLabel = ({ path, investGuarded, marketState, invW, strategy }) => {
+                        const clean = uniqSeq(path);
+                        if (investGuarded && marketState === 'down') {
+                            const nonInv = clean.filter(p => p !== 'investments');
+                            if (invW <= 0) {
+                                if (nonInv.length) return `Protected Investments; ${joinArrow(nonInv)}`;
+                                return 'Protected Investments; no draw';
+                            }
+                            if (nonInv.length) return `Protected Investments; ${joinArrow(nonInv)} → Investments (fallback)`;
+                            return 'Protected Investments; Investments (fallback)';
+                        }
+                        if (clean.length === 0) return 'None';
+                        if (clean.length === 1) return bucketLabels[clean[0]] || clean[0];
+                        return strategy === 'proportional' ? joinPlus(clean) : joinArrow(clean);
+                    };
 
                     for (let y = 1; y <= years; y++) {
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
@@ -2469,55 +2498,59 @@ markNeutral(savingsTipsOut);
                         const liAccessCap = liEff > 0 ? liEff : 1;
 
                         const allowInvest = (marketState === 'down' ? invDownMkt : true);
+                        const canUseInvest = allowInvest && !(protectInvest && marketState === 'down');
                         const allowLife   = (marketState === 'down' ? liDownMkt : true);
                         const allowAnn    = (marketState === 'down' ? annDownMkt : true);
                         const investGuarded = protectInvest && marketState === 'down';
+                        const fundingPath = [];
+                        const recordBucket = (bucket, amt) => { if (amt > 0 && fundingPath[fundingPath.length-1] !== bucket) fundingPath.push(bucket); };
 
                         const takeFromBucket = (bucket) => {
                             if (needLeftNet <= 0) return;
-                            if (bucket === 'investments' && allowInvest) {
+                            if (bucket === 'investments' && canUseInvest) {
                                 const maxGross = grossCap(invBal, invWR);
                                 const grossNeed = needLeftNet / (1 - invTax || 1);
                                 const amt = Math.min(maxGross, grossNeed);
                                 invW += amt; needLeftNet -= netFromGross(amt, invTax);
+                                recordBucket('investments', amt);
                             } else if (bucket === 'life' && allowLife) {
                                 const maxGross = grossCap(liBal, liWR, liAccessCap);
                                 const grossNeed = needLeftNet / (1 - liTax || 1);
                                 const amt = Math.min(maxGross, grossNeed);
                                 liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                                recordBucket('life', amt);
                             } else if (bucket === 'annuities' && allowAnn) {
                                 const maxGross = grossCap(annBal, annWR);
                                 const grossNeed = needLeftNet / (1 - annTax || 1);
                                 const amt = Math.min(maxGross, grossNeed);
                                 annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                                recordBucket('annuities', amt);
                             }
                         };
 
                         if (strategy === 'proportional') {
-                            const allocSum = (allowInvest && !investGuarded ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
+                            const allocSum = (canUseInvest ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
                             const weight = pct => allocSum > 0 ? pct / allocSum : 0;
-                            const invShareNet = (allowInvest && !investGuarded) ? needLeftNet * weight(invAllocPct) : 0;
+                            const invShareNet = (canUseInvest && !investGuarded) ? needLeftNet * weight(invAllocPct) : 0;
                             const liShareNet  = allowLife   ? needLeftNet * weight(liAllocPct) : 0;
                             const annShareNet = allowAnn    ? needLeftNet * weight(annAllocPct) : 0;
-                            const invGross = (allowInvest && !investGuarded) ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
+                            const invGross = (canUseInvest && !investGuarded) ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
                             const liGross  = allowLife   ? Math.min(grossCap(liBal, liWR, liAccessCap), liShareNet / (1 - liTax || 1)) : 0;
                             const annGross = allowAnn    ? Math.min(grossCap(annBal, annWR), annShareNet / (1 - annTax || 1)) : 0;
                             invW = invGross;
                             liW  = liGross;
                             annW = annGross;
+                            recordBucket('investments', invW);
+                            recordBucket('life', liW);
+                            recordBucket('annuities', annW);
                             needLeftNet -= (netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax));
 
-                            if (needLeftNet > 0 && investGuarded && allowInvest) {
-                                const grossNeed = needLeftNet / (1 - invTax || 1);
-                                const amt = Math.min(grossCap(invBal, invWR), grossNeed);
-                                invW += amt; needLeftNet -= netFromGross(amt, invTax);
-                            }
+                            // If investments are protected, we do not fall back to them in down years.
                         } else if (strategy === 'priority') {
                             normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(bucket => {
                                 if (investGuarded && bucket === 'investments') return;
                                 takeFromBucket(bucket);
                             });
-                            if (needLeftNet > 0 && investGuarded && allowInvest) takeFromBucket('investments');
                         } else { // guardrail
                             if (marketState === 'down' && protectInvest) {
                                 if (gapSource === 'split') {
@@ -2531,11 +2564,13 @@ markNeutral(savingsTipsOut);
                                             const grossNeed = lifeNeed / (1 - liTax || 1);
                                             const amt = Math.min(grossCap(liBal, liWR, liAccessCap), grossNeed);
                                             liW += amt; needLeftNet -= netFromGross(amt, liTax);
+                                            recordBucket('life', amt);
                                         }
                                         if (allowAnn && needLeftNet > 0) {
                                             const grossNeed = annNeed / (1 - annTax || 1);
                                             const amt = Math.min(grossCap(annBal, annWR), grossNeed);
                                             annW += amt; needLeftNet -= netFromGross(amt, annTax);
+                                            recordBucket('annuities', amt);
                                         }
                                     }
                                 } else {
@@ -2546,7 +2581,7 @@ markNeutral(savingsTipsOut);
                                     else order = ['life','annuities'];
                                     order.forEach(takeFromBucket);
                                 }
-                                if (needLeftNet > 0 && allowInvest) takeFromBucket('investments');
+                                // Do not touch investments when protected in down market
                             } else {
                                 // normal year guardrail behaves like priority
                                 normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(takeFromBucket);
@@ -2562,6 +2597,7 @@ markNeutral(savingsTipsOut);
                         totalEmUsed += emUse;
                         if (emBal <= 0 && depletionEmerg === null && emergencyBal > 0) depletionEmerg = y;
                         if (y === 1) fy_emW = emUse;
+                        if (emUse > 0) recordBucket('emergency', emUse);
 
                         const fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax) + emUse;
                         const yearShort = Math.max(incGap - fundedNet, 0);
@@ -2571,12 +2607,7 @@ markNeutral(savingsTipsOut);
                         if (yearShort > shortfallTol) anyYearShortfall = true;
                         if (yearShort <= shortfallTol) lastFullyFundedAge = retAge + y;
 
-                        const fundingParts = [];
-                        if (invW > 0) fundingParts.push(investGuarded ? 'Investments (fallback)' : 'Investments');
-                        if (liW > 0)  fundingParts.push('Life Insurance');
-                        if (annW > 0) fundingParts.push('Annuities');
-                        if (emUse > 0) fundingParts.push('Emergency');
-                        const fundingSource = fundingParts.length ? fundingParts.join(' + ') : 'None';
+                        const fundingSource = buildFundingLabel({ path: fundingPath, investGuarded, marketState, invW, strategy });
                         fundingSources.push(fundingSource);
 
                         // Withdrawal first, then growth
@@ -2603,11 +2634,9 @@ markNeutral(savingsTipsOut);
                             policy: activePolicy,
                             fundingSource,
                             start: { inv: invPts[invPts.length-2], li: liPts[liPts.length-2], ann: annPts[annPts.length-2], em: emPts[emPts.length-2] },
-                            growth: { inv: invPts[invPts.length-1] - Math.max(0, invPts[invPts.length-2] - invW), li: liPts[liPts.length-1] - Math.max(0, liPts[liPts.length-2] - liW), ann: annPts[annPts.length-1] - Math.max(0, annPts[annPts.length-2] - annW) },
                             withdraw: { inv: invW, li: liW, ann: annW, em: emUse },
-                            net: { inv: netFromGross(invW,invTax), li: netFromGross(liW,liTax), ann: netFromGross(annW,annTax), em: emUse },
-                            shortfall: yearShort,
                             end: { inv: invBal, li: liBal, ann: annBal, em: emBal },
+                            shortfall: yearShort,
                             netTotal: fundedNet
                         });
                     }
@@ -2764,30 +2793,36 @@ markNeutral(savingsTipsOut);
                     // --- Audit table (year-by-year) ---
                     const auditEl = gid('wfd_tips');
                     if (auditEl){
-                        const actCols = ['inv','li','ann','em'].filter(key => active[key]);
+                        const rtnClass = (pct) => {
+                            if (pct < -0.01) return 'wfd-return-neg';
+                            if (pct <= 0.15) return 'wfd-return-flat';
+                            return 'wfd-return-pos';
+                        };
+                        const actCols = ['inv','li','ann','em'].filter(key => auditRows.some(r => (r.withdraw?.[key] || 0) > 0));
                         const headLabel = key => key==='inv'?'Inv':key==='li'?'Life':key==='ann'?'Ann':'EM';
                         const headWithdraw = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
                         const headEnd = actCols.map(k => `<th>${headLabel(k)}</th>`).join('');
                         const rows = auditRows.slice(0, 25).map(r => `
                             <tr>
-                              <td>Age ${r.age}</td>
-                              <td>${(r.invReturnPct).toFixed(1)}%</td>
+                              <td>${r.age}</td>
+                              <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
                               <td>${r.marketState === 'down' ? 'Down' : 'Normal'}</td>
                               <td>${r.fundingSource}</td>
-                              ${active.inv?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${active.li?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${active.ann?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}${active.em?`<td class="wfd-neg">${fmtD(r.withdraw.em)}</td>`:''}
+                              ${actCols.includes('inv')?`<td>${fmtD(r.start.inv)}</td>`:''}${actCols.includes('li')?`<td>${fmtD(r.start.li)}</td>`:''}${actCols.includes('ann')?`<td>${fmtD(r.start.ann)}</td>`:''}
+                              ${actCols.includes('inv')?`<td class="wfd-neg">${fmtD(r.withdraw.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-neg">${fmtD(r.withdraw.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-neg">${fmtD(r.withdraw.ann)}</td>`:''}
                               <td class="wfd-pos">${fmtD(r.netTotal)}</td>
                               <td class="wfd-neg">${fmtD(r.shortfall)}</td>
-                              ${active.inv?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${active.li?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${active.ann?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}${active.em?`<td class="wfd-grow">${fmtD(r.end.em)}</td>`:''}
+                              ${actCols.includes('inv')?`<td class="wfd-grow">${fmtD(r.end.inv)}</td>`:''}${actCols.includes('li')?`<td class="wfd-grow">${fmtD(r.end.li)}</td>`:''}${actCols.includes('ann')?`<td class="wfd-grow">${fmtD(r.end.ann)}</td>`:''}
                             </tr>`).join('');
                         auditEl.innerHTML = `
                           <div style="max-height:320px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
                             <table style="width:100%; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
                               <thead style="position:sticky;top:0;background:#0b1529;">
                                 <tr>
-                                  <th>Age</th><th>Inv Return</th><th>Market</th><th>Funding Source</th>${headWithdraw ? `<th colspan=\"${actCols.length}\">Withdrawals</th>`:''}<th>Net Income</th><th>Shortfall</th>${headEnd ? `<th colspan=\"${actCols.length}\">End Bal</th>`:''}
+                                  <th>Age</th><th>Start Bal</th><th>Inv Return</th><th>Market</th><th>Funding Source</th>${headWithdraw ? `<th colspan=\"${actCols.length}\">Withdrawals</th>`:''}<th>Net Income</th><th>Shortfall</th>${headEnd ? `<th colspan=\"${actCols.length}\">End Bal</th>`:''}
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan="${4 + actCols.length + 2 + actCols.length}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td colspan="${5 + actCols.length + 2 + actCols.length}" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -2837,6 +2872,7 @@ markNeutral(savingsTipsOut);
                     }
 
                     // --- Persist + hydrate canonical result ---
+                    const usedBuckets = ['inv','li','ann','em'].filter(key => auditRows.some(r => (r.withdraw?.[key] || 0) > 0));
                     const result = {
                         summary: {
                             atSpend,
@@ -2854,7 +2890,7 @@ markNeutral(savingsTipsOut);
                         active,
                         emCard: { emergencyBal, fy_emW, totalEmUsed, emBal, depletionEmergAge },
                         warns,
-                        audit: { actCols: ['inv','li','ann','em'].filter(key => active[key]), rows: auditRows },
+                        audit: { actCols: usedBuckets, rows: auditRows },
                         chart: {
                             labels: yLabels,
                             series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts },
