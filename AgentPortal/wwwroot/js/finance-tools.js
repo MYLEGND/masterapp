@@ -521,6 +521,42 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
             z-index:5;
         }
         .wf-action-btn:hover{background:linear-gradient(135deg,#1e293b 0%,#2d3f5c 100%);}
+
+        /* ── Distribution Planner Launch Button ── */
+        @keyframes wfd-launch-pulse {
+            0%,100% { box-shadow: 0 4px 18px rgba(166,128,35,.35), 0 0 0 0 rgba(217,179,90,.45); }
+            60%      { box-shadow: 0 6px 28px rgba(166,128,35,.55), 0 0 0 8px rgba(217,179,90,0); }
+        }
+        .wf-dist-launch-btn {
+            background: linear-gradient(135deg, #c08a1f 0%, #d9b35a 50%, #a87820 100%);
+            color: #0f172a;
+            border: none;
+            font-weight: 900;
+            letter-spacing: .4px;
+            border-radius: 12px;
+            padding: 10px 22px;
+            cursor: pointer;
+            font-family: Inter, sans-serif;
+            font-size: .92rem;
+            min-width: 200px;
+            pointer-events: auto;
+            position: relative;
+            z-index: 5;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            animation: wfd-launch-pulse 2.8s ease-in-out infinite;
+            transition: transform .15s, filter .15s;
+            text-shadow: 0 1px 2px rgba(0,0,0,.18);
+        }
+        .wf-dist-launch-btn:hover {
+            filter: brightness(1.10);
+            transform: translateY(-1px);
+            animation: none;
+            box-shadow: 0 8px 32px rgba(166,128,35,.65);
+        }
+        .wf-dist-launch-btn:active { transform: translateY(0); filter: brightness(.95); }
+        .wf-dist-launch-btn .wfd-btn-icon { font-size: 1rem; line-height: 1; }
     </style>
 
     <div id="wbTipLayer"></div>
@@ -980,8 +1016,8 @@ markNeutral(savingsTipsOut);
             // ========================
             const distBtn = document.createElement('button');
             distBtn.type = 'button';
-            distBtn.textContent = 'Distribution';
-            distBtn.className = 'wf-action-btn';
+            distBtn.innerHTML = '<span class="wfd-btn-icon">&#9654;</span> Distribution Planner';
+            distBtn.className = 'wf-dist-launch-btn';
             if (wfActionsHost) {
                 const clearBtn = wfActionsHost.querySelector('.clear-btn');
                 if (clearBtn) wfActionsHost.insertBefore(distBtn, clearBtn);
@@ -1337,9 +1373,6 @@ markNeutral(savingsTipsOut);
           <input id="wfd_invAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
           <label class="wfd-lbl" for="wfd_invReturn">Expected Annual Return %</label>
           <input id="wfd_invReturn" class="wfd-inp" type="number" step="0.1" placeholder="7.0" />
-          <label class="wfd-lbl" for="wfd_invWithdraw">Withdrawal Rate %</label>
-          <input id="wfd_invWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
-          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_invWDollars">$0</span></div>
           <label class="wfd-lbl" for="wfd_invTax">Tax Rate %</label>
           <input id="wfd_invTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
           <div class="wfd-tog-wrap">
@@ -1361,9 +1394,6 @@ markNeutral(savingsTipsOut);
           <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
           <label class="wfd-lbl" for="wfd_liGrowth">Growth / Credited Rate %</label>
           <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
-          <label class="wfd-lbl" for="wfd_liWithdraw">Withdrawal / Loan Rate %</label>
-          <input id="wfd_liWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
-          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_liWDollars">$0</span></div>
           <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
           <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
           <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
@@ -1392,9 +1422,6 @@ markNeutral(savingsTipsOut);
           </div>
           <label class="wfd-lbl" for="wfd_annReturn">Credited / Expected Return %</label>
           <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
-          <label class="wfd-lbl" for="wfd_annWithdraw">Withdrawal Rate %</label>
-          <input id="wfd_annWithdraw" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
-          <div class="wfd-inline-note">Annual Withdrawal Amount: <span id="wfd_annWDollars">$0</span></div>
           <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
           <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
           <div class="wfd-tog-wrap">
@@ -1709,9 +1736,9 @@ markNeutral(savingsTipsOut);
                 const DIST_KEY = 'DistributionPlanner';
                 const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
-        'wfd_invAlloc','wfd_invReturn','wfd_invWithdraw','wfd_invTax',
-        'wfd_liAlloc','wfd_liGrowth','wfd_liWithdraw','wfd_liTax','wfd_liEfficiency',
-        'wfd_annAlloc','wfd_annReturn','wfd_annWithdraw','wfd_annTax',
+        'wfd_invAlloc','wfd_invReturn','wfd_invTax',
+        'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency',
+        'wfd_annAlloc','wfd_annReturn','wfd_annTax',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
@@ -1948,14 +1975,6 @@ markNeutral(savingsTipsOut);
                         ['wfd_invAmt','wfd_liAmt','wfd_annAmt'].forEach(id => { gid(id).value = 'Enter Retirement Base'; });
                     }
 
-                    // Withdrawal dollars per bucket
-                    const invWD = base * inv / 100 * (pf(gid('wfd_invWithdraw').value)/100);
-                    const liWD  = base * li  / 100 * (pf(gid('wfd_liWithdraw').value)/100);
-                    const annWD = base * ann / 100 * (pf(gid('wfd_annWithdraw').value)/100);
-                    gid('wfd_invWDollars').textContent = fmtD(invWD);
-                    gid('wfd_liWDollars').textContent  = fmtD(liWD);
-                    gid('wfd_annWDollars').textContent = fmtD(annWD);
-
                     // Proportional bar heights
                     const mx = Math.max(inv, li, ann, 1);
                     gid('wfd_invBar').style.height = Math.max(inv / mx * 100, 3) + '%';
@@ -1964,9 +1983,6 @@ markNeutral(savingsTipsOut);
                 }
                 ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
                     gid(id).addEventListener('input', updateBktAmounts);
-                });
-                ['wfd_invWithdraw','wfd_liWithdraw','wfd_annWithdraw'].forEach(id => {
-                    gid(id).addEventListener('input', () => { updateBktAmounts(); });
                 });
                 ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
@@ -2650,18 +2666,15 @@ markNeutral(savingsTipsOut);
                     const annAllocPct   = pf(gid('wfd_annAlloc').value);
 
                     const invReturn     = pf(gid('wfd_invReturn').value)   / 100;
-                    const invWR         = pf(gid('wfd_invWithdraw').value) / 100;
                     const invTax        = pf(gid('wfd_invTax').value)      / 100;
                     const invDownMkt    = gid('wfd_invDownMkt').checked;
 
                     const liGrowth      = pf(gid('wfd_liGrowth').value)    / 100;
-                    const liWR          = pf(gid('wfd_liWithdraw').value)  / 100;
                     const liTax         = pf(gid('wfd_liTax').value)       / 100;
                     const liEff         = (pf(gid('wfd_liEfficiency').value) || 100) / 100;
                     const liDownMkt     = gid('wfd_liDownMkt').checked;
 
                     const annReturn     = pf(gid('wfd_annReturn').value)   / 100;
-                    const annWR         = pf(gid('wfd_annWithdraw').value) / 100;
                     const annTax        = pf(gid('wfd_annTax').value)      / 100;
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annTypeVar    = gid('wfd_annType').checked;
