@@ -1681,6 +1681,7 @@ markNeutral(savingsTipsOut);
                     });
                     document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
                         w.classList.toggle('active', w.dataset.step === step);
+                        w.style.display = w.classList.contains('active') ? 'block' : 'none';
                     });
                     gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
                     const next = gid('wfd_next');
