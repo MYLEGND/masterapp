@@ -2320,7 +2320,7 @@ markNeutral(savingsTipsOut);
                                 seriesKey: 'inv'
                             },
                             {
-                                key: 'life', label: 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
+                                key: 'li', label: 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
                                 border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
                                 rateOf: _ => null,
                                 startOf: r => r.life ? r.life.start : null,
@@ -2737,7 +2737,6 @@ markNeutral(savingsTipsOut);
                     let depletionEmergAge = null;
                     let downYearCount = 0;
 
-                    const grossCap = (bal, wr, access=1)=> Math.min(Math.max(0, bal), Math.max(0, bal * (wr||1)), Math.max(0, bal * access));
                     const bucketLabels = { investments:'Investments', life:'Life Insurance', annuities:'Annuities', emergency:'Emergency' };
                     const uniqSeq = (arr) => arr.filter((v,i) => v && (i === 0 || arr[i-1] !== v));
                     const joinArrow = (arr) => arr.map(b => bucketLabels[b] || b).join(' → ');
@@ -2775,97 +2774,81 @@ markNeutral(savingsTipsOut);
 
                         let invW = 0, liW = 0, annW = 0;
                         let needLeftNet = incGap; // net gap after guaranteed income
-                        const liAccessCap = liEff > 0 ? liEff : 1;
 
-                        const allowInvest = (marketState === 'down' ? invDownMkt : true);
-                        const canUseInvest = allowInvest && !(protectInvest && marketState === 'down');
                         const allowLife   = (marketState === 'down' ? liDownMkt : true);
                         const allowAnn    = (marketState === 'down' ? annDownMkt : true);
                         const investGuarded = protectInvest && marketState === 'down';
                         const fundingPath = [];
                         const recordBucket = (bucket, amt) => { if (amt > 0 && fundingPath[fundingPath.length-1] !== bucket) fundingPath.push(bucket); };
 
-                        const takeFromBucket = (bucket) => {
-                            if (needLeftNet <= 0) return;
-                            if (bucket === 'investments' && canUseInvest) {
-                                const maxGross = grossCap(invBal, invWR);
-                                const grossNeed = needLeftNet / (1 - invTax || 1);
-                                const amt = Math.min(maxGross, grossNeed);
-                                invW += amt; needLeftNet -= netFromGross(amt, invTax);
-                                recordBucket('investments', amt);
-                            } else if (bucket === 'life' && allowLife) {
-                                const maxGross = grossCap(liBal, liWR, liAccessCap);
-                                const grossNeed = needLeftNet / (1 - liTax || 1);
-                                const amt = Math.min(maxGross, grossNeed);
-                                liW += amt; needLeftNet -= netFromGross(amt, liTax);
-                                recordBucket('life', amt);
-                            } else if (bucket === 'annuities' && allowAnn) {
-                                const maxGross = grossCap(annBal, annWR);
-                                const grossNeed = needLeftNet / (1 - annTax || 1);
-                                const amt = Math.min(maxGross, grossNeed);
-                                annW += amt; needLeftNet -= netFromGross(amt, annTax);
-                                recordBucket('annuities', amt);
-                            }
+                        // ── Strategy-driven cascade engine ──────────────────────────────
+                        // Each year we build an ordered draw sequence and pull from each
+                        // bucket only as much as needed — stopping as soon as the gap is met.
+                        // No per-bucket withdrawal rate cap; buckets can provide up to their
+                        // full available balance, limited only by the annual need.
+
+                        const drawFromBucket = (bucket) => {
+                            if (needLeftNet <= 1e-2) return; // tolerance: stop when gap is covered
+                            const canUse = bucket === 'investments' ? (investGuarded ? false : (marketState === 'down' ? invDownMkt : true))
+                                         : bucket === 'life'        ? (marketState === 'down' ? liDownMkt  : true)
+                                         :                            (marketState === 'down' ? annDownMkt : true);
+                            if (!canUse) return;
+                            const avail   = bucket === 'investments' ? Math.max(0, invBal)
+                                          : bucket === 'life'        ? Math.max(0, liBal * liEff)
+                                          :                            Math.max(0, annBal);
+                            const tax     = bucket === 'investments' ? invTax
+                                          : bucket === 'life'        ? liTax
+                                          :                            annTax;
+                            const grossNeed = tax < 1 ? needLeftNet / (1 - tax) : needLeftNet;
+                            const draw      = Math.min(avail, grossNeed);
+                            if (draw <= 0) return;
+                            if (bucket === 'investments') invW += draw;
+                            else if (bucket === 'life')   liW  += draw;
+                            else                          annW += draw;
+                            needLeftNet -= netFromGross(draw, tax);
+                            recordBucket(bucket, draw);
                         };
 
-                        if (strategy === 'proportional') {
-                            const allocSum = (canUseInvest ? invAllocPct : 0) + (allowLife ? liAllocPct : 0) + (allowAnn ? annAllocPct : 0);
-                            const weight = pct => allocSum > 0 ? pct / allocSum : 0;
-                            const invShareNet = (canUseInvest && !investGuarded) ? needLeftNet * weight(invAllocPct) : 0;
-                            const liShareNet  = allowLife   ? needLeftNet * weight(liAllocPct) : 0;
-                            const annShareNet = allowAnn    ? needLeftNet * weight(annAllocPct) : 0;
-                            const invGross = (canUseInvest && !investGuarded) ? Math.min(grossCap(invBal, invWR), invShareNet / (1 - invTax || 1)) : 0;
-                            const liGross  = allowLife   ? Math.min(grossCap(liBal, liWR, liAccessCap), liShareNet / (1 - liTax || 1)) : 0;
-                            const annGross = allowAnn    ? Math.min(grossCap(annBal, annWR), annShareNet / (1 - annTax || 1)) : 0;
-                            invW = invGross;
-                            liW  = liGross;
-                            annW = annGross;
-                            recordBucket('investments', invW);
-                            recordBucket('life', liW);
-                            recordBucket('annuities', annW);
-                            needLeftNet -= (netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax));
-
-                            // If investments are protected, we do not fall back to them in down years.
-                        } else if (strategy === 'priority') {
-                            normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(bucket => {
-                                if (investGuarded && bucket === 'investments') return;
-                                takeFromBucket(bucket);
-                            });
-                        } else { // guardrail
-                            if (marketState === 'down' && protectInvest) {
-                                if (gapSource === 'split') {
-                                    const lifeCapNet = allowLife ? netFromGross(grossCap(liBal, liWR, liAccessCap), liTax) : 0;
-                                    const annCapNet  = allowAnn ? netFromGross(grossCap(annBal, annWR), annTax) : 0;
-                                    const capSum = lifeCapNet + annCapNet;
-                                    if (capSum > 0) {
-                                        const lifeNeed = capSum ? needLeftNet * (lifeCapNet / capSum) : 0;
-                                        const annNeed  = needLeftNet - lifeNeed;
-                                        if (allowLife) {
-                                            const grossNeed = lifeNeed / (1 - liTax || 1);
-                                            const amt = Math.min(grossCap(liBal, liWR, liAccessCap), grossNeed);
-                                            liW += amt; needLeftNet -= netFromGross(amt, liTax);
-                                            recordBucket('life', amt);
-                                        }
-                                        if (allowAnn && needLeftNet > 0) {
-                                            const grossNeed = annNeed / (1 - annTax || 1);
-                                            const amt = Math.min(grossCap(annBal, annWR), grossNeed);
-                                            annW += amt; needLeftNet -= netFromGross(amt, annTax);
-                                            recordBucket('annuities', amt);
-                                        }
-                                    }
-                                } else {
-                                    let order = [];
-                                    if (gapSource === 'life' || gapSource === 'lifeThenAnnuities') order = ['life','annuities'];
-                                    else if (gapSource === 'annuities' || gapSource === 'annThenLife') order = ['annuities','life'];
-                                    else if (gapSource === 'custom') order = normalizePriority(priOrder).filter(x => x !== 'emergency' && x !== 'investments');
-                                    else order = ['life','annuities'];
-                                    order.forEach(takeFromBucket);
+                        // Build draw order for this year
+                        if (investGuarded && gapSource === 'split') {
+                            // Proportional split between life and annuities, investments as last resort
+                            const liAvail  = allowLife ? Math.max(0, liBal * liEff) : 0;
+                            const annAvail = allowAnn  ? Math.max(0, annBal)         : 0;
+                            const total    = liAvail + annAvail;
+                            if (total > 0 && needLeftNet > 1e-2) {
+                                const liShare  = needLeftNet * (liAvail  / total);
+                                const annShare = needLeftNet * (annAvail / total);
+                                if (allowLife && liAvail > 0) {
+                                    const draw = Math.min(liAvail, liTax < 1 ? liShare / (1 - liTax) : liShare);
+                                    liW += draw; needLeftNet -= netFromGross(draw, liTax);
+                                    recordBucket('life', draw);
                                 }
-                                // Do not touch investments when protected in down market
-                            } else {
-                                // normal year guardrail behaves like priority
-                                normalizePriority(priOrder).filter(x => x !== 'emergency').forEach(takeFromBucket);
+                                if (allowAnn && annAvail > 0 && needLeftNet > 1e-2) {
+                                    const draw = Math.min(annAvail, annTax < 1 ? annShare / (1 - annTax) : annShare);
+                                    annW += draw; needLeftNet -= netFromGross(draw, annTax);
+                                    recordBucket('annuities', draw);
+                                }
                             }
+                            // Investments as final fallback even when guarded
+                            drawFromBucket('investments');
+                        } else {
+                            let drawOrder;
+                            if (investGuarded) {
+                                // Down-year with investment protection: backup order, investments as last resort
+                                if (gapSource === 'life' || gapSource === 'lifeThenAnnuities')      drawOrder = ['life','annuities','investments'];
+                                else if (gapSource === 'annuities' || gapSource === 'annThenLife')  drawOrder = ['annuities','life','investments'];
+                                else if (gapSource === 'custom') {
+                                    const custom = normalizePriority(priOrder).filter(x => x !== 'emergency' && x !== 'investments');
+                                    drawOrder = [...custom, 'investments'];
+                                } else drawOrder = ['life','annuities','investments'];
+                            } else if (strategy === 'priority') {
+                                // User-defined priority order every year
+                                drawOrder = normalizePriority(priOrder).filter(x => x !== 'emergency');
+                            } else {
+                                // proportional + guardrail normal years: investments first, cascade only if insufficient
+                                drawOrder = ['investments','life','annuities'];
+                            }
+                            drawOrder.forEach(drawFromBucket);
                         }
 
                         if (y === 1) { fy_invW = invW; fy_liW = liW; fy_annW = annW; }
@@ -3014,8 +2997,6 @@ markNeutral(savingsTipsOut);
                         warns.push({ type:'warn', msg:`Income target underfunded by ${fmtD(shortfall)} in year 1; plan longevity alone does not meet the desired cash flow.` });
                     if (atSpend < desiredInc * 0.9)
                         warns.push({ type:'warn', msg:`After-tax spendable (${fmtD(atSpend)}) is below the desired income target. Consider increasing allocations, adjusting withdrawal rates, or boosting guaranteed income.` });
-                    if (invWR > 0.05 && invAllocPct > 0)
-                        warns.push({ type:'warn', msg:`Investment withdrawal rate of ${(invWR * 100).toFixed(1)}% exceeds the historically sustainable 4–5% range. Longevity risk increases materially.` });
                     if (depAge && endAge - depAge > 5)
                         warns.push({ type:'warn', msg:`Assets deplete ${endAge - depAge} years before the plan horizon. Reduce withdrawals, extend guaranteed income, or increase the retirement base.` });
                     if (totalGrW < incGap * 0.8 && incGap > 0)
