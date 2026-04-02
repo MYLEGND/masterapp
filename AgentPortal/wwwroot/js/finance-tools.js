@@ -1020,10 +1020,6 @@ markNeutral(savingsTipsOut);
                     el.innerHTML = errs.map(e=>`⚠️ ${e}`).join('<br>');
                 };
                 setBlock(block); setBlock(block2);
-                if (errs.length){
-                    const res = document.getElementById('wfd_results');
-                    if (res) res.style.display = 'none';
-                }
                 lastValidationErrors = errs;
             }
             function validateAndGate(){
@@ -1065,7 +1061,6 @@ markNeutral(savingsTipsOut);
                 wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
                 setPriorityOrder(defaultPriority);
                 document.getElementById('wfd_warnArea').innerHTML = '';
-                document.getElementById('wfd_results').style.display = 'none';
                 resetSummary();
                 syncBase();
                 updateDMState();
@@ -2193,7 +2188,6 @@ markNeutral(savingsTipsOut);
                     gid('wfd_warnArea').innerHTML = '';
                     if (errs.length > 0) {
                         gid('wfd_warnArea').innerHTML = errs.map(e => `<div class="wfd-warn-box">⚠️ ${e}</div>`).join('');
-                        gid('wfd_results').style.display = 'none';
                         resetSummary();
                         return;
                     }
@@ -2617,7 +2611,6 @@ markNeutral(savingsTipsOut);
                         });
                     }
 
-                    gid('wfd_results').style.display = 'block';
                     goResults();
                     saveDistState();
                 });
