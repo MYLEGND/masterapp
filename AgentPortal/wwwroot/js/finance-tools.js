@@ -3323,10 +3323,8 @@ markNeutral(savingsTipsOut);
                         if (liDesign === 'whole_loan') { liLoanBal = liLoanBal * (1 + liLoanRate); liLoanBal += liW; }
                         const liPre    = liDesign === 'whole_loan' ? liBal : Math.max(0, liBal - liW);
                         const annPre   = Math.max(0, annBal  - annW - riderPaidFromAccount);
-                        // whole_loan: gross death benefit grows unaffected; net DB = gross - outstanding loans
-                        const liDeathPre  = liDesign === 'whole_loan'
-                            ? liDeathBal
-                            : Math.max(0, liDeathBal - liW);
+                        // Death benefit start-of-year snapshot (conservative level DB unless explicitly modeled otherwise)
+                        const liDeathPre  = liDeathBal;
                         const annDeathPre = annDbRider ? annDeathBal : Math.max(0, annDeathBal - annW);
 
                         invBal  = invPre  * (1 + effInvR);
@@ -3344,8 +3342,10 @@ markNeutral(savingsTipsOut);
                         let annCharges = 0;
                         if (annDesign === 'variable') { /* charge already applied in net effect above; track for audit */ annCharges += annBal * 0; }
                         if (annIncomeRider) { const riderCharge = annIncomeBase * 0.006; annCharges += riderCharge; annBal = Math.max(0, annBal - riderCharge); }
-                        // legacy_rpu: death benefit is level (paid-up — no further compounding)
-                        liDeathBal  = liDesign === 'legacy_rpu' ? liDeathPre : liDeathPre  * (1 + effLiR);
+                        // Death benefit evolution by design (default: level, no automatic accrual)
+                        let liDeathNext = liDeathPre;
+                        // Future increasing DB options would adjust liDeathNext here; none are enabled by default.
+                        liDeathBal = liDeathNext;
                         if (annDbRider) {
                             // true high-water-mark: ratchet steps up only when account value exceeds prior high
                             annRiderBase = Math.max(annRiderBase, annBal);
