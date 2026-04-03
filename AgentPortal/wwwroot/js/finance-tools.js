@@ -871,9 +871,16 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             const wfResultsEl = document.getElementById("wfClientResults");
 
+            let wfSearchAbort = null;
+            let wfSearchToken = 0;
             async function searchWfClients(q){
                 const statusEl = document.getElementById("wfPlanStatus");
                 const qTrim = (q || "").trim();
+                // cancel any in-flight request to keep typing snappy
+                if (wfSearchAbort){ wfSearchAbort.abort(); wfSearchAbort = null; }
+                wfSearchToken++;
+                const token = wfSearchToken;
+
                 if (qTrim.length === 0){
                     if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove("text-danger"); }
                     if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
@@ -883,7 +890,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
                 if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
                 try{
-                    const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(qTrim)}`, { credentials:"include" });
+                    wfSearchAbort = new AbortController();
+                    const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(qTrim)}`, { credentials:"include", signal: wfSearchAbort.signal });
                     let list = [];
                     if (!res.ok){
                         const txt = await res.text().catch(()=> "");
@@ -893,6 +901,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     catch(parseErr){
                         throw new Error("Search response invalid.");
                     }
+                    // ignore stale responses
+                    if (token !== wfSearchToken) return;
                     if (!list || list.length === 0){
                         wfActiveClientId = null;
                         if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add("text-danger"); }
@@ -927,8 +937,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     }
                     if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove("text-danger"); }
                 } catch(err){
-                    if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add("text-danger"); }
-                    toast(err?.message || "Search failed.");
+                    if (token !== wfSearchToken) return; // stale/aborted
+                    if (statusEl){ statusEl.textContent = err?.name === 'AbortError' ? "Searching…" : (err?.message || "Search failed."); statusEl.classList.add("text-danger"); }
+                    if (err?.name !== 'AbortError') toast(err?.message || "Search failed.");
                 }
             }
 
