@@ -30,6 +30,18 @@
             </div>
             <button type="button" class="btn finance-toolbar-btn" id="btnToggleSupportPanels">Goals + Alerts</button>
         </div>
+
+        <div id="wfClientSearchHost" class="finance-search-host d-none mt-3">
+            <div class="finance-search-card shadow-sm">
+                <label class="form-label mb-1 fw-bold text-uppercase" style="letter-spacing:0.8px;">Search client (Wealth Forecast)</label>
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <input id="wfClientSearch" class="form-control form-control-sm" style="min-width:240px; max-width:320px;" placeholder="Type to search clients…" autocomplete="off" />
+                    <button id="wfClientSearchBtn" class="btn btn-outline-dark btn-sm" type="button">Search</button>
+                    <span id="wfPlanStatus" class="text-muted small">Type to search.</span>
+                </div>
+                <div id="wfClientResults" class="list-group mt-2" style="max-height:240px; overflow:auto; display:none;"></div>
+            </div>
+        </div>
     </div>
 
     <!-- Main tools layout -->
@@ -239,6 +251,13 @@ document.addEventListener("DOMContentLoaded", () => {
     box-shadow:
         0 0 0 .22rem rgba(166,128,35,0.20),
         0 16px 40px rgba(0,0,0,0.08) !important;
+}
+
+.finance-search-card{
+    border: 2px solid var(--gold);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 14px 16px;
 }
 
 /* ============================================================

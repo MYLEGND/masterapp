@@ -364,6 +364,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
 
     // ------------------- Tool Renderer -------------------
+    const wfSearchHost = document.getElementById("wfClientSearchHost");
+
     dropdown.addEventListener("change", async function () {
         const t = tools.find(x => x.id === this.value);
         saveSelectedToolId(this.value || "");
@@ -373,6 +375,20 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
         // close any active tooltip cleanly
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
+
+        // Toggle WF search host visibility
+        if (wfSearchHost) {
+            const show = !!t && t.id === "WealthForecast";
+            wfSearchHost.classList.toggle("d-none", !show);
+            if (!show) {
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl) statusEl.textContent = "Type to search.";
+                const resultsEl = document.getElementById("wfClientResults");
+                if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
+                const inputEl = document.getElementById("wfClientSearch");
+                if (inputEl) inputEl.value = "";
+            }
+        }
 
         if (!t) return;
 
@@ -850,17 +866,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             const wfActionsEl = document.getElementById("wfActions");
             if (wfActionsEl){
-                wfActionsEl.innerHTML = `
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <div style="display:flex;flex-direction:column;gap:4px;">
-                      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <input id="wfClientSearch" class="form-control form-control-sm" style="width:240px;" placeholder="Search clients…" autocomplete="off" />
-                        <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
-                        <span id="wfPlanStatus" class="text-muted small" style="min-height:18px;">No client selected.</span>
-                      </div>
-                      <div id="wfClientResults" class="list-group" style="max-height:220px;overflow:auto;min-width:260px;box-shadow:0 8px 18px rgba(0,0,0,.18);border:1px solid rgba(166,128,35,.25);border-radius:12px;display:none;"></div>
-                    </div>
-                  </div>`;
+                wfActionsEl.innerHTML = "";
             }
 
             const wfResultsEl = document.getElementById("wfClientResults");
