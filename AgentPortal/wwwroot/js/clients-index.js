@@ -180,6 +180,7 @@ function resetFinPlanForm(){
   form.reset();
   $("#finPlanError").style.display = "none";
   $("#finPlanStatusLabel").textContent = "Loading…";
+  $("#finPlanClientLabel").textContent = "";
 }
 
 function finPlanPayload(){
@@ -234,6 +235,8 @@ async function loadFinPlan(clientUserId){
     finPlanVersion = data.version || 0;
     $("#finPlanVersion").value = finPlanVersion;
     if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
+    if (data.clientName) $("#finPlanClientLabel").textContent = data.clientName;
+    else $("#finPlanClientLabel").textContent = data.clientUserId || "";
     hydrateFinPlan(data.jsonData);
     if (status) status.textContent = data.updatedUtc ? `Last updated ${new Date(data.updatedUtc).toLocaleString()}` : "Loaded";
   }catch(err){

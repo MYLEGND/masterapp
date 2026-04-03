@@ -3011,6 +3011,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
         catch { return Challenge(); }
 
         var clientUserIdNorm = NormLower(clientUserId);
+        _logger.LogInformation("FinancialPlan GET start agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, clientUserIdNorm);
+
         try
         {
             ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
@@ -3025,7 +3027,11 @@ meta.Activities ??= new List<ClientCrmActivity>();
             var json = row?.JsonData;
             if (string.IsNullOrWhiteSpace(json)) json = "{}";
 
-            var fingerprint = FingerprintPayload(json);
+            string fingerprint = "(empty)";
+            try { fingerprint = FingerprintPayload(json); } catch { fingerprint = "(error)"; }
+
+            var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+            if (string.IsNullOrWhiteSpace(displayName)) displayName = "Client";
 
             _logger.LogInformation("FinancialPlan GET ok agent={Agent} clientUserId={ClientUserId} profileId={ProfileId} hasRow={HasRow} rowId={RowId} len={Len}",
                 agentOid, profile.ClientUserId, profile.Id, row != null, row?.Id, json.Length);
@@ -3034,6 +3040,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             {
                 clientUserId = profile.ClientUserId,
                 clientProfileId = profile.Id,
+                clientName = displayName,
                 hasPlan = row != null,
                 jsonData = json,
                 version = row?.Version ?? 1,
@@ -3050,6 +3057,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             {
                 clientUserId = clientUserIdNorm,
                 clientProfileId = (Guid?)null,
+                clientName = "Client",
                 hasPlan = false,
                 jsonData = "{}",
                 version = 1,
