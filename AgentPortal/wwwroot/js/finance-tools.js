@@ -1241,6 +1241,30 @@ markNeutral(savingsTipsOut);
 .wfd-acc.collapsed .wfd-acc-btn:after{content:'▸';}
 .wfd-step-wrap{display:none;min-height:320px;}
 .wfd-step-wrap.active{display:block;}
+/* Dark gold border standardization (scoped to planner) */
+#wfDist_panel .wfd-inp,
+#wfDist_panel .wfd-bkt,
+#wfDist_panel .wfd-res-card,
+#wfDist_panel .wfd-bkt-tile,
+#wfDist_panel .wfd-acc,
+#wfDist_panel .wfd-acc-body,
+#wfDist_panel .wfd-sec,
+#wfDist_panel .wfd-alloc-row,
+#wfDist_panel .wfd-warn-box,
+#wfDist_panel .wfd-info-box,
+#wfDist_panel #wfd_tipsWrap > div,
+#wfDist_panel #wfd_chartWrapAcc,
+#wfDist_panel #wfd_sourceBreak,
+#wfDist_panel #wfd_bktDrill_panel,
+#wfDist_panel #wfd_warnWrap,
+#wfDist_panel .wfd-bkt-bar-wrap{
+    border-color:#b08d2f !important;
+}
+#wfDist_panel .wfd-step-chip,
+#wfDist_panel .wfd-footer,
+#wfDist_panel .wfd-acc-btn{
+    border-color:#b08d2f !important;
+}
 @media(max-width:640px){
     #wfDist_panel{border-radius:16px;}
     .wfd-hdr{padding:18px 18px 16px;border-radius:16px 16px 0 0;}
@@ -1365,7 +1389,7 @@ markNeutral(savingsTipsOut);
           <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
           <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
           <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
-            <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+            <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: Off</span>
           </div>
           <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
           <input id="wfd_invAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="60" />
@@ -1376,7 +1400,7 @@ markNeutral(savingsTipsOut);
           <label class="wfd-lbl" for="wfd_invTax">Tax Rate %</label>
           <input id="wfd_invTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
           <div class="wfd-tog-wrap">
-            <label class="wfd-tog"><input type="checkbox" id="wfd_invDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+            <label class="wfd-tog"><input type="checkbox" id="wfd_invDownMkt" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Use in Down Market?</span>
           </div>
         </div>
@@ -1475,7 +1499,7 @@ markNeutral(savingsTipsOut);
         <div class="wfd-col">
           <div class="wfd-tog-wrap" style="margin-top:0;">
             <label class="wfd-tog"><input type="checkbox" id="wfd_protectInvest" checked /><span class="wfd-tog-sl"></span></label>
-            <span class="wfd-tog-lbl" style="font-size:.88rem;font-weight:700;color:#0f172a;">Protect Investments During Down Markets</span>
+            <span class="wfd-tog-lbl" style="font-size:.88rem;font-weight:700;color:#fff;">Protect Investments During Down Markets</span>
           </div>
           <p class="wfd-mini-note" style="margin-top:6px;">When on, investments pause in down years unless fallback is required.</p>
         </div>
@@ -1738,7 +1762,7 @@ markNeutral(savingsTipsOut);
                 function netFromGross(gross, taxRate){ return (gross || 0) * (1 - (taxRate || 0)); }
 
                 // Persistence + defaults
-                const DIST_KEY = 'DistributionPlanner';
+                const DIST_KEY = `DistributionPlanner:${workspaceScope}`;
                 const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invTax',
@@ -1748,7 +1772,7 @@ markNeutral(savingsTipsOut);
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
-                const DIST_META_KEY = 'DistributionPlannerMeta';
+                const DIST_META_KEY = `DistributionPlannerMeta:${workspaceScope}`;
                 let hydrating = false;
                 function saveMeta(){ savePersistedState(DIST_META_KEY, distMeta); }
                 async function loadMeta(){
@@ -1854,10 +1878,18 @@ markNeutral(savingsTipsOut);
                 }
                 async function loadDistState() {
                     const state = await loadPersistedState(DIST_KEY);
-                    if (!state || Object.keys(state).length === 0) return;
-                    distInputIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
-                    distCheckIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).checked = !!state[id]; });
-                    distSelectIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                    const hasState = state && Object.keys(state).length > 0;
+                    if (hasState) {
+                        distInputIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                        distCheckIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).checked = !!state[id]; });
+                        distSelectIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
+                    } else {
+                        // Apply defaults when no saved state exists
+                        const invDm = gid('wfd_invDownMkt'); if (invDm) invDm.checked = false;
+                        const liDm  = gid('wfd_liDownMkt');  if (liDm) liDm.checked = true;
+                        const annDm = gid('wfd_annDownMkt'); if (annDm) annDm.checked = true;
+                        const prot  = gid('wfd_protectInvest'); if (prot) prot.checked = true;
+                    }
                     const stratEl = gid('wfd_strategy');
                     if (stratEl && stratEl.value === 'downmarket') stratEl.value = 'guardrail';
                     if (gid('wfd_gapSource') && !gid('wfd_gapSource').value) gid('wfd_gapSource').value = 'life';
@@ -1988,7 +2020,7 @@ markNeutral(savingsTipsOut);
                 ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
                     gid(id).addEventListener('input', updateBktAmounts);
                 });
-                ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
+                    ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
                     if (el) el.addEventListener('change', () => { updateDMState(); saveDistState(); });
                 });
@@ -2054,6 +2086,11 @@ markNeutral(savingsTipsOut);
                     distCheckIds.forEach(id=>{
                         const el = gid(id); if (el) el.checked = false;
                     });
+                    // Re-apply default toggle states after clear
+                    const invDm = gid('wfd_invDownMkt'); if (invDm) invDm.checked = false;
+                    const liDm  = gid('wfd_liDownMkt');  if (liDm) liDm.checked = true;
+                    const annDm = gid('wfd_annDownMkt'); if (annDm) annDm.checked = true;
+                    const prot  = gid('wfd_protectInvest'); if (prot) prot.checked = true;
                     gid('wfd_strategy').value = 'proportional';
                     togglePriorityRow();
                     wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
@@ -2103,6 +2140,8 @@ markNeutral(savingsTipsOut);
                     markStrategyButtons();
                     setPriorityOrder(getPriorityOrder());
                     gid('wfd_annType').dispatchEvent(new Event('change'));
+                    // Ensure default toggles are respected on first open when no saved state
+                    updateDMState();
                     updateYrs();
                     updateGap();
                     updateBktAmounts();
@@ -2376,7 +2415,7 @@ markNeutral(savingsTipsOut);
                                 if (dEnd !== null) lastDeath = dEnd;
                                 if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
                             });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0 };
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? (annTypeVar ? 'Variable' : 'Fixed') : null };
                         });
 
                         // Build tile HTML
@@ -2397,6 +2436,7 @@ markNeutral(savingsTipsOut);
                                              border-radius:12px;padding:12px 14px;cursor:pointer;
                                              text-align:left;color:#e2e8f0;font-family:inherit;">
                                       <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
+                                      ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Type: ${st.annType}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
@@ -2481,6 +2521,9 @@ markNeutral(savingsTipsOut);
                                         { l: 'Death Benefit End',   v: fmtD(st.lastDeath), cls: 'color:#d9b35a' }
                                     );
                                 }
+                                if (def.key === 'ann') {
+                                    statCards.push({ l: 'Annuity Type', v: annTypeVar ? 'Variable' : 'Fixed' });
+                                }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
                                     { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'color:#f87171' : 'color:#4ade80' }
@@ -2498,7 +2541,7 @@ markNeutral(savingsTipsOut);
                                 try { await ensureChartJs(); } catch(_) {}
                                 if (typeof Chart !== 'undefined') {
                                     if (drillChart) { drillChart.destroy(); drillChart = null; }
-                                    const bktSeries = (chart.series[def.seriesKey] || []);
+                                const bktSeries = (chart.series[def.seriesKey] || []);
                                     const usedFlags = [false, ...rows.map(r => def.wOf(r) > 0)];
                                     const ptColor   = bktSeries.map((_, i) => usedFlags[i] ? def.color : 'rgba(148,163,184,.4)');
                                     const ptRadius  = bktSeries.map((_, i) => usedFlags[i] ? 3 : 1);
@@ -2748,6 +2791,7 @@ markNeutral(savingsTipsOut);
                     const manualReturnTxt = gid('wfd_manualReturns').value || '';
                     const priOrder      = getPriorityOrder();
                     const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
+                    const annVarReturns = annTypeVar ? generateRandomReturns(years, annReturn * 100).map(v => v / 100) : [];
 
                     // --- Validation ---
                     const errs = validateDist();
@@ -2780,6 +2824,7 @@ markNeutral(savingsTipsOut);
                     const invPts   = [invBal];
                     const liPts    = [liBal];
                     const annPts   = [annBal];
+                    const annReturnSeries = [];
                     const liDeathPts  = [liDeathBal];
                     const annDeathPts = [annDeathBal];
                     const emPts    = [emBal];
@@ -2833,9 +2878,11 @@ markNeutral(savingsTipsOut);
                         const annDeathStart0 = annDeathBal;
                         const startBalTotal = invStart0 + liStart0 + annStart0 + emStart0;
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
+                        const annYearR = annTypeVar ? (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn) : annReturn;
                         invReturnSeries.push(invYearR);
                         const effInvR = invYearR;
-                        const effAnnR = annTypeVar ? invYearR : annReturn;
+                        const effAnnR = annYearR;
+                        annReturnSeries.push(effAnnR);
                         const marketState = invYearR <= downThreshold ? 'down' : 'normal';
                         if (marketState === 'down') downYearCount += 1;
                         marketStates.push(marketState);
@@ -3116,7 +3163,7 @@ markNeutral(savingsTipsOut);
                         audit: { rows: auditRows },
                             chart: {
                             labels: yLabels,
-                            series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts, liDeath: liDeathPts, annDeath: annDeathPts },
+                            series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts, liDeath: liDeathPts, annDeath: annDeathPts, annReturn: annReturnSeries },
                             marketStates,
                             fundingSources
                         }
