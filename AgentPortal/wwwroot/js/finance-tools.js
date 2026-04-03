@@ -91,8 +91,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             }
         }
 
-        if (canUseServerState) return {};
-
+        // Fallback to local cache if server empty/unavailable
         for (const candidateKey of keys) {
             const raw = storageGet(candidateKey);
             if (raw) {
@@ -1126,6 +1125,18 @@ markNeutral(savingsTipsOut);
 .wfd-body{padding:18px 22px 22px;}
 .wfd-step-wrap{display:none;min-height:320px;}
 .wfd-step-wrap.active{display:block;}
+.wfd-step-clear{
+    margin-left:auto;
+    background:transparent;
+    border:1px solid #b08d2f;
+    color:#d9b35a;
+    font-weight:700;
+    font-size:.8rem;
+    padding:6px 10px;
+    border-radius:8px;
+    cursor:pointer;
+}
+.wfd-step-clear:hover{background:rgba(185,141,47,.1);}
 .wfd-footer{
     position:sticky;bottom:0;left:0;right:0;
     padding:12px 18px;
@@ -1304,7 +1315,10 @@ markNeutral(savingsTipsOut);
     <!-- No-base warning -->
     <!-- SECTION 1: Retirement Foundation -->
     <div class="wfd-sec">
-      <p class="wfd-sec-title">1 — Retirement Foundation</p>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <p class="wfd-sec-title" style="margin:0;">1 — Retirement Foundation</p>
+        <button type="button" class="wfd-step-clear" id="wfd_clearStep1">Clear Step</button>
+      </div>
       <div class="wfd-row">
         <div class="wfd-col">
           <label class="wfd-lbl" for="wfd_base">Retirement Base (from Wealth Forecast) <span style="color:#94a3b8;font-weight:400;font-size:.75rem;">read-only</span></label>
@@ -1358,7 +1372,10 @@ markNeutral(savingsTipsOut);
     <!-- STEP 2: Three Bucket Allocation -->
     <div class="wfd-step-wrap" data-step="2">
       <div class="wfd-sec">
-      <p class="wfd-sec-title">2 — Three Bucket Allocation</p>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <p class="wfd-sec-title" style="margin:0;">2 — Three Bucket Allocation</p>
+        <button type="button" class="wfd-step-clear" id="wfd_clearStep2">Clear Step</button>
+      </div>
       <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
 
       <div class="wfd-alloc-row">
@@ -1466,7 +1483,10 @@ markNeutral(savingsTipsOut);
     <!-- STEP 3: Strategy Controls -->
     <div class="wfd-step-wrap" data-step="3">
       <div class="wfd-sec">
-      <p class="wfd-sec-title">3 — Strategy Controls</p>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <p class="wfd-sec-title" style="margin:0;">3 — Strategy Controls</p>
+        <button type="button" class="wfd-step-clear" id="wfd_clearStep3">Clear Step</button>
+      </div>
       <div class="wfd-row" style="gap:10px;flex-wrap:wrap;">
         <button type="button" class="wfd-calc-btn" id="wfd_strat_prop" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Proportional</button>
         <button type="button" class="wfd-calc-btn" id="wfd_strat_pri" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Priority Order</button>
@@ -1720,7 +1740,7 @@ markNeutral(savingsTipsOut);
                         chip.classList.toggle('active', chip.dataset.step === step);
                     });
                     syncStepVisibility();
-                    distMeta.lastStep = step; saveMeta();
+                    distMeta.lastStep = step; saveMeta(); saveDistState();
                     gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
                     const next = gid('wfd_next');
                     const run  = gid('wfd_run');
@@ -1775,6 +1795,25 @@ markNeutral(savingsTipsOut);
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${plannerUserScope}` : null;
+                const stepFieldSets = {
+                    step1: {
+                        inputs: ['wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_incomeGap'],
+                        checks: ['wfd_manualOverride'],
+                        selects: []
+                    },
+                    step2: {
+                        inputs: ['wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
+                                 'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
+                                 'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
+                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType'],
+                        selects: []
+                    },
+                    step3: {
+                        inputs: ['wfd_downThreshold','wfd_manualReturns'],
+                        checks: ['wfd_protectInvest'],
+                        selects: ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode']
+                    }
+                };
                 let hydrating = false;
                 function saveMeta(){ if (DIST_META_KEY) savePersistedState(DIST_META_KEY, distMeta); }
                 async function loadMeta(){
@@ -1869,22 +1908,53 @@ markNeutral(savingsTipsOut);
                 }
 
                 function distState() {
-                    const obj = {};
-                    distInputIds.forEach(id => { const el = gid(id); if (el) obj[id] = el.value; });
-                    distCheckIds.forEach(id => { const el = gid(id); if (el) obj[id] = !!el.checked; });
-                    distSelectIds.forEach(id => { const el = gid(id); if (el) obj[id] = el.value; });
+                    const obj = { step1:{}, step2:{}, step3:{}, meta:{ lastStep: activeStep } };
+                    const applyInputs = (ids, target) => ids.forEach(id => { const el = gid(id); if (el) target[id] = el.value; });
+                    const applyChecks = (ids, target) => ids.forEach(id => { const el = gid(id); if (el) target[id] = !!el.checked; });
+                    const applySelects = (ids, target) => ids.forEach(id => { const el = gid(id); if (el) target[id] = el.value; });
+                    applyInputs(stepFieldSets.step1.inputs, obj.step1);
+                    applyChecks(stepFieldSets.step1.checks, obj.step1);
+                    applySelects(stepFieldSets.step1.selects, obj.step1);
+                    applyInputs(stepFieldSets.step2.inputs, obj.step2);
+                    applyChecks(stepFieldSets.step2.checks, obj.step2);
+                    applySelects(stepFieldSets.step2.selects, obj.step2);
+                    applyInputs(stepFieldSets.step3.inputs, obj.step3);
+                    applyChecks(stepFieldSets.step3.checks, obj.step3);
+                    applySelects(stepFieldSets.step3.selects, obj.step3);
                     return obj;
                 }
+
+                let saveDistTimer = null;
                 function saveDistState() {
                     if (!DIST_KEY) return;
                     savePersistedState(DIST_KEY, distState());
                     if (!hydrating && distMeta.hasValidResults) { distMeta.stale = true; saveMeta(); }
                 }
+                function saveDistStateDebounced(){
+                    if (!DIST_KEY) return;
+                    if (saveDistTimer) clearTimeout(saveDistTimer);
+                    saveDistTimer = setTimeout(saveDistState, 300);
+                }
+                function applyStepState(stepKey, data){
+                    if (!data) return;
+                    const setVals = (ids, source) => ids.forEach(id => { if (source[id] !== undefined && gid(id)) gid(id).value = source[id]; });
+                    const setChecks = (ids, source) => ids.forEach(id => { if (source[id] !== undefined && gid(id)) gid(id).checked = !!source[id]; });
+                    const setSelects = setVals;
+                    setVals(stepFieldSets[stepKey].inputs, data);
+                    setChecks(stepFieldSets[stepKey].checks, data);
+                    setSelects(stepFieldSets[stepKey].selects, data);
+                }
                 async function loadDistState() {
                     if (!DIST_KEY) return;
                     const state = await loadPersistedState(DIST_KEY);
                     const hasState = state && Object.keys(state).length > 0;
-                    if (hasState) {
+                    if (hasState && state.step1 && state.step2 && state.step3) {
+                        applyStepState('step1', state.step1);
+                        applyStepState('step2', state.step2);
+                        applyStepState('step3', state.step3);
+                        if (state.meta && state.meta.lastStep) distMeta.lastStep = state.meta.lastStep;
+                    } else if (hasState) {
+                        // backward compatibility with flat shape
                         distInputIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
                         distCheckIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).checked = !!state[id]; });
                         distSelectIds.forEach(id => { if (state[id] !== undefined && gid(id)) gid(id).value = state[id]; });
@@ -1969,7 +2039,7 @@ markNeutral(savingsTipsOut);
                         el.value = '';
                         el.classList.remove('wfd-good', 'wfd-bad');
                     }
-                    saveDistState();
+                    saveDistStateDebounced();
                 }
                 gid('wfd_retAge').addEventListener('input', updateYrs);
                 gid('wfd_endAge').addEventListener('input', updateYrs);
@@ -1984,7 +2054,7 @@ markNeutral(savingsTipsOut);
                     if (gap === 0) { el.classList.add('wfd-good'); el.classList.remove('wfd-bad'); }
                     else if (desired > 0 && gap > desired * 0.85) { el.classList.add('wfd-bad'); el.classList.remove('wfd-good'); }
                     else { el.classList.remove('wfd-good', 'wfd-bad'); }
-                    saveDistState();
+                    saveDistStateDebounced();
                 }
                 gid('wfd_desiredIncome').addEventListener('input', updateGap);
                 gid('wfd_guaranteedIncome').addEventListener('input', updateGap);
@@ -2033,7 +2103,7 @@ markNeutral(savingsTipsOut);
                 // Annuity type label
                 gid('wfd_annType').addEventListener('change', function() {
                     gid('wfd_annTypeLbl').textContent = this.checked ? 'Variable' : 'Fixed';
-                    saveDistState();
+                    saveDistStateDebounced();
                 });
 
                 // Down-market badge + dim state
@@ -2113,6 +2183,43 @@ markNeutral(savingsTipsOut);
                     saveDistState();
                 }
                 gid('wfd_clearBtn').addEventListener('click', clearDistribution);
+                gid('wfd_clearStep1')?.addEventListener('click', () => clearStep('step1'));
+                gid('wfd_clearStep2')?.addEventListener('click', () => clearStep('step2'));
+                gid('wfd_clearStep3')?.addEventListener('click', () => clearStep('step3'));
+
+                function clearStep(stepKey){
+                    const sets = stepFieldSets[stepKey];
+                    if (!sets) return;
+                    sets.inputs.forEach(id => { const el = gid(id); if (el) el.value = ''; });
+                    sets.checks.forEach(id => { const el = gid(id); if (el) el.checked = false; });
+                    sets.selects.forEach(id => { const el = gid(id); if (el) el.value = ''; });
+                    // Restore defaults for specific toggles when clearing step context
+                    if (stepKey === 'step2') {
+                        const invDm = gid('wfd_invDownMkt'); if (invDm) invDm.checked = false;
+                        const liDm  = gid('wfd_liDownMkt');  if (liDm) liDm.checked = true;
+                        const annDm = gid('wfd_annDownMkt'); if (annDm) annDm.checked = true;
+                        const prot  = gid('wfd_protectInvest'); if (prot) prot.checked = true;
+                    }
+                    if (stepKey === 'step3') {
+                        gid('wfd_strategy').value = 'proportional';
+                        setPriorityOrder(defaultPriority);
+                        togglePriorityRow();
+                        markStrategyButtons();
+                        const prot  = gid('wfd_protectInvest'); if (prot) prot.checked = true;
+                        const gap = gid('wfd_gapSource'); if (gap && !gap.value) gap.value = 'life';
+                        const scen = gid('wfd_scenarioMode'); if (scen && !scen.value) scen.value = 'fixed';
+                    }
+                    updateGap();
+                    updateYrs();
+                    updateBktAmounts();
+                    updateDMState();
+                    validateAndGate();
+                    distMeta.hasValidResults = false;
+                    distMeta.stale = false;
+                    distMeta.result = null;
+                    saveMeta();
+                    saveDistState();
+                }
 
                 // Priority selectors
                 populatePrioritySelects();
@@ -2129,12 +2236,12 @@ markNeutral(savingsTipsOut);
                 distInputIds.forEach(id => {
                     const el = gid(id);
                     if (!el) return;
-                    ['input','change','blur'].forEach(evt => el.addEventListener(evt, () => { saveDistState(); validateAndGate(); }));
+                    ['input','change','blur'].forEach(evt => el.addEventListener(evt, () => { saveDistStateDebounced(); validateAndGate(); }));
                 });
                 distCheckIds.forEach(id => {
                     const el = gid(id);
                     if (!el) return;
-                    el.addEventListener('change', () => { saveDistState(); validateAndGate(); });
+                    el.addEventListener('change', () => { saveDistStateDebounced(); validateAndGate(); });
                 });
 
                 (async () => {
@@ -2179,9 +2286,9 @@ markNeutral(savingsTipsOut);
                     saveDistState();
                 });
                 const manualArea = gid('wfd_manualReturns');
-                if (manualArea) manualArea.addEventListener('input', saveDistState);
+                if (manualArea) manualArea.addEventListener('input', saveDistStateDebounced);
                 ['wfd_gapSource','wfd_scenarioMode'].forEach(id=>{
-                    const el = gid(id); if (el) el.addEventListener('change', saveDistState);
+                    const el = gid(id); if (el) el.addEventListener('change', saveDistStateDebounced);
                 });
 
                 const goResults = () => setStep('4', { skipHydrate: true });
@@ -2299,10 +2406,10 @@ markNeutral(savingsTipsOut);
                         // Build per-bucket detail chips — only for buckets with actual withdrawals
                         const bktDetail = (r) => {
                             const chips = [];
-                            if (r.inv)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end ?? 0)}</span>`);
-                            if (r.life) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)}</span>`);
-                            if (r.ann)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end ?? 0)}</span>`);
-                            if (r.em)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
+                            if (r.inv && r.inv.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end ?? 0)}</span>`);
+                            if (r.life && r.life.w > 0) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)}</span>`);
+                            if (r.ann && r.ann.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end ?? 0)}</span>`);
+                            if (r.em && r.em.w > 0)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
                             return chips.length ? chips.join('') : '';
                         };
                         const rows = (audit.rows||[]).map(r => {
