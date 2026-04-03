@@ -376,11 +376,12 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
         // shared WF plan state
         let wfActiveClientId = null;
         let wfPlanVersion = 0;
+        let wfPlanLoaded = false;
         let wfSaveTimer = null;
         // shared DP plan state
         let dpActiveClientId = null;
         let dpPlanVersion = 0;
-        let dpPlanCache = { wealthForecast: null }; // preserve WF section when saving from DP
+        let dpPlanCache = {}; // preserve WF section when saving from DP
         let dpSaveTimer = null;
 
         // ==========================================================
@@ -858,7 +859,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl) statusEl.textContent = "Searching…";
                 try{
-                    const res = await fetch(`/Clients/AdvancedMarketsBusinessClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
+                    const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
                     if (!res.ok) throw new Error(`Search failed (${res.status})`);
                     const list = await res.json();
                     if (!list || list.length === 0){
@@ -875,6 +876,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                     const item = list[0];
                     wfActiveClientId = item.clientUserId;
                     wfPlanVersion = 0;
+                    wfPlanLoaded = false;
                     if (statusEl) statusEl.textContent = "Loading plan…";
                     await loadWfPlan(wfActiveClientId);
                 } catch(err){
@@ -909,6 +911,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
             async function loadWfPlan(clientUserId){
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl) statusEl.textContent = "Loading plan…";
+                wfPlanLoaded = false;
                 try{
                     const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
                     if (!res.ok) throw new Error(`Load failed (${res.status})`);
@@ -916,6 +919,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                     wfPlanVersion = data.version || 0;
                     hydrateWfInputs(JSON.parse(data.jsonData || "{}"));
                     if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                    wfPlanLoaded = true;
                     calcWealthForecast();
                 }catch(err){
                     if (statusEl) statusEl.textContent = err?.message || "Load failed.";
@@ -931,6 +935,10 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
 
             async function saveWfPlan(){
                 if (!wfActiveClientId) return;
+                if (!wfPlanLoaded) {
+                    showWfError("Plan not loaded — select/reload client before saving.");
+                    return;
+                }
                 const payload = wfPayload();
                 const res = await fetch(`/clients/${encodeURIComponent(wfActiveClientId)}/financial-plan`, {
                     method:"POST",
@@ -941,6 +949,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                 if (!res.ok){
                     if (res.status === 409){
                         showWfError("Version conflict — reload the latest plan before saving.");
+                        toast("Version conflict — reload the latest plan before saving.");
                     } else showWfError(`Save failed (${res.status}).`);
                     return;
                 }
@@ -952,6 +961,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
 
             function saveWfPlanDebounced(){
                 if (!wfActiveClientId) return;
+                if (!wfPlanLoaded) return;
                 if (wfSaveTimer) clearTimeout(wfSaveTimer);
                 wfSaveTimer = setTimeout(() => { void saveWfPlan(); }, 700);
             }
@@ -2016,6 +2026,8 @@ markNeutral(savingsTipsOut);
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
+                let dpPlanLoaded = false;
+
                 function dpCollectInputs(){
                     const inputs = {};
                     distInputIds.forEach(id => { const el = gid(id); if (el) inputs[id] = el.value; });
@@ -2027,11 +2039,14 @@ markNeutral(savingsTipsOut);
                 }
                 function dpPayload(){
                     const dist = dpCollectInputs();
-                    return {
+                    const payload = {
                         version: dpPlanVersion,
-                        wealthForecast: dpPlanCache.wealthForecast || null,
                         distribution: dist
                     };
+                    if (Object.prototype.hasOwnProperty.call(dpPlanCache, 'wealthForecast')) {
+                        payload.wealthForecast = dpPlanCache.wealthForecast;
+                    }
+                    return payload;
                 }
                 const stepFieldSets = {
                     step1: {
@@ -2279,11 +2294,12 @@ markNeutral(savingsTipsOut);
 
                 // Called by calcWealthForecast whenever it recalculates
                 window.__wfOnBalanceUpdate = function(bal) {
+                    if (disableLocalForDP && dpPlanLoaded) return; // do not clobber server-hydrated base
                     if (!gid('wfd_manualOverride').checked) syncBase();
                 };
 
                 gid('wfd_manualOverride').addEventListener('change', syncBase);
-                gid('wfd_base').addEventListener('input', () => { updateBktAmounts(); saveDistState(); });
+                gid('wfd_base').addEventListener('input', () => { updateBktAmounts(); dpSaveDebounced(); });
 
                 // Auto-calc: years in distribution
                 function updateYrs() {
@@ -2426,7 +2442,6 @@ markNeutral(savingsTipsOut);
 
                 function distInitAfterHydrate(){
                     updateDMState();
-                    // do not overwrite hydrated base with WF balance; assume server truth
                     document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
                     document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
                 }
@@ -2434,6 +2449,7 @@ markNeutral(savingsTipsOut);
                 async function loadDpPlan(clientUserId, initAfter){
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (statusEl) statusEl.textContent = "Loading plan…";
+                    dpPlanLoaded = false;
                     try{
                         const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
                         if (!res.ok) throw new Error(`Load failed (${res.status})`);
@@ -2441,9 +2457,13 @@ markNeutral(savingsTipsOut);
                         dpPlanVersion = data.version || 0;
                         let payload = {};
                         try { payload = JSON.parse(data.jsonData || "{}"); } catch { payload = {}; }
-                        dpPlanCache.wealthForecast = payload.wealthForecast || dpPlanCache.wealthForecast || null;
+                        // preserve WF section if present on server; never null it out
+                        if (payload.wealthForecast !== undefined) {
+                            dpPlanCache.wealthForecast = payload.wealthForecast;
+                        }
                         hydrateDistribution(payload.distribution);
                         if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                        dpPlanLoaded = true;
                         if (initAfter) distInitAfterHydrate();
                     }catch(err){
                         if (statusEl) statusEl.textContent = err?.message || "Load failed.";
@@ -2459,6 +2479,10 @@ markNeutral(savingsTipsOut);
 
                 async function saveDpPlan(){
                     if (!dpActiveClientId) return;
+                    if (!dpPlanLoaded) {
+                        showDpError("Plan not loaded — select and load a client first.");
+                        return;
+                    }
                     const payload = dpPayload();
                     const res = await fetch(`/clients/${encodeURIComponent(dpActiveClientId)}/financial-plan`, {
                         method:"POST",
@@ -2467,8 +2491,10 @@ markNeutral(savingsTipsOut);
                         body: JSON.stringify({ clientUserId: dpActiveClientId, jsonData: JSON.stringify(payload), version: payload.version })
                     });
                     if (!res.ok){
-                        if (res.status === 409) showDpError("Version conflict — reload the latest plan before saving.");
-                        else showDpError(`Save failed (${res.status}).`);
+                        if (res.status === 409) {
+                            showDpError("Version conflict — reload the latest plan before saving.");
+                            toast("Version conflict — reload the latest plan before saving.");
+                        } else showDpError(`Save failed (${res.status}).`);
                         return;
                     }
                     const data = await res.json();
@@ -2479,6 +2505,7 @@ markNeutral(savingsTipsOut);
 
                 function dpSaveDebounced(){
                     if (!dpActiveClientId) return;
+                    if (!dpPlanLoaded) return;
                     if (dpSaveTimer) clearTimeout(dpSaveTimer);
                     dpSaveTimer = setTimeout(() => { void saveDpPlan(); }, 700);
                 }
@@ -2492,6 +2519,7 @@ markNeutral(savingsTipsOut);
                     const val = e.target.value;
                     dpActiveClientId = val || null;
                     dpPlanVersion = 0;
+                    dpPlanLoaded = false;
                     if (val) loadDpPlan(val, true);
                 });
 
@@ -3942,10 +3970,11 @@ markNeutral(savingsTipsOut);
                     overlay.classList.add('wfd-open');
                     document.body.style.overflow = 'hidden';
                     trapFocus(overlay);
-                    // If client already selected, load plan then init; else prompt selection
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (!dpActiveClientId){
                         if (statusEl) statusEl.textContent = "Select a client to load plan.";
+                        const inp = document.getElementById('dpClientSearch');
+                        inp?.focus();
                         return;
                     }
                     loadDpPlan(dpActiveClientId, true);
