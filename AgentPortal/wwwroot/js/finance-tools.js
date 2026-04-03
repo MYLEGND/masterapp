@@ -2383,7 +2383,6 @@ markNeutral(savingsTipsOut);
                     if (!result) { renderEmptyResults(); return; }
                     const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
                     const annDesign   = result.annDesign || (result.annuityType ? result.annuityType.toLowerCase() : 'fixed');
-                    const annuityType = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
                     const liDesign    = result.liDesign || 'Life Design';
                     const lifeDesignLabel = result.lifeDesignLabel || liDesign;
 
@@ -2525,9 +2524,9 @@ markNeutral(savingsTipsOut);
 
                     // Bucket drill-down tiles + modal
                     const tilesEl = gid('wfd_bktTiles');
-                    const annuityType = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
                     if (tilesEl) {
                         const rows = audit.rows || [];
+                        const annuityTypeLabel = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
                         const bktDefs = [
                             {
                                 key: 'inv',  label: 'Investments',    color: '#3b82f6', bg: 'rgba(59,130,246,.12)',
@@ -2602,18 +2601,18 @@ markNeutral(savingsTipsOut);
                               <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
                                 ${activeDefs.map(def => {
                                     const st = bktStats[def.key];
-                                    const longevity = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
-                                    const longevityColor = st.depAge ? '#f87171' : '#4ade80';
-                                    return `<button
-                                      class="wfd-bkt-tile"
-                                      data-bkt="${def.key}"
-                                      style="flex:1;min-width:160px;max-width:240px;
-                                             background:${def.bg};border:1.5px solid ${def.border};
-                                             border-radius:12px;padding:12px 14px;cursor:pointer;
-                                             text-align:left;color:#e2e8f0;font-family:inherit;">
-                                      <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
-                                      ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
-                                      ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${st.annDesign || st.annType || ''}</div>` : ''}
+                                      const longevity = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
+                                      const longevityColor = st.depAge ? '#f87171' : '#4ade80';
+                                      return `<button
+                                    class="wfd-bkt-tile"
+                                    data-bkt="${def.key}"
+                                    style="flex:1;min-width:160px;max-width:240px;
+                                           background:${def.bg};border:1.5px solid ${def.border};
+                                           border-radius:12px;padding:12px 14px;cursor:pointer;
+                                           text-align:left;color:#e2e8f0;font-family:inherit;">
+                                    <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
+                                    ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
+                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${st.annDesign || annuityTypeLabel || ''}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
