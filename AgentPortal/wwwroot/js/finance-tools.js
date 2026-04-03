@@ -1508,11 +1508,7 @@ markNeutral(savingsTipsOut);
           <input id="wfd_annDeath" class="wfd-inp" type="text" placeholder="e.g., 250,000" />
           <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
           <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
-          <div class="wfd-tog-wrap" style="margin-top:12px;margin-bottom:4px;">
-            <span class="wfd-tog-lbl" style="margin-right:6px;">Annuity Type:</span>
-            <label class="wfd-tog"><input type="checkbox" id="wfd_annType" /><span class="wfd-tog-sl"></span></label>
-            <span id="wfd_annTypeLbl" class="wfd-tog-lbl">Fixed</span>
-          </div>
+          <!-- Removed legacy fixed/variable toggle; dropdown is source of truth -->
           <div class="wfd-tog-wrap" style="margin-top:4px;">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Income Rider</span>
@@ -1866,7 +1862,7 @@ markNeutral(savingsTipsOut);
         'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
-                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
+                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liDesign','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
@@ -1879,7 +1875,7 @@ markNeutral(savingsTipsOut);
                         inputs: ['wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
                                  'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
-                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annIncomeRider','wfd_annDbRider'],
+                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider'],
                         selects: ['wfd_liDesign','wfd_annDesign']
                     },
                     step3: {
@@ -2181,10 +2177,7 @@ markNeutral(savingsTipsOut);
                 });
 
                 // Annuity type label
-                gid('wfd_annType').addEventListener('change', function() {
-                    gid('wfd_annTypeLbl').textContent = this.checked ? 'Variable' : 'Fixed';
-                    saveDistStateDebounced();
-                });
+                // Removed legacy annType toggle listener (dropdown is source of truth)
 
                 // Down-market badge + dim state
                 function updateDMState(){
@@ -2331,7 +2324,6 @@ markNeutral(savingsTipsOut);
                     togglePriorityRow();
                     markStrategyButtons();
                     setPriorityOrder(getPriorityOrder());
-                    gid('wfd_annType').dispatchEvent(new Event('change'));
                     // Ensure default toggles are respected on first open when no saved state
                     updateDMState();
                     updateYrs();
@@ -2406,8 +2398,8 @@ markNeutral(savingsTipsOut);
                 function renderResults(result, isStale=false){
                     if (!result) { renderEmptyResults(); return; }
                     const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
-                    const annDesign   = result.annDesign || (result.annuityType ? result.annuityType.toLowerCase() : 'fixed');
-                    const annuityType = result.annuityType || (annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed');
+                    const annDesign   = result.annDesign || 'fixed';
+                    const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed';
                     const annRiderLabels = [];
                     const hasIncRider = !!result.annIncomeRider;
                     const hasDbRider  = !!result.annDbRider;
@@ -3030,7 +3022,6 @@ markNeutral(savingsTipsOut);
                     const annTax        = pf(gid('wfd_annTax').value)      / 100;
                     const annDeathStart = pf(gid('wfd_annDeath').value);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
-                    const annTypeVar    = gid('wfd_annType').checked;
                     const annDbRider    = gid('wfd_annDbRider').checked;
                     const annIncomeRider= gid('wfd_annIncomeRider').checked;
                     const annDesign     = gid('wfd_annDesign').value || 'fixed';
