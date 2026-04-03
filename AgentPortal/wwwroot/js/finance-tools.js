@@ -2412,8 +2412,13 @@ markNeutral(savingsTipsOut);
                     if (statusEl) statusEl.textContent = "Searching…";
                     try{
                         const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
-                        if (!res.ok) throw new Error(`Search failed (${res.status})`);
-                        const list = await res.json();
+                        let list = [];
+                        if (!res.ok){
+                            const txt = await res.text().catch(()=> "");
+                            throw new Error(txt || `Search failed (${res.status})`);
+                        }
+                        try { list = await res.json(); }
+                        catch { throw new Error("Search response invalid."); }
                         const sel = document.getElementById('dpClientSelect');
                         if (sel){
                             sel.innerHTML = `<option value=\"\">Select client…</option>`;
