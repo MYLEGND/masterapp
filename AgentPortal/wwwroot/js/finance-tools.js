@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     };
     const effectiveUserScope = plannerUserScope || getLocalFallbackUser();
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
+    const plannerScopeKey = (key) => `legend-finance:user:${effectiveUserScope}:${key}`;
     const selectedToolStateId = "__workspace__";
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
@@ -103,7 +104,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         // Fallback to local cache if server empty/unavailable
         for (const candidateKey of keys) {
-            const raw = storageGet(candidateKey);
+            const localKey = (candidateKey && candidateKey.startsWith('DistributionPlanner')) ? plannerScopeKey(candidateKey) : scopeKey(candidateKey);
+            const raw = localStorage.getItem(localKey);
             if (raw) {
                 return JSON.parse(raw || "{}");
             }
@@ -116,7 +118,8 @@ document.addEventListener("DOMContentLoaded", async function () {
                     const jsonState = JSON.stringify(state || {});
                     const primaryKey = getPrimaryStateKey(key);
                     // Always cache locally for instant restores and offline/dev use
-                    storageSet(primaryKey, jsonState);
+                    const localKey = (primaryKey && primaryKey.startsWith('DistributionPlanner')) ? plannerScopeKey(primaryKey) : scopeKey(primaryKey);
+                    localStorage.setItem(localKey, jsonState);
 
                     if (!canUseServerState) return;
 
@@ -149,7 +152,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     function clearPersistedState(key) {
         const keys = getStateKeys(key);
         if (!canUseServerState) {
-            keys.forEach(storageRemove);
+            keys.forEach(k => {
+                const localKey = (k && k.startsWith('DistributionPlanner')) ? plannerScopeKey(k) : scopeKey(k);
+                localStorage.removeItem(localKey);
+            });
         }
 
         if (!canUseServerState) return;
