@@ -3491,7 +3491,6 @@ markNeutral(savingsTipsOut);
                                 failAge,
                                 cumulativeShortfall
                             },
-                            annTypeVar,
                             annuityType,
                             annDesign,
                             liDesign,
