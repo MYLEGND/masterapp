@@ -655,182 +655,132 @@
                 <form id="finPlanForm">
                     <input type="hidden" id="finPlanVersion" value="0" />
                     <input type="hidden" id="finPlanClientUserId" value="" />
-                    <div class="finplan-section" style="margin-bottom:16px;">
+                    <div class="finplan-section">
                         <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Wealth Forecast Inputs</div>
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <label class="form-label">Annual Income</label>
-                                <input class="form-control" id="wbIncome" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Working Period (Years)</label>
-                                <input class="form-control" id="wbYears" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Inflation %</label>
-                                <input class="form-control" id="wbInflation" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">After-Tax Return %</label>
-                                <input class="form-control" id="wbReturn" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Tax Bracket %</label>
-                                <input class="form-control" id="wbTax" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Fixed Liabilities %</label>
-                                <input class="form-control" id="wbLiabilities" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Lifestyle Spending %</label>
-                                <input class="form-control" id="wbLifestyle" />
-                            </div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-6"><label class="form-label">Annual Income</label><input class="form-control" id="wbIncome" /></div>
+                            <div class="col-md-6"><label class="form-label">Working Period (Years)</label><input class="form-control" id="wbYears" /></div>
+                            <div class="col-md-6"><label class="form-label">Inflation %</label><input class="form-control" id="wbInflation" /></div>
+                            <div class="col-md-6"><label class="form-label">After-Tax Return %</label><input class="form-control" id="wbReturn" /></div>
+                            <div class="col-md-6"><label class="form-label">Tax Bracket %</label><input class="form-control" id="wbTax" /></div>
+                            <div class="col-md-6"><label class="form-label">Fixed Liabilities %</label><input class="form-control" id="wbLiabilities" /></div>
+                            <div class="col-md-6"><label class="form-label">Lifestyle Spending %</label><input class="form-control" id="wbLifestyle" /></div>
                         </div>
                     </div>
-                    <div class="finplan-section" style="margin-bottom:8px;">
-                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Distribution Planner Inputs</div>
-                        <div class="row g-2">
-                            <div class="col-md-4">
-                                <label class="form-label">Retirement Base</label>
-                                <input class="form-control" id="wfd_base" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Retire Age</label>
-                                <input class="form-control" id="wfd_retAge" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">End Age</label>
-                                <input class="form-control" id="wfd_endAge" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Emergency Reserve</label>
-                                <input class="form-control" id="wfd_emergency" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Desired Income</label>
-                                <input class="form-control" id="wfd_desiredIncome" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Guaranteed Income</label>
-                                <input class="form-control" id="wfd_guaranteedIncome" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Investments %</label>
-                                <input class="form-control" id="wfd_invAlloc" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Investments Return %</label>
-                                <input class="form-control" id="wfd_invReturn" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Investments Tax %</label>
-                                <input class="form-control" id="wfd_invTax" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life %</label>
-                                <input class="form-control" id="wfd_liAlloc" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Growth %</label>
-                                <input class="form-control" id="wfd_liGrowth" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Tax %</label>
-                                <input class="form-control" id="wfd_liTax" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Efficiency %</label>
-                                <input class="form-control" id="wfd_liEfficiency" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Death Benefit</label>
-                                <input class="form-control" id="wfd_liDeath" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuities %</label>
-                                <input class="form-control" id="wfd_annAlloc" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuities Return %</label>
-                                <input class="form-control" id="wfd_annReturn" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuities Tax %</label>
-                                <input class="form-control" id="wfd_annTax" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuities Death Benefit</label>
-                                <input class="form-control" id="wfd_annDeath" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuities Rollup %</label>
-                                <input class="form-control" id="wfd_annRollup" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Down-Market Threshold %</label>
-                                <input class="form-control" id="wfd_downThreshold" />
-                            </div>
-                            <div class="col-md-12">
-                                <label class="form-label">Manual Returns (comma-separated)</label>
-                                <textarea class="form-control" id="wfd_manualReturns" rows="2"></textarea>
-                            </div>
-                        </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col-md-4">
-                                <label class="form-label">Strategy</label>
-                                <select class="form-select" id="wfd_strategy"></select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Gap Source</label>
-                                <select class="form-select" id="wfd_gapSource"></select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Scenario Mode</label>
-                                <select class="form-select" id="wfd_scenarioMode"></select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Type</label>
-                                <select class="form-select" id="wfd_liType"></select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Life Access</label>
-                                <select class="form-select" id="wfd_liAccess"></select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Annuity Design</label>
-                                <select class="form-select" id="wfd_annDesign"></select>
-                            </div>
-                        </div>
-                        <div class="row g-2 mt-2">
-                            <div class="col-md-3 form-check">
+
+                    <div class="finplan-section">
+                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Distribution Planner — Foundation</div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4"><label class="form-label">Retirement Base</label><input class="form-control" id="wfd_base" /></div>
+                            <div class="col-md-4"><label class="form-label">Retire Age</label><input class="form-control" id="wfd_retAge" /></div>
+                            <div class="col-md-4"><label class="form-label">End Age</label><input class="form-control" id="wfd_endAge" /></div>
+                            <div class="col-md-4"><label class="form-label">Emergency Reserve</label><input class="form-control" id="wfd_emergency" /></div>
+                            <div class="col-md-4"><label class="form-label">Desired Income</label><input class="form-control" id="wfd_desiredIncome" /></div>
+                            <div class="col-md-4"><label class="form-label">Guaranteed Income</label><input class="form-control" id="wfd_guaranteedIncome" /></div>
+                            <div class="col-md-4 form-check mt-2">
                                 <input class="form-check-input" type="checkbox" id="wfd_manualOverride">
                                 <label class="form-check-label" for="wfd_manualOverride">Manual Base Override</label>
                             </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_invDownMkt">
-                                <label class="form-check-label" for="wfd_invDownMkt">Investments Down-Market</label>
+                        </div>
+                    </div>
+
+                    <div class="finplan-section">
+                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Three Bucket Allocation</div>
+                        <div class="dp-bucket-grid">
+                            <div class="dp-bkt" style="border-color:rgba(59,130,246,.4);">
+                                <div class="dp-bkt-head">
+                                    <div>
+                                        <div class="dp-bkt-title text-primary">A — Investments</div>
+                                        <div class="dp-bkt-sub">Growth engine: brokerage, retirement accounts.</div>
+                                    </div>
+                                    <div class="form-check form-switch small">
+                                        <input class="form-check-input" type="checkbox" id="wfd_invDownMkt">
+                                        <label class="form-check-label" for="wfd_invDownMkt">Down-Market</label>
+                                    </div>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_invAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Return %</label><input class="form-control" id="wfd_invReturn" /></div>
+                                    <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_invTax" /></div>
+                                    <div class="col-6"><label class="form-label">Starting $</label><input class="form-control" id="wfd_invAmt" /></div>
+                                </div>
                             </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_liDownMkt">
-                                <label class="form-check-label" for="wfd_liDownMkt">Life Down-Market</label>
+
+                            <div class="dp-bkt" style="border-color:rgba(166,128,35,.6);">
+                                <div class="dp-bkt-head">
+                                    <div>
+                                        <div class="dp-bkt-title text-warning">B — Life Insurance</div>
+                                        <div class="dp-bkt-sub">Stability buffer: cash value / protected strategies.</div>
+                                    </div>
+                                    <div class="form-check form-switch small">
+                                        <input class="form-check-input" type="checkbox" id="wfd_liDownMkt">
+                                        <label class="form-check-label" for="wfd_liDownMkt">Down-Market</label>
+                                    </div>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_liAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Growth %</label><input class="form-control" id="wfd_liGrowth" /></div>
+                                    <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_liTax" /></div>
+                                    <div class="col-6"><label class="form-label">Efficiency %</label><input class="form-control" id="wfd_liEfficiency" /></div>
+                                    <div class="col-6"><label class="form-label">Death Benefit</label><input class="form-control" id="wfd_liDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Starting $</label><input class="form-control" id="wfd_liAmt" /></div>
+                                    <div class="col-6"><label class="form-label">Policy Type</label><select class="form-select" id="wfd_liType"></select></div>
+                                    <div class="col-6"><label class="form-label">Access</label><select class="form-select" id="wfd_liAccess"></select></div>
+                                </div>
                             </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_annDownMkt">
-                                <label class="form-check-label" for="wfd_annDownMkt">Annuities Down-Market</label>
+
+                            <div class="dp-bkt" style="border-color:rgba(22,163,74,.5);">
+                                <div class="dp-bkt-head">
+                                    <div>
+                                        <div class="dp-bkt-title text-success">C — Annuities</div>
+                                        <div class="dp-bkt-sub">Income floor: protected income / accumulation hybrid.</div>
+                                    </div>
+                                    <div class="form-check form-switch small">
+                                        <input class="form-check-input" type="checkbox" id="wfd_annDownMkt">
+                                        <label class="form-check-label" for="wfd_annDownMkt">Down-Market</label>
+                                    </div>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_annAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Return %</label><input class="form-control" id="wfd_annReturn" /></div>
+                                    <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_annTax" /></div>
+                                    <div class="col-6"><label class="form-label">Death Benefit</label><input class="form-control" id="wfd_annDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Rollup %</label><input class="form-control" id="wfd_annRollup" /></div>
+                                    <div class="col-6"><label class="form-label">Starting $</label><input class="form-control" id="wfd_annAmt" /></div>
+                                    <div class="col-6"><label class="form-label">Design</label><select class="form-select" id="wfd_annDesign"></select></div>
+                                    <div class="col-6 d-flex flex-wrap align-items-center gap-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="wfd_annIncomeRider">
+                                            <label class="form-check-label" for="wfd_annIncomeRider">Income Rider</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="wfd_annDbRider">
+                                            <label class="form-check-label" for="wfd_annDbRider">DB Rider</label>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_annIncomeRider">
-                                <label class="form-check-label" for="wfd_annIncomeRider">Income Rider</label>
-                            </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_annDbRider">
-                                <label class="form-check-label" for="wfd_annDbRider">Death Benefit Rider</label>
-                            </div>
-                            <div class="col-md-3 form-check">
-                                <input class="form-check-input" type="checkbox" id="wfd_protectInvest">
-                                <label class="form-check-label" for="wfd_protectInvest">Protect Investments</label>
-                            </div>
+                        </div>
+
+                        <div class="dp-total-row">
+                            <div class="dp-total-label">Total Allocated</div>
+                            <div class="dp-total-value" id="finPlanAllocTotal">0%</div>
+                        </div>
+                    </div>
+
+                    <div class="finplan-section">
+                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Strategy & Scenarios</div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4"><label class="form-label">Strategy</label><select class="form-select" id="wfd_strategy"></select></div>
+                            <div class="col-md-4"><label class="form-label">Gap Source</label><select class="form-select" id="wfd_gapSource"></select></div>
+                            <div class="col-md-4"><label class="form-label">Scenario Mode</label><select class="form-select" id="wfd_scenarioMode"></select></div>
+                            <div class="col-md-4"><label class="form-label">Down-Market Threshold %</label><input class="form-control" id="wfd_downThreshold" /></div>
+                            <div class="col-md-8"><label class="form-label">Manual Returns (comma-separated)</label><textarea class="form-control" id="wfd_manualReturns" rows="2"></textarea></div>
+                        </div>
+                        <div class="row g-2 mt-2">
+                            <div class="col-md-4 form-check"><input class="form-check-input" type="checkbox" id="wfd_protectInvest"><label class="form-check-label" for="wfd_protectInvest">Protect Investments</label></div>
+                            <div class="col-md-4"><label class="form-label">Life Type</label><select class="form-select" id="wfd_liType"></select></div>
+                            <div class="col-md-4"><label class="form-label">Life Access</label><select class="form-select" id="wfd_liAccess"></select></div>
                         </div>
                     </div>
                 </form>
@@ -901,4 +851,15 @@
     .ph-amt{font-weight:900;}
     .ph-note{color:#cbd5e1;font-size:0.9rem;}
     .ph-empty{color:#94a3b8;font-weight:700;}
+
+    /* Mini distribution planner styling (borrowed from main DP) */
+    .finplan-section{margin-bottom:16px;padding:14px;border:1px solid rgba(166,128,35,.35);border-radius:14px;background:#0c1222;}
+    .dp-bucket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px;}
+    .dp-bkt{border:1.5px solid rgba(166,128,35,.45);border-radius:14px;background:#0f172a;padding:12px 12px 10px;box-shadow:0 10px 30px rgba(0,0,0,.24);}
+    .dp-bkt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+    .dp-bkt-title{font-weight:900;letter-spacing:.3px;}
+    .dp-bkt-sub{font-size:.82rem;color:#94a3b8;}
+    .dp-total-row{display:flex;align-items:center;justify-content:space-between;background:#0f172a;border:1px solid rgba(166,128,35,.4);border-radius:12px;padding:10px 12px;margin-top:12px;}
+    .dp-total-label{font-weight:800;color:#cbd5e1;}
+    .dp-total-value{font-weight:900;color:#d9b35a;font-size:1.1rem;}
 </style>
