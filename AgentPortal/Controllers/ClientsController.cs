@@ -1804,12 +1804,6 @@ namespace AgentPortal.Controllers;
             ? agentProfile.Npn.Trim()
             : (model.AgentNpn ?? "").Trim();
 
-        if (isPortalClient && string.IsNullOrWhiteSpace(agentNpn))
-        {
-            ModelState.AddModelError(nameof(CreateClientViewModel.AgentNpn), "Add your NPN in Manage Profile before creating portal clients.");
-            return View(model);
-        }
-
         if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
         {
             ModelState.AddModelError(nameof(CreateClientViewModel.FirstName), "First name is required.");
