@@ -1463,13 +1463,18 @@ markNeutral(savingsTipsOut);
           <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
             <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
           </div>
-          <label class="wfd-lbl" for="wfd_liDesign">Policy Design</label>
-          <select id="wfd_liDesign" class="wfd-inp" style="cursor:pointer;">
-            <option value="whole_withdrawal">Whole Life — Withdrawals</option>
-            <option value="whole_loan">Whole Life — Policy Loans</option>
+          <label class="wfd-lbl" for="wfd_liType">Policy Type</label>
+          <select id="wfd_liType" class="wfd-inp" style="cursor:pointer;">
+            <option value="whole">Whole Life</option>
             <option value="iul">Indexed UL</option>
             <option value="vul">Variable UL</option>
-            <option value="legacy_rpu">Legacy-Focused / Reduced Paid-Up</option>
+            <option value="legacy_rpu">Legacy / Reduced Paid-Up</option>
+          </select>
+          <label class="wfd-lbl" for="wfd_liAccess">Access Method</label>
+          <select id="wfd_liAccess" class="wfd-inp" style="cursor:pointer;">
+            <option value="withdrawal">Withdrawals</option>
+            <option value="loan">Policy Loans</option>
+            <option value="none">No Distributions</option>
           </select>
           <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
           <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
@@ -1863,7 +1868,7 @@ markNeutral(savingsTipsOut);
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
-                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liDesign','wfd_annDesign'];
+                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
                     step1: {
@@ -1876,7 +1881,7 @@ markNeutral(savingsTipsOut);
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
                                  'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup'],
                         checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider'],
-                        selects: ['wfd_liDesign','wfd_annDesign']
+                        selects: ['wfd_liType','wfd_liAccess','wfd_annDesign']
                     },
                     step3: {
                         inputs: ['wfd_downThreshold','wfd_manualReturns'],
@@ -2415,8 +2420,9 @@ markNeutral(savingsTipsOut);
                     if (hasIncRider) annRiderLabels.push('Income Rider');
                     if (hasDbRider)  annRiderLabels.push('Death Benefit Rider');
                     const annDesignDisplay = annRiderLabels.length ? `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'} + ${annRiderLabels.join(' + ')}` : `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'}`;
-                    const liDesign    = result.liDesign || 'Life Design';
-                    const lifeDesignLabel = result.lifeDesignLabel || liDesign;
+                    const liType      = result.liType || 'Life';
+                    const liAccess    = result.liAccess || 'Access';
+                    const lifeDesignLabel = result.lifeDesignLabel || `${liType} — ${liAccess}`;
 
                     // Summary
                     const setSum = (id, val, cls) => {
@@ -2504,7 +2510,8 @@ markNeutral(savingsTipsOut);
                             if (r.life && r.life.w > 0) {
                                 const loanTxt = r.life.loanBal !== null && r.life.loanBal !== undefined ? ` | Loan ${fmtD(r.life.loanBal)}` : '';
                                 const netTxt = r.life.deathEndNet !== undefined ? ` | Net DB ${fmtD(r.life.deathEndNet)}` : '';
-                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;Cash ${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)} | DB ${fmtD(r.life.deathStart ?? 0)} → ${fmtD(r.life.deathEndGross ?? r.life.deathEnd ?? 0)}${loanTxt}${netTxt}</span>`);
+                                const statusTxt = r.life.status ? ` | Status ${r.life.status}` : '';
+                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;Cash ${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)} | DB ${fmtD(r.life.deathStart ?? 0)} → ${fmtD(r.life.deathEndGross ?? r.life.deathEnd ?? 0)}${loanTxt}${netTxt}${statusTxt}</span>`);
                             }
                             const annUsedFromAcct = r.ann ? (r.ann.w + (r.ann.riderPaidFromAccount || 0)) : 0;
                             const annIncome = r.ann?.riderIncome || 0;
@@ -2584,7 +2591,7 @@ markNeutral(savingsTipsOut);
                                 seriesKey: 'inv'
                             },
                             {
-                                key: 'li', label: result.liDesign === 'legacy_rpu' ? 'Legacy / Preservation' : 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
+                                key: 'li', label: result.liType === 'legacy_rpu' ? 'Legacy / Preservation' : 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
                                 border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
                                 rateOf: r => (typeof r.liRatePct === 'number' ? r.liRatePct : null),
                                 startOf: r => r.life ? (r.life.cashStart ?? r.life.start ?? null) : null,
@@ -2667,7 +2674,7 @@ markNeutral(savingsTipsOut);
                                            border-radius:12px;padding:12px 14px;cursor:pointer;
                                            text-align:left;color:#e2e8f0;font-family:inherit;">
                                     <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
-                                    ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
+                                    ${def.key === 'li' && result.liType === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
                                     ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${annDesignDisplay}${hasIncRider && annRollupPct !== null ? ` · Rollup ${annRollupPct.toFixed(1)}%` : ''}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
@@ -2857,6 +2864,7 @@ markNeutral(savingsTipsOut);
                                 hdrCells.push(isAnn ? 'End Annuity Value' : isLife ? 'End Cash Value' : 'End Balance');
                                 if (isLife || isAnn) hdrCells.push(isLife ? 'End Death Benefit (Gross)' : 'End Death Value');
                                 if (isLife) hdrCells.push('Net Death Benefit');
+                                if (isLife) hdrCells.push('Policy Status');
                                 if (isAnn) hdrCells.push('Net to Plan');
                                 hdrCells.push('Used');
 
@@ -2888,6 +2896,7 @@ markNeutral(savingsTipsOut);
                                       <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
                                       ${isLife ? `<td style="padding:4px 7px;">${netDeath !== null ? fmtD(netDeath) : '—'}</td>` : ''}
+                                      ${isLife ? `<td style="padding:4px 7px;">${r.life?.status || '—'}</td>` : ''}
                                       ${isAnn ? `<td style="padding:4px 7px;">${annNetToPlan !== null ? fmtD(annNetToPlan) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
                                     </tr>`;
@@ -3055,7 +3064,8 @@ markNeutral(savingsTipsOut);
                     const annIncomeRider= gid('wfd_annIncomeRider').checked;
                     const annRollupRate = (pf(gid('wfd_annRollup').value) || 5) / 100;
                     const annDesign     = gid('wfd_annDesign').value || 'fixed';
-                    const liDesign      = gid('wfd_liDesign').value || 'whole_withdrawal';
+                    const liType        = gid('wfd_liType').value || 'whole';
+                    const liAccess      = gid('wfd_liAccess').value || 'withdrawal';
 
                     let strategy        = gid('wfd_strategy').value;
                     if (strategy === 'downmarket') strategy = 'guardrail'; // legacy persisted value
@@ -3124,6 +3134,7 @@ markNeutral(savingsTipsOut);
 
                     let depletionYr = null;
                     let depletionEmerg = null;
+                    let liLapsed = false;
                     let fy_emW = 0, fy_invW = 0, fy_liW = 0, fy_annW = 0; // first-year withdrawals
                     let year1Shortfall = 0;
                     let anyYearShortfall = false;
@@ -3168,9 +3179,9 @@ markNeutral(savingsTipsOut);
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
                         // Life design-driven growth
                         let liYearR = liGrowth;
-                        if (liDesign === 'iul') liYearR = Math.min(Math.max(invYearR, 0), 0.12);
-                        else if (liDesign === 'vul') liYearR = invYearR;
-                        else if (liDesign === 'legacy_rpu') liYearR = Math.min(liGrowth, 0.03); // conservative credited
+                        if (liType === 'iul') liYearR = Math.min(Math.max(invYearR, 0), 0.12);
+                        else if (liType === 'vul') liYearR = invYearR;
+                        else if (liType === 'legacy_rpu') liYearR = Math.min(liGrowth, 0.03); // conservative credited
 
                         // Annuity design-driven growth
                         const annBaseVarR = (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn);
@@ -3200,7 +3211,7 @@ markNeutral(savingsTipsOut);
                         let invW = 0, liW = 0, annW = 0;
                         let needLeftNet = incGap; // net gap after guaranteed income
 
-                        const allowLife   = (marketState === 'down' ? liDownMkt : true);
+                        const allowLife   = (liAccess !== 'none') && (liType !== 'legacy_rpu') && !liLapsed && (marketState === 'down' ? liDownMkt : true);
                         const allowAnn    = (marketState === 'down' ? annDownMkt : true);
                         const investGuarded = protectInvest && marketState === 'down' && !onlyInvestmentsFunded;
                         const fundingPath = [];
@@ -3215,17 +3226,20 @@ markNeutral(savingsTipsOut);
                         const drawFromBucket = (bucket) => {
                             if (needLeftNet <= 1e-2) return; // tolerance: stop when gap is covered
                             const canUse = bucket === 'investments' ? (investGuarded ? false : (marketState === 'down' ? invDownMkt : true))
-                                         // legacy_rpu: preservation/legacy bucket — never drawn as income source
-                                         : bucket === 'life'        ? (liDesign !== 'legacy_rpu' && (marketState === 'down' ? liDownMkt  : true))
+                                         // legacy_rpu or access none: preservation/legacy bucket — never drawn as income source
+                                         : bucket === 'life'        ? (allowLife)
                                          :                            (marketState === 'down' ? annDownMkt : true);
                             if (bucket === 'annuities' && annIncomeRider) return; // rider handles income separately
                             if (!canUse) return;
                             const avail   = bucket === 'investments' ? Math.max(0, invBal)
-                                          : bucket === 'life'        ? Math.max(0, liBal * liEff)
-                                          :                               Math.max(0, annBal);
-                            // whole_loan: policy loan proceeds are income-tax-free
+                                          : bucket === 'life'
+                                            ? (liAccess === 'loan'
+                                                ? Math.max(0, (liBal - liLoanBal) * liEff) // loanable value
+                                                : Math.max(0, liBal * liEff))
+                                          : Math.max(0, annBal);
+                            // policy loan proceeds are income-tax-free
                             const tax     = bucket === 'investments' ? invTax
-                                          : bucket === 'life'        ? (liDesign === 'whole_loan' ? 0 : liTax)
+                                          : bucket === 'life'        ? (liAccess === 'loan' ? 0 : liTax)
                                           :                            annTax;
                             const grossNeed = tax < 1 ? needLeftNet / (1 - tax) : needLeftNet;
                             const draw      = Math.min(avail, grossNeed);
@@ -3299,7 +3313,7 @@ markNeutral(savingsTipsOut);
                             annIncomeStarted = true;
                         }
 
-                        const liEffTax  = liDesign === 'whole_loan' ? 0 : liTax;
+                        const liEffTax  = liAccess === 'loan' ? 0 : liTax;
                         const annNetContribution = annIncomeRider ? annIncomeBenefit : netFromGross(annW, annTax);
                         const annGrossContribution = annIncomeRider ? annIncomeBenefit : annW;
                         let fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + annNetContribution + emUse;
@@ -3319,9 +3333,10 @@ markNeutral(savingsTipsOut);
 
                         // Withdrawal first, then growth
                         const invPre   = Math.max(0, invBal  - invW);
-                        // whole_loan: accrue interest on prior loan balance first, then add this year's draw
-                        if (liDesign === 'whole_loan') { liLoanBal = liLoanBal * (1 + liLoanRate); liLoanBal += liW; }
-                        const liPre    = liDesign === 'whole_loan' ? liBal : Math.max(0, liBal - liW);
+                        // Policy loan: accrue interest on prior loan balance first, then add this year's draw
+                        let liLoanInterest = 0;
+                        if (liAccess === 'loan') { liLoanInterest = liLoanBal * liLoanRate; liLoanBal = liLoanBal + liLoanInterest + liW; }
+                        const liPre    = liAccess === 'loan' ? liBal : Math.max(0, liBal - liW);
                         const annPre   = Math.max(0, annBal  - annW - riderPaidFromAccount);
                         // Death benefit start-of-year snapshot (conservative level DB unless explicitly modeled otherwise)
                         const liDeathPre  = liDeathBal;
@@ -3330,7 +3345,7 @@ markNeutral(savingsTipsOut);
                         invBal  = invPre  * (1 + effInvR);
                         liBal   = liPre   * (1 + effLiR);
                         // vul: age-banded COI drag (worsens with age; approximates blended COI + sub-account expenses)
-                        if (liDesign === 'vul') {
+                        if (liType === 'vul') {
                             const vulAge = retAge + y;
                             const vulCOI = vulAge < 70 ? 0.010 : vulAge < 75 ? 0.015 : vulAge < 80 ? 0.022 : 0.032;
                             liBal = Math.max(0, liBal * (1 - vulCOI));
@@ -3366,7 +3381,11 @@ markNeutral(savingsTipsOut);
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
                         // whole_loan: chart shows net death benefit (gross minus outstanding loans)
-                        const liNetDeath = liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal;
+                        const liNetDeath = liAccess === 'loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal;
+                        if (liAccess === 'loan' && liNetDeath <= 0) {
+                            liLapsed = true;
+                            liBal = 0;
+                        }
                         liDeathPts.push(liNetDeath);
                         annDeathPts.push(annDeathBal);
                         totalPts.push(totalNow);
@@ -3398,17 +3417,19 @@ markNeutral(savingsTipsOut);
                             shortfall: yearShort,
                             // per-bucket detail — start is pre-withdrawal snapshot; end is post-growth balance
                             inv:  (invStart0 > 0 || invW > 0) ? { start: invStart0, w: invW, end: invBal, growth: invGrowth, used: invW > 0 } : null,
-                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? {
+                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0 || (liAccess === 'loan' && liLoanBal > 0)) ? {
                                 cashStart: liStart0,
                                 deathStart: liDeathStart0,
                                 w: liW,
                                 cashEnd: liBal,
                                 deathEndGross: liDeathBal,
                                 deathEndNet: liNetDeath,
-                                loanBal: liDesign === 'whole_loan' ? liLoanBal : null,
+                                loanBal: liAccess === 'loan' ? liLoanBal : null,
                                 growth: liGrowthAmt,
                                 deathGrowth: liDeathGrowth,
-                                used: liW > 0
+                                loanInterest: liAccess === 'loan' ? liLoanInterest : null,
+                                status: liAccess === 'loan' ? (liLapsed ? 'Lapsed' : (liLoanBal >= liDeathBal * 0.9 ? 'At Risk' : 'Active')) : 'Active',
+                                used: liW > 0 || (liAccess === 'loan' && liLoanBal > 0)
                             } : null,
                             ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0 || riderIncomeGross > 0 || riderPaidFromAccount > 0) ? {
                                 start: annStart0,
@@ -3432,7 +3453,7 @@ markNeutral(savingsTipsOut);
 
                     // --- Tax-aware first-year outputs ---
                     const net_invW  = fy_invW  * (1 - invTax);
-                    const net_liW   = fy_liW   * (1 - (liDesign === 'whole_loan' ? 0 : liTax));
+                    const net_liW   = fy_liW   * (1 - (liAccess === 'loan' ? 0 : liTax));
                     const annGrossContributionFY = annIncomeRider ? annIncomeBenefit : fy_annW;
                     const net_annW  = annIncomeRider ? annIncomeBenefit : (fy_annW * (1 - annTax));
                     const net_emW   = fy_emW;
@@ -3477,12 +3498,14 @@ markNeutral(savingsTipsOut);
                     const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
                     const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed';
                     const lifeDesignLabel = (() => {
-                        if (liDesign === 'whole_withdrawal') return 'Whole Life — Withdrawals';
-                        if (liDesign === 'whole_loan') return 'Whole Life — Policy Loans';
-                        if (liDesign === 'iul') return 'Indexed UL';
-                        if (liDesign === 'vul') return 'Variable UL';
-                        if (liDesign === 'legacy_rpu') return 'Legacy-Focused / RPU';
-                        return 'Life Design';
+                        const typeLabel = liType === 'iul' ? 'Indexed UL'
+                                          : liType === 'vul' ? 'Variable UL'
+                                          : liType === 'legacy_rpu' ? 'Legacy-Focused / RPU'
+                                          : 'Whole Life';
+                        const accessLabel = liAccess === 'loan' ? 'Policy Loans'
+                                           : liAccess === 'withdrawal' ? 'Withdrawals'
+                                           : 'No Distributions';
+                        return `${typeLabel} — ${accessLabel}`;
                     })();
 
                     // --- Result cards ---
@@ -3547,7 +3570,8 @@ markNeutral(savingsTipsOut);
                             },
                             annuityType,
                             annDesign,
-                            liDesign,
+                            liType,
+                            liAccess,
                             lifeDesignLabel,
                             annIncomeRider,
                             annDbRider,
