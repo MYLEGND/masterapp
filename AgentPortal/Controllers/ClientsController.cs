@@ -2873,6 +2873,56 @@ meta.Activities ??= new List<ClientCrmActivity>();
     }
 
     [HttpGet]
+    public async Task<IActionResult> FinancialPlanClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var search = NormLower(q);
+        var ownedProfiles = await (
+            from link in _db.AgentClients.AsNoTracking()
+            join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+            where link.AgentUserId == agentOid
+            select profile
+        ).ToListAsync();
+
+        var profileIds = ownedProfiles.Select(x => x.Id).ToList();
+        var savedPlanIds = profileIds.Count == 0
+            ? new HashSet<Guid>()
+            : (await _db.ClientFinancialPlans
+                .AsNoTracking()
+                .Where(x => profileIds.Contains(x.ClientId) && !x.IsDeleted)
+                .Select(x => x.ClientId)
+                .ToListAsync()).ToHashSet();
+
+        var results = ownedProfiles
+            .Select(p => {
+                var displayName = $"{Norm(p.FirstName)} {Norm(p.LastName)}".Trim();
+                var haystack = string.Join(" ", displayName, p.Email ?? "", p.Phone ?? "").ToLowerInvariant();
+                return new {
+                    profile = p,
+                    displayName = string.IsNullOrWhiteSpace(displayName) ? "Client" : displayName,
+                    haystack
+                };
+            })
+            .Where(x => string.IsNullOrWhiteSpace(search) || x.haystack.Contains(search))
+            .OrderByDescending(x => x.profile.UpdatedUtc)
+            .ThenBy(x => x.displayName)
+            .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
+            .Select(x => new {
+                clientUserId = x.profile.ClientUserId,
+                clientProfileId = x.profile.Id,
+                displayName = x.displayName,
+                email = x.profile.Email ?? "",
+                phone = x.profile.Phone ?? "",
+                hasSavedPlan = savedPlanIds.Contains(x.profile.Id)
+            });
+
+        return Json(results);
+    }
+
+    [HttpGet]
     public async Task<IActionResult> AdvancedMarketsInputs(string? clientUserId, Guid? clientProfileId = null)
     {
         string agentOid;

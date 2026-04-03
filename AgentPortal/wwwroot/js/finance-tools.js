@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const plannerScopeKey = (key) => `legend-finance:user:${effectiveUserScope}:${key}`;
     const selectedToolStateId = "__workspace__";
     const disableLocalForWF = true; // Phase 2B: Wealth Forecast server-only
+    const disableLocalForDP = true; // Phase 2C: Distribution Planner server-only
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
@@ -88,7 +89,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     async function loadPersistedState(key) {
         const keys = getStateKeys(key);
 
-        if (disableLocalForWF && keys.some(k => (k || "").includes("WealthForecast"))) {
+        if ((disableLocalForWF && keys.some(k => (k || "").includes("WealthForecast"))) ||
+            (disableLocalForDP && keys.some(k => (k || "").includes("DistributionPlanner")))) {
             return {};
         }
 
@@ -120,7 +122,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
                 function savePersistedState(key, state) {
-                    if (disableLocalForWF && (key || "").includes("WealthForecast")) return;
+                    if ((disableLocalForWF && (key || "").includes("WealthForecast")) ||
+                        (disableLocalForDP && (key || "").includes("DistributionPlanner"))) return;
                     const jsonState = JSON.stringify(state || {});
                     const primaryKey = getPrimaryStateKey(key);
                     // Always cache locally for instant restores and offline/dev use
@@ -207,7 +210,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // ------------------- Persistence Helpers (UPDATED) -------------------
     function saveToolState(toolId) {
-        if (disableLocalForWF && toolId === 'WealthForecast') return; // server-backed only
+        if ((disableLocalForWF && toolId === 'WealthForecast') || (disableLocalForDP && toolId === 'DistributionPlanner')) return; // server-backed only
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
 
@@ -230,7 +233,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     async function loadToolState(toolId) {
-        if (disableLocalForWF && toolId === 'WealthForecast') return; // server-backed only
+        if ((disableLocalForWF && toolId === 'WealthForecast') || (disableLocalForDP && toolId === 'DistributionPlanner')) return; // server-backed only
         const saved = await loadPersistedState(`toolState-${toolId}`);
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
@@ -374,6 +377,11 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
         let wfActiveClientId = null;
         let wfPlanVersion = 0;
         let wfSaveTimer = null;
+        // shared DP plan state
+        let dpActiveClientId = null;
+        let dpPlanVersion = 0;
+        let dpPlanCache = { wealthForecast: null }; // preserve WF section when saving from DP
+        let dpSaveTimer = null;
 
         // ==========================================================
         // 1️⃣ WEALTH FORECAST (ELEVATED) + Tooltips
@@ -840,11 +848,8 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
             if (wfActionsEl){
                 wfActionsEl.innerHTML = `
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <input id="wfClientSearch" class="form-control form-control-sm" style="width:200px;" placeholder="Search client" />
+                    <input id="wfClientSearch" class="form-control form-control-sm" style="width:220px;" placeholder="Search client" />
                     <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
-                    <select id="wfClientSelect" class="form-select form-select-sm" style="width:220px;">
-                      <option value="">Select client…</option>
-                    </select>
                     <span id="wfPlanStatus" class="text-muted small">No client selected.</span>
                   </div>`;
             }
@@ -856,18 +861,22 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                     const res = await fetch(`/Clients/AdvancedMarketsBusinessClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
                     if (!res.ok) throw new Error(`Search failed (${res.status})`);
                     const list = await res.json();
-                    const sel = document.getElementById("wfClientSelect");
-                    if (sel){
-                        sel.innerHTML = `<option value=\"\">Select client…</option>`;
-                        list.forEach(item => {
-                            const opt = document.createElement("option");
-                            opt.value = item.clientUserId;
-                            opt.textContent = `${item.displayName} (${item.clientUserId})`;
-                            opt.dataset.profileId = item.clientProfileId;
-                            sel.appendChild(opt);
-                        });
+                    if (!list || list.length === 0){
+                        wfActiveClientId = null;
+                        if (statusEl) statusEl.textContent = "No results.";
+                        return;
                     }
-                    if (statusEl) statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
+                    if (list.length > 1){
+                        wfActiveClientId = null;
+                        if (statusEl) statusEl.textContent = `Multiple results (${list.length}). Refine search.`;
+                        return;
+                    }
+                    // exactly one result -> load
+                    const item = list[0];
+                    wfActiveClientId = item.clientUserId;
+                    wfPlanVersion = 0;
+                    if (statusEl) statusEl.textContent = "Loading plan…";
+                    await loadWfPlan(wfActiveClientId);
                 } catch(err){
                     if (statusEl) statusEl.textContent = err?.message || "Search failed.";
                     toast(err?.message || "Search failed.");
@@ -949,15 +958,8 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
 
             const searchBtn = document.getElementById("wfClientSearchBtn");
             const searchInput = document.getElementById("wfClientSearch");
-            const selectEl = document.getElementById("wfClientSelect");
             searchBtn?.addEventListener("click", (e) => { e.preventDefault(); searchWfClients(searchInput?.value || ""); });
             searchInput?.addEventListener("keypress", (e) => { if (e.key === 'Enter'){ e.preventDefault(); searchWfClients(searchInput.value || ""); } });
-            selectEl?.addEventListener("change", (e) => {
-                const val = e.target.value;
-                wfActiveClientId = val || null;
-                wfPlanVersion = 0;
-                if (val) { void loadWfPlan(val); }
-            });
 
             // Main calculation function
             function calcWealthForecast() {
@@ -1456,15 +1458,23 @@ markNeutral(savingsTipsOut);
 
 <div id="wfDist_panel">
   <!-- HEADER -->
-  <div class="wfd-hdr">
-    <button id="wfd_close" type="button" aria-label="Close"
-      style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">×</button>
-    <h2 style="color:#d9b35a;font-weight:900;font-size:1.75rem;margin:0 0 4px;">Distribution Planner</h2>
-    <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
-    <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
-    <div class="wfd-steps" id="wfd_stepsNav">
-      <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
-      <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Buckets</div>
+    <div class="wfd-hdr">
+      <button id="wfd_close" type="button" aria-label="Close"
+        style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">×</button>
+      <h2 style="color:#d9b35a;font-weight:900;font-size:1.75rem;margin:0 0 4px;">Distribution Planner</h2>
+      <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
+      <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
+      <div id="dpClientSearchRow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+        <input id="dpClientSearch" class="form-control form-control-sm" style="width:200px;" placeholder="Search client" />
+        <button id="dpClientSearchBtn" class="btn btn-ghost btn-sm" type="button">Search</button>
+        <select id="dpClientSelect" class="form-select form-select-sm" style="width:220px;">
+          <option value=\"\">Select client…</option>
+        </select>
+        <span id="dpPlanStatus" class="text-muted small">No client selected.</span>
+      </div>
+      <div class="wfd-steps" id="wfd_stepsNav">
+        <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
+        <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Buckets</div>
       <div class="wfd-step-chip" data-step="3"><span class="step-num">3</span> Strategy</div>
       <div class="wfd-step-chip" data-step="4"><span class="step-num">4</span> Results</div>
     </div>
@@ -2006,6 +2016,23 @@ markNeutral(savingsTipsOut);
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
+                function dpCollectInputs(){
+                    const inputs = {};
+                    distInputIds.forEach(id => { const el = gid(id); if (el) inputs[id] = el.value; });
+                    const checks = {};
+                    distCheckIds.forEach(id => { const el = gid(id); if (el) checks[id] = !!el.checked; });
+                    const selects = {};
+                    distSelectIds.forEach(id => { const el = gid(id); if (el) selects[id] = el.value; });
+                    return { inputs, checks, selects };
+                }
+                function dpPayload(){
+                    const dist = dpCollectInputs();
+                    return {
+                        version: dpPlanVersion,
+                        wealthForecast: dpPlanCache.wealthForecast || null,
+                        distribution: dist
+                    };
+                }
                 const stepFieldSets = {
                     step1: {
                         inputs: ['wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_incomeGap'],
@@ -2137,11 +2164,13 @@ markNeutral(savingsTipsOut);
 
                 let saveDistTimer = null;
                 function saveDistState() {
+                    if (disableLocalForDP) { dpSaveDebounced(); return; }
                     if (!DIST_KEY) return;
                     savePersistedState(DIST_KEY, distState());
                     if (!hydrating && distMeta.hasValidResults) { distMeta.stale = true; saveMeta(); }
                 }
                 function saveDistStateDebounced(){
+                    if (disableLocalForDP) { dpSaveDebounced(); return; }
                     if (!DIST_KEY) return;
                     if (saveDistTimer) clearTimeout(saveDistTimer);
                     saveDistTimer = setTimeout(saveDistState, 300);
@@ -2157,7 +2186,7 @@ markNeutral(savingsTipsOut);
                 }
                 async function loadDistState() {
                     if (!DIST_KEY) return;
-                    const state = await loadPersistedState(DIST_KEY);
+                    const state = disableLocalForDP ? {} : await loadPersistedState(DIST_KEY);
                     const hasState = state && Object.keys(state).length > 0;
                     const mapLegacyDesign = (val) => {
                         if (!val) return null;
@@ -2335,11 +2364,11 @@ markNeutral(savingsTipsOut);
                     gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
                 }
                 ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
-                    gid(id).addEventListener('input', updateBktAmounts);
+                    gid(id).addEventListener('input', () => { updateBktAmounts(); dpSaveDebounced(); });
                 });
                 ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
-                    if (el) el.addEventListener('change', () => { updateDMState(); saveDistState(); });
+                    if (el) el.addEventListener('change', () => { updateDMState(); dpSaveDebounced(); });
                 });
                 const toggleAnnRollup = () => {
                     const wrap = gid('wfd_annRollupWrap');
@@ -2347,7 +2376,124 @@ markNeutral(savingsTipsOut);
                     if (wrap) wrap.style.display = riderOn ? 'block' : 'none';
                 };
                 const annIncomeChk = gid('wfd_annIncomeRider');
-                if (annIncomeChk) annIncomeChk.addEventListener('change', () => { toggleAnnRollup(); saveDistStateDebounced(); });
+                if (annIncomeChk) annIncomeChk.addEventListener('change', () => { toggleAnnRollup(); dpSaveDebounced(); });
+
+                // --- DP Client Search / Load / Save ---
+                async function searchDpClients(q){
+                    const statusEl = document.getElementById('dpPlanStatus');
+                    if (statusEl) statusEl.textContent = "Searching…";
+                    try{
+                        const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
+                        if (!res.ok) throw new Error(`Search failed (${res.status})`);
+                        const list = await res.json();
+                        const sel = document.getElementById('dpClientSelect');
+                        if (sel){
+                            sel.innerHTML = `<option value=\"\">Select client…</option>`;
+                            list.forEach(item => {
+                                const opt = document.createElement('option');
+                                opt.value = item.clientUserId;
+                                opt.textContent = `${item.displayName} (${item.clientUserId})`;
+                                opt.dataset.profileId = item.clientProfileId;
+                                sel.appendChild(opt);
+                            });
+                        }
+                        if (statusEl) statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
+                    }catch(err){
+                        if (statusEl) statusEl.textContent = err?.message || "Search failed.";
+                        toast(err?.message || "Search failed.");
+                    }
+                }
+
+                function hydrateDistribution(distribution){
+                    const dist = distribution || {};
+                    const inputs = dist.inputs || {};
+                    const checks = dist.checks || {};
+                    const selects = dist.selects || {};
+                    hydrating = true;
+                    Object.keys(inputs).forEach(id => { const el = gid(id); if (el) el.value = inputs[id]; });
+                    Object.keys(checks).forEach(id => { const el = gid(id); if (el) el.checked = !!checks[id]; });
+                    Object.keys(selects).forEach(id => { const el = gid(id); if (el) el.value = selects[id]; });
+                    // Refresh derived UI
+                    updateBktAmounts();
+                    updateGap();
+                    togglePriorityRow();
+                    hydrating = false;
+                    distMeta.hasValidResults = false;
+                    distMeta.result = null;
+                    distMeta.lastStep = '1';
+                    setStep('1');
+                }
+
+                function distInitAfterHydrate(){
+                    updateDMState();
+                    // do not overwrite hydrated base with WF balance; assume server truth
+                    document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
+                    document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
+                }
+
+                async function loadDpPlan(clientUserId, initAfter){
+                    const statusEl = document.getElementById('dpPlanStatus');
+                    if (statusEl) statusEl.textContent = "Loading plan…";
+                    try{
+                        const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+                        if (!res.ok) throw new Error(`Load failed (${res.status})`);
+                        const data = await res.json();
+                        dpPlanVersion = data.version || 0;
+                        let payload = {};
+                        try { payload = JSON.parse(data.jsonData || "{}"); } catch { payload = {}; }
+                        dpPlanCache.wealthForecast = payload.wealthForecast || dpPlanCache.wealthForecast || null;
+                        hydrateDistribution(payload.distribution);
+                        if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                        if (initAfter) distInitAfterHydrate();
+                    }catch(err){
+                        if (statusEl) statusEl.textContent = err?.message || "Load failed.";
+                        toast(err?.message || "Failed to load plan.");
+                    }
+                }
+
+                function showDpError(msg){
+                    const statusEl = document.getElementById('dpPlanStatus');
+                    if (statusEl) statusEl.textContent = msg || "Error";
+                    toast(msg || "Save failed.");
+                }
+
+                async function saveDpPlan(){
+                    if (!dpActiveClientId) return;
+                    const payload = dpPayload();
+                    const res = await fetch(`/clients/${encodeURIComponent(dpActiveClientId)}/financial-plan`, {
+                        method:"POST",
+                        credentials:"include",
+                        headers:{ "Content-Type":"application/json" },
+                        body: JSON.stringify({ clientUserId: dpActiveClientId, jsonData: JSON.stringify(payload), version: payload.version })
+                    });
+                    if (!res.ok){
+                        if (res.status === 409) showDpError("Version conflict — reload the latest plan before saving.");
+                        else showDpError(`Save failed (${res.status}).`);
+                        return;
+                    }
+                    const data = await res.json();
+                    dpPlanVersion = data.version || dpPlanVersion;
+                    const statusEl = document.getElementById('dpPlanStatus');
+                    if (statusEl) statusEl.textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
+                }
+
+                function dpSaveDebounced(){
+                    if (!dpActiveClientId) return;
+                    if (dpSaveTimer) clearTimeout(dpSaveTimer);
+                    dpSaveTimer = setTimeout(() => { void saveDpPlan(); }, 700);
+                }
+
+                const dpSearchBtn = document.getElementById('dpClientSearchBtn');
+                const dpSearchInput = document.getElementById('dpClientSearch');
+                const dpSelect = document.getElementById('dpClientSelect');
+                dpSearchBtn?.addEventListener('click', (e)=>{ e.preventDefault(); searchDpClients(dpSearchInput?.value || ""); });
+                dpSearchInput?.addEventListener('keypress', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); searchDpClients(dpSearchInput?.value || ""); } });
+                dpSelect?.addEventListener('change', (e)=>{
+                    const val = e.target.value;
+                    dpActiveClientId = val || null;
+                    dpPlanVersion = 0;
+                    if (val) loadDpPlan(val, true);
+                });
 
                 // Annuity type label
                 // Removed legacy annType toggle listener (dropdown is source of truth)
@@ -3786,48 +3932,24 @@ markNeutral(savingsTipsOut);
             } // end: if (!document.getElementById(DIST_OVR_ID))
 
             // Distribution button opens modal and syncs base
-            distBtn.addEventListener('click', () => {
-                const overlay = document.getElementById(DIST_OVR_ID);
-                if (!overlay) {
-                    console.error('Distribution overlay not found.');
-                    return;
-                }
-                lastActiveEl = document.activeElement;
-                overlay.classList.add('wfd-open');
-                document.body.style.overflow = 'hidden';
-                trapFocus(overlay);
-                updateDMState();
-                // Sync retirement base on every open
-                const manualOn = document.getElementById('wfd_manualOverride').checked;
-                if (!manualOn) {
-                    const bal = window.__wfFinalBalance;
-                    const baseInp = document.getElementById('wfd_base');
-                    const warnEl  = document.getElementById('wfd_noBaseWarn');
-                    if (bal && bal > 0) {
-                        // Live WF balance available — use it
-                        baseInp.value = Math.round(bal).toLocaleString();
-                        baseInp.readOnly = true;
-                        baseInp.classList.add('wfd-good'); baseInp.classList.remove('wfd-bad');
-                        warnEl.style.display = 'none';
-                    } else if (!baseInp.value || baseInp.value.trim() === '') {
-                        // No WF balance and field is empty — show warning, do not write blank
-                        baseInp.readOnly = true;
-                        baseInp.classList.add('wfd-bad'); baseInp.classList.remove('wfd-good');
-                        warnEl.style.display = 'block';
+                distBtn.addEventListener('click', () => {
+                    const overlay = document.getElementById(DIST_OVR_ID);
+                    if (!overlay) {
+                        console.error('Distribution overlay not found.');
+                        return;
                     }
-                    // else: field has a persisted value, WF hasn't run — leave it alone
-                }
-                hydrating = true;
-                // Refresh derived auto-calcs
-                document.getElementById('wfd_invAlloc').dispatchEvent(new Event('input'));
-                document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
-                document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
-                togglePriorityRow();
-                hydrating = false;
-                const reopenStep = distMeta.hasValidResults ? (distMeta.lastStep || '4') : '1';
-                setStep(reopenStep);
-                if (reopenStep === '4') hydrateResultsFromMeta();
-            });
+                    lastActiveEl = document.activeElement;
+                    overlay.classList.add('wfd-open');
+                    document.body.style.overflow = 'hidden';
+                    trapFocus(overlay);
+                    // If client already selected, load plan then init; else prompt selection
+                    const statusEl = document.getElementById('dpPlanStatus');
+                    if (!dpActiveClientId){
+                        if (statusEl) statusEl.textContent = "Select a client to load plan.";
+                        return;
+                    }
+                    loadDpPlan(dpActiveClientId, true);
+                });
 
             // Initial calculation
             // hydrate-first: run calc only after load if client selected
