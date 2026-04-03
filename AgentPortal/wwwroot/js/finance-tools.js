@@ -2537,7 +2537,7 @@ markNeutral(savingsTipsOut);
                                 seriesKey: 'inv'
                             },
                             {
-                                key: 'li', label: 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
+                                key: 'li', label: result.liDesign === 'legacy_rpu' ? 'Legacy / Preservation' : 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
                                 border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
                                 rateOf: r => (typeof r.liRatePct === 'number' ? r.liRatePct : null),
                                 startOf: r => r.life ? (r.life.cashStart ?? r.life.start ?? null) : null,
@@ -2608,6 +2608,7 @@ markNeutral(savingsTipsOut);
                                              border-radius:12px;padding:12px 14px;cursor:pointer;
                                              text-align:left;color:#e2e8f0;font-family:inherit;">
                                       <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
+                                      ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
                                       ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${st.annDesign || st.annType || ''}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
@@ -2992,6 +2993,17 @@ markNeutral(savingsTipsOut);
                     let liDeathBal  = Math.max(0, liDeathStart);
                     let annDeathBal = annDbRider ? Math.max(0, annDeathStart || annBal) : annBal;
                     let annRiderBase = annDbRider ? annDeathBal : 0;
+                    // whole_loan: tracks outstanding loan balance (not subtracted from cash value)
+                    const liLoanRate = 0.05; // 5% annual policy loan interest (fixed rate default)
+                    let liLoanBal = 0;
+                    // incomeRider: dual-account — cash value + guaranteed income base
+                    const annRollupRate = Math.max(annReturn, 0.05); // income base rollup floor 5%
+                    // age-banded payout rate: higher payout at older retirement ages (locked on first income draw)
+                    const annPayoutRateForAge = (age) => age < 60 ? 0.040 : age < 65 ? 0.045 : age < 70 ? 0.050 : age < 75 ? 0.055 : 0.060;
+                    let annLockedPayoutRate = annPayoutRateForAge(retAge); // provisional; re-locked at income start
+                    let annIncomeBase = annDesign === 'incomeRider' ? annBal : 0;
+                    let annIncomeBenefit = annDesign === 'incomeRider' ? annIncomeBase * annLockedPayoutRate : 0;
+                    let annIncomeStarted = false; // incomeRider: tracks whether income draw has begun (locks rollup + payout rate)
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
                     const startLiDeath = liDeathBal, startAnnDeath = annDeathBal;
 
@@ -3069,9 +3081,14 @@ markNeutral(savingsTipsOut);
                         if (annDesign === 'variable') annYearR = annBaseVarR;
                         else if (annDesign === 'fixedIndexed') {
                             const capped = Math.min(Math.max(annBaseVarR, 0), 0.10);
-                            annYearR = (capped * 0.6) + 0.01; // 60% participation + 1% spread
+                            annYearR = Math.max(0, (capped * 0.6) - 0.01); // 60% participation minus 1% spread
                         } else if (annDesign === 'incomeRider') {
-                            annYearR = Math.max(annReturn, 0.02); // floor for income base
+                            // Income base rolls up only during deferral; locks once income draw begins
+                            if (!annIncomeStarted) {
+                                annIncomeBase = annIncomeBase * (1 + annRollupRate);
+                                annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
+                            }
+                            annYearR = annReturn; // cash value grows at credited rate
                         } else if (annDesign === 'deathBenefitRider') {
                             annYearR = annReturn;
                         } else {
@@ -3104,14 +3121,18 @@ markNeutral(savingsTipsOut);
                         const drawFromBucket = (bucket) => {
                             if (needLeftNet <= 1e-2) return; // tolerance: stop when gap is covered
                             const canUse = bucket === 'investments' ? (investGuarded ? false : (marketState === 'down' ? invDownMkt : true))
-                                         : bucket === 'life'        ? (marketState === 'down' ? liDownMkt  : true)
+                                         // legacy_rpu: preservation/legacy bucket — never drawn as income source
+                                         : bucket === 'life'        ? (liDesign !== 'legacy_rpu' && (marketState === 'down' ? liDownMkt  : true))
                                          :                            (marketState === 'down' ? annDownMkt : true);
                             if (!canUse) return;
                             const avail   = bucket === 'investments' ? Math.max(0, invBal)
                                           : bucket === 'life'        ? Math.max(0, liBal * liEff)
-                                          :                            Math.max(0, annBal);
+                                          // incomeRider: annual draw capped at guaranteed benefit regardless of cash value
+                                          : annDesign === 'incomeRider' ? Math.max(0, annIncomeBenefit)
+                                          :                               Math.max(0, annBal);
+                            // whole_loan: policy loan proceeds are income-tax-free
                             const tax     = bucket === 'investments' ? invTax
-                                          : bucket === 'life'        ? liTax
+                                          : bucket === 'life'        ? (liDesign === 'whole_loan' ? 0 : liTax)
                                           :                            annTax;
                             const grossNeed = tax < 1 ? needLeftNet / (1 - tax) : needLeftNet;
                             const draw      = Math.min(avail, grossNeed);
@@ -3126,15 +3147,17 @@ markNeutral(savingsTipsOut);
                         // Build draw order for this year
                         if (investGuarded && gapSource === 'split') {
                             // Proportional split between life and annuities, investments as last resort
-                            const liAvail  = allowLife ? Math.max(0, liBal * liEff) : 0;
+                            // legacy_rpu blocked as income source; whole_loan tax-free in all paths
+                            const liAvail  = (allowLife && liDesign !== 'legacy_rpu') ? Math.max(0, liBal * liEff) : 0;
                             const annAvail = allowAnn  ? Math.max(0, annBal)         : 0;
                             const total    = liAvail + annAvail;
                             if (total > 0 && needLeftNet > 1e-2) {
                                 const liShare  = needLeftNet * (liAvail  / total);
                                 const annShare = needLeftNet * (annAvail / total);
                                 if (allowLife && liAvail > 0) {
-                                    const draw = Math.min(liAvail, liTax < 1 ? liShare / (1 - liTax) : liShare);
-                                    liW += draw; needLeftNet -= netFromGross(draw, liTax);
+                                    const liTaxSplit = liDesign === 'whole_loan' ? 0 : liTax;
+                                    const draw = Math.min(liAvail, liTaxSplit < 1 ? liShare / (1 - liTaxSplit) : liShare);
+                                    liW += draw; needLeftNet -= netFromGross(draw, liTaxSplit);
                                     recordBucket('life', draw);
                                 }
                                 if (allowAnn && annAvail > 0 && needLeftNet > 1e-2) {
@@ -3176,7 +3199,8 @@ markNeutral(savingsTipsOut);
                         if (y === 1) fy_emW = emUse;
                         if (emUse > 0) recordBucket('emergency', emUse);
 
-                        const fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liTax) + netFromGross(annW, annTax) + emUse;
+                        const liEffTax  = liDesign === 'whole_loan' ? 0 : liTax;
+                        const fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + netFromGross(annW, annTax) + emUse;
                         const yearShort = Math.max(incGap - fundedNet, 0);
                         if (y === 1) year1Shortfall = yearShort;
                         cumulativeShortfall += yearShort;
@@ -3187,20 +3211,43 @@ markNeutral(savingsTipsOut);
                         const fundingSource = buildFundingLabel({ path: fundingPath, investGuarded, marketState, invW, strategy });
                         fundingSources.push(fundingSource);
 
+                        // incomeRider: on first income draw, lock payout rate to actual age and recompute benefit
+                        if (annDesign === 'incomeRider' && annW > 0 && !annIncomeStarted) {
+                            annLockedPayoutRate = annPayoutRateForAge(retAge + y);
+                            annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
+                            annIncomeStarted = true;
+                        }
+
                         // Withdrawal first, then growth
                         const invPre   = Math.max(0, invBal  - invW);
-                        const liPre    = Math.max(0, liBal   - liW);
+                        // whole_loan: accrue interest on prior loan balance first, then add this year's draw
+                        if (liDesign === 'whole_loan') { liLoanBal = liLoanBal * (1 + liLoanRate); liLoanBal += liW; }
+                        const liPre    = liDesign === 'whole_loan' ? liBal : Math.max(0, liBal - liW);
                         const annPre   = Math.max(0, annBal  - annW);
-                        const liDeathReduction = liDesign === 'whole_loan' ? (liW * 0.5) : liW;
-                        const liDeathPre  = Math.max(0, liDeathBal  - liDeathReduction);
+                        // whole_loan: gross death benefit grows unaffected; net DB = gross - outstanding loans
+                        const liDeathPre  = liDesign === 'whole_loan'
+                            ? liDeathBal
+                            : Math.max(0, liDeathBal - liW);
                         const annDeathPre = annDbRider ? annDeathBal : Math.max(0, annDeathBal - annW);
 
                         invBal  = invPre  * (1 + effInvR);
                         liBal   = liPre   * (1 + effLiR);
+                        // vul: age-banded COI drag (worsens with age; approximates blended COI + sub-account expenses)
+                        if (liDesign === 'vul') {
+                            const vulAge = retAge + y;
+                            const vulCOI = vulAge < 70 ? 0.010 : vulAge < 75 ? 0.015 : vulAge < 80 ? 0.022 : 0.032;
+                            liBal = Math.max(0, liBal * (1 - vulCOI));
+                        }
                         annBal  = annPre  * (1 + effAnnR);
-                        liDeathBal  = liDeathPre  * (1 + effLiR);
+                        // variable / deathBenefitRider: annual M&E drag (~1.25% of account value)
+                        if (annDesign === 'variable' || annDesign === 'deathBenefitRider') annBal = Math.max(0, annBal * (1 - 0.0125));
+                        // incomeRider: annual rider charge (~0.6% of income base, deducted from cash value)
+                        if (annDesign === 'incomeRider') annBal = Math.max(0, annBal - annIncomeBase * 0.006);
+                        // legacy_rpu: death benefit is level (paid-up — no further compounding)
+                        liDeathBal  = liDesign === 'legacy_rpu' ? liDeathPre : liDeathPre  * (1 + effLiR);
                         if (annDbRider) {
-                            annRiderBase = Math.max(annRiderBase * (1 + effAnnR), annBal);
+                            // true high-water-mark: ratchet steps up only when account value exceeds prior high
+                            annRiderBase = Math.max(annRiderBase, annBal);
                             annDeathBal = Math.max(annBal, annRiderBase);
                         } else {
                             annDeathBal = annBal;
@@ -3217,7 +3264,9 @@ markNeutral(savingsTipsOut);
 
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
-                        liDeathPts.push(liDeathBal); annDeathPts.push(annDeathBal);
+                        // whole_loan: chart shows net death benefit (gross minus outstanding loans)
+                        liDeathPts.push(liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal);
+                        annDeathPts.push(annDeathBal);
                         totalPts.push(totalNow);
                         if (totalNow > 0) lastPositiveAge = retAge + y;
                         yLabels.push('Age ' + (retAge + y));
@@ -3247,15 +3296,15 @@ markNeutral(savingsTipsOut);
                             shortfall: yearShort,
                             // per-bucket detail — start is pre-withdrawal snapshot; end is post-growth balance
                             inv:  (invStart0 > 0 || invW > 0) ? { start: invStart0, w: invW, end: invBal, growth: invGrowth, used: invW > 0 } : null,
-                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? { cashStart: liStart0, deathStart: liDeathStart0, w: liW, cashEnd: liBal, deathEnd: liDeathBal, growth: liGrowthAmt, deathGrowth: liDeathGrowth, used: liW > 0 } : null,
-                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
+                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? { cashStart: liStart0, deathStart: liDeathStart0, w: liW, cashEnd: liBal, deathEnd: liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal, loanBal: liDesign === 'whole_loan' ? liLoanBal : null, growth: liGrowthAmt, deathGrowth: liDeathGrowth, used: liW > 0 } : null,
+                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, incomeBase: annDesign === 'incomeRider' ? annIncomeBase : null, incomeBenefit: annDesign === 'incomeRider' ? annIncomeBenefit : null, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
                             em:   emUse > 0 ? { start: emStart0, w: emUse, end: emBal, used: emUse > 0 } : null
                         });
                     }
 
                     // --- Tax-aware first-year outputs ---
                     const net_invW  = fy_invW  * (1 - invTax);
-                    const net_liW   = fy_liW   * (1 - liTax);
+                    const net_liW   = fy_liW   * (1 - (liDesign === 'whole_loan' ? 0 : liTax));
                     const net_annW  = fy_annW  * (1 - annTax);
                     const net_emW   = fy_emW;
                     const totalNetW = net_invW + net_liW + net_annW + net_emW;
