@@ -183,6 +183,7 @@ function resetFinPlanForm(){
   $("#finPlanStatusLabel").textContent = "Loading…";
   $("#finPlanClientLabel").textContent = "";
   updateFinPlanAllocTotal();
+  toggleFinPlanPriorityRow();
 }
 
 function finPlanPayload(){
@@ -269,6 +270,7 @@ function hydrateFinPlan(jsonData){
     el.value = distSelects[id];
   } });
   updateFinPlanAllocTotal();
+  toggleFinPlanPriorityRow();
 }
 
 function showFinPlanError(msg){
@@ -332,6 +334,32 @@ function ensureFinPlanSelectOptions(){
     { value:"fixedIndexed", label:"Fixed Indexed Annuity" },
     { value:"variable",     label:"Variable Annuity" }
   ], "fixed");
+
+  // Priority order options
+  const priorityOptions = [
+    { value:"emergency",  label:"Emergency Savings" },
+    { value:"investments",label:"Investments" },
+    { value:"life",       label:"Life Insurance / Equivalent" },
+    { value:"annuities",  label:"Annuities" }
+  ];
+  const priorityIds = ["wfd_pri1","wfd_pri2","wfd_pri3","wfd_pri4"];
+  priorityIds.forEach(id=>{
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    if (!sel.options.length){
+      priorityOptions.forEach(o=>{
+        const opt = document.createElement("option");
+        opt.value = o.value; opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+    }
+  });
+  if (!document.getElementById("wfd_pri1")?.value){
+    ["wfd_pri1","wfd_pri2","wfd_pri3","wfd_pri4"].forEach((id, idx)=>{
+      const sel = document.getElementById(id);
+      if (sel && sel.options[idx]) sel.value = sel.options[idx].value;
+    });
+  }
 }
 
 function updateFinPlanAllocTotal(){
@@ -387,6 +415,13 @@ document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { voi
 ["wfd_invAlloc","wfd_liAlloc","wfd_annAlloc"].forEach(id=>{
   document.getElementById(id)?.addEventListener("input", updateFinPlanAllocTotal);
 });
+// Show priority row only when applicable
+function toggleFinPlanPriorityRow(){
+  const row = document.getElementById("finPlanPriorityRow");
+  const strat = document.getElementById("wfd_strategy")?.value || "proportional";
+  if (row) row.style.display = (strat === "priority" || strat === "guardrail") ? "flex" : "none";
+}
+document.getElementById("wfd_strategy")?.addEventListener("change", toggleFinPlanPriorityRow);
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
