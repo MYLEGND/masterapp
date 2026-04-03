@@ -2574,7 +2574,9 @@ markNeutral(savingsTipsOut);
                         if (payload.wealthForecast !== undefined) {
                             dpPlanCache.wealthForecast = payload.wealthForecast;
                         }
-                        hydrateDistribution(payload.distribution);
+                        const distPayload = payload.distribution || {};
+                        dpPlanCache.distribution = distPayload;
+                        hydrateDistribution(distPayload);
                         if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
                         dpPlanLoaded = true;
                         // re-sync base/buckets once WF balance is known
