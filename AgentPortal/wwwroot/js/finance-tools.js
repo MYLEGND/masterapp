@@ -888,7 +888,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     return;
                 }
                 if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
-                if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
+                // keep current list visible to avoid flash while new results load
                 try{
                     wfSearchAbort = new AbortController();
                     const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(qTrim)}`, { credentials:"include", signal: wfSearchAbort.signal });
@@ -910,7 +910,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     }
                     // Render result list for selection
                     if (wfResultsEl){
-                        wfResultsEl.innerHTML = "";
+                        const frag = document.createDocumentFragment();
                         list.forEach(item => {
                             const div = document.createElement("button");
                             div.type = "button";
@@ -931,8 +931,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                                 if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
                                 await loadWfPlan(wfActiveClientId);
                             });
-                            wfResultsEl.appendChild(div);
+                            frag.appendChild(div);
                         });
+                        wfResultsEl.replaceChildren(frag);
                         wfResultsEl.style.display = "block";
                     }
                     if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove("text-danger"); }
