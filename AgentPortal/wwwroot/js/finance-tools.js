@@ -2106,9 +2106,8 @@ markNeutral(savingsTipsOut);
                     syncBase();
                     validateAndGate();
                     hydrating = false;
-                    const startStep = distMeta.hasValidResults ? (distMeta.lastStep || '4') : '1';
+                    const startStep = '1'; // always begin at Foundation on open
                     setStep(startStep);
-                    if (startStep === '4') hydrateResultsFromMeta();
                 })();
 
                 // ========================
