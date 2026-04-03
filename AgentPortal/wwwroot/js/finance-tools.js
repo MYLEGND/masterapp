@@ -1501,8 +1501,6 @@ markNeutral(savingsTipsOut);
             <option value="fixed">Fixed Annuity</option>
             <option value="fixedIndexed">Fixed Indexed Annuity</option>
             <option value="variable">Variable Annuity</option>
-            <option value="incomeRider">Income Rider</option>
-            <option value="deathBenefitRider">Death Benefit Rider</option>
           </select>
           <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
           <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
@@ -1514,6 +1512,14 @@ markNeutral(savingsTipsOut);
             <span class="wfd-tog-lbl" style="margin-right:6px;">Annuity Type:</span>
             <label class="wfd-tog"><input type="checkbox" id="wfd_annType" /><span class="wfd-tog-sl"></span></label>
             <span id="wfd_annTypeLbl" class="wfd-tog-lbl">Fixed</span>
+          </div>
+          <div class="wfd-tog-wrap" style="margin-top:4px;">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Income Rider</span>
+          </div>
+          <div class="wfd-tog-wrap" style="margin-top:4px;">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Death Benefit Rider</span>
           </div>
           <label class="wfd-lbl" for="wfd_annReturn">Credited / Expected Return %</label>
           <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
@@ -1774,8 +1780,23 @@ markNeutral(savingsTipsOut);
                     document.body.style.overflow = '';
                     if (focusTrapHandler) modal.removeEventListener('keydown', focusTrapHandler);
                     if (lastActiveEl) lastActiveEl.focus();
+                    distMeta.open = false; saveMeta();
                 };
                 gid('wfd_close').addEventListener('click', closeDistModal);
+                const showDistModal = (stepToOpen='1') => {
+                    const modal = gid(DIST_OVR_ID);
+                    modal.classList.add('wfd-open');
+                    document.body.style.overflow = 'hidden';
+                    trapFocus(modal);
+                    updateDMState();
+                    document.getElementById('wfd_invAlloc').dispatchEvent(new Event('input'));
+                    document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
+                    document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
+                    const reopenStep = stepToOpen || '1';
+                    setStep(reopenStep);
+                    if (reopenStep === '4') hydrateResultsFromMeta();
+                    distMeta.open = true; saveMeta();
+                };
                 // Step navigation + meta
                 const steps = ['1','2','3','4'];
                 let activeStep = '1';
@@ -1845,7 +1866,7 @@ markNeutral(savingsTipsOut);
         'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
-                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider','wfd_protectInvest'];
+                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liDesign','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
@@ -1858,7 +1879,7 @@ markNeutral(savingsTipsOut);
                         inputs: ['wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
                                  'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
-                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider'],
+                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annIncomeRider','wfd_annDbRider'],
                         selects: ['wfd_liDesign','wfd_annDesign']
                     },
                     step3: {
@@ -2321,6 +2342,9 @@ markNeutral(savingsTipsOut);
                     validateAndGate();
                     const startStep = distMeta.lastStep || '1';
                     setStep(startStep); // internally calls hydrateResultsFromMeta if step === '4'
+                    if (distMeta.open) {
+                        showDistModal(startStep);
+                    }
                     hydrating = false;
                 })();
 
@@ -2383,7 +2407,13 @@ markNeutral(savingsTipsOut);
                     if (!result) { renderEmptyResults(); return; }
                     const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
                     const annDesign   = result.annDesign || (result.annuityType ? result.annuityType.toLowerCase() : 'fixed');
-                    const annuityType = result.annuityType || (annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : annDesign === 'incomeRider' ? 'Income Rider' : annDesign === 'deathBenefitRider' ? 'Death Benefit Rider' : 'Fixed');
+                    const annuityType = result.annuityType || (annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed');
+                    const annRiderLabels = [];
+                    const hasIncRider = !!result.annIncomeRider;
+                    const hasDbRider  = !!result.annDbRider;
+                    if (hasIncRider) annRiderLabels.push('Income Rider');
+                    if (hasDbRider)  annRiderLabels.push('Death Benefit Rider');
+                    const annDesignDisplay = annRiderLabels.length ? `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'} + ${annRiderLabels.join(' + ')}` : `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'}`;
                     const liDesign    = result.liDesign || 'Life Design';
                     const lifeDesignLabel = result.lifeDesignLabel || liDesign;
 
@@ -2470,7 +2500,11 @@ markNeutral(savingsTipsOut);
                         const bktDetail = (r) => {
                             const chips = [];
                             if (r.inv && r.inv.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end ?? 0)}</span>`);
-                            if (r.life && r.life.w > 0) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)}</span>`);
+                            if (r.life && r.life.w > 0) {
+                                const loanTxt = r.life.loanBal !== null && r.life.loanBal !== undefined ? ` | Loan ${fmtD(r.life.loanBal)}` : '';
+                                const netTxt = r.life.deathEndNet !== undefined ? ` | Net DB ${fmtD(r.life.deathEndNet)}` : '';
+                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;Cash ${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)} | DB ${fmtD(r.life.deathStart ?? 0)} → ${fmtD(r.life.deathEndGross ?? r.life.deathEnd ?? 0)}${loanTxt}${netTxt}</span>`);
+                            }
                             if (r.ann && r.ann.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end ?? 0)}</span>`);
                             if (r.em && r.em.w > 0)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
                             return chips.length ? chips.join('') : '';
@@ -2527,7 +2561,7 @@ markNeutral(savingsTipsOut);
                     const tilesEl = gid('wfd_bktTiles');
                     if (tilesEl) {
                         const rows = audit.rows || [];
-                        const annuityTypeLabel = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
+                        const annuityTypeLabel = annDesignDisplay;
                         const bktDefs = [
                             {
                                 key: 'inv',  label: 'Investments',    color: '#3b82f6', bg: 'rgba(59,130,246,.12)',
@@ -2548,7 +2582,9 @@ markNeutral(savingsTipsOut);
                                 wOf:     r => r.life ? r.life.w : 0,
                                 endOf:   r => r.life ? (r.life.cashEnd ?? r.life.end ?? null) : null,
                                 deathStartOf: r => r.life ? (r.life.deathStart ?? null) : null,
-                                deathEndOf:   r => r.life ? (r.life.deathEnd ?? null) : null,
+                                deathEndOf:   r => r.life ? (r.life.deathEndGross ?? null) : null,
+                                netDeathOf:   r => r.life ? (r.life.deathEndNet ?? null) : null,
+                                loanOf:       r => r.life ? (r.life.loanBal ?? null) : null,
                                 growthOf: r => r.life ? (r.life.growth ?? null) : null,
                                 deathGrowthOf: r => r.life ? (r.life.deathGrowth ?? null) : null,
                                 usedOf:   r => r.life ? !!r.life.used : false,
@@ -2575,23 +2611,33 @@ markNeutral(savingsTipsOut);
                         bktDefs.forEach(def => {
                             let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = startBalances[def.key] ?? null, depAge = null;
                             let firstDeath = def.key === 'li' ? startBalances.liDeath : def.key === 'ann' ? startBalances.annDeath : null;
+                            let firstNetDeath = firstDeath;
+                            let firstLoan = 0;
                             let lastDeath = firstDeath || 0;
+                            let lastNetDeath = firstNetDeath || 0;
+                            let lastLoan = 0;
                             rows.forEach(r => {
                                 const w   = def.wOf(r);
                                 const end = def.endOf(r);
                                 const st  = def.startOf(r);
                                 const dSt = def.deathStartOf ? def.deathStartOf(r) : null;
                                 const dEnd = def.deathEndOf ? def.deathEndOf(r) : null;
+                                const netEnd = def.netDeathOf ? def.netDeathOf(r) : dEnd;
+                                const loan   = def.loanOf ? def.loanOf(r) : null;
                                 if (firstStart === null && st !== null) firstStart = st;
                                 if (firstDeath === null && dSt !== null) firstDeath = dSt;
+                                if (firstNetDeath === null && netEnd !== null) firstNetDeath = netEnd;
+                                if (firstLoan === null && loan !== null) firstLoan = loan;
                                 totalW   += w;
                                 const used = def.usedOf ? def.usedOf(r) : (w > 0);
                                 if (used) yearsUsed++;
                                 if (end !== null) lastEnd = end;
                                 if (dEnd !== null) lastDeath = dEnd;
+                                if (netEnd !== null) lastNetDeath = netEnd;
+                                if (loan !== null) lastLoan = loan;
                                 if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
                             });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? annuityType : null, annDesign };
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, firstNetDeath: firstNetDeath || 0, lastNetDeath: lastNetDeath || 0, lastLoan: lastLoan || 0, annType: def.key === 'ann' ? annuityType : null, annDesign };
                         });
 
                         // Build tile HTML
@@ -2613,7 +2659,7 @@ markNeutral(savingsTipsOut);
                                            text-align:left;color:#e2e8f0;font-family:inherit;">
                                     <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
                                     ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
-                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${st.annDesign || annuityTypeLabel || ''}</div>` : ''}
+                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${annDesignDisplay}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
@@ -2627,7 +2673,7 @@ markNeutral(savingsTipsOut);
                                           <div style="font-size:.85rem;font-weight:800;color:${def.color};">${fmtD(st.lastDeath)}</div>
                                         </div>
                                       </div>` : ''}
-                                      <div style="display:flex;gap:14px;margin-top:6px;">
+                                      <div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap;">
                                         <div>
                                           <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total Gross W/D</div>
                                           <div style="font-size:.85rem;font-weight:800;color:#f87171;">${fmtD(st.totalW)}</div>
@@ -2640,6 +2686,19 @@ markNeutral(savingsTipsOut);
                                           <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Yrs Used</div>
                                           <div style="font-size:.85rem;font-weight:800;color:#e2e8f0;">${st.yearsUsed}</div>
                                         </div>
+                                        ${def.key === 'li' ? `
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Gross DB</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#d9b35a;">${fmtD(st.lastDeath)}</div>
+                                        </div>
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Loan Balance</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#fbbf24;">${fmtD(st.lastLoan)}</div>
+                                        </div>
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Net DB</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:#4ade80;">${fmtD(st.lastNetDeath)}</div>
+                                        </div>` : ''}
                                       </div>
                                       <div style="margin-top:7px;font-size:.7rem;font-weight:700;color:${longevityColor};">${longevity}</div>
                                       <div style="margin-top:5px;font-size:.68rem;color:${def.color};font-weight:600;">View Breakdown →</div>
@@ -2695,11 +2754,16 @@ markNeutral(savingsTipsOut);
                                 if ((def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0)) {
                                     statCards.splice(1, 0,
                                         { l: 'Death Benefit Start', v: fmtD(st.firstDeath) },
-                                        { l: 'Death Benefit End',   v: fmtD(st.lastDeath), cls: 'color:#d9b35a' }
+                                        { l: 'Death Benefit End (Gross)',   v: fmtD(st.lastDeath), cls: 'color:#d9b35a' }
                                     );
                                 }
+                                if (def.key === 'li') {
+                                    statCards.push({ l: 'Outstanding Loan', v: fmtD(st.lastLoan || 0), cls:'color:#fbbf24' });
+                                    statCards.push({ l: 'Death Benefit Net', v: fmtD(st.lastNetDeath || st.lastDeath || 0), cls:'color:#4ade80' });
+                                    statCards.push({ l: 'Loan Mechanics', v: 'Loans reduce net DB; cash value keeps growing.' });
+                                }
                                 if (def.key === 'ann') {
-                                    statCards.push({ l: 'Annuity Design', v: st.annDesign || annuityType });
+                                    statCards.push({ l: 'Annuity Design', v: annDesignDisplay });
                                 }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
@@ -2772,19 +2836,23 @@ markNeutral(savingsTipsOut);
                                     isAnn ? 'Start Annuity Value' : isLife ? 'Start Cash Value' : 'Start Balance'
                                 ];
                                 if (isLife || isAnn) hdrCells.push(isLife ? 'Start Death Benefit' : 'Start Death Value');
+                                if (isLife) hdrCells.push('Loan Balance');
                                 hdrCells.push(def.rateLabel);
                                 hdrCells.push('Withdrawal');
                                 if (isLife || isAnn) hdrCells.push('Growth / Credited');
                                 hdrCells.push(isAnn ? 'End Annuity Value' : isLife ? 'End Cash Value' : 'End Balance');
-                                if (isLife || isAnn) hdrCells.push(isLife ? 'End Death Benefit' : 'End Death Value');
+                                if (isLife || isAnn) hdrCells.push(isLife ? 'End Death Benefit (Gross)' : 'End Death Value');
+                                if (isLife) hdrCells.push('Net Death Benefit');
                                 hdrCells.push('Used');
 
-                                const tableRows = rows.map(r => {
-                                    const w   = def.wOf(r);
-                                    const st0 = def.startOf(r);
-                                    const end = def.endOf(r);
-                                    const deathStart = def.deathStartOf ? def.deathStartOf(r) : null;
-                                    const deathEnd   = def.deathEndOf ? def.deathEndOf(r) : null;
+                               const tableRows = rows.map(r => {
+                                   const w   = def.wOf(r);
+                                   const st0 = def.startOf(r);
+                                   const end = def.endOf(r);
+                                   const deathStart = def.deathStartOf ? def.deathStartOf(r) : null;
+                                   const deathEnd   = def.deathEndOf ? def.deathEndOf(r) : null;
+                                    const netDeath = def.netDeathOf ? def.netDeathOf(r) : deathEnd;
+                                    const loanBal = def.loanOf ? def.loanOf(r) : null;
                                     const rate = def.rateOf(r);
                                     const growth = def.growthOf ? def.growthOf(r) : null;
                                     const used = def.usedOf ? def.usedOf(r) : (w > 0);
@@ -2793,11 +2861,13 @@ markNeutral(savingsTipsOut);
                                       <td style="padding:4px 7px;">${r.age}</td>
                                       <td style="padding:4px 7px;">${st0 !== null ? fmtD(st0) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathStart !== null ? fmtD(deathStart) : '—'}</td>` : ''}
+                                      ${isLife ? `<td style="padding:4px 7px;">${loanBal !== null ? fmtD(loanBal) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;${rate !== null && rate < -0.001 ? 'color:#f87171' : rate !== null && rate > 0.001 ? 'color:#4ade80' : 'color:#94a3b8'}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
                                       <td style="padding:4px 7px;${used ? 'color:#f87171;font-weight:700;' : 'color:#475569;'}">${used ? fmtD(w) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;${growthStyle}">${growth !== null ? fmtD(growth) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
+                                      ${isLife ? `<td style="padding:4px 7px;">${netDeath !== null ? fmtD(netDeath) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
                                     </tr>`;
                                 }).join('');
@@ -2962,6 +3032,7 @@ markNeutral(savingsTipsOut);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annTypeVar    = gid('wfd_annType').checked;
                     const annDbRider    = gid('wfd_annDbRider').checked;
+                    const annIncomeRider= gid('wfd_annIncomeRider').checked;
                     const annDesign     = gid('wfd_annDesign').value || 'fixed';
                     const liDesign      = gid('wfd_liDesign').value || 'whole_withdrawal';
 
@@ -3000,14 +3071,14 @@ markNeutral(savingsTipsOut);
                     // whole_loan: tracks outstanding loan balance (not subtracted from cash value)
                     const liLoanRate = 0.05; // 5% annual policy loan interest (fixed rate default)
                     let liLoanBal = 0;
-                    // incomeRider: dual-account — cash value + guaranteed income base
+                    // income rider (optional): dual-account — cash value + guaranteed income base
                     const annRollupRate = Math.max(annReturn, 0.05); // income base rollup floor 5%
                     // age-banded payout rate: higher payout at older retirement ages (locked on first income draw)
                     const annPayoutRateForAge = (age) => age < 60 ? 0.040 : age < 65 ? 0.045 : age < 70 ? 0.050 : age < 75 ? 0.055 : 0.060;
                     let annLockedPayoutRate = annPayoutRateForAge(retAge); // provisional; re-locked at income start
-                    let annIncomeBase = annDesign === 'incomeRider' ? annBal : 0;
-                    let annIncomeBenefit = annDesign === 'incomeRider' ? annIncomeBase * annLockedPayoutRate : 0;
-                    let annIncomeStarted = false; // incomeRider: tracks whether income draw has begun (locks rollup + payout rate)
+                    let annIncomeBase = annIncomeRider ? annBal : 0;
+                    let annIncomeBenefit = annIncomeRider ? annIncomeBase * annLockedPayoutRate : 0;
+                    let annIncomeStarted = false; // income rider: tracks whether income draw has begun (locks rollup + payout rate)
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
                     const startLiDeath = liDeathBal, startAnnDeath = annDeathBal;
 
@@ -3086,18 +3157,15 @@ markNeutral(savingsTipsOut);
                         else if (annDesign === 'fixedIndexed') {
                             const capped = Math.min(Math.max(annBaseVarR, 0), 0.10);
                             annYearR = Math.max(0, (capped * 0.6) - 0.01); // 60% participation minus 1% spread
-                        } else if (annDesign === 'incomeRider') {
+                        }
+                        if (annIncomeRider) {
                             // Income base rolls up only during deferral; locks once income draw begins
                             if (!annIncomeStarted) {
                                 annIncomeBase = annIncomeBase * (1 + annRollupRate);
                                 annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
                             }
-                            annYearR = annReturn; // cash value grows at credited rate
-                        } else if (annDesign === 'deathBenefitRider') {
-                            annYearR = annReturn;
-                        } else {
-                            annYearR = annReturn; // fixed default
                         }
+                        // For fixed base, annReturn already set; for FIA we modified; for VAR we set above.
                         invReturnSeries.push(invYearR);
                         const effInvR = invYearR;
                         const effAnnR = annYearR;
@@ -3216,7 +3284,7 @@ markNeutral(savingsTipsOut);
                         fundingSources.push(fundingSource);
 
                         // incomeRider: on first income draw, lock payout rate to actual age and recompute benefit
-                        if (annDesign === 'incomeRider' && annW > 0 && !annIncomeStarted) {
+                        if (annIncomeRider && annW > 0 && !annIncomeStarted) {
                             annLockedPayoutRate = annPayoutRateForAge(retAge + y);
                             annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
                             annIncomeStarted = true;
@@ -3243,10 +3311,10 @@ markNeutral(savingsTipsOut);
                             liBal = Math.max(0, liBal * (1 - vulCOI));
                         }
                         annBal  = annPre  * (1 + effAnnR);
-                        // variable / deathBenefitRider: annual M&E drag (~1.25% of account value)
-                        if (annDesign === 'variable' || annDesign === 'deathBenefitRider') annBal = Math.max(0, annBal * (1 - 0.0125));
-                        // incomeRider: annual rider charge (~0.6% of income base, deducted from cash value)
-                        if (annDesign === 'incomeRider') annBal = Math.max(0, annBal - annIncomeBase * 0.006);
+                        // variable: annual M&E drag (~1.25% of account value)
+                        if (annDesign === 'variable') annBal = Math.max(0, annBal * (1 - 0.0125));
+                        // income rider: annual rider charge (~0.6% of income base, deducted from cash value)
+                        if (annIncomeRider) annBal = Math.max(0, annBal - annIncomeBase * 0.006);
                         // legacy_rpu: death benefit is level (paid-up — no further compounding)
                         liDeathBal  = liDesign === 'legacy_rpu' ? liDeathPre : liDeathPre  * (1 + effLiR);
                         if (annDbRider) {
@@ -3269,7 +3337,8 @@ markNeutral(savingsTipsOut);
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
                         // whole_loan: chart shows net death benefit (gross minus outstanding loans)
-                        liDeathPts.push(liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal);
+                        const liNetDeath = liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal;
+                        liDeathPts.push(liNetDeath);
                         annDeathPts.push(annDeathBal);
                         totalPts.push(totalNow);
                         if (totalNow > 0) lastPositiveAge = retAge + y;
@@ -3300,8 +3369,19 @@ markNeutral(savingsTipsOut);
                             shortfall: yearShort,
                             // per-bucket detail — start is pre-withdrawal snapshot; end is post-growth balance
                             inv:  (invStart0 > 0 || invW > 0) ? { start: invStart0, w: invW, end: invBal, growth: invGrowth, used: invW > 0 } : null,
-                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? { cashStart: liStart0, deathStart: liDeathStart0, w: liW, cashEnd: liBal, deathEnd: liDesign === 'whole_loan' ? Math.max(0, liDeathBal - liLoanBal) : liDeathBal, loanBal: liDesign === 'whole_loan' ? liLoanBal : null, growth: liGrowthAmt, deathGrowth: liDeathGrowth, used: liW > 0 } : null,
-                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, incomeBase: annDesign === 'incomeRider' ? annIncomeBase : null, incomeBenefit: annDesign === 'incomeRider' ? annIncomeBenefit : null, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
+                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? {
+                                cashStart: liStart0,
+                                deathStart: liDeathStart0,
+                                w: liW,
+                                cashEnd: liBal,
+                                deathEndGross: liDeathBal,
+                                deathEndNet: liNetDeath,
+                                loanBal: liDesign === 'whole_loan' ? liLoanBal : null,
+                                growth: liGrowthAmt,
+                                deathGrowth: liDeathGrowth,
+                                used: liW > 0
+                            } : null,
+                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, incomeBase: annIncomeRider ? annIncomeBase : null, incomeBenefit: annIncomeRider ? annIncomeBenefit : null, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
                             em:   emUse > 0 ? { start: emStart0, w: emUse, end: emBal, used: emUse > 0 } : null
                         });
                     }
@@ -3350,7 +3430,7 @@ markNeutral(savingsTipsOut);
                     };
 
                     const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
-                    const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : annDesign === 'incomeRider' ? 'Income Rider' : annDesign === 'deathBenefitRider' ? 'Death Benefit Rider' : 'Fixed';
+                    const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed';
                     const lifeDesignLabel = (() => {
                         if (liDesign === 'whole_withdrawal') return 'Whole Life — Withdrawals';
                         if (liDesign === 'whole_loan') return 'Whole Life — Policy Loans';
