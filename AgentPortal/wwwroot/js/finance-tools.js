@@ -2687,7 +2687,7 @@ markNeutral(savingsTipsOut);
                                       return `<button
                                     class="wfd-bkt-tile"
                                     data-bkt="${def.key}"
-                                    style="flex:1;min-width:160px;max-width:240px;
+                                    style="flex:1;min-width:200px;max-width:280px;
                                            background:${def.bg};border:1.5px solid ${def.border};
                                            border-radius:12px;padding:12px 14px;cursor:pointer;
                                            text-align:left;color:#e2e8f0;font-family:inherit;">
