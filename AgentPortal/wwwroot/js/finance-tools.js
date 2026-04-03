@@ -9,6 +9,16 @@ document.addEventListener("DOMContentLoaded", async function () {
         clientProfileId ||
         "agent";
     const plannerUserScope = (clientUserId || "").trim();
+    // Local safe fallback for dev/non-auth cases to keep persistence per browser session without cross-user leakage on server
+    const localFallbackUserKey = 'legend-finance:planner-fallback-user';
+    const getLocalFallbackUser = () => {
+        const existing = localStorage.getItem(localFallbackUserKey);
+        if (existing) return existing;
+        const gen = `localdev-${Math.random().toString(36).slice(2,10)}`;
+        localStorage.setItem(localFallbackUserKey, gen);
+        return gen;
+    };
+    const effectiveUserScope = plannerUserScope || getLocalFallbackUser();
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
     const selectedToolStateId = "__workspace__";
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
@@ -105,37 +115,36 @@ document.addEventListener("DOMContentLoaded", async function () {
                 function savePersistedState(key, state) {
                     const jsonState = JSON.stringify(state || {});
                     const primaryKey = getPrimaryStateKey(key);
-                    if (!canUseServerState) {
-            storageSet(primaryKey, jsonState);
-        }
+                    // Always cache locally for instant restores and offline/dev use
+                    storageSet(primaryKey, jsonState);
 
-        if (!canUseServerState) return;
+                    if (!canUseServerState) return;
 
-        const payload = {
-            clientProfileId,
-            clientUserId,
-            toolId: primaryKey,
-            jsonState
-        };
+                    const payload = {
+                        clientProfileId,
+                        clientUserId,
+                        toolId: primaryKey,
+                        jsonState
+                    };
 
-        const token = getAntiForgeryToken();
-        const buildHeaders = (contentType) => {
-            const headers = contentType ? { "Content-Type": contentType } : {};
-            if (token) headers["RequestVerificationToken"] = token;
-            return headers;
-        };
+                    const token = getAntiForgeryToken();
+                    const buildHeaders = (contentType) => {
+                        const headers = contentType ? { "Content-Type": contentType } : {};
+                        if (token) headers["RequestVerificationToken"] = token;
+                        return headers;
+                    };
 
-        const attempt = async (headers, body) => fetch("/api/finance-state/save", {
-            method: "POST",
-            credentials: "include",
-            headers,
-            body
-        });
+                    const attempt = async (headers, body) => fetch("/api/finance-state/save", {
+                        method: "POST",
+                        credentials: "include",
+                        headers,
+                        body
+                    });
 
-        attempt(buildHeaders("application/json"), JSON.stringify(payload))
-            .catch(() => attempt(buildHeaders("application/x-www-form-urlencoded; charset=UTF-8"), new URLSearchParams(payload).toString()))
-            .catch(() => { });
-    }
+                    attempt(buildHeaders("application/json"), JSON.stringify(payload))
+                        .catch(() => attempt(buildHeaders("application/x-www-form-urlencoded; charset=UTF-8"), new URLSearchParams(payload).toString()))
+                        .catch(() => { });
+                }
 
     function clearPersistedState(key) {
         const keys = getStateKeys(key);
@@ -1783,8 +1792,8 @@ markNeutral(savingsTipsOut);
                 function netFromGross(gross, taxRate){ return (gross || 0) * (1 - (taxRate || 0)); }
 
                 // Persistence + defaults
-                const plannerScoped = !!plannerUserScope;
-                const DIST_KEY = plannerScoped ? `DistributionPlanner:user:${plannerUserScope}` : null;
+                const plannerScoped = !!effectiveUserScope;
+                const DIST_KEY = plannerScoped ? `DistributionPlanner:user:${effectiveUserScope}` : null;
                 const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invTax',
@@ -1794,7 +1803,7 @@ markNeutral(savingsTipsOut);
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
-                const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${plannerUserScope}` : null;
+                const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
                     step1: {
                         inputs: ['wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_incomeGap'],
