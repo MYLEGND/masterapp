@@ -3994,13 +3994,26 @@ btnDeleteClient?.addEventListener("click", () => {
 
   const f = document.getElementById("__af");
   if (!f) {
-    // Fallback path when Quick View is hosted outside the Clients page (no hidden __af form)
-    postJson("/Clients/Delete", { clientUserId: activeClientId })
-      .then(() => {
-        toast("Client deleted. Reloading…");
-        window.location.href = "/Clients";
-      })
-      .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
+    // Fallback path when the hidden antiforgery form isn't on the page
+    const token = getAntiForgeryToken();
+    if (!token){
+      toast("Missing antiforgery token.");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("__RequestVerificationToken", token);
+    formData.append("clientUserId", activeClientId);
+    fetch("/Clients/Delete", {
+      method: "POST",
+      credentials: "include",
+      body: formData
+    })
+    .then(res => {
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      toast("Client deleted. Reloading…");
+      window.location.href = "/Clients";
+    })
+    .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
     return;
   }
 
