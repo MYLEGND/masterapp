@@ -1229,10 +1229,28 @@ markNeutral(savingsTipsOut);
 .wfd-return-pos{color:#22c55e;font-weight:800;}
 .wfd-return-flat{color:#94a3b8;font-weight:700;}
 .wfd-return-neg{color:#ef4444;font-weight:800;}
-.wfd-badge{display:inline-flex;align-items:center;padding:5px 14px;border-radius:99px;font-size:.87rem;font-weight:800;letter-spacing:.4px;}
+.wfd-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:6px;
+    padding:5px 12px;
+    border-radius:999px;
+    font-size:.85rem;
+    font-weight:800;
+    letter-spacing:.3px;
+    line-height:1.1;
+    white-space:nowrap;
+    border:1.25px solid rgba(217,179,90,.5);
+    box-shadow:0 4px 12px rgba(0,0,0,.12);
+}
 .wfd-hlthy{background:#dcfce7;color:#15803d;}
 .wfd-tight{background:#fef9c3;color:#a16207;}
-.wfd-risk{background:#fee2e2;color:#b91c1c;}
+.wfd-risk{
+    background:rgba(239,68,68,.12);
+    color:#f87171;
+    border-color:rgba(248,113,113,.45);
+}
 .wfd-warn-box{background:#fff7ed;border:1px solid #fdba74;border-left:4px solid #f97316;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#7c2d12;font-weight:600;margin-top:8px;}
 .wfd-info-box{background:#eff6ff;border:1px solid #93c5fd;border-left:4px solid #3b82f6;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#1e3a5f;font-weight:600;margin-top:8px;}
 .wfd-chart-wrap{width:100%;height:240px;margin-top:6px;}
