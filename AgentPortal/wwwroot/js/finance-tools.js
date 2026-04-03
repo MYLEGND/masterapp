@@ -2158,9 +2158,19 @@ markNeutral(savingsTipsOut);
                 // Bucket dollar amounts + allocation bar visual
                 function updateBktAmounts() {
                     const base = pf(gid('wfd_base').value);
-                    const inv = pf(gid('wfd_invAlloc').value);
-                    const li  = pf(gid('wfd_liAlloc').value);
-                    const ann = pf(gid('wfd_annAlloc').value);
+                    let inv = pf(gid('wfd_invAlloc').value);
+                    let li  = pf(gid('wfd_liAlloc').value);
+                    let ann = pf(gid('wfd_annAlloc').value);
+
+                    // Convenience: if Investments set to 100%, zero other buckets automatically
+                    if (inv >= 100) {
+                        inv = 100;
+                        if (li !== 0 || ann !== 0) {
+                            li = 0; ann = 0;
+                            gid('wfd_liAlloc').value = '0';
+                            gid('wfd_annAlloc').value = '0';
+                        }
+                    }
                     const total = inv + li + ann;
 
                     const totEl = gid('wfd_allocTotal');
@@ -2968,7 +2978,7 @@ markNeutral(savingsTipsOut);
                         const datasets = [
                             { label: 'Total Assets', data: series.total, borderColor: '#d9b35a', borderWidth: 3, tension: 0.2, fill: false, pointRadius: downRadius, pointHoverRadius: 5, pointBackgroundColor: downColor, pointBorderColor: downColor }
                         ];
-                        if (active.em)  datasets.push({ label: 'Emergency', data: series.em, borderColor: '#0f172a', borderWidth: 2, borderDash: [4,4], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
+                        if (active.em)  datasets.push({ label: 'Emergency', data: series.em, borderColor: '#dc2626', borderWidth: 2, borderDash: [4,4], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
                         if (active.inv) datasets.push({ label: 'Investments', data: series.inv, borderColor: '#3b82f6', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
                         if (active.li)  datasets.push({ label: 'Life Ins', data: series.li, borderColor: '#a68023', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
                         if (active.ann) datasets.push({ label: 'Annuities', data: series.ann, borderColor: '#16a34a', borderWidth: 2, borderDash: [5,3], tension: 0.2, fill: false, pointRadius: 0, pointHoverRadius: 3 });
