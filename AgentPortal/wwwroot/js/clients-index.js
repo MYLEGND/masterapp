@@ -167,6 +167,7 @@ async function openFinPlanModal(clientUserId){
     toast("UI library missing; cannot open modal.");
     return;
   }
+  ensureFinPlanSelectOptions();
   finPlanModal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
   resetFinPlanForm();
   await loadFinPlan(clientUserId);
@@ -181,6 +182,7 @@ function resetFinPlanForm(){
   $("#finPlanError").style.display = "none";
   $("#finPlanStatusLabel").textContent = "Loading…";
   $("#finPlanClientLabel").textContent = "";
+  updateFinPlanAllocTotal();
 }
 
 function finPlanPayload(){
@@ -258,7 +260,15 @@ function hydrateFinPlan(jsonData){
   Object.keys(distChecks).forEach(id => { const el = document.getElementById(id); if (el) el.checked = !!distChecks[id]; });
 
   const distSelects = payload.distribution?.selects || {};
-  Object.keys(distSelects).forEach(id => { const el = document.getElementById(id); if (el) el.value = distSelects[id]; });
+  Object.keys(distSelects).forEach(id => { const el = document.getElementById(id); if (el) {
+    // if option not present, add it so value displays
+    if (el.tagName === "SELECT" && el.querySelector(`option[value="${distSelects[id]}"]`) === null){
+      const opt = document.createElement("option"); opt.value = distSelects[id]; opt.textContent = distSelects[id];
+      el.appendChild(opt);
+    }
+    el.value = distSelects[id];
+  } });
+  updateFinPlanAllocTotal();
 }
 
 function showFinPlanError(msg){
@@ -266,6 +276,75 @@ function showFinPlanError(msg){
   if (!errEl) return;
   errEl.textContent = msg || "";
   errEl.style.display = msg ? "block" : "none";
+}
+
+function ensureFinPlanSelectOptions(){
+  const setOptions = (id, opts, defaultVal=null) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    if (sel.children.length === 0){
+      opts.forEach(o => {
+        const opt = document.createElement("option");
+        opt.value = o.value; opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+    }
+    if (defaultVal && !sel.value){
+      sel.value = defaultVal;
+    }
+  };
+  setOptions("wfd_strategy", [
+    { value:"proportional", label:"Proportional" },
+    { value:"priority",     label:"Priority Order" },
+    { value:"guardrail",    label:"Protect Investments" }
+  ], "proportional");
+
+  setOptions("wfd_gapSource", [
+    { value:"life",             label:"Life first" },
+    { value:"annuities",        label:"Annuities first" },
+    { value:"lifeThenAnnuities",label:"Life then Annuities" },
+    { value:"annThenLife",      label:"Annuities then Life" },
+    { value:"split",            label:"Split Life + Annuities" },
+    { value:"custom",           label:"Custom Priority" }
+  ], "life");
+
+  setOptions("wfd_scenarioMode", [
+    { value:"fixed",  label:"Fixed return each year" },
+    { value:"random", label:"Randomized yearly path" },
+    { value:"manual", label:"Manual yearly returns" }
+  ], "fixed");
+
+  setOptions("wfd_liType", [
+    { value:"whole",      label:"Whole Life" },
+    { value:"iul",        label:"Indexed UL" },
+    { value:"vul",        label:"Variable UL" },
+    { value:"legacy_rpu", label:"Legacy / RPU" }
+  ], "whole");
+
+  setOptions("wfd_liAccess", [
+    { value:"withdrawal", label:"Withdrawals" },
+    { value:"loan",       label:"Policy Loans" },
+    { value:"none",       label:"No Distributions" }
+  ], "withdrawal");
+
+  setOptions("wfd_annDesign", [
+    { value:"fixed",        label:"Fixed Annuity" },
+    { value:"fixedIndexed", label:"Fixed Indexed Annuity" },
+    { value:"variable",     label:"Variable Annuity" }
+  ], "fixed");
+}
+
+function updateFinPlanAllocTotal(){
+  const inv = parseFloat(($("#wfd_invAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
+  const li  = parseFloat(($("#wfd_liAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
+  const ann = parseFloat(($("#wfd_annAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
+  const total = inv + li + ann;
+  const el = document.getElementById("finPlanAllocTotal");
+  if (el){
+    el.textContent = `${total.toFixed(1)}%`;
+    el.classList.toggle("text-success", Math.abs(total-100) < 0.1);
+    el.classList.toggle("text-warning", Math.abs(total-100) >= 0.1);
+  }
 }
 
 async function saveFinPlan(){
@@ -305,6 +384,9 @@ async function saveFinPlan(){
 }
 
 document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { void saveFinPlan(); });
+["wfd_invAlloc","wfd_liAlloc","wfd_annAlloc"].forEach(id=>{
+  document.getElementById(id)?.addEventListener("input", updateFinPlanAllocTotal);
+});
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
