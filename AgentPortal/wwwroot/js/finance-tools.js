@@ -1677,7 +1677,7 @@ markNeutral(savingsTipsOut);
                 // Step navigation + meta
                 const steps = ['1','2','3','4'];
                 let activeStep = '1';
-                let distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null };
+                var distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null };
                 function syncStepVisibility() {
                     document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
                         const isActive = w.dataset.step === activeStep;
@@ -2987,9 +2987,6 @@ markNeutral(savingsTipsOut);
                     srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
                     if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
-
-                    // --- failAge (used in canonical result summary) ---
-                    const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
 
                     // --- Warnings (used in canonical result) ---
                     const warns = [];
