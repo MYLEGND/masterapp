@@ -867,10 +867,17 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             async function searchWfClients(q){
                 const statusEl = document.getElementById("wfPlanStatus");
+                const qTrim = (q || "").trim();
+                if (qTrim.length === 0){
+                    if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove("text-danger"); }
+                    if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
+                    wfActiveClientId = null;
+                    return;
+                }
                 if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
                 if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
                 try{
-                    const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
+                    const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(qTrim)}`, { credentials:"include" });
                     let list = [];
                     if (!res.ok){
                         const txt = await res.text().catch(()=> "");
