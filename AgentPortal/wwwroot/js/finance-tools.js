@@ -2710,6 +2710,7 @@ markNeutral(savingsTipsOut);
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
 
                     const shortfallTol = Math.max(100, incGap * 0.02); // tolerance used for visuals only
+                    const onlyInvestmentsFunded = (invAllocPct > 0) && (liAllocPct <= 0) && (annAllocPct <= 0);
 
                     // --- Year-by-year simulation ---
                     const totalPts = [invBal + liBal + annBal + emBal];
@@ -2777,7 +2778,7 @@ markNeutral(savingsTipsOut);
 
                         const allowLife   = (marketState === 'down' ? liDownMkt : true);
                         const allowAnn    = (marketState === 'down' ? annDownMkt : true);
-                        const investGuarded = protectInvest && marketState === 'down';
+                        const investGuarded = protectInvest && marketState === 'down' && !onlyInvestmentsFunded;
                         const fundingPath = [];
                         const recordBucket = (bucket, amt) => { if (amt > 0 && fundingPath[fundingPath.length-1] !== bucket) fundingPath.push(bucket); };
 
