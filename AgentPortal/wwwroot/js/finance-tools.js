@@ -2506,7 +2506,15 @@ markNeutral(savingsTipsOut);
                                 const netTxt = r.life.deathEndNet !== undefined ? ` | Net DB ${fmtD(r.life.deathEndNet)}` : '';
                                 chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;Cash ${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)} | DB ${fmtD(r.life.deathStart ?? 0)} → ${fmtD(r.life.deathEndGross ?? r.life.deathEnd ?? 0)}${loanTxt}${netTxt}</span>`);
                             }
-                            if (r.ann && r.ann.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end ?? 0)}</span>`);
+                            const annUsedFromAcct = r.ann ? (r.ann.w + (r.ann.riderPaidFromAccount || 0)) : 0;
+                            const annIncome = r.ann?.riderIncome || 0;
+                            if (r.ann && (annUsedFromAcct > 0 || annIncome > 0)) {
+                                const acctPart = annUsedFromAcct > 0 ? ` → <span class="wfd-neg">-${fmtD(annUsedFromAcct)}</span>` : '';
+                                const riderPart = annIncome > 0 ? ` | Rider Income ${fmtD(annIncome)}` : '';
+                                const chargePart = r.ann.charges ? ` | Charges ${fmtD(r.ann.charges)}` : '';
+                                const netPlan = r.ann.fundedNet ? ` | Net to Plan ${fmtD(r.ann.fundedNet)}` : '';
+                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)}${acctPart} → ${fmtD(r.ann.end ?? 0)}${riderPart}${chargePart}${netPlan}</span>`);
+                            }
                             if (r.em && r.em.w > 0)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
                             return chips.length ? chips.join('') : '';
                         };
@@ -2596,7 +2604,7 @@ markNeutral(savingsTipsOut);
                                 border: 'rgba(22,163,74,.45)',  rateLabel: 'Rate %',
                                 rateOf: r => (typeof r.annRatePct === 'number' ? r.annRatePct : null),
                                 startOf: r => r.ann ? (r.ann.start ?? null) : null,
-                                wOf:     r => r.ann ? r.ann.w : 0,
+                                wOf:     r => r.ann ? (r.ann.w + (r.ann.riderPaidFromAccount || 0)) : 0,
                                 endOf:   r => r.ann ? (r.ann.end ?? null) : null,
                                 deathStartOf: r => r.ann ? (r.ann.deathStart ?? null) : null,
                                 deathEndOf:   r => r.ann ? (r.ann.deathEnd ?? null) : null,
@@ -2842,25 +2850,31 @@ markNeutral(savingsTipsOut);
                                 if (isLife || isAnn) hdrCells.push(isLife ? 'Start Death Benefit' : 'Start Death Value');
                                 if (isLife) hdrCells.push('Loan Balance');
                                 hdrCells.push(def.rateLabel);
-                                hdrCells.push('Withdrawal');
+                                hdrCells.push(isAnn ? 'Withdrawal from Account' : 'Withdrawal');
                                 if (isLife || isAnn) hdrCells.push('Growth / Credited');
+                                if (isAnn) hdrCells.push('Rider Income Paid');
+                                if (isAnn) hdrCells.push('Rider Charges');
                                 hdrCells.push(isAnn ? 'End Annuity Value' : isLife ? 'End Cash Value' : 'End Balance');
                                 if (isLife || isAnn) hdrCells.push(isLife ? 'End Death Benefit (Gross)' : 'End Death Value');
                                 if (isLife) hdrCells.push('Net Death Benefit');
+                                if (isAnn) hdrCells.push('Net to Plan');
                                 hdrCells.push('Used');
 
                                const tableRows = rows.map(r => {
                                    const w   = def.wOf(r);
                                    const st0 = def.startOf(r);
                                    const end = def.endOf(r);
-                                   const deathStart = def.deathStartOf ? def.deathStartOf(r) : null;
-                                   const deathEnd   = def.deathEndOf ? def.deathEndOf(r) : null;
+                                    const deathStart = def.deathStartOf ? def.deathStartOf(r) : null;
+                                    const deathEnd   = def.deathEndOf ? def.deathEndOf(r) : null;
                                     const netDeath = def.netDeathOf ? def.netDeathOf(r) : deathEnd;
                                     const loanBal = def.loanOf ? def.loanOf(r) : null;
                                     const rate = def.rateOf(r);
                                     const growth = def.growthOf ? def.growthOf(r) : null;
                                     const used = def.usedOf ? def.usedOf(r) : (w > 0);
                                     const growthStyle = growth !== null ? (growth < -0.001 ? 'color:#f87171' : 'color:#4ade80') : 'color:#94a3b8';
+                                    const riderIncome = r.ann?.riderIncome ?? null;
+                                    const riderCharge = r.ann?.charges ?? null;
+                                    const annNetToPlan = r.ann?.fundedNet ?? null;
                                     return `<tr style="opacity:${used ? '1' : '.55'};">
                                       <td style="padding:4px 7px;">${r.age}</td>
                                       <td style="padding:4px 7px;">${st0 !== null ? fmtD(st0) : '—'}</td>
@@ -2869,9 +2883,12 @@ markNeutral(savingsTipsOut);
                                       <td style="padding:4px 7px;${rate !== null && rate < -0.001 ? 'color:#f87171' : rate !== null && rate > 0.001 ? 'color:#4ade80' : 'color:#94a3b8'}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
                                       <td style="padding:4px 7px;${used ? 'color:#f87171;font-weight:700;' : 'color:#475569;'}">${used ? fmtD(w) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;${growthStyle}">${growth !== null ? fmtD(growth) : '—'}</td>` : ''}
+                                      ${isAnn ? `<td style="padding:4px 7px;">${riderIncome !== null && riderIncome !== 0 ? fmtD(riderIncome) : (used ? '$0' : '—')}</td>` : ''}
+                                      ${isAnn ? `<td style="padding:4px 7px;">${riderCharge !== null && Math.abs(riderCharge) > 1e-6 ? fmtD(riderCharge) : (used ? '$0' : '—')}</td>` : ''}
                                       <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
                                       ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
                                       ${isLife ? `<td style="padding:4px 7px;">${netDeath !== null ? fmtD(netDeath) : '—'}</td>` : ''}
+                                      ${isAnn ? `<td style="padding:4px 7px;">${annNetToPlan !== null ? fmtD(annNetToPlan) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
                                     </tr>`;
                                 }).join('');
@@ -3201,11 +3218,10 @@ markNeutral(savingsTipsOut);
                                          // legacy_rpu: preservation/legacy bucket — never drawn as income source
                                          : bucket === 'life'        ? (liDesign !== 'legacy_rpu' && (marketState === 'down' ? liDownMkt  : true))
                                          :                            (marketState === 'down' ? annDownMkt : true);
+                            if (bucket === 'annuities' && annIncomeRider) return; // rider handles income separately
                             if (!canUse) return;
                             const avail   = bucket === 'investments' ? Math.max(0, invBal)
                                           : bucket === 'life'        ? Math.max(0, liBal * liEff)
-                                          // incomeRider: annual draw capped at guaranteed benefit regardless of cash value
-                                          : annDesign === 'incomeRider' ? Math.max(0, annIncomeBenefit)
                                           :                               Math.max(0, annBal);
                             // whole_loan: policy loan proceeds are income-tax-free
                             const tax     = bucket === 'investments' ? invTax
@@ -3276,12 +3292,17 @@ markNeutral(savingsTipsOut);
                         if (y === 1) fy_emW = emUse;
                         if (emUse > 0) recordBucket('emergency', emUse);
 
-                        const liEffTax  = liDesign === 'whole_loan' ? 0 : liTax;
-                        let fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + netFromGross(annW, annTax) + emUse;
-                        if (annIncomeRider) {
-                            // Guaranteed income rider benefit continues irrespective of account value
-                            fundedNet += annIncomeBenefit;
+                        // Lock payout rate at first income year (retirement start in this model) and stop future rollup
+                        if (annIncomeRider && !annIncomeStarted) {
+                            annLockedPayoutRate = annPayoutRateForAge(retAge + y);
+                            annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
+                            annIncomeStarted = true;
                         }
+
+                        const liEffTax  = liDesign === 'whole_loan' ? 0 : liTax;
+                        const annNetContribution = annIncomeRider ? annIncomeBenefit : netFromGross(annW, annTax);
+                        const annGrossContribution = annIncomeRider ? annIncomeBenefit : annW;
+                        let fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + annNetContribution + emUse;
                         const yearShort = Math.max(incGap - fundedNet, 0);
                         if (y === 1) year1Shortfall = yearShort;
                         cumulativeShortfall += yearShort;
@@ -3292,19 +3313,16 @@ markNeutral(savingsTipsOut);
                         const fundingSource = buildFundingLabel({ path: fundingPath, investGuarded, marketState, invW, strategy });
                         fundingSources.push(fundingSource);
 
-                        // incomeRider: on first income draw, lock payout rate to actual age and recompute benefit
-                        if (annIncomeRider && annW > 0 && !annIncomeStarted) {
-                            annLockedPayoutRate = annPayoutRateForAge(retAge + y);
-                            annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
-                            annIncomeStarted = true;
-                        }
+                        const riderIncomeGross = annIncomeRider ? annIncomeBenefit : 0;
+                        const riderPaidFromAccount = annIncomeRider ? Math.min(annBal, riderIncomeGross) : 0;
+                        if (annIncomeRider && riderIncomeGross > 0) recordBucket('annuities', riderIncomeGross);
 
                         // Withdrawal first, then growth
                         const invPre   = Math.max(0, invBal  - invW);
                         // whole_loan: accrue interest on prior loan balance first, then add this year's draw
                         if (liDesign === 'whole_loan') { liLoanBal = liLoanBal * (1 + liLoanRate); liLoanBal += liW; }
                         const liPre    = liDesign === 'whole_loan' ? liBal : Math.max(0, liBal - liW);
-                        const annPre   = Math.max(0, annBal  - annW);
+                        const annPre   = Math.max(0, annBal  - annW - riderPaidFromAccount);
                         // whole_loan: gross death benefit grows unaffected; net DB = gross - outstanding loans
                         const liDeathPre  = liDesign === 'whole_loan'
                             ? liDeathBal
@@ -3323,7 +3341,9 @@ markNeutral(savingsTipsOut);
                         // variable: annual M&E drag (~1.25% of account value)
                         if (annDesign === 'variable') annBal = Math.max(0, annBal * (1 - 0.0125));
                         // income rider: annual rider charge (~0.6% of income base, deducted from cash value)
-                        if (annIncomeRider) annBal = Math.max(0, annBal - annIncomeBase * 0.006);
+                        let annCharges = 0;
+                        if (annDesign === 'variable') { /* charge already applied in net effect above; track for audit */ annCharges += annBal * 0; }
+                        if (annIncomeRider) { const riderCharge = annIncomeBase * 0.006; annCharges += riderCharge; annBal = Math.max(0, annBal - riderCharge); }
                         // legacy_rpu: death benefit is level (paid-up — no further compounding)
                         liDeathBal  = liDesign === 'legacy_rpu' ? liDeathPre : liDeathPre  * (1 + effLiR);
                         if (annDbRider) {
@@ -3341,7 +3361,7 @@ markNeutral(savingsTipsOut);
                         const liDeathGrowth = liDeathBal - liDeathPre;
                         const annDeathGrowth = annDeathBal - annDeathPre;
 
-                        totalInvDraw += invW; totalLiDraw += liW; totalAnnDraw += annW;
+                        totalInvDraw += invW; totalLiDraw += liW; totalAnnDraw += (annW + riderPaidFromAccount);
 
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
@@ -3361,7 +3381,7 @@ markNeutral(savingsTipsOut);
                         if (emUse > 0) usedBuckets.push('Emergency');
                         if (invW  > 0) usedBuckets.push('Investments');
                         if (liW   > 0) usedBuckets.push('Life Insurance');
-                        if (annW  > 0) usedBuckets.push('Annuities');
+                        if (annW  > 0 || riderIncomeGross > 0) usedBuckets.push('Annuities');
                         const sourceFundedLabel = usedBuckets.length ? usedBuckets.join(' + ') : (yearShort > 0 ? 'Unfunded' : 'None');
 
                         auditRows.push({
@@ -3372,7 +3392,7 @@ markNeutral(savingsTipsOut);
                             marketState,
                             sourceFunded: sourceFundedLabel,
                             startTotal: startBalTotal,
-                            withdrawTotal: invW + liW + annW + emUse,
+                            withdrawTotal: invW + liW + annW + riderPaidFromAccount + emUse,
                             netIncome: fundedNet,
                             endTotal: invBal + liBal + annBal + emBal,
                             shortfall: yearShort,
@@ -3390,7 +3410,22 @@ markNeutral(savingsTipsOut);
                                 deathGrowth: liDeathGrowth,
                                 used: liW > 0
                             } : null,
-                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, incomeBase: annIncomeRider ? annIncomeBase : null, incomeBenefit: annIncomeRider ? annIncomeBenefit : null, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
+                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0 || riderIncomeGross > 0 || riderPaidFromAccount > 0) ? {
+                                start: annStart0,
+                                deathStart: annDeathStart0,
+                                w: annW,
+                                riderIncome: riderIncomeGross,
+                                riderPaidFromAccount,
+                                charges: annCharges,
+                                end: annBal,
+                                deathEnd: annDeathBal,
+                                incomeBase: annIncomeRider ? annIncomeBase : null,
+                                incomeBenefit: annIncomeRider ? annIncomeBenefit : null,
+                                fundedNet: annNetContribution,
+                                growth: annGrowthAmt,
+                                deathGrowth: annDeathGrowth,
+                                used: (annW > 0) || (riderIncomeGross > 0) || (riderPaidFromAccount > 0)
+                            } : null,
                             em:   emUse > 0 ? { start: emStart0, w: emUse, end: emBal, used: emUse > 0 } : null
                         });
                     }
@@ -3398,10 +3433,11 @@ markNeutral(savingsTipsOut);
                     // --- Tax-aware first-year outputs ---
                     const net_invW  = fy_invW  * (1 - invTax);
                     const net_liW   = fy_liW   * (1 - (liDesign === 'whole_loan' ? 0 : liTax));
-                    const net_annW  = fy_annW  * (1 - annTax);
+                    const annGrossContributionFY = annIncomeRider ? annIncomeBenefit : fy_annW;
+                    const net_annW  = annIncomeRider ? annIncomeBenefit : (fy_annW * (1 - annTax));
                     const net_emW   = fy_emW;
                     const totalNetW = net_invW + net_liW + net_annW + net_emW;
-                    const totalGrW  = fy_invW + fy_liW + fy_annW + fy_emW;
+                    const totalGrW  = fy_invW + fy_liW + annGrossContributionFY + fy_emW;
                     const firstYearShortfall = year1Shortfall;
                     // --- Horizon-wide tracking ---
                     const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
@@ -3472,7 +3508,7 @@ markNeutral(savingsTipsOut);
                     if (active.em)  srcParts.push(`From Emergency: ${fmtD(fy_emW)}`);
                     if (active.inv) srcParts.push(`From Investments (gross): ${fmtD(fy_invW)}`);
                     if (active.li)  srcParts.push(`From Life Insurance (gross): ${fmtD(fy_liW)}`);
-                    if (active.ann) srcParts.push(`From Annuities (gross): ${fmtD(fy_annW)}`);
+                    if (active.ann) srcParts.push(`From Annuities (gross): ${fmtD(annGrossContributionFY)}`);
                     srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
                     srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
@@ -3519,7 +3555,7 @@ markNeutral(savingsTipsOut);
                             startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
-                        barValues: { em: fy_emW, inv: fy_invW, li: fy_liW, ann: fy_annW },
+                        barValues: { em: fy_emW, inv: fy_invW, li: fy_liW, ann: annGrossContributionFY },
                         active,
                         emCard: { emergencyBal, fy_emW, totalEmUsed, emBal, depletionEmergAge },
                         warns,
