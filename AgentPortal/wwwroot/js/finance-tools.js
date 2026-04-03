@@ -863,8 +863,15 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 if (statusEl) statusEl.textContent = "Searching…";
                 try{
                     const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
-                    if (!res.ok) throw new Error(`Search failed (${res.status})`);
-                    const list = await res.json();
+                    let list = [];
+                    if (!res.ok){
+                        const txt = await res.text().catch(()=> "");
+                        throw new Error(txt || `Search failed (${res.status})`);
+                    }
+                    try { list = await res.json(); }
+                    catch(parseErr){
+                        throw new Error("Search response invalid.");
+                    }
                     if (!list || list.length === 0){
                         wfActiveClientId = null;
                         if (statusEl) statusEl.textContent = "No results.";
