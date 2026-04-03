@@ -3189,6 +3189,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
 
+        _logger.LogInformation("FinancialPlan SAVE start agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, request?.ClientUserId);
+
         if (request == null)
         {
             _logger.LogWarning("FinancialPlan SAVE null request profileId={ProfileId}", id);
@@ -3201,62 +3203,70 @@ meta.Activities ??= new List<ClientCrmActivity>();
             return BadRequest("JsonData is required.");
         }
 
-        ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
-        if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
-            profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
-
-        if (profile == null) return Forbid();
-
-        var nowUtc = DateTime.UtcNow;
-        var json = request.JsonData;
-        // Include deleted rows so we can revive instead of violating unique index
-        var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
-        if (row == null)
+        try
         {
-            row = new ClientFinancialPlan
+            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
+                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+
+            if (profile == null) return Forbid();
+
+            var nowUtc = DateTime.UtcNow;
+            var json = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
+            // Include deleted rows so we can revive instead of violating unique index
+            var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
+            if (row == null)
             {
-                ClientId = profile.Id,
-                JsonData = json,
-                LastUpdatedUtc = nowUtc,
-                UpdatedBy = GetAgentUpnForAudit(),
-                Version = request.Version ?? 1,
-                IsDeleted = false
-            };
-            _db.ClientFinancialPlans.Add(row);
-            _logger.LogInformation("FinancialPlan SAVE create clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len}",
-                profile.ClientUserId, profile.Id, row.Id, json.Length);
-        }
-        else
-        {
-            if (row.IsDeleted) row.IsDeleted = false;
-            row.JsonData = json;
-            row.LastUpdatedUtc = nowUtc;
-            row.UpdatedBy = GetAgentUpnForAudit();
-            row.Version = (request.Version ?? row.Version) + 1;
-            _logger.LogInformation("FinancialPlan SAVE update clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len} version={Version}",
-                profile.ClientUserId, profile.Id, row.Id, json.Length, row.Version);
-        }
+                row = new ClientFinancialPlan
+                {
+                    ClientId = profile.Id,
+                    JsonData = json,
+                    LastUpdatedUtc = nowUtc,
+                    UpdatedBy = GetAgentUpnForAudit(),
+                    Version = request.Version ?? 1,
+                    IsDeleted = false
+                };
+                _db.ClientFinancialPlans.Add(row);
+                _logger.LogInformation("FinancialPlan SAVE create clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len}",
+                    profile.ClientUserId, profile.Id, row.Id, json.Length);
+            }
+            else
+            {
+                if (row.IsDeleted) row.IsDeleted = false;
+                row.JsonData = json;
+                row.LastUpdatedUtc = nowUtc;
+                row.UpdatedBy = GetAgentUpnForAudit();
+                row.Version = (request.Version ?? row.Version) + 1;
+                _logger.LogInformation("FinancialPlan SAVE update clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len} version={Version}",
+                    profile.ClientUserId, profile.Id, row.Id, json.Length, row.Version);
+            }
 
-        await _db.SaveChangesAsync();
+            await _db.SaveChangesAsync();
 
-        var verify = await _db.ClientFinancialPlans.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
-        if (verify == null || string.IsNullOrWhiteSpace(verify.JsonData))
-        {
-            _logger.LogError("FinancialPlan SAVE verification failed clientUserId={ClientUserId} profileId={ProfileId}", profile.ClientUserId, profile.Id);
-            return StatusCode(500, "Financial plan save verification failed.");
+            var verify = await _db.ClientFinancialPlans.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+            if (verify == null || string.IsNullOrWhiteSpace(verify.JsonData))
+            {
+                _logger.LogError("FinancialPlan SAVE verification failed clientUserId={ClientUserId} profileId={ProfileId}", profile.ClientUserId, profile.Id);
+                return StatusCode(500, "Financial plan save verification failed.");
+            }
+
+            return Json(new
+            {
+                ok = true,
+                clientUserId = profile.ClientUserId,
+                clientProfileId = profile.Id,
+                updatedUtc = verify.LastUpdatedUtc,
+                version = verify.Version,
+                jsonData = verify.JsonData,
+                fingerprint = FingerprintPayload(verify.JsonData)
+            });
         }
-
-        return Json(new
+        catch (Exception ex)
         {
-            ok = true,
-            clientUserId = profile.ClientUserId,
-            clientProfileId = profile.Id,
-            updatedUtc = verify.LastUpdatedUtc,
-            version = verify.Version,
-            jsonData = verify.JsonData,
-            fingerprint = FingerprintPayload(verify.JsonData)
-        });
+            _logger.LogError(ex, "FinancialPlan SAVE error agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, request.ClientUserId);
+            return StatusCode(500, "Financial plan save failed.");
+        }
     }
 
     [HttpPost]
