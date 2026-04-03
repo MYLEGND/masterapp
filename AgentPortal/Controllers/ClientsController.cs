@@ -2882,11 +2882,21 @@ meta.Activities ??= new List<ClientCrmActivity>();
         try
         {
             var search = NormLower(q);
+
+            // Pull owned profiles first (no projection logic inside EF to avoid translation surprises)
             var ownedProfiles = await (
                 from link in _db.AgentClients.AsNoTracking()
                 join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
                 where link.AgentUserId == agentOid
-                select profile
+                select new {
+                    profile.Id,
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.UpdatedUtc
+                }
             ).ToListAsync();
 
             var profileIds = ownedProfiles.Select(x => x.Id).ToList();
@@ -2898,35 +2908,47 @@ meta.Activities ??= new List<ClientCrmActivity>();
                     .Select(x => x.ClientId)
                     .ToListAsync()).ToHashSet();
 
+            // Build display + haystack after materialization (null-safe)
             var results = ownedProfiles
-                .Select(p => {
-                    var displayName = $"{Norm(p.FirstName)} {Norm(p.LastName)}".Trim();
+                .Select(p =>
+                {
+                    var first = Norm(p.FirstName);
+                    var last = Norm(p.LastName);
+                    var displayName = $"{first} {last}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName)) displayName = "Client";
                     var haystack = string.Join(" ", displayName, p.Email ?? "", p.Phone ?? "").ToLowerInvariant();
-                    return new {
-                        profile = p,
-                        displayName = string.IsNullOrWhiteSpace(displayName) ? "Client" : displayName,
+                    return new
+                    {
+                        p.ClientUserId,
+                        p.Id,
+                        displayName,
+                        email = p.Email ?? "",
+                        phone = p.Phone ?? "",
                         haystack
                     };
                 })
                 .Where(x => string.IsNullOrWhiteSpace(search) || x.haystack.Contains(search))
-                .OrderByDescending(x => x.profile.UpdatedUtc)
+                .OrderByDescending(x => x.Id == Guid.Empty ? DateTime.MinValue : DateTime.MaxValue) // deterministic even if UpdatedUtc null
                 .ThenBy(x => x.displayName)
                 .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
-                .Select(x => new {
-                    clientUserId = x.profile.ClientUserId,
-                    clientProfileId = x.profile.Id,
+                .Select(x => new
+                {
+                    clientUserId = x.ClientUserId,
+                    clientProfileId = x.Id,
                     displayName = x.displayName,
-                    email = x.profile.Email ?? "",
-                    phone = x.profile.Phone ?? "",
-                    hasSavedPlan = savedPlanIds.Contains(x.profile.Id)
-                });
+                    email = x.email,
+                    phone = x.phone,
+                    hasSavedPlan = savedPlanIds.Contains(x.Id)
+                })
+                .ToList();
 
             return Json(results);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "FinancialPlanClients error agent={Agent} q={Search}", agentOid, q);
-            return StatusCode(500, "FinancialPlanClients failed.");
+            // Fail-soft for search: return empty array so UI does not break
+            return Json(Array.Empty<object>());
         }
     }
 
@@ -2988,32 +3010,54 @@ meta.Activities ??= new List<ClientCrmActivity>();
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
 
-        ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
-        if (profile == null && !string.IsNullOrWhiteSpace(clientUserId))
-            profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
-
-        if (profile == null) return Forbid();
-
-        var row = await _db.ClientFinancialPlans.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
-
-        var json = row?.JsonData ?? "{}";
-        var fingerprint = FingerprintPayload(json);
-
-        _logger.LogInformation("FinancialPlan GET clientUserId={ClientUserId} profileId={ProfileId} hasRow={HasRow} rowId={RowId} len={Len}",
-            profile.ClientUserId, profile.Id, row != null, row?.Id, json.Length);
-
-        return Json(new
+        var clientUserIdNorm = NormLower(clientUserId);
+        try
         {
-            clientUserId = profile.ClientUserId,
-            clientProfileId = profile.Id,
-            hasPlan = row != null,
-            jsonData = json,
-            version = row?.Version ?? 1,
-            updatedUtc = row?.LastUpdatedUtc,
-            updatedBy = row?.UpdatedBy,
-            fingerprint
-        });
+            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            if (profile == null && !string.IsNullOrWhiteSpace(clientUserIdNorm))
+                profile = await GetOwnedClientProfileAsync(agentOid, clientUserIdNorm);
+
+            if (profile == null) return Forbid();
+
+            var row = await _db.ClientFinancialPlans.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+
+            var json = row?.JsonData;
+            if (string.IsNullOrWhiteSpace(json)) json = "{}";
+
+            var fingerprint = FingerprintPayload(json);
+
+            _logger.LogInformation("FinancialPlan GET ok agent={Agent} clientUserId={ClientUserId} profileId={ProfileId} hasRow={HasRow} rowId={RowId} len={Len}",
+                agentOid, profile.ClientUserId, profile.Id, row != null, row?.Id, json.Length);
+
+            return Json(new
+            {
+                clientUserId = profile.ClientUserId,
+                clientProfileId = profile.Id,
+                hasPlan = row != null,
+                jsonData = json,
+                version = row?.Version ?? 1,
+                updatedUtc = row?.LastUpdatedUtc,
+                updatedBy = row?.UpdatedBy,
+                fingerprint
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FinancialPlan GET error agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, clientUserId);
+            // Fail-soft for hydration: return an empty plan so UI can continue
+            return Json(new
+            {
+                clientUserId = clientUserIdNorm,
+                clientProfileId = (Guid?)null,
+                hasPlan = false,
+                jsonData = "{}",
+                version = 1,
+                updatedUtc = (DateTime?)null,
+                updatedBy = "",
+                fingerprint = "(error)"
+            });
+        }
     }
 
     [HttpPost]
