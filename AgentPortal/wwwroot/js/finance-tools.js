@@ -1503,6 +1503,10 @@ markNeutral(savingsTipsOut);
           <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
           <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
           <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
+          <div class="wfd-tog-wrap" style="margin-top:8px;">
+            <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
+            <span class="wfd-tog-lbl">Has Death Benefit Rider</span>
+          </div>
           <div class="wfd-tog-wrap">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annDownMkt" checked /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Use in Down Market?</span>
@@ -1825,7 +1829,7 @@ markNeutral(savingsTipsOut);
         'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
-                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
+                const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
@@ -1838,7 +1842,7 @@ markNeutral(savingsTipsOut);
                         inputs: ['wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
                                  'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
-                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType'],
+                        checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider'],
                         selects: []
                     },
                     step3: {
@@ -2927,6 +2931,7 @@ markNeutral(savingsTipsOut);
                     const annDeathStart = pf(gid('wfd_annDeath').value);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annTypeVar    = gid('wfd_annType').checked;
+                    const annDbRider    = gid('wfd_annDbRider').checked;
 
                     let strategy        = gid('wfd_strategy').value;
                     if (strategy === 'downmarket') strategy = 'guardrail'; // legacy persisted value
@@ -2958,7 +2963,8 @@ markNeutral(savingsTipsOut);
                     let annBal  = base * annAllocPct  / 100;
                     let emBal   = emergencyBal;
                     let liDeathBal  = Math.max(0, liDeathStart);
-                    let annDeathBal = Math.max(0, annDeathStart);
+                    let annDeathBal = annDbRider ? Math.max(0, annDeathStart || annBal) : annBal;
+                    let annRiderBase = annDbRider ? annDeathBal : 0;
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
                     const startLiDeath = liDeathBal, startAnnDeath = annDeathBal;
 
@@ -3139,13 +3145,18 @@ markNeutral(savingsTipsOut);
                         const liPre    = Math.max(0, liBal   - liW);
                         const annPre   = Math.max(0, annBal  - annW);
                         const liDeathPre  = Math.max(0, liDeathBal  - liW);
-                        const annDeathPre = Math.max(0, annDeathBal - annW);
+                        const annDeathPre = annDbRider ? annDeathBal : Math.max(0, annDeathBal - annW);
 
                         invBal  = invPre  * (1 + effInvR);
                         liBal   = liPre   * (1 + liGrowth);
                         annBal  = annPre  * (1 + effAnnR);
                         liDeathBal  = liDeathPre  * (1 + liGrowth);
-                        annDeathBal = annDeathPre * (1 + effAnnR);
+                        if (annDbRider) {
+                            annRiderBase = Math.max(annRiderBase * (1 + effAnnR), annBal);
+                            annDeathBal = Math.max(annBal, annRiderBase);
+                        } else {
+                            annDeathBal = annBal;
+                        }
                         emBal   = Math.max(0, emBal); // cash reserve, no growth
 
                         const invGrowth = invBal - invPre;
