@@ -3993,7 +3993,16 @@ btnDeleteClient?.addEventListener("click", () => {
   if (!confirm("ARE YOU SURE YOU WANT TO DELETE THIS CLIENT? This removes the profile, household, and portal access.")) return;
 
   const f = document.getElementById("__af");
-  if (!f) return toast("Missing antiforgery form.");
+  if (!f) {
+    // Fallback path when Quick View is hosted outside the Clients page (no hidden __af form)
+    postJson("/Clients/Delete", { clientUserId: activeClientId })
+      .then(() => {
+        toast("Client deleted. Reloading…");
+        window.location.href = "/Clients";
+      })
+      .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
+    return;
+  }
 
   f.setAttribute("action", "/Clients/Delete");
   f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
