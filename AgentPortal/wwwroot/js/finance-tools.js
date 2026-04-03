@@ -2050,15 +2050,21 @@ markNeutral(savingsTipsOut);
                     if (!manualOn) {
                         const bal = window.__wfFinalBalance;
                         if (bal && bal > 0) {
+                            // WF has a live balance — use it
                             baseInp.value = Math.round(bal).toLocaleString();
                             baseInp.readOnly = true;
                             baseInp.classList.add('wfd-good'); baseInp.classList.remove('wfd-bad');
                             warnEl.style.display = 'none';
-                        } else {
-                            baseInp.value = '';
+                        } else if (!baseInp.value || baseInp.value.trim() === '') {
+                            // No WF balance AND field is already empty — show the warning but do not wipe a saved value
                             baseInp.readOnly = true;
                             baseInp.classList.add('wfd-bad'); baseInp.classList.remove('wfd-good');
                             warnEl.style.display = 'block';
+                        } else {
+                            // No WF balance but field has a persisted value — keep it, just lock it readonly
+                            baseInp.readOnly = true;
+                            baseInp.classList.remove('wfd-good', 'wfd-bad');
+                            warnEl.style.display = 'none';
                         }
                     } else {
                         baseInp.readOnly = false;
@@ -2313,9 +2319,9 @@ markNeutral(savingsTipsOut);
                     updateDMState();
                     syncBase();
                     validateAndGate();
+                    const startStep = distMeta.lastStep || '1';
+                    setStep(startStep); // internally calls hydrateResultsFromMeta if step === '4'
                     hydrating = false;
-                    const startStep = '1'; // always begin at Foundation on open
-                    setStep(startStep);
                 })();
 
                 // ========================
@@ -3339,7 +3345,7 @@ markNeutral(savingsTipsOut);
                     if (depAge && endAge - depAge > 5)
                         warns.push({ type:'warn', msg:`Assets deplete ${endAge - depAge} years before the plan horizon. Reduce withdrawals, extend guaranteed income, or increase the retirement base.` });
                     if (totalGrW < incGap * 0.8 && incGap > 0)
-                        warns.push({ type:'warn', msg:`Total first-year withdrawals (${fmtD(totalGrW)}) are below the income gap (${fmtD(incGap)}). Withdrawal rates may be too low to fund the desired income.` });
+                        warns.push({ type:'warn', msg:`Total first-year withdrawals (${fmtD(totalGrW)}) are below the income gap (${fmtD(incGap)}). The selected strategy may not be drawing enough from the available buckets to meet the income target.` });
                     if (depletionEmerg && depletionEmerg < years)
                         warns.push({ type:'warn', msg:`Emergency reserve depletes by year ${depletionEmerg}. Remaining needs are covered by other buckets thereafter.` });
                     if (shortfall > 0)
@@ -3416,14 +3422,18 @@ markNeutral(savingsTipsOut);
                     const baseInp = document.getElementById('wfd_base');
                     const warnEl  = document.getElementById('wfd_noBaseWarn');
                     if (bal && bal > 0) {
+                        // Live WF balance available — use it
                         baseInp.value = Math.round(bal).toLocaleString();
+                        baseInp.readOnly = true;
                         baseInp.classList.add('wfd-good'); baseInp.classList.remove('wfd-bad');
                         warnEl.style.display = 'none';
-                    } else {
-                        baseInp.value = '';
+                    } else if (!baseInp.value || baseInp.value.trim() === '') {
+                        // No WF balance and field is empty — show warning, do not write blank
+                        baseInp.readOnly = true;
                         baseInp.classList.add('wfd-bad'); baseInp.classList.remove('wfd-good');
                         warnEl.style.display = 'block';
                     }
+                    // else: field has a persisted value, WF hasn't run — leave it alone
                 }
                 hydrating = true;
                 // Refresh derived auto-calcs
