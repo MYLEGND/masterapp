@@ -1674,9 +1674,10 @@ markNeutral(savingsTipsOut);
                     if (lastActiveEl) lastActiveEl.focus();
                 };
                 gid('wfd_close').addEventListener('click', closeDistModal);
-                // Step navigation
+                // Step navigation + meta
                 const steps = ['1','2','3','4'];
                 let activeStep = '1';
+                let distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null };
                 function syncStepVisibility() {
                     document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
                         const isActive = w.dataset.step === activeStep;
@@ -1745,7 +1746,6 @@ markNeutral(savingsTipsOut);
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
                 const DIST_META_KEY = 'DistributionPlannerMeta';
                 let hydrating = false;
-                let distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null };
                 function saveMeta(){ savePersistedState(DIST_META_KEY, distMeta); }
                 async function loadMeta(){
                     const m = await loadPersistedState(DIST_META_KEY);
@@ -2923,8 +2923,9 @@ markNeutral(savingsTipsOut);
                     const net_emW   = fy_emW;
                     const totalNetW = net_invW + net_liW + net_annW + net_emW;
                     const totalGrW  = fy_invW + fy_liW + fy_annW + fy_emW;
+                    const firstYearShortfall = year1Shortfall;
                     // --- Horizon-wide tracking ---
-                        const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
+                    const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
                     const atSpend   = guarInc + totalNetW;
                     const finalTot  = totalPts[totalPts.length - 1];
                     const depAge    = depletionYr ? retAge + depletionYr : null;
@@ -2932,7 +2933,6 @@ markNeutral(savingsTipsOut);
                     // --- Additional horizon metrics ---
                     const incomeSufficient = !anyYearShortfall && cumulativeShortfall <= 0;
                     const assetsLast = !depAge;
-                    const firstYearShortfall = year1Shortfall;
                     const anyYearFailure = anyYearShortfall;
                     const lastFundedAge = lastFullyFundedAge || (anyYearFailure ? retAge + (firstFailureYear || 0) - 1 : endAge);
                     const depletionAge = depAge || null;
