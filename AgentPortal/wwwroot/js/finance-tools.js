@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
     const plannerScopeKey = (key) => `legend-finance:user:${effectiveUserScope}:${key}`;
     const selectedToolStateId = "__workspace__";
+    const disableLocalForWF = true; // Phase 2B: Wealth Forecast server-only
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
@@ -87,6 +88,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     async function loadPersistedState(key) {
         const keys = getStateKeys(key);
 
+        if (disableLocalForWF && keys.some(k => (k || "").includes("WealthForecast"))) {
+            return {};
+        }
+
         if (canUseServerState) {
             for (const candidateKey of keys) {
                 try {
@@ -104,17 +109,18 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         // Fallback to local cache if server empty/unavailable
         for (const candidateKey of keys) {
-            const localKey = (candidateKey && candidateKey.startsWith('DistributionPlanner')) ? plannerScopeKey(candidateKey) : scopeKey(candidateKey);
-            const raw = localStorage.getItem(localKey);
-            if (raw) {
-                return JSON.parse(raw || "{}");
+                const localKey = (candidateKey && candidateKey.startsWith('DistributionPlanner')) ? plannerScopeKey(candidateKey) : scopeKey(candidateKey);
+                const raw = localStorage.getItem(localKey);
+                if (raw) {
+                    return JSON.parse(raw || "{}");
+                }
             }
-        }
 
         return {};
     }
 
                 function savePersistedState(key, state) {
+                    if (disableLocalForWF && (key || "").includes("WealthForecast")) return;
                     const jsonState = JSON.stringify(state || {});
                     const primaryKey = getPrimaryStateKey(key);
                     // Always cache locally for instant restores and offline/dev use
@@ -201,6 +207,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // ------------------- Persistence Helpers (UPDATED) -------------------
     function saveToolState(toolId) {
+        if (disableLocalForWF && toolId === 'WealthForecast') return; // server-backed only
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
 
@@ -223,6 +230,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     async function loadToolState(toolId) {
+        if (disableLocalForWF && toolId === 'WealthForecast') return; // server-backed only
         const saved = await loadPersistedState(`toolState-${toolId}`);
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
@@ -361,6 +369,11 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
 
         if (!t) return;
+
+        // shared WF plan state
+        let wfActiveClientId = null;
+        let wfPlanVersion = 0;
+        let wfSaveTimer = null;
 
         // ==========================================================
         // 1️⃣ WEALTH FORECAST (ELEVATED) + Tooltips
@@ -823,6 +836,129 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                 });
             });
 
+            const wfActionsEl = document.getElementById("wfActions");
+            if (wfActionsEl){
+                wfActionsEl.innerHTML = `
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <input id="wfClientSearch" class="form-control form-control-sm" style="width:200px;" placeholder="Search client" />
+                    <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
+                    <select id="wfClientSelect" class="form-select form-select-sm" style="width:220px;">
+                      <option value="">Select client…</option>
+                    </select>
+                    <span id="wfPlanStatus" class="text-muted small">No client selected.</span>
+                  </div>`;
+            }
+
+            async function searchWfClients(q){
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl) statusEl.textContent = "Searching…";
+                try{
+                    const res = await fetch(`/Clients/AdvancedMarketsBusinessClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
+                    if (!res.ok) throw new Error(`Search failed (${res.status})`);
+                    const list = await res.json();
+                    const sel = document.getElementById("wfClientSelect");
+                    if (sel){
+                        sel.innerHTML = `<option value=\"\">Select client…</option>`;
+                        list.forEach(item => {
+                            const opt = document.createElement("option");
+                            opt.value = item.clientUserId;
+                            opt.textContent = `${item.displayName} (${item.clientUserId})`;
+                            opt.dataset.profileId = item.clientProfileId;
+                            sel.appendChild(opt);
+                        });
+                    }
+                    if (statusEl) statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
+                } catch(err){
+                    if (statusEl) statusEl.textContent = err?.message || "Search failed.";
+                    toast(err?.message || "Search failed.");
+                }
+            }
+
+            function hydrateWfInputs(payload){
+                const wf = (payload && payload.wealthForecast && payload.wealthForecast.inputs) || {};
+                const map = { wbIncome: incomeEl, wbYears: yearsEl, wbInflation: inflEl, wbReturn: retEl, wbTax: taxEl, wbLiabilities: liabEl, wbLifestyle: lifeEl };
+                Object.keys(map).forEach(id => { if (map[id] && wf[id] !== undefined) map[id].value = wf[id]; });
+            }
+
+            function wfPayload(){
+                return {
+                    version: wfPlanVersion,
+                    wealthForecast: {
+                        inputs: {
+                            wbIncome: incomeEl.value || "",
+                            wbYears: yearsEl.value || "",
+                            wbInflation: inflEl.value || "",
+                            wbReturn: retEl.value || "",
+                            wbTax: taxEl.value || "",
+                            wbLiabilities: liabEl.value || "",
+                            wbLifestyle: lifeEl.value || ""
+                        }
+                    }
+                };
+            }
+
+            async function loadWfPlan(clientUserId){
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl) statusEl.textContent = "Loading plan…";
+                try{
+                    const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+                    if (!res.ok) throw new Error(`Load failed (${res.status})`);
+                    const data = await res.json();
+                    wfPlanVersion = data.version || 0;
+                    hydrateWfInputs(JSON.parse(data.jsonData || "{}"));
+                    if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                    calcWealthForecast();
+                }catch(err){
+                    if (statusEl) statusEl.textContent = err?.message || "Load failed.";
+                    toast(err?.message || "Failed to load plan.");
+                }
+            }
+
+            function showWfError(msg){
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl) statusEl.textContent = msg || "Error";
+                toast(msg || "Save failed.");
+            }
+
+            async function saveWfPlan(){
+                if (!wfActiveClientId) return;
+                const payload = wfPayload();
+                const res = await fetch(`/clients/${encodeURIComponent(wfActiveClientId)}/financial-plan`, {
+                    method:"POST",
+                    credentials:"include",
+                    headers:{ "Content-Type":"application/json" },
+                    body: JSON.stringify({ clientUserId: wfActiveClientId, jsonData: JSON.stringify(payload), version: payload.version })
+                });
+                if (!res.ok){
+                    if (res.status === 409){
+                        showWfError("Version conflict — reload the latest plan before saving.");
+                    } else showWfError(`Save failed (${res.status}).`);
+                    return;
+                }
+                const data = await res.json();
+                wfPlanVersion = data.version || wfPlanVersion;
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl) statusEl.textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
+            }
+
+            function saveWfPlanDebounced(){
+                if (!wfActiveClientId) return;
+                if (wfSaveTimer) clearTimeout(wfSaveTimer);
+                wfSaveTimer = setTimeout(() => { void saveWfPlan(); }, 700);
+            }
+
+            const searchBtn = document.getElementById("wfClientSearchBtn");
+            const searchInput = document.getElementById("wfClientSearch");
+            const selectEl = document.getElementById("wfClientSelect");
+            searchBtn?.addEventListener("click", (e) => { e.preventDefault(); searchWfClients(searchInput?.value || ""); });
+            searchInput?.addEventListener("keypress", (e) => { if (e.key === 'Enter'){ e.preventDefault(); searchWfClients(searchInput.value || ""); } });
+            selectEl?.addEventListener("change", (e) => {
+                const val = e.target.value;
+                wfActiveClientId = val || null;
+                wfPlanVersion = 0;
+                if (val) { void loadWfPlan(val); }
+            });
+
             // Main calculation function
             function calcWealthForecast() {
                 const income = +incomeEl.value.replace(/,/g, '').replace('%', '') || 0;
@@ -904,8 +1040,8 @@ else markExpense(realGrowthOut);
 // Tips cell neutral
 markNeutral(savingsTipsOut);
 
-                // Chart update
-                if (chartEl && typeof Chart !== "undefined"){
+            // Chart update
+            if (chartEl && typeof Chart !== "undefined"){
                     if (!wfChart){
                         wfChart = new Chart(chartEl, {
                             type: "line",
@@ -3694,7 +3830,19 @@ markNeutral(savingsTipsOut);
             });
 
             // Initial calculation
-            calcWealthForecast();
+            // hydrate-first: run calc only after load if client selected
+            if (wfActiveClientId){
+                // load will call calc when finished
+            } else {
+                calcWealthForecast();
+            }
+
+            [incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => {
+                el.addEventListener("input", () => {
+                    calcWealthForecast();
+                    saveWfPlanDebounced();
+                });
+            });
         }
 
 // ==========================================================
