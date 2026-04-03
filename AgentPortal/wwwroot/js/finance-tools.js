@@ -1521,10 +1521,6 @@ markNeutral(savingsTipsOut);
           <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
           <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
           <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
-          <div class="wfd-tog-wrap" style="margin-top:8px;">
-            <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
-            <span class="wfd-tog-lbl">Has Death Benefit Rider</span>
-          </div>
           <div class="wfd-tog-wrap">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annDownMkt" checked /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Use in Down Market?</span>
@@ -3263,7 +3259,11 @@ markNeutral(savingsTipsOut);
                         if (emUse > 0) recordBucket('emergency', emUse);
 
                         const liEffTax  = liDesign === 'whole_loan' ? 0 : liTax;
-                        const fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + netFromGross(annW, annTax) + emUse;
+                        let fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + netFromGross(annW, annTax) + emUse;
+                        if (annIncomeRider) {
+                            // Guaranteed income rider benefit continues irrespective of account value
+                            fundedNet += annIncomeBenefit;
+                        }
                         const yearShort = Math.max(incGap - fundedNet, 0);
                         if (y === 1) year1Shortfall = yearShort;
                         cumulativeShortfall += yearShort;
