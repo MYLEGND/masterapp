@@ -33,6 +33,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<DecisionRecord> DecisionRecords => Set<DecisionRecord>();
     public DbSet<PlaybookExecution> PlaybookExecutions => Set<PlaybookExecution>();
     public DbSet<Commitment> Commitments => Set<Commitment>();
+    public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -98,6 +99,25 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.NormalizedEmail).IsUnique();
 
             e.Property(x => x.RowVersion).IsRowVersion();
+        });
+
+        modelBuilder.Entity<ClientFinancialPlan>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.JsonData).IsRequired().HasColumnType("TEXT");
+            e.Property(x => x.UpdatedBy).HasMaxLength(320);
+            e.Property(x => x.Version).HasDefaultValue(1);
+            e.Property(x => x.IsDeleted).HasDefaultValue(false);
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.HasIndex(x => x.ClientId).IsUnique().HasFilter("[IsDeleted] = 0");
+            else
+                e.HasIndex(x => new { x.ClientId, x.IsDeleted }).IsUnique();
         });
 
         // ==========================================================

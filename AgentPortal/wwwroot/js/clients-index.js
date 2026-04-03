@@ -103,11 +103,13 @@ function bindQuickViewBootstrapModals(){
     onHidden: () => {
       hideBootstrapModalById("clientQuickCreateActionModal");
       hideBootstrapModalById("addClientCommitmentModal");
+      hideBootstrapModalById(finPlanModalId);
     }
   });
 
   bindBootstrapModalStability("clientQuickCreateActionModal", { modalZ: 1085, backdropZ: 1080 });
   bindBootstrapModalStability("addClientCommitmentModal", { modalZ: 1085, backdropZ: 1080 });
+  bindBootstrapModalStability(finPlanModalId, { modalZ: 1095, backdropZ: 1090 });
 }
 
 function showQuickViewTab(target, opts = {}){
@@ -152,6 +154,142 @@ function bindQuickViewTabs(){
     });
   });
 }
+
+/* ========= Financial Plan (Accumulation + Distribution) ========= */
+async function openFinPlanModal(clientUserId){
+  bindQuickViewBootstrapModals();
+  closeLegacyOverlayModals();
+  reconcileBootstrapModalState();
+  ensureModalInBody(finPlanModalId);
+  const modalEl = document.getElementById(finPlanModalId);
+  if (!modalEl) { toast("Modal not found."); return; }
+  if (!window.bootstrap){
+    toast("UI library missing; cannot open modal.");
+    return;
+  }
+  finPlanModal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+  resetFinPlanForm();
+  await loadFinPlan(clientUserId);
+  finPlanModal.show();
+}
+
+function resetFinPlanForm(){
+  finPlanVersion = 0;
+  const form = document.getElementById("finPlanForm");
+  if (!form) return;
+  form.reset();
+  $("#finPlanError").style.display = "none";
+  $("#finPlanStatusLabel").textContent = "Loading…";
+}
+
+function finPlanPayload(){
+  const wf = {
+    wbIncome: $("#wbIncome")?.value || "",
+    wbYears: $("#wbYears")?.value || "",
+    wbInflation: $("#wbInflation")?.value || "",
+    wbReturn: $("#wbReturn")?.value || "",
+    wbTax: $("#wbTax")?.value || "",
+    wbLiabilities: $("#wbLiabilities")?.value || "",
+    wbLifestyle: $("#wbLifestyle")?.value || ""
+  };
+  const distInputs = {};
+  ['wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+   'wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
+   'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup',
+   'wfd_downThreshold','wfd_manualReturns'].forEach(id => { const el = document.getElementById(id); if (el) distInputs[id] = el.value; });
+
+  const distChecks = {};
+  ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest']
+    .forEach(id => { const el = document.getElementById(id); if (el) distChecks[id] = !!el.checked; });
+
+  const distSelects = {};
+  ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign']
+    .forEach(id => { const el = document.getElementById(id); if (el) distSelects[id] = el.value; });
+
+  return {
+    version: finPlanVersion,
+    wealthForecast: { inputs: wf },
+    distribution: { inputs: distInputs, checks: distChecks, selects: distSelects }
+  };
+}
+
+async function loadFinPlan(clientUserId){
+  const status = $("#finPlanStatusLabel");
+  const label = $("#finPlanClientLabel");
+  if (status) status.textContent = "Loading…";
+  if (label) label.textContent = clientUserId || "";
+  try{
+    const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+    if (!res.ok){
+      throw new Error(`Load failed (${res.status})`);
+    }
+    const data = await res.json();
+    finPlanVersion = data.version || 0;
+    $("#finPlanVersion").value = finPlanVersion;
+    if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
+    hydrateFinPlan(data.jsonData);
+    if (status) status.textContent = data.updatedUtc ? `Last updated ${new Date(data.updatedUtc).toLocaleString()}` : "Loaded";
+  }catch(err){
+    if (status) status.textContent = "Failed to load plan.";
+    showFinPlanError(err?.message || "Failed to load plan.");
+  }
+}
+
+function hydrateFinPlan(jsonData){
+  let payload = {};
+  try { payload = JSON.parse(jsonData || "{}"); } catch { payload = {}; }
+  const wf = payload.wealthForecast?.inputs || {};
+  Object.keys(wf).forEach(id => { const el = document.getElementById(id); if (el) el.value = wf[id]; });
+
+  const distInputs = payload.distribution?.inputs || {};
+  Object.keys(distInputs).forEach(id => { const el = document.getElementById(id); if (el) el.value = distInputs[id]; });
+
+  const distChecks = payload.distribution?.checks || {};
+  Object.keys(distChecks).forEach(id => { const el = document.getElementById(id); if (el) el.checked = !!distChecks[id]; });
+
+  const distSelects = payload.distribution?.selects || {};
+  Object.keys(distSelects).forEach(id => { const el = document.getElementById(id); if (el) el.value = distSelects[id]; });
+}
+
+function showFinPlanError(msg){
+  const errEl = $("#finPlanError");
+  if (!errEl) return;
+  errEl.textContent = msg || "";
+  errEl.style.display = msg ? "block" : "none";
+}
+
+async function saveFinPlan(){
+  const payload = finPlanPayload();
+  const clientUserId = finPlanActiveClientId || $("#finPlanClientUserId")?.value || "";
+  if (!clientUserId){
+    showFinPlanError("Missing client id.");
+    return;
+  }
+  showFinPlanError("");
+  $("#finPlanStatusLabel").textContent = "Saving…";
+  const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, {
+    method:"POST",
+    credentials:"include",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({ clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
+  });
+  if (!res.ok){
+    if (res.status === 409){
+      showFinPlanError("Version conflict — reload the latest plan before saving.");
+    } else {
+      showFinPlanError(`Save failed (${res.status}).`);
+    }
+    $("#finPlanStatusLabel").textContent = "Save failed";
+    return;
+  }
+  const data = await res.json();
+  finPlanVersion = data.version || payload.version;
+  $("#finPlanVersion").value = finPlanVersion;
+  $("#finPlanStatusLabel").textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
+  toast("Plan saved.", { autoClose: 1800 });
+}
+
+document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { void saveFinPlan(); });
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
@@ -1524,6 +1662,11 @@ const drawer = $("#drawer");
 const drawerBackdrop = $("#drawerBackdrop");
 const btnCloseDrawer = $("#btnCloseDrawer");
 const clientQuickActionsShortcut = $("#clientQuickActionsShortcut");
+const clientFinPlanBtn = $("#btnClientFinPlan");
+const finPlanModalId = "clientFinPlanModal";
+let finPlanModal = null;
+let finPlanActiveClientId = null;
+let finPlanVersion = 0;
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
 const noteOverlay = document.querySelector("[data-note-self-overlay]");
@@ -3096,6 +3239,16 @@ btnCloseDrawer?.addEventListener("click", closeDrawer);
 clientQuickActionsShortcut?.addEventListener("click", (event) => {
   event.preventDefault();
   openClientActionsHub();
+});
+clientFinPlanBtn?.addEventListener("click", async (e) => {
+  e.preventDefault();
+  const requestedClientId = (activeClientId || drawer?.dataset?.clientId || "").toString().trim();
+  if (!requestedClientId){
+    toast("Open a client first.");
+    return;
+  }
+  finPlanActiveClientId = requestedClientId;
+  await openFinPlanModal(requestedClientId);
 });
 
 /* ========= Note to Self (Quick View) ========= */

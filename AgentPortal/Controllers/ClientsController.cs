@@ -2634,6 +2634,14 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public AdvancedMarketsPageViewModel? Inputs { get; set; }
     }
 
+    public sealed class SaveFinancialPlanRequest
+    {
+        public Guid? ClientProfileId { get; set; }
+        public string ClientUserId { get; set; } = "";
+        public string JsonData { get; set; } = "{}";
+        public int? Version { get; set; }
+    }
+
     public sealed class OutcomeRequest
     {
         public string ClientUserId { get; set; } = "";
@@ -2915,6 +2923,41 @@ meta.Activities ??= new List<ClientCrmActivity>();
         });
     }
 
+    [HttpGet("/clients/{id}/financial-plan")]
+    public async Task<IActionResult> FinancialPlan(Guid id, string? clientUserId = null)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+        if (profile == null && !string.IsNullOrWhiteSpace(clientUserId))
+            profile = await GetOwnedClientProfileAsync(agentOid, clientUserId);
+
+        if (profile == null) return Forbid();
+
+        var row = await _db.ClientFinancialPlans.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+
+        var json = row?.JsonData ?? "{}";
+        var fingerprint = FingerprintPayload(json);
+
+        _logger.LogInformation("FinancialPlan GET clientUserId={ClientUserId} profileId={ProfileId} hasRow={HasRow} rowId={RowId} len={Len}",
+            profile.ClientUserId, profile.Id, row != null, row?.Id, json.Length);
+
+        return Json(new
+        {
+            clientUserId = profile.ClientUserId,
+            clientProfileId = profile.Id,
+            hasPlan = row != null,
+            jsonData = json,
+            version = row?.Version ?? 1,
+            updatedUtc = row?.LastUpdatedUtc,
+            updatedBy = row?.UpdatedBy,
+            fingerprint
+        });
+    }
+
     [HttpPost]
     [IgnoreAntiforgeryToken] // allow persistent saves from Quick View without token churn after app restarts
     public async Task<IActionResult> SaveAdvancedMarketsInputs([FromBody] SaveAdvancedMarketsInputsRequest? request)
@@ -3025,6 +3068,82 @@ meta.Activities ??= new List<ClientCrmActivity>();
             updatedUtc = row.UpdatedUtc,
             inputs = normalizedInputs,
             fingerprint
+        });
+    }
+
+    [HttpPost("/clients/{id}/financial-plan")]
+    [IgnoreAntiforgeryToken]
+    public async Task<IActionResult> SaveFinancialPlan(Guid id, [FromBody] SaveFinancialPlanRequest? request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        if (request == null)
+        {
+            _logger.LogWarning("FinancialPlan SAVE null request profileId={ProfileId}", id);
+            return BadRequest("Invalid financial plan payload.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.JsonData))
+        {
+            _logger.LogWarning("FinancialPlan SAVE empty json profileId={ProfileId}", id);
+            return BadRequest("JsonData is required.");
+        }
+
+        ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+        if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
+            profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+
+        if (profile == null) return Forbid();
+
+        var nowUtc = DateTime.UtcNow;
+        var json = request.JsonData;
+        var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+        if (row == null)
+        {
+            row = new ClientFinancialPlan
+            {
+                ClientId = profile.Id,
+                JsonData = json,
+                LastUpdatedUtc = nowUtc,
+                UpdatedBy = GetAgentUpnForAudit(),
+                Version = request.Version ?? 1,
+                IsDeleted = false
+            };
+            _db.ClientFinancialPlans.Add(row);
+            _logger.LogInformation("FinancialPlan SAVE create clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len}",
+                profile.ClientUserId, profile.Id, row.Id, json.Length);
+        }
+        else
+        {
+            row.JsonData = json;
+            row.LastUpdatedUtc = nowUtc;
+            row.UpdatedBy = GetAgentUpnForAudit();
+            row.Version = (request.Version ?? row.Version) + 1;
+            _logger.LogInformation("FinancialPlan SAVE update clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len} version={Version}",
+                profile.ClientUserId, profile.Id, row.Id, json.Length, row.Version);
+        }
+
+        await _db.SaveChangesAsync();
+
+        var verify = await _db.ClientFinancialPlans.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+        if (verify == null || string.IsNullOrWhiteSpace(verify.JsonData))
+        {
+            _logger.LogError("FinancialPlan SAVE verification failed clientUserId={ClientUserId} profileId={ProfileId}", profile.ClientUserId, profile.Id);
+            return StatusCode(500, "Financial plan save verification failed.");
+        }
+
+        return Json(new
+        {
+            ok = true,
+            clientUserId = profile.ClientUserId,
+            clientProfileId = profile.Id,
+            updatedUtc = verify.LastUpdatedUtc,
+            version = verify.Version,
+            jsonData = verify.JsonData,
+            fingerprint = FingerprintPayload(verify.JsonData)
         });
     }
 

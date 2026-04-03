@@ -913,6 +913,44 @@ namespace Infrastructure.Migrations
                     b.ToTable("FinanceToolStates");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("JsonData")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "IsDeleted")
+                        .IsUnique();
+
+                    b.ToTable("ClientFinancialPlans");
+                });
+
             modelBuilder.Entity("Domain.Entities.HouseholdMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1921,6 +1959,15 @@ namespace Infrastructure.Migrations
                         .WithMany()
                         .HasForeignKey("ClientUserId")
                         .HasPrincipalKey("ClientUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
