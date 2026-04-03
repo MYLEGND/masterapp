@@ -2559,6 +2559,27 @@ markNeutral(savingsTipsOut);
 
                 const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
 
+                const normalizeDistributionPayload = (payload) => {
+                    let dist = payload?.distribution
+                        || payload?.distributionPlanner
+                        || payload?.distributionPlan
+                        || payload?.wealthDistribution
+                        || payload?.wfd
+                        || {};
+                    // If already shaped with inputs/checks/selects, return as-is
+                    if (dist.inputs || dist.checks || dist.selects) return dist;
+                    const flat = dist;
+                    const built = { inputs:{}, checks:{}, selects:{}, meta: flat.meta || {} };
+                    const checkSet = new Set(distCheckIds);
+                    const selectSet = new Set(distSelectIds);
+                    Object.keys(flat || {}).forEach(k=>{
+                        if (checkSet.has(k)) built.checks[k] = !!flat[k];
+                        else if (selectSet.has(k)) built.selects[k] = flat[k];
+                        else if (k.startsWith('wfd_')) built.inputs[k] = flat[k];
+                    });
+                    return built;
+                };
+
                 async function loadDpPlan(clientUserId, initAfter){
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (statusEl) statusEl.textContent = "Loading plan…";
@@ -2574,7 +2595,7 @@ markNeutral(savingsTipsOut);
                         if (payload.wealthForecast !== undefined) {
                             dpPlanCache.wealthForecast = payload.wealthForecast;
                         }
-                        const distPayload = payload.distribution || {};
+                        const distPayload = normalizeDistributionPayload(payload);
                         dpPlanCache.distribution = distPayload;
                         hydrateDistribution(distPayload);
                         if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";

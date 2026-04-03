@@ -279,6 +279,19 @@ namespace AgentPortal.Controllers;
         foreach (var key in DeprecatedRootPlanKeys)
             root.Remove(key);
 
+        // Back-compat: migrate alternative distribution keys to canonical "distribution"
+        if (!root.ContainsKey("distribution"))
+        {
+            foreach (var altKey in new[] { "distributionPlanner", "distributionPlan", "wealthDistribution", "wfd" })
+            {
+                if (root[altKey] is JsonObject altObj)
+                {
+                    root["distribution"] = altObj;
+                    break;
+                }
+            }
+        }
+
         var wf = GetOrCreateObj(root, "wealthForecast");
         var wfInputs = GetOrCreateObj(wf, "inputs");
         // Wealth Forecast outputs should not be persisted as truth
