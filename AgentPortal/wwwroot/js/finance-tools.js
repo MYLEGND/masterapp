@@ -1463,6 +1463,14 @@ markNeutral(savingsTipsOut);
           <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
             <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
           </div>
+          <label class="wfd-lbl" for="wfd_liDesign">Policy Design</label>
+          <select id="wfd_liDesign" class="wfd-inp" style="cursor:pointer;">
+            <option value="whole_withdrawal">Whole Life — Withdrawals</option>
+            <option value="whole_loan">Whole Life — Policy Loans</option>
+            <option value="iul">Indexed UL</option>
+            <option value="vul">Variable UL</option>
+            <option value="legacy_rpu">Legacy-Focused / Reduced Paid-Up</option>
+          </select>
           <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
           <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
           <label class="wfd-lbl" for="wfd_liDeath">Death Benefit</label>
@@ -1488,6 +1496,14 @@ markNeutral(savingsTipsOut);
           <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
             <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
           </div>
+          <label class="wfd-lbl" for="wfd_annDesign">Annuity Design</label>
+          <select id="wfd_annDesign" class="wfd-inp" style="cursor:pointer;">
+            <option value="fixed">Fixed Annuity</option>
+            <option value="fixedIndexed">Fixed Indexed Annuity</option>
+            <option value="variable">Variable Annuity</option>
+            <option value="incomeRider">Income Rider</option>
+            <option value="deathBenefitRider">Death Benefit Rider</option>
+          </select>
           <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
           <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
           <label class="wfd-lbl" for="wfd_annDeath">Annuity Death Benefit (optional)</label>
@@ -1830,7 +1846,7 @@ markNeutral(savingsTipsOut);
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider','wfd_protectInvest'];
-                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
+                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liDesign','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const stepFieldSets = {
                     step1: {
@@ -1843,7 +1859,7 @@ markNeutral(savingsTipsOut);
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
                                  'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
                         checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_annDbRider'],
-                        selects: []
+                        selects: ['wfd_liDesign','wfd_annDesign']
                     },
                     step3: {
                         inputs: ['wfd_downThreshold','wfd_manualReturns'],
@@ -2565,7 +2581,7 @@ markNeutral(savingsTipsOut);
                                 if (dEnd !== null) lastDeath = dEnd;
                                 if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
                             });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? annuityType : null };
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? annuityType : null, annDesign };
                         });
 
                         // Build tile HTML
@@ -2586,7 +2602,7 @@ markNeutral(savingsTipsOut);
                                              border-radius:12px;padding:12px 14px;cursor:pointer;
                                              text-align:left;color:#e2e8f0;font-family:inherit;">
                                       <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
-                                      ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Type: ${st.annType}</div>` : ''}
+                                      ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${st.annDesign || st.annType || ''}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
@@ -2672,12 +2688,15 @@ markNeutral(savingsTipsOut);
                                     );
                                 }
                                 if (def.key === 'ann') {
-                                    statCards.push({ l: 'Annuity Type', v: st.annType || annuityType });
+                                    statCards.push({ l: 'Annuity Design', v: st.annDesign || annuityType });
                                 }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
                                     { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'color:#f87171' : 'color:#4ade80' }
                                 );
+                                if (def.key === 'li') {
+                                    statCards.push({ l: 'Policy Design', v: lifeDesignLabel });
+                                }
                                 document.getElementById('wfd_bktDrill_stats').innerHTML = statCards.map(c =>
                                     `<div style="background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.35);border-radius:10px;padding:10px 12px;">
                                        <div style="font-size:.68rem;font-weight:700;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase;">${c.l}</div>
@@ -2932,6 +2951,8 @@ markNeutral(savingsTipsOut);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annTypeVar    = gid('wfd_annType').checked;
                     const annDbRider    = gid('wfd_annDbRider').checked;
+                    const annDesign     = gid('wfd_annDesign').value || 'fixed';
+                    const liDesign      = gid('wfd_liDesign').value || 'whole_withdrawal';
 
                     let strategy        = gid('wfd_strategy').value;
                     if (strategy === 'downmarket') strategy = 'guardrail'; // legacy persisted value
@@ -2942,7 +2963,7 @@ markNeutral(savingsTipsOut);
                     const manualReturnTxt = gid('wfd_manualReturns').value || '';
                     const priOrder      = getPriorityOrder();
                     const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
-                    const annVarReturns = annTypeVar ? generateRandomReturns(years, annReturn * 100).map(v => v / 100) : [];
+                    const annVarReturns = generateRandomReturns(years, annReturn * 100).map(v => v / 100);
 
                     // --- Validation ---
                     const errs = validateDist();
@@ -3030,10 +3051,30 @@ markNeutral(savingsTipsOut);
                         const annDeathStart0 = annDeathBal;
                         const startBalTotal = invStart0 + liStart0 + annStart0 + emStart0;
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
-                        const annYearR = annTypeVar ? (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn) : annReturn;
+                        // Life design-driven growth
+                        let liYearR = liGrowth;
+                        if (liDesign === 'iul') liYearR = Math.min(Math.max(invYearR, 0), 0.12);
+                        else if (liDesign === 'vul') liYearR = invYearR;
+                        else if (liDesign === 'legacy_rpu') liYearR = Math.min(liGrowth, 0.03); // conservative credited
+
+                        // Annuity design-driven growth
+                        const annBaseVarR = (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn);
+                        let annYearR = annReturn;
+                        if (annDesign === 'variable') annYearR = annBaseVarR;
+                        else if (annDesign === 'fixedIndexed') {
+                            const capped = Math.min(Math.max(annBaseVarR, 0), 0.10);
+                            annYearR = (capped * 0.6) + 0.01; // 60% participation + 1% spread
+                        } else if (annDesign === 'incomeRider') {
+                            annYearR = Math.max(annReturn, 0.02); // floor for income base
+                        } else if (annDesign === 'deathBenefitRider') {
+                            annYearR = annReturn;
+                        } else {
+                            annYearR = annReturn; // fixed default
+                        }
                         invReturnSeries.push(invYearR);
                         const effInvR = invYearR;
                         const effAnnR = annYearR;
+                        const effLiR  = liYearR;
                         annReturnSeries.push(effAnnR);
                         const marketState = invYearR <= downThreshold ? 'down' : 'normal';
                         if (marketState === 'down') downYearCount += 1;
@@ -3144,13 +3185,14 @@ markNeutral(savingsTipsOut);
                         const invPre   = Math.max(0, invBal  - invW);
                         const liPre    = Math.max(0, liBal   - liW);
                         const annPre   = Math.max(0, annBal  - annW);
-                        const liDeathPre  = Math.max(0, liDeathBal  - liW);
+                        const liDeathReduction = liDesign === 'whole_loan' ? (liW * 0.5) : liW;
+                        const liDeathPre  = Math.max(0, liDeathBal  - liDeathReduction);
                         const annDeathPre = annDbRider ? annDeathBal : Math.max(0, annDeathBal - annW);
 
                         invBal  = invPre  * (1 + effInvR);
-                        liBal   = liPre   * (1 + liGrowth);
+                        liBal   = liPre   * (1 + effLiR);
                         annBal  = annPre  * (1 + effAnnR);
-                        liDeathBal  = liDeathPre  * (1 + liGrowth);
+                        liDeathBal  = liDeathPre  * (1 + effLiR);
                         if (annDbRider) {
                             annRiderBase = Math.max(annRiderBase * (1 + effAnnR), annBal);
                             annDeathBal = Math.max(annBal, annRiderBase);
@@ -3249,7 +3291,15 @@ markNeutral(savingsTipsOut);
                     };
 
                     const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
-                    const annuityType = annTypeVar ? 'Variable' : 'Fixed';
+                    const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : annDesign === 'incomeRider' ? 'Income Rider' : annDesign === 'deathBenefitRider' ? 'Death Benefit Rider' : 'Fixed';
+                    const lifeDesignLabel = (() => {
+                        if (liDesign === 'whole_withdrawal') return 'Whole Life — Withdrawals';
+                        if (liDesign === 'whole_loan') return 'Whole Life — Policy Loans';
+                        if (liDesign === 'iul') return 'Indexed UL';
+                        if (liDesign === 'vul') return 'Variable UL';
+                        if (liDesign === 'legacy_rpu') return 'Legacy-Focused / RPU';
+                        return 'Life Design';
+                    })();
 
                     // --- Result cards ---
                     const cards = [
@@ -3313,6 +3363,9 @@ markNeutral(savingsTipsOut);
                             },
                             annTypeVar,
                             annuityType,
+                            annDesign,
+                            liDesign,
+                            lifeDesignLabel,
                             startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
