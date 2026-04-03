@@ -2959,6 +2959,8 @@ markNeutral(savingsTipsOut);
                         em:  (startEmBal   > 0) || (totalEmUsed > 0)
                     };
 
+                    const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
+
                     // --- Result cards ---
                     const cards = [
                         { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: '' },
