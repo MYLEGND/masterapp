@@ -3149,7 +3149,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         var nowUtc = DateTime.UtcNow;
         var json = request.JsonData;
-        var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+        // Include deleted rows so we can revive instead of violating unique index
+        var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
         if (row == null)
         {
             row = new ClientFinancialPlan
@@ -3167,6 +3168,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         }
         else
         {
+            if (row.IsDeleted) row.IsDeleted = false;
             row.JsonData = json;
             row.LastUpdatedUtc = nowUtc;
             row.UpdatedBy = GetAgentUpnForAudit();

@@ -219,11 +219,18 @@ async function loadFinPlan(clientUserId){
   if (status) status.textContent = "Loading…";
   if (label) label.textContent = clientUserId || "";
   try{
-    const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+    const planUrl = `/clients/${encodeURIComponent(clientUserId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
+    const res = await fetch(planUrl, { credentials:"include" });
     if (!res.ok){
       throw new Error(`Load failed (${res.status})`);
     }
-    const data = await res.json();
+    const text = await res.text();
+    let data;
+    try{
+      data = JSON.parse(text);
+    }catch(parseErr){
+      throw new Error("Unexpected response while loading plan.");
+    }
     finPlanVersion = data.version || 0;
     $("#finPlanVersion").value = finPlanVersion;
     if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
@@ -265,9 +272,14 @@ async function saveFinPlan(){
     showFinPlanError("Missing client id.");
     return;
   }
+  if (!finPlanVersion){
+    showFinPlanError("Plan not loaded — load the client before saving.");
+    return;
+  }
   showFinPlanError("");
   $("#finPlanStatusLabel").textContent = "Saving…";
-  const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, {
+  const planUrl = `/clients/${encodeURIComponent(clientUserId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
+  const res = await fetch(planUrl, {
     method:"POST",
     credentials:"include",
     headers:{ "Content-Type":"application/json" },

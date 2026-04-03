@@ -908,12 +908,14 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                 };
             }
 
+            const wfPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
+
             async function loadWfPlan(clientUserId){
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl) statusEl.textContent = "Loading plan…";
                 wfPlanLoaded = false;
                 try{
-                    const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+                    const res = await fetch(wfPlanUrl(clientUserId), { credentials:"include" });
                     if (!res.ok) throw new Error(`Load failed (${res.status})`);
                     const data = await res.json();
                     wfPlanVersion = data.version || 0;
@@ -940,7 +942,7 @@ function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
                     return;
                 }
                 const payload = wfPayload();
-                const res = await fetch(`/clients/${encodeURIComponent(wfActiveClientId)}/financial-plan`, {
+                const res = await fetch(wfPlanUrl(wfActiveClientId), {
                     method:"POST",
                     credentials:"include",
                     headers:{ "Content-Type":"application/json" },
@@ -2446,12 +2448,14 @@ markNeutral(savingsTipsOut);
                     document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
                 }
 
+                const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
+
                 async function loadDpPlan(clientUserId, initAfter){
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (statusEl) statusEl.textContent = "Loading plan…";
                     dpPlanLoaded = false;
                     try{
-                        const res = await fetch(`/clients/${encodeURIComponent(clientUserId)}/financial-plan`, { credentials:"include" });
+                        const res = await fetch(dpPlanUrl(clientUserId), { credentials:"include" });
                         if (!res.ok) throw new Error(`Load failed (${res.status})`);
                         const data = await res.json();
                         dpPlanVersion = data.version || 0;
@@ -2484,7 +2488,7 @@ markNeutral(savingsTipsOut);
                         return;
                     }
                     const payload = dpPayload();
-                    const res = await fetch(`/clients/${encodeURIComponent(dpActiveClientId)}/financial-plan`, {
+                    const res = await fetch(dpPlanUrl(dpActiveClientId), {
                         method:"POST",
                         credentials:"include",
                         headers:{ "Content-Type":"application/json" },
