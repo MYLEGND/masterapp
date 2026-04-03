@@ -1314,11 +1314,11 @@ markNeutral(savingsTipsOut);
       </div>
       <div class="wfd-row">
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_desiredIncome">Desired Annual Retirement Income ($)</label>
+          <label class="wfd-lbl" for="wfd_desiredIncome">Desired Annual Retirement Income ($, after-tax target)</label>
           <input id="wfd_desiredIncome" class="wfd-inp" type="text" placeholder="80,000" />
         </div>
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_guaranteedIncome">Other Guaranteed Income ($) <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">Social Security, pension, rental</span></label>
+          <label class="wfd-lbl" for="wfd_guaranteedIncome">Other Guaranteed Income ($, after-tax) <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">Social Security, pension, rental</span></label>
           <input id="wfd_guaranteedIncome" class="wfd-inp" type="text" placeholder="20,000" />
         </div>
         <div class="wfd-col">
@@ -2188,6 +2188,7 @@ markNeutral(savingsTipsOut);
                     if (hb){ hb.textContent = summary.health; hb.className = 'wfd-badge ' + summary.healthCls; }
 
                     // Cards
+                    const startBalances = result.startBalances || {};
                     const resGrid = gid('wfd_resGrid');
                     if (resGrid) resGrid.innerHTML = (cards||[]).map(c =>
                         `<div class="wfd-res-card"><p class="wfd-res-lbl">${c.l}</p><p class="wfd-res-val ${c.c}">${c.v}</p></div>`
@@ -2294,7 +2295,7 @@ markNeutral(savingsTipsOut);
                                   <th>Inv Return</th>
                                   <th>Market</th>
                                   <th>Source Funded</th>
-                                  <th>Withdrawals</th>
+                                  <th>Withdrawals (Gross)</th>
                                   <th>Net Income</th>
                                   <th>Shortfall</th>
                                   <th>End Bal</th>
@@ -2342,7 +2343,7 @@ markNeutral(savingsTipsOut);
                         // Compute per-bucket aggregates
                         const bktStats = {};
                         bktDefs.forEach(def => {
-                            let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = null, depAge = null;
+                            let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = startBalances[def.key] ?? null, depAge = null;
                             rows.forEach(r => {
                                 const w   = def.wOf(r);
                                 const end = def.endOf(r);
@@ -2378,7 +2379,7 @@ markNeutral(savingsTipsOut);
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       <div style="display:flex;gap:14px;margin-top:6px;">
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total W/D</div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total Gross W/D</div>
                                           <div style="font-size:.85rem;font-weight:800;color:#f87171;">${fmtD(st.totalW)}</div>
                                         </div>
                                         <div>
@@ -2709,7 +2710,7 @@ markNeutral(savingsTipsOut);
                     let emBal   = emergencyBal;
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
 
-                    const shortfallTol = Math.max(100, incGap * 0.02); // small tolerance reused
+                    const shortfallTol = Math.max(100, incGap * 0.02); // tolerance used for visuals only
 
                     // --- Year-by-year simulation ---
                     const totalPts = [invBal + liBal + annBal + emBal];
@@ -2866,16 +2867,16 @@ markNeutral(savingsTipsOut);
                         const yearShort = Math.max(incGap - fundedNet, 0);
                         if (y === 1) year1Shortfall = yearShort;
                         cumulativeShortfall += yearShort;
-                        if (yearShort > shortfallTol && firstFailureYear === null) firstFailureYear = y;
-                        if (yearShort > shortfallTol) anyYearShortfall = true;
-                        if (yearShort <= shortfallTol) lastFullyFundedAge = retAge + y;
+                        if (yearShort > 0 && firstFailureYear === null) firstFailureYear = y;
+                        if (yearShort > 0) anyYearShortfall = true;
+                        if (yearShort === 0 && !anyYearShortfall) lastFullyFundedAge = retAge + y;
 
                         const fundingSource = buildFundingLabel({ path: fundingPath, investGuarded, marketState, invW, strategy });
                         fundingSources.push(fundingSource);
 
                         // Withdrawal first, then growth
                         invBal  = Math.max(0, invBal  - invW)  * (1 + effInvR);
-                        liBal   = Math.max(0, liBal   - liW)   * (1 + liGrowth) * liEff;
+                        liBal   = Math.max(0, liBal   - liW)   * (1 + liGrowth);
                         annBal  = Math.max(0, annBal  - annW)  * (1 + effAnnR);
                         emBal   = Math.max(0, emBal); // cash reserve, no growth
 
@@ -2924,13 +2925,13 @@ markNeutral(savingsTipsOut);
                     const totalNetW = net_invW + net_liW + net_annW + net_emW;
                     const totalGrW  = fy_invW + fy_liW + fy_annW + fy_emW;
                     // --- Horizon-wide tracking ---
-                    const shortfall = Math.max(incGap - (netFromGross(fy_invW,invTax)+netFromGross(fy_liW,liTax)+netFromGross(fy_annW,annTax)+fy_emW), 0); // year 1 shortfall (net)
+                        const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
                     const atSpend   = guarInc + totalNetW;
                     const finalTot  = totalPts[totalPts.length - 1];
                     const depAge    = depletionYr ? retAge + depletionYr : null;
 
                     // --- Additional horizon metrics ---
-                    const incomeSufficient = !anyYearShortfall && cumulativeShortfall <= shortfallTol;
+                    const incomeSufficient = !anyYearShortfall && cumulativeShortfall <= 0;
                     const assetsLast = !depAge;
                     const firstYearShortfall = year1Shortfall;
                     const anyYearFailure = anyYearShortfall;
@@ -2962,41 +2963,41 @@ markNeutral(savingsTipsOut);
                     // --- Result cards ---
                     const cards = [
                         { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: '' },
-                        { l: 'Guaranteed Income',          v: fmtD(guarInc),      c: 'green' },
+                        { l: 'Guaranteed Income (after-tax)',          v: fmtD(guarInc),      c: 'green' },
                         { l: 'Income Gap (from Assets)',   v: fmtD(incGap),       c: incGap > desiredInc * 0.85 ? 'red' : '' },
-                        active.em  ? { l: 'Yr 1 Emergency W/D',   v: fmtD(fy_emW),  c: '' } : null,
-                        active.inv ? { l: 'Yr 1 Investments W/D', v: fmtD(fy_invW), c: '' } : null,
-                        active.li  ? { l: 'Yr 1 Life Ins W/D',    v: fmtD(fy_liW),  c: '' } : null,
-                        active.ann ? { l: 'Yr 1 Annuity W/D',     v: fmtD(fy_annW), c: '' } : null,
-                        { l: 'Total Yr 1 Withdrawals',     v: fmtD(totalGrW),     c: '' },
+                        active.em  ? { l: 'Yr 1 Emergency W/D',         v: fmtD(fy_emW),  c: '' } : null,
+                        active.inv ? { l: 'Yr 1 Investments Gross W/D', v: fmtD(fy_invW), c: '' } : null,
+                        active.li  ? { l: 'Yr 1 Life Ins Gross W/D',    v: fmtD(fy_liW),  c: '' } : null,
+                        active.ann ? { l: 'Yr 1 Annuity Gross W/D',     v: fmtD(fy_annW), c: '' } : null,
+                        { l: 'Total Yr 1 Gross Withdrawals',     v: fmtD(totalGrW),     c: '' },
                         { l: 'After-Tax Spendable (Yr1)',  v: fmtD(atSpend),      c: incomeSufficient ? 'green' : 'red' },
                         { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : '' },
                         { l: 'Cumulative Shortfall',       v: fmtD(cumulativeShortfall), c: cumulativeShortfall > 0 ? 'red' : '' },
                         { l: 'Any-Year Funding Failure',   v: anyYearFailure ? 'Yes' : 'No', c: anyYearFailure ? 'red' : 'green' },
-                        { l: 'Last Fully Funded Age',      v: lastFundedAge ? `Age ${lastFundedAge}` : '—', c: anyYearFailure ? 'red' : 'green' },
+                        { l: 'Last Continuous Funded Year',      v: lastFundedAge ? `Age ${lastFundedAge}` : '—', c: anyYearFailure ? 'red' : 'green' },
                         { l: 'Asset Longevity',            v: assetsLast ? `Lasts to Age ${endAge}` : `Depletes @ Age ${depAge}`, c: assetsLast ? 'green' : 'red' },
-                        { l: 'Income Sufficiency',         v: incomeSufficient ? `Fully funded to Age ${endAge}` : `Income fails @ Age ${lastFundedAge ? lastFundedAge + 1 : retAge}`, c: incomeSufficient ? 'green' : 'red' },
+                        { l: 'Income Sufficiency',         v: incomeSufficient ? `Fully funded to Age ${endAge}` : (failAge ? `Income fails @ Age ${failAge}` : `Income fails`), c: incomeSufficient ? 'green' : 'red' },
                     ].filter(Boolean);
                     // --- Source parts (used in canonical result) ---
                     const srcParts = [];
                     if (active.em)  srcParts.push(`From Emergency: ${fmtD(fy_emW)}`);
-                    if (active.inv) srcParts.push(`From Investments: ${fmtD(fy_invW)}`);
-                    if (active.li)  srcParts.push(`From Life Insurance: ${fmtD(fy_liW)}`);
-                    if (active.ann) srcParts.push(`From Annuities: ${fmtD(fy_annW)}`);
+                    if (active.inv) srcParts.push(`From Investments (gross): ${fmtD(fy_invW)}`);
+                    if (active.li)  srcParts.push(`From Life Insurance (gross): ${fmtD(fy_liW)}`);
+                    if (active.ann) srcParts.push(`From Annuities (gross): ${fmtD(fy_annW)}`);
                     srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
                     srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
                     if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
 
                     // --- failAge (used in canonical result summary) ---
-                    const failAge = firstFailureYear ? (retAge + firstFailureYear - 1) : null;
+                    const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
 
                     // --- Warnings (used in canonical result) ---
                     const warns = [];
                     if (!incomeSufficient)
                         warns.push({ type:'warn', msg:`Income target underfunded by ${fmtD(shortfall)} in year 1; plan longevity alone does not meet the desired cash flow.` });
                     if (atSpend < desiredInc * 0.9)
-                        warns.push({ type:'warn', msg:`After-tax spendable (${fmtD(atSpend)}) is below the desired income target. Consider increasing allocations, adjusting withdrawal rates, or boosting guaranteed income.` });
+                        warns.push({ type:'warn', msg:`After-tax spendable (${fmtD(atSpend)}) is below the desired income target. Consider increasing allocations, improving protected/guaranteed income, or revisiting strategy/tax assumptions.` });
                     if (depAge && endAge - depAge > 5)
                         warns.push({ type:'warn', msg:`Assets deplete ${endAge - depAge} years before the plan horizon. Reduce withdrawals, extend guaranteed income, or increase the retirement base.` });
                     if (totalGrW < incGap * 0.8 && incGap > 0)
@@ -3011,17 +3012,18 @@ markNeutral(savingsTipsOut);
                         warns.push({ type:'info', msg:`Randomized market path is an illustration for stress-testing only — not a prediction or guarantee.` });
 
                     // --- Persist + hydrate canonical result ---
-                    const result = {
-                        summary: {
-                            atSpend,
-                            incomeSufficient,
-                            health,
-                            healthCls,
-                            depAge,
-                            endAge,
-                            failAge,
-                            cumulativeShortfall
-                        },
+                        const result = {
+                            summary: {
+                                atSpend,
+                                incomeSufficient,
+                                health,
+                                healthCls,
+                                depAge,
+                                endAge,
+                                failAge,
+                                cumulativeShortfall
+                            },
+                            startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal },
                         cards,
                         sourceParts: srcParts,
                         barValues: { em: fy_emW, inv: fy_invW, li: fy_liW, ann: fy_annW },
