@@ -14,6 +14,7 @@ using Shared.Auth;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Text;
@@ -224,6 +225,166 @@ namespace AgentPortal.Controllers;
         var bytes = Encoding.UTF8.GetBytes(json ?? string.Empty);
         var hash = sha.ComputeHash(bytes);
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    // Financial plan sanitation + merge ----------------------------------------------------------
+    private static readonly HashSet<string> DeprecatedRootPlanKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "retirementBase", "retirement_base", "retireBase",
+        "investmentStartingBalance", "investmentsStartingBalance", "invStartingBalance",
+        "lifeStartingBalance", "annuityStartingBalance",
+        "strategy", "scenario", "gapSource", "priorities", "priorityOrder"
+    };
+
+    private static readonly HashSet<string> DerivedDistributionInputs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wfd_base", "wfd_incomeGap", "wfd_yrsInDist",
+        "wfd_invAmt", "wfd_liAmt", "wfd_annAmt"
+    };
+
+    private static readonly HashSet<string> DeprecatedDistributionSelects = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wfd_strategy", "wfd_pri1", "wfd_pri2", "wfd_pri3", "wfd_pri4",
+        "wfd_gapSource", "wfd_scenarioMode"
+    };
+
+    private static JsonObject ParsePlanNode(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new JsonObject();
+        try
+        {
+            var node = JsonNode.Parse(json) as JsonObject;
+            return node ?? new JsonObject();
+        }
+        catch
+        {
+            return new JsonObject();
+        }
+    }
+
+    private static JsonObject GetOrCreateObj(JsonObject parent, string key)
+    {
+        if (parent[key] is JsonObject obj) return obj;
+        var created = new JsonObject();
+        parent[key] = created;
+        return created;
+    }
+
+    private static JsonObject SanitizeFinancialPlanNode(JsonObject plan)
+    {
+        // work on a clone so we never mutate callers
+        var root = (JsonObject?)plan?.DeepClone() ?? new JsonObject();
+
+        // remove deprecated/derived root members
+        foreach (var key in DeprecatedRootPlanKeys)
+            root.Remove(key);
+
+        var wf = GetOrCreateObj(root, "wealthForecast");
+        var wfInputs = GetOrCreateObj(wf, "inputs");
+        // Wealth Forecast outputs should not be persisted as truth
+        wf.Remove("results");
+        wf.Remove("outputs");
+
+        var dist = GetOrCreateObj(root, "distribution");
+        var distInputs = GetOrCreateObj(dist, "inputs");
+        var distChecks = GetOrCreateObj(dist, "checks");
+        var distSelects = GetOrCreateObj(dist, "selects");
+        var distMeta = GetOrCreateObj(dist, "meta");
+        var source = distMeta["source"]?.GetValue<string>();
+        var hasFinanceSignals =
+            distSelects.ContainsKey("wfd_strategy") ||
+            distSelects.ContainsKey("wfd_pri1") ||
+            distSelects.ContainsKey("wfd_pri2") ||
+            distSelects.ContainsKey("wfd_pri3") ||
+            distSelects.ContainsKey("wfd_pri4");
+        var fromFinance = string.Equals(source, "finance", StringComparison.OrdinalIgnoreCase) || hasFinanceSignals;
+        bool manualOverride = false;
+        if (distChecks.TryGetPropertyValue("wfd_manualOverride", out var moNode))
+        {
+            if (moNode is JsonValue jv && jv.TryGetValue<bool>(out var mv)) manualOverride = mv;
+            else if (bool.TryParse(moNode?.ToString(), out var parsed)) manualOverride = parsed;
+        }
+
+        // strip derived distribution inputs; allow manual override base from finance-only payloads
+        foreach (var key in DerivedDistributionInputs)
+        {
+            if (key.Equals("wfd_base", StringComparison.OrdinalIgnoreCase) && fromFinance && manualOverride)
+                continue;
+            distInputs.Remove(key);
+        }
+
+        // if CRM/unknown payload, do not accept legacy strategy/priorities
+        if (!fromFinance)
+        {
+            foreach (var key in DeprecatedDistributionSelects)
+                distSelects.Remove(key);
+        }
+
+        return root;
+    }
+
+    private static void MergeObject(JsonObject target, JsonObject incoming)
+    {
+        foreach (var kvp in incoming)
+        {
+            target[kvp.Key] = kvp.Value?.DeepClone();
+        }
+    }
+
+    private static string SanitizeFinancialPlanJson(string json, string? existingJson = null)
+    {
+        var incoming = SanitizeFinancialPlanNode(ParsePlanNode(json));
+        var baseline = string.IsNullOrWhiteSpace(existingJson)
+            ? new JsonObject()
+            : SanitizeFinancialPlanNode(ParsePlanNode(existingJson));
+
+        // merge section-by-section so CRM saves cannot wipe finance-only fields (and vice versa)
+        var result = (JsonObject?)baseline.DeepClone() ?? new JsonObject();
+
+        // Wealth Forecast inputs (authoritative from latest payload)
+        var incomingWf = GetOrCreateObj(incoming, "wealthForecast");
+        var incomingWfInputs = GetOrCreateObj(incomingWf, "inputs");
+        if (incomingWfInputs.Count > 0)
+        {
+            var resWf = GetOrCreateObj(result, "wealthForecast");
+            var resWfInputs = GetOrCreateObj(resWf, "inputs");
+            MergeObject(resWfInputs, incomingWfInputs);
+        }
+
+        // Distribution: merge dictionaries so missing keys keep prior values
+        var incomingDist = GetOrCreateObj(incoming, "distribution");
+        var resDist = GetOrCreateObj(result, "distribution");
+
+        var incomingInputs = GetOrCreateObj(incomingDist, "inputs");
+        if (incomingInputs.Count > 0)
+        {
+            var resInputs = GetOrCreateObj(resDist, "inputs");
+            MergeObject(resInputs, incomingInputs);
+        }
+
+        var incomingChecks = GetOrCreateObj(incomingDist, "checks");
+        if (incomingChecks.Count > 0)
+        {
+            var resChecks = GetOrCreateObj(resDist, "checks");
+            MergeObject(resChecks, incomingChecks);
+        }
+
+        var incomingSelects = GetOrCreateObj(incomingDist, "selects");
+        if (incomingSelects.Count > 0)
+        {
+            var resSelects = GetOrCreateObj(resDist, "selects");
+            MergeObject(resSelects, incomingSelects);
+        }
+
+        var incomingMeta = incomingDist["meta"] as JsonObject;
+        if (incomingMeta != null && incomingMeta.Count > 0)
+        {
+            var resMeta = GetOrCreateObj(resDist, "meta");
+            MergeObject(resMeta, incomingMeta);
+        }
+
+        // Return compact JSON
+        return result.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web));
     }
 
     private static IReadOnlyList<string> GetAdvancedMarketsInvalidFields(ModelStateDictionary modelState)
@@ -3020,6 +3181,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             var json = row?.JsonData;
             if (string.IsNullOrWhiteSpace(json)) json = "{}";
+            json = SanitizeFinancialPlanJson(json); // defensive: strip derived/deprecated fields before serving
 
             string fingerprint = "(empty)";
             try { fingerprint = FingerprintPayload(json); } catch { fingerprint = "(error)"; }
@@ -3206,15 +3368,16 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (profile == null) return Forbid();
 
             var nowUtc = DateTime.UtcNow;
-            var json = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
+            var incomingJson = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
             // Include deleted rows so we can revive instead of violating unique index
             var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
+            var sanitized = SanitizeFinancialPlanJson(incomingJson, row?.JsonData);
             if (row == null)
             {
                 row = new ClientFinancialPlan
                 {
                     ClientId = profile.Id,
-                    JsonData = json,
+                    JsonData = sanitized,
                     LastUpdatedUtc = nowUtc,
                     UpdatedBy = GetAgentUpnForAudit(),
                     Version = request.Version ?? 1,
@@ -3222,17 +3385,17 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 };
                 _db.ClientFinancialPlans.Add(row);
                 _logger.LogInformation("FinancialPlan SAVE create clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len}",
-                    profile.ClientUserId, profile.Id, row.Id, json.Length);
+                    profile.ClientUserId, profile.Id, row.Id, sanitized.Length);
             }
             else
             {
                 if (row.IsDeleted) row.IsDeleted = false;
-                row.JsonData = json;
+                row.JsonData = sanitized;
                 row.LastUpdatedUtc = nowUtc;
                 row.UpdatedBy = GetAgentUpnForAudit();
                 row.Version = (request.Version ?? row.Version) + 1;
                 _logger.LogInformation("FinancialPlan SAVE update clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len} version={Version}",
-                    profile.ClientUserId, profile.Id, row.Id, json.Length, row.Version);
+                    profile.ClientUserId, profile.Id, row.Id, sanitized.Length, row.Version);
             }
 
             await _db.SaveChangesAsync();

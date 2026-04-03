@@ -183,7 +183,6 @@ function resetFinPlanForm(){
   $("#finPlanStatusLabel").textContent = "Loading…";
   $("#finPlanClientLabel").textContent = "";
   updateFinPlanAllocTotal();
-  toggleFinPlanPriorityRow();
 }
 
 function finPlanPayload(){
@@ -197,23 +196,22 @@ function finPlanPayload(){
     wbLifestyle: $("#wbLifestyle")?.value || ""
   };
   const distInputs = {};
-  ['wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
-   'wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
-   'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup',
-   'wfd_downThreshold','wfd_manualReturns'].forEach(id => { const el = document.getElementById(id); if (el) distInputs[id] = el.value; });
+  ['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+   'wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath',
+   'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annRollup'].forEach(id => { const el = document.getElementById(id); if (el) distInputs[id] = el.value; });
 
   const distChecks = {};
   ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest']
     .forEach(id => { const el = document.getElementById(id); if (el) distChecks[id] = !!el.checked; });
 
   const distSelects = {};
-  ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign']
+  ['wfd_liType','wfd_liAccess','wfd_annDesign']
     .forEach(id => { const el = document.getElementById(id); if (el) distSelects[id] = el.value; });
 
   return {
     version: finPlanVersion,
     wealthForecast: { inputs: wf },
-    distribution: { inputs: distInputs, checks: distChecks, selects: distSelects }
+    distribution: { inputs: distInputs, checks: distChecks, selects: distSelects, meta:{ source:'crm' } }
   };
 }
 
@@ -270,7 +268,6 @@ function hydrateFinPlan(jsonData){
     el.value = distSelects[id];
   } });
   updateFinPlanAllocTotal();
-  toggleFinPlanPriorityRow();
 }
 
 function showFinPlanError(msg){
@@ -281,85 +278,41 @@ function showFinPlanError(msg){
 }
 
 function ensureFinPlanSelectOptions(){
-  const setOptions = (id, opts, defaultVal=null) => {
+  const setOptions = (id, opts) => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    if (sel.children.length === 0){
+    const hasPlaceholder = sel.querySelector('option[value=\"\"]');
+    if (!hasPlaceholder){
+      const ph = document.createElement("option");
+      ph.value = ""; ph.textContent = `-- SELECT ${sel.getAttribute('data-placeholder') || 'OPTION'} --`;
+      sel.insertBefore(ph, sel.firstChild);
+    }
+    if (sel.children.length <= 1){
       opts.forEach(o => {
         const opt = document.createElement("option");
         opt.value = o.value; opt.textContent = o.label;
         sel.appendChild(opt);
       });
     }
-    if (defaultVal && !sel.value){
-      sel.value = defaultVal;
-    }
   };
-  setOptions("wfd_strategy", [
-    { value:"proportional", label:"Proportional" },
-    { value:"priority",     label:"Priority Order" },
-    { value:"guardrail",    label:"Protect Investments" }
-  ], "proportional");
-
-  setOptions("wfd_gapSource", [
-    { value:"life",             label:"Life first" },
-    { value:"annuities",        label:"Annuities first" },
-    { value:"lifeThenAnnuities",label:"Life then Annuities" },
-    { value:"annThenLife",      label:"Annuities then Life" },
-    { value:"split",            label:"Split Life + Annuities" },
-    { value:"custom",           label:"Custom Priority" }
-  ], "life");
-
-  setOptions("wfd_scenarioMode", [
-    { value:"fixed",  label:"Fixed return each year" },
-    { value:"random", label:"Randomized yearly path" },
-    { value:"manual", label:"Manual yearly returns" }
-  ], "fixed");
-
   setOptions("wfd_liType", [
     { value:"whole",      label:"Whole Life" },
     { value:"iul",        label:"Indexed UL" },
     { value:"vul",        label:"Variable UL" },
     { value:"legacy_rpu", label:"Legacy / RPU" }
-  ], "whole");
+  ]);
 
   setOptions("wfd_liAccess", [
     { value:"withdrawal", label:"Withdrawals" },
     { value:"loan",       label:"Policy Loans" },
     { value:"none",       label:"No Distributions" }
-  ], "withdrawal");
+  ]);
 
   setOptions("wfd_annDesign", [
     { value:"fixed",        label:"Fixed Annuity" },
     { value:"fixedIndexed", label:"Fixed Indexed Annuity" },
     { value:"variable",     label:"Variable Annuity" }
-  ], "fixed");
-
-  // Priority order options
-  const priorityOptions = [
-    { value:"emergency",  label:"Emergency Savings" },
-    { value:"investments",label:"Investments" },
-    { value:"life",       label:"Life Insurance / Equivalent" },
-    { value:"annuities",  label:"Annuities" }
-  ];
-  const priorityIds = ["wfd_pri1","wfd_pri2","wfd_pri3","wfd_pri4"];
-  priorityIds.forEach(id=>{
-    const sel = document.getElementById(id);
-    if (!sel) return;
-    if (!sel.options.length){
-      priorityOptions.forEach(o=>{
-        const opt = document.createElement("option");
-        opt.value = o.value; opt.textContent = o.label;
-        sel.appendChild(opt);
-      });
-    }
-  });
-  if (!document.getElementById("wfd_pri1")?.value){
-    ["wfd_pri1","wfd_pri2","wfd_pri3","wfd_pri4"].forEach((id, idx)=>{
-      const sel = document.getElementById(id);
-      if (sel && sel.options[idx]) sel.value = sel.options[idx].value;
-    });
-  }
+  ]);
 }
 
 function updateFinPlanAllocTotal(){
@@ -415,13 +368,6 @@ document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { voi
 ["wfd_invAlloc","wfd_liAlloc","wfd_annAlloc"].forEach(id=>{
   document.getElementById(id)?.addEventListener("input", updateFinPlanAllocTotal);
 });
-// Show priority row only when applicable
-function toggleFinPlanPriorityRow(){
-  const row = document.getElementById("finPlanPriorityRow");
-  const strat = document.getElementById("wfd_strategy")?.value || "proportional";
-  if (row) row.style.display = (strat === "priority" || strat === "guardrail") ? "flex" : "none";
-}
-document.getElementById("wfd_strategy")?.addEventListener("change", toggleFinPlanPriorityRow);
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }

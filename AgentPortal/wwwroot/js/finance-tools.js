@@ -2088,11 +2088,20 @@ markNeutral(savingsTipsOut);
                 // Persistence + defaults
                 const plannerScoped = !!effectiveUserScope;
                 const DIST_KEY = plannerScoped ? `DistributionPlanner:user:${effectiveUserScope}` : null;
+                // UI inputs we manage (includes transient/derived values)
                 const distInputIds = [
-        'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
-        'wfd_invAlloc','wfd_invReturn','wfd_invTax',
+        'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_incomeGap','wfd_yrsInDist',
+        'wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
         'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
         'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup',
+        'wfd_downThreshold','wfd_manualReturns'
+                ];
+                // Inputs that are allowed to persist to the server (derived fields excluded)
+                const distPersistInputs = [
+        'wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+        'wfd_invAlloc','wfd_invReturn','wfd_invTax',
+        'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath',
+        'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annRollup',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
@@ -2102,7 +2111,12 @@ markNeutral(savingsTipsOut);
 
                 function dpCollectInputs(){
                     const inputs = {};
-                    distInputIds.forEach(id => { const el = gid(id); if (el) inputs[id] = el.value; });
+                    distPersistInputs.forEach(id => { const el = gid(id); if (el) inputs[id] = el.value; });
+                    // Manual override base is intentionally persisted only when enabled
+                    if (gid('wfd_manualOverride')?.checked) {
+                        const baseEl = gid('wfd_base');
+                        if (baseEl) inputs['wfd_base'] = baseEl.value;
+                    }
                     const checks = {};
                     distCheckIds.forEach(id => { const el = gid(id); if (el) checks[id] = !!el.checked; });
                     const selects = {};
@@ -2111,6 +2125,7 @@ markNeutral(savingsTipsOut);
                 }
                 function dpPayload(){
                     const dist = dpCollectInputs();
+                    dist.meta = { ...(dist.meta || {}), source:'finance' };
                     const payload = {
                         version: dpPlanVersion,
                         distribution: dist
@@ -2366,7 +2381,6 @@ markNeutral(savingsTipsOut);
 
                 // Called by calcWealthForecast whenever it recalculates
                 window.__wfOnBalanceUpdate = function(bal) {
-                    if (disableLocalForDP && dpPlanLoaded) return; // do not clobber server-hydrated base
                     if (!gid('wfd_manualOverride').checked) syncBase();
                 };
 
@@ -2500,15 +2514,32 @@ markNeutral(savingsTipsOut);
                     }
                 }
 
-                function hydrateDistribution(distribution){
-                    const dist = distribution || {};
-                    const inputs = dist.inputs || {};
-                    const checks = dist.checks || {};
-                    const selects = dist.selects || {};
-                    hydrating = true;
-                    Object.keys(inputs).forEach(id => { const el = gid(id); if (el) el.value = inputs[id]; });
+               function hydrateDistribution(distribution){
+                   const dist = distribution || {};
+                   const inputs = dist.inputs || {};
+                   const checks = dist.checks || {};
+                   const selects = dist.selects || {};
+                   const fromCrm = (dist.meta && dist.meta.source === 'crm');
+                   hydrating = true;
+
+                    // checks first (manual override state)
                     Object.keys(checks).forEach(id => { const el = gid(id); if (el) el.checked = !!checks[id]; });
-                    Object.keys(selects).forEach(id => { const el = gid(id); if (el) el.value = selects[id]; });
+
+                    Object.keys(inputs).forEach(id => {
+                        const el = gid(id);
+                        if (!el) return;
+                        // skip derived values that must be recalculated locally
+                        if (['wfd_invAmt','wfd_liAmt','wfd_annAmt','wfd_incomeGap','wfd_yrsInDist'].includes(id)) return;
+                        if (id === 'wfd_base' && !gid('wfd_manualOverride')?.checked) return; // only honor base when manual override is on
+                        el.value = inputs[id];
+                    });
+                    Object.keys(selects).forEach(id => {
+                        const el = gid(id);
+                        if (!el) return;
+                        const legacyBlock = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
+                        if (fromCrm && legacyBlock.includes(id)) return; // CRM cannot override strategy/scenario
+                        el.value = selects[id];
+                    });
                     // Refresh derived UI
                     updateBktAmounts();
                     updateGap();
@@ -2546,6 +2577,9 @@ markNeutral(savingsTipsOut);
                         hydrateDistribution(payload.distribution);
                         if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
                         dpPlanLoaded = true;
+                        // re-sync base/buckets once WF balance is known
+                        syncBase();
+                        updateBktAmounts();
                         if (initAfter) distInitAfterHydrate();
                     }catch(err){
                         if (statusEl) statusEl.textContent = err?.message || "Load failed.";
