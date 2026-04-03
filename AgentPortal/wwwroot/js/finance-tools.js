@@ -8,6 +8,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         clientUserId ||
         clientProfileId ||
         "agent";
+    const plannerUserScope = (clientUserId || "").trim();
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
     const selectedToolStateId = "__workspace__";
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
@@ -102,10 +103,10 @@ document.addEventListener("DOMContentLoaded", async function () {
         return {};
     }
 
-    function savePersistedState(key, state) {
-        const jsonState = JSON.stringify(state || {});
-        const primaryKey = getPrimaryStateKey(key);
-        if (!canUseServerState) {
+                function savePersistedState(key, state) {
+                    const jsonState = JSON.stringify(state || {});
+                    const primaryKey = getPrimaryStateKey(key);
+                    if (!canUseServerState) {
             storageSet(primaryKey, jsonState);
         }
 
@@ -1762,7 +1763,8 @@ markNeutral(savingsTipsOut);
                 function netFromGross(gross, taxRate){ return (gross || 0) * (1 - (taxRate || 0)); }
 
                 // Persistence + defaults
-                const DIST_KEY = `DistributionPlanner:${workspaceScope}`;
+                const plannerScoped = !!plannerUserScope;
+                const DIST_KEY = plannerScoped ? `DistributionPlanner:user:${plannerUserScope}` : null;
                 const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invTax',
@@ -1772,10 +1774,11 @@ markNeutral(savingsTipsOut);
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
-                const DIST_META_KEY = `DistributionPlannerMeta:${workspaceScope}`;
+                const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${plannerUserScope}` : null;
                 let hydrating = false;
-                function saveMeta(){ savePersistedState(DIST_META_KEY, distMeta); }
+                function saveMeta(){ if (DIST_META_KEY) savePersistedState(DIST_META_KEY, distMeta); }
                 async function loadMeta(){
+                    if (!DIST_META_KEY) return;
                     const m = await loadPersistedState(DIST_META_KEY);
                     if (m && typeof m === 'object') distMeta = { hasValidResults:!!m.hasValidResults, lastStep:m.lastStep || '1', stale:!!m.stale, result:m.result || null };
                 }
@@ -1873,10 +1876,12 @@ markNeutral(savingsTipsOut);
                     return obj;
                 }
                 function saveDistState() {
+                    if (!DIST_KEY) return;
                     savePersistedState(DIST_KEY, distState());
                     if (!hydrating && distMeta.hasValidResults) { distMeta.stale = true; saveMeta(); }
                 }
                 async function loadDistState() {
+                    if (!DIST_KEY) return;
                     const state = await loadPersistedState(DIST_KEY);
                     const hasState = state && Object.keys(state).length > 0;
                     if (hasState) {
@@ -2350,6 +2355,7 @@ markNeutral(savingsTipsOut);
 
                     // Bucket drill-down tiles + modal
                     const tilesEl = gid('wfd_bktTiles');
+                    const annuityType = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
                     if (tilesEl) {
                         const rows = audit.rows || [];
                         const bktDefs = [
@@ -2415,7 +2421,7 @@ markNeutral(savingsTipsOut);
                                 if (dEnd !== null) lastDeath = dEnd;
                                 if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
                             });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? (annTypeVar ? 'Variable' : 'Fixed') : null };
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, annType: def.key === 'ann' ? annuityType : null };
                         });
 
                         // Build tile HTML
@@ -2522,7 +2528,7 @@ markNeutral(savingsTipsOut);
                                     );
                                 }
                                 if (def.key === 'ann') {
-                                    statCards.push({ l: 'Annuity Type', v: annTypeVar ? 'Variable' : 'Fixed' });
+                                    statCards.push({ l: 'Annuity Type', v: st.annType || annuityType });
                                 }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
@@ -3092,6 +3098,7 @@ markNeutral(savingsTipsOut);
                     };
 
                     const failAge = firstFailureYear ? (retAge + firstFailureYear) : null;
+                    const annuityType = annTypeVar ? 'Variable' : 'Fixed';
 
                     // --- Result cards ---
                     const cards = [
@@ -3153,6 +3160,8 @@ markNeutral(savingsTipsOut);
                                 failAge,
                                 cumulativeShortfall
                             },
+                            annTypeVar,
+                            annuityType,
                             startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
