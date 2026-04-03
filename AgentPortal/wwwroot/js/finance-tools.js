@@ -854,13 +854,13 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <input id="wfClientSearch" class="form-control form-control-sm" style="width:220px;" placeholder="Search client" />
                     <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
-                    <span id="wfPlanStatus" class="text-muted small">No client selected.</span>
+                    <span id="wfPlanStatus" class="text-muted small" style="min-height:18px;">No client selected.</span>
                   </div>`;
             }
 
             async function searchWfClients(q){
                 const statusEl = document.getElementById("wfPlanStatus");
-                if (statusEl) statusEl.textContent = "Searching…";
+                if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
                 try{
                     const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
                     let list = [];
@@ -874,12 +874,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     }
                     if (!list || list.length === 0){
                         wfActiveClientId = null;
-                        if (statusEl) statusEl.textContent = "No results.";
+                        if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add("text-danger"); }
                         return;
                     }
                     if (list.length > 1){
                         wfActiveClientId = null;
-                        if (statusEl) statusEl.textContent = `Multiple results (${list.length}). Refine search.`;
+                        if (statusEl){ statusEl.textContent = `Multiple results (${list.length}). Refine search.`; statusEl.classList.add("text-danger"); }
                         return;
                     }
                     // exactly one result -> load
@@ -887,10 +887,10 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     wfActiveClientId = item.clientUserId;
                     wfPlanVersion = 0;
                     wfPlanLoaded = false;
-                    if (statusEl) statusEl.textContent = "Loading plan…";
+                    if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
                     await loadWfPlan(wfActiveClientId);
                 } catch(err){
-                    if (statusEl) statusEl.textContent = err?.message || "Search failed.";
+                    if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add("text-danger"); }
                     toast(err?.message || "Search failed.");
                 }
             }
@@ -2409,7 +2409,7 @@ markNeutral(savingsTipsOut);
                 // --- DP Client Search / Load / Save ---
                 async function searchDpClients(q){
                     const statusEl = document.getElementById('dpPlanStatus');
-                    if (statusEl) statusEl.textContent = "Searching…";
+                    if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove('text-danger'); }
                     try{
                         const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
                         let list = [];
@@ -2430,9 +2430,12 @@ markNeutral(savingsTipsOut);
                                 sel.appendChild(opt);
                             });
                         }
-                        if (statusEl) statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
+                        if (statusEl){
+                            statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
+                            if (!list.length) statusEl.classList.add('text-danger'); else statusEl.classList.remove('text-danger');
+                        }
                     }catch(err){
-                        if (statusEl) statusEl.textContent = err?.message || "Search failed.";
+                        if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add('text-danger'); }
                         toast(err?.message || "Search failed.");
                     }
                 }
