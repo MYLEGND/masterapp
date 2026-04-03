@@ -852,15 +852,23 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             if (wfActionsEl){
                 wfActionsEl.innerHTML = `
                   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <input id="wfClientSearch" class="form-control form-control-sm" style="width:220px;" placeholder="Search client" />
-                    <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
-                    <span id="wfPlanStatus" class="text-muted small" style="min-height:18px;">No client selected.</span>
+                    <div style="display:flex;flex-direction:column;gap:4px;">
+                      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <input id="wfClientSearch" class="form-control form-control-sm" style="width:240px;" placeholder="Search clients…" autocomplete="off" />
+                        <button id="wfClientSearchBtn" class="btn btn-ghost btn-sm">Search</button>
+                        <span id="wfPlanStatus" class="text-muted small" style="min-height:18px;">No client selected.</span>
+                      </div>
+                      <div id="wfClientResults" class="list-group" style="max-height:220px;overflow:auto;min-width:260px;box-shadow:0 8px 18px rgba(0,0,0,.18);border:1px solid rgba(166,128,35,.25);border-radius:12px;display:none;"></div>
+                    </div>
                   </div>`;
             }
+
+            const wfResultsEl = document.getElementById("wfClientResults");
 
             async function searchWfClients(q){
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
+                if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
                 try{
                     const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
                     let list = [];
@@ -877,18 +885,34 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add("text-danger"); }
                         return;
                     }
-                    if (list.length > 1){
-                        wfActiveClientId = null;
-                        if (statusEl){ statusEl.textContent = `Multiple results (${list.length}). Refine search.`; statusEl.classList.add("text-danger"); }
-                        return;
+                    // Render result list for selection
+                    if (wfResultsEl){
+                        wfResultsEl.innerHTML = "";
+                        list.forEach(item => {
+                            const div = document.createElement("button");
+                            div.type = "button";
+                            div.className = "list-group-item list-group-item-action";
+                            div.style.display = "flex";
+                            div.style.flexDirection = "column";
+                            div.style.alignItems = "flex-start";
+                            div.innerHTML = `
+                                <span style="font-weight:800;">${item.displayName || "Client"}</span>
+                                <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
+                                <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
+                            `;
+                            div.addEventListener("click", async () => {
+                                wfResultsEl.style.display = "none";
+                                wfActiveClientId = item.clientUserId;
+                                wfPlanVersion = 0;
+                                wfPlanLoaded = false;
+                                if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
+                                await loadWfPlan(wfActiveClientId);
+                            });
+                            wfResultsEl.appendChild(div);
+                        });
+                        wfResultsEl.style.display = "block";
                     }
-                    // exactly one result -> load
-                    const item = list[0];
-                    wfActiveClientId = item.clientUserId;
-                    wfPlanVersion = 0;
-                    wfPlanLoaded = false;
-                    if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
-                    await loadWfPlan(wfActiveClientId);
+                    if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove("text-danger"); }
                 } catch(err){
                     if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add("text-danger"); }
                     toast(err?.message || "Search failed.");
@@ -933,6 +957,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
                     wfPlanLoaded = true;
                     calcWealthForecast();
+                    // Mirror selection into Distribution Planner
+                    dpActiveClientId = clientUserId;
+                    dpPlanVersion = 0;
+                    dpPlanLoaded = false;
+                    await loadDpPlan(clientUserId, true);
                 }catch(err){
                     if (statusEl) statusEl.textContent = err?.message || "Load failed.";
                     toast(err?.message || "Failed to load plan.");
@@ -978,10 +1007,16 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 wfSaveTimer = setTimeout(() => { void saveWfPlan(); }, 700);
             }
 
-            const searchBtn = document.getElementById("wfClientSearchBtn");
-            const searchInput = document.getElementById("wfClientSearch");
-            searchBtn?.addEventListener("click", (e) => { e.preventDefault(); searchWfClients(searchInput?.value || ""); });
-            searchInput?.addEventListener("keypress", (e) => { if (e.key === 'Enter'){ e.preventDefault(); searchWfClients(searchInput.value || ""); } });
+                const searchBtn = document.getElementById("wfClientSearchBtn");
+                const searchInput = document.getElementById("wfClientSearch");
+                searchBtn?.addEventListener("click", (e) => { e.preventDefault(); searchWfClients(searchInput?.value || ""); });
+                searchInput?.addEventListener("keypress", (e) => { if (e.key === 'Enter'){ e.preventDefault(); searchWfClients(searchInput.value || ""); } });
+                // live search on input (light debounce)
+                let wfSearchTimer = null;
+                searchInput?.addEventListener("input", (e) => {
+                    if (wfSearchTimer) clearTimeout(wfSearchTimer);
+                    wfSearchTimer = setTimeout(() => searchWfClients(searchInput.value || ""), 250);
+                });
 
             // Main calculation function
             function calcWealthForecast() {
@@ -2535,15 +2570,9 @@ markNeutral(savingsTipsOut);
                 const dpSearchBtn = document.getElementById('dpClientSearchBtn');
                 const dpSearchInput = document.getElementById('dpClientSearch');
                 const dpSelect = document.getElementById('dpClientSelect');
-                dpSearchBtn?.addEventListener('click', (e)=>{ e.preventDefault(); searchDpClients(dpSearchInput?.value || ""); });
-                dpSearchInput?.addEventListener('keypress', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); searchDpClients(dpSearchInput?.value || ""); } });
-                dpSelect?.addEventListener('change', (e)=>{
-                    const val = e.target.value;
-                    dpActiveClientId = val || null;
-                    dpPlanVersion = 0;
-                    dpPlanLoaded = false;
-                    if (val) loadDpPlan(val, true);
-                });
+                // Distribution planner now mirrors the Wealth Forecast client; hide standalone search/select UI.
+                const dpSearchRow = document.getElementById('dpClientSearchRow');
+                if (dpSearchRow) dpSearchRow.style.display = 'none';
 
                 // Annuity type label
                 // Removed legacy annType toggle listener (dropdown is source of truth)
