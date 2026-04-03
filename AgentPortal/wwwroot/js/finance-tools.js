@@ -2383,6 +2383,7 @@ markNeutral(savingsTipsOut);
                     if (!result) { renderEmptyResults(); return; }
                     const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
                     const annDesign   = result.annDesign || (result.annuityType ? result.annuityType.toLowerCase() : 'fixed');
+                    const annuityType = result.annuityType || (annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : annDesign === 'incomeRider' ? 'Income Rider' : annDesign === 'deathBenefitRider' ? 'Death Benefit Rider' : 'Fixed');
                     const liDesign    = result.liDesign || 'Life Design';
                     const lifeDesignLabel = result.lifeDesignLabel || liDesign;
 
