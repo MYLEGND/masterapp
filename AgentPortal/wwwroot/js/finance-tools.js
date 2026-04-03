@@ -359,6 +359,9 @@ function markIncome(el)  { paint(el, COLOR_INCOME); }
 function markExpense(el) { paint(el, COLOR_EXPENSE); }
 function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
 
+// Safe toast helper for contexts where global toast may not be present
+const toast = typeof window.toast === "function" ? window.toast : (msg => console.log(msg || ""));
+
 
     // ------------------- Tool Renderer -------------------
     dropdown.addEventListener("change", async function () {
