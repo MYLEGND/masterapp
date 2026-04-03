@@ -1513,6 +1513,10 @@ markNeutral(savingsTipsOut);
             <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Income Rider</span>
           </div>
+          <div id="wfd_annRollupWrap" style="display:none;">
+            <label class="wfd-lbl" for="wfd_annRollup">Income Rider Rollup Rate (%)</label>
+            <input id="wfd_annRollup" class="wfd-inp" type="number" step="0.1" placeholder="5.0" value="5.0" />
+          </div>
           <div class="wfd-tog-wrap" style="margin-top:4px;">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Death Benefit Rider</span>
@@ -1855,7 +1859,7 @@ markNeutral(savingsTipsOut);
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invTax',
         'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
-        'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt',
+        'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
@@ -1870,7 +1874,7 @@ markNeutral(savingsTipsOut);
                     step2: {
                         inputs: ['wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_invAmt',
                                  'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
-                                 'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt'],
+                                 'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt','wfd_annRollup'],
                         checks: ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider'],
                         selects: ['wfd_liDesign','wfd_annDesign']
                     },
@@ -2167,10 +2171,17 @@ markNeutral(savingsTipsOut);
                 ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
                     gid(id).addEventListener('input', updateBktAmounts);
                 });
-                    ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
+                ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
                     if (el) el.addEventListener('change', () => { updateDMState(); saveDistState(); });
                 });
+                const toggleAnnRollup = () => {
+                    const wrap = gid('wfd_annRollupWrap');
+                    const riderOn = gid('wfd_annIncomeRider')?.checked;
+                    if (wrap) wrap.style.display = riderOn ? 'block' : 'none';
+                };
+                const annIncomeChk = gid('wfd_annIncomeRider');
+                if (annIncomeChk) annIncomeChk.addEventListener('change', () => { toggleAnnRollup(); saveDistStateDebounced(); });
 
                 // Annuity type label
                 // Removed legacy annType toggle listener (dropdown is source of truth)
@@ -2326,6 +2337,7 @@ markNeutral(savingsTipsOut);
                     updateGap();
                     updateBktAmounts();
                     updateDMState();
+                    toggleAnnRollup();
                     syncBase();
                     validateAndGate();
                     const startStep = distMeta.lastStep || '1';
@@ -2399,6 +2411,7 @@ markNeutral(savingsTipsOut);
                     const annRiderLabels = [];
                     const hasIncRider = !!result.annIncomeRider;
                     const hasDbRider  = !!result.annDbRider;
+                    const annRollupPct = result.annRollupRate ?? null;
                     if (hasIncRider) annRiderLabels.push('Income Rider');
                     if (hasDbRider)  annRiderLabels.push('Death Benefit Rider');
                     const annDesignDisplay = annRiderLabels.length ? `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'} + ${annRiderLabels.join(' + ')}` : `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'}`;
@@ -2647,7 +2660,7 @@ markNeutral(savingsTipsOut);
                                            text-align:left;color:#e2e8f0;font-family:inherit;">
                                     <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
                                     ${def.key === 'li' && result.liDesign === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
-                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${annDesignDisplay}</div>` : ''}
+                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${annDesignDisplay}${hasIncRider && annRollupPct !== null ? ` · Rollup ${annRollupPct.toFixed(1)}%` : ''}</div>` : ''}
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
@@ -2752,6 +2765,9 @@ markNeutral(savingsTipsOut);
                                 }
                                 if (def.key === 'ann') {
                                     statCards.push({ l: 'Annuity Design', v: annDesignDisplay });
+                                    if (hasIncRider && annRollupPct !== null) {
+                                        statCards.push({ l: 'Income Rider Rollup', v: `${annRollupPct.toFixed(1)}%` });
+                                    }
                                 }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
@@ -3020,6 +3036,7 @@ markNeutral(savingsTipsOut);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annDbRider    = gid('wfd_annDbRider').checked;
                     const annIncomeRider= gid('wfd_annIncomeRider').checked;
+                    const annRollupRate = (pf(gid('wfd_annRollup').value) || 5) / 100;
                     const annDesign     = gid('wfd_annDesign').value || 'fixed';
                     const liDesign      = gid('wfd_liDesign').value || 'whole_withdrawal';
 
@@ -3059,7 +3076,8 @@ markNeutral(savingsTipsOut);
                     const liLoanRate = 0.05; // 5% annual policy loan interest (fixed rate default)
                     let liLoanBal = 0;
                     // income rider (optional): dual-account — cash value + guaranteed income base
-                    const annRollupRate = Math.max(annReturn, 0.05); // income base rollup floor 5%
+                    // income rider rollup rate (independent of market returns)
+                    const annRollupRateDec = annIncomeRider ? annRollupRate : 0;
                     // age-banded payout rate: higher payout at older retirement ages (locked on first income draw)
                     const annPayoutRateForAge = (age) => age < 60 ? 0.040 : age < 65 ? 0.045 : age < 70 ? 0.050 : age < 75 ? 0.055 : 0.060;
                     let annLockedPayoutRate = annPayoutRateForAge(retAge); // provisional; re-locked at income start
@@ -3148,7 +3166,7 @@ markNeutral(savingsTipsOut);
                         if (annIncomeRider) {
                             // Income base rolls up only during deferral; locks once income draw begins
                             if (!annIncomeStarted) {
-                                annIncomeBase = annIncomeBase * (1 + annRollupRate);
+                                annIncomeBase = annIncomeBase * (1 + annRollupRateDec);
                                 annIncomeBenefit = annIncomeBase * annLockedPayoutRate;
                             }
                         }
@@ -3495,6 +3513,9 @@ markNeutral(savingsTipsOut);
                             annDesign,
                             liDesign,
                             lifeDesignLabel,
+                            annIncomeRider,
+                            annDbRider,
+                            annRollupRate: annIncomeRider ? annRollupRateDec * 100 : null,
                             startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
