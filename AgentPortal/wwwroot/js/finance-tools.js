@@ -2382,6 +2382,10 @@ markNeutral(savingsTipsOut);
                 function renderResults(result, isStale=false){
                     if (!result) { renderEmptyResults(); return; }
                     const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
+                    const annDesign   = result.annDesign || (result.annuityType ? result.annuityType.toLowerCase() : 'fixed');
+                    const annuityType = result.annuityType || (result.annTypeVar ? 'Variable' : 'Fixed');
+                    const liDesign    = result.liDesign || 'Life Design';
+                    const lifeDesignLabel = result.lifeDesignLabel || liDesign;
 
                     // Summary
                     const setSum = (id, val, cls) => {
