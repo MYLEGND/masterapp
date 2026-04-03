@@ -1303,6 +1303,12 @@
 </footer>
 
 <script src="~/lib/jquery/dist/jquery.min.js"></script>
+<script>
+    // Safety net: if local jQuery fails to load, fall back to CDN so dependent plugins (validation) don't crash.
+    if (typeof window.jQuery === "undefined") {
+        document.write('<script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"><\\/script>');
+    }
+</script>
 <script src="~/js/number-format.js" asp-append-version="true"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script>
