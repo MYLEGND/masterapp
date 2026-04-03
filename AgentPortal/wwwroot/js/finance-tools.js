@@ -1390,8 +1390,10 @@ markNeutral(savingsTipsOut);
           </div>
           <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
           <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
-          <label class="wfd-lbl" for="wfd_liAmt">Starting Dollar Amount</label>
-          <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+          <label class="wfd-lbl" for="wfd_liDeath">Death Benefit</label>
+          <input id="wfd_liDeath" class="wfd-inp" type="text" placeholder="e.g., 500,000" />
+          <label class="wfd-lbl" for="wfd_liAmt">Whole Life Cash Value</label>
+          <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
           <label class="wfd-lbl" for="wfd_liGrowth">Growth / Credited Rate %</label>
           <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
           <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
@@ -1413,8 +1415,10 @@ markNeutral(savingsTipsOut);
           </div>
           <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
           <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
-          <label class="wfd-lbl" for="wfd_annAmt">Starting Dollar Amount</label>
-          <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+          <label class="wfd-lbl" for="wfd_annDeath">Annuity Death Benefit (optional)</label>
+          <input id="wfd_annDeath" class="wfd-inp" type="text" placeholder="e.g., 250,000" />
+          <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
+          <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
           <div class="wfd-tog-wrap" style="margin-top:12px;margin-bottom:4px;">
             <span class="wfd-tog-lbl" style="margin-right:6px;">Annuity Type:</span>
             <label class="wfd-tog"><input type="checkbox" id="wfd_annType" /><span class="wfd-tog-sl"></span></label>
@@ -1738,8 +1742,8 @@ markNeutral(savingsTipsOut);
                 const distInputIds = [
         'wfd_base','wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
         'wfd_invAlloc','wfd_invReturn','wfd_invTax',
-        'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency',
-        'wfd_annAlloc','wfd_annReturn','wfd_annTax',
+        'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liAmt',
+        'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annAmt',
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annType','wfd_protectInvest'];
@@ -2251,9 +2255,9 @@ markNeutral(savingsTipsOut);
                         // Build per-bucket detail chips — only for buckets with actual withdrawals
                         const bktDetail = (r) => {
                             const chips = [];
-                            if (r.inv)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end)}</span>`);
-                            if (r.life) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.start)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.end)}</span>`);
-                            if (r.ann)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end)}</span>`);
+                            if (r.inv)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end ?? 0)}</span>`);
+                            if (r.life) chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)}</span>`);
+                            if (r.ann)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.ann.w)}</span> → ${fmtD(r.ann.end ?? 0)}</span>`);
                             if (r.em)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
                             return chips.length ? chips.join('') : '';
                         };
@@ -2314,27 +2318,39 @@ markNeutral(savingsTipsOut);
                                 key: 'inv',  label: 'Investments',    color: '#3b82f6', bg: 'rgba(59,130,246,.12)',
                                 border: 'rgba(59,130,246,.45)', rateLabel: 'Return %',
                                 rateOf: r => r.invReturnPct,
-                                startOf: r => r.inv ? r.inv.start : null,
-                                wOf:     r => r.inv ? r.inv.w     : 0,
-                                endOf:   r => r.inv ? r.inv.end   : null,
+                                startOf: r => r.inv ? (r.inv.start ?? null) : null,
+                                wOf:     r => r.inv ? r.inv.w : 0,
+                                endOf:   r => r.inv ? (r.inv.end ?? null) : null,
+                                growthOf: r => r.inv ? (r.inv.growth ?? null) : null,
+                                usedOf:   r => r.inv ? !!r.inv.used : false,
                                 seriesKey: 'inv'
                             },
                             {
                                 key: 'li', label: 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
                                 border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
-                                rateOf: _ => null,
-                                startOf: r => r.life ? r.life.start : null,
-                                wOf:     r => r.life ? r.life.w     : 0,
-                                endOf:   r => r.life ? r.life.end   : null,
+                                rateOf: r => (typeof r.liRatePct === 'number' ? r.liRatePct : null),
+                                startOf: r => r.life ? (r.life.cashStart ?? r.life.start ?? null) : null,
+                                wOf:     r => r.life ? r.life.w : 0,
+                                endOf:   r => r.life ? (r.life.cashEnd ?? r.life.end ?? null) : null,
+                                deathStartOf: r => r.life ? (r.life.deathStart ?? null) : null,
+                                deathEndOf:   r => r.life ? (r.life.deathEnd ?? null) : null,
+                                growthOf: r => r.life ? (r.life.growth ?? null) : null,
+                                deathGrowthOf: r => r.life ? (r.life.deathGrowth ?? null) : null,
+                                usedOf:   r => r.life ? !!r.life.used : false,
                                 seriesKey: 'li'
                             },
                             {
                                 key: 'ann',  label: 'Annuities',      color: '#22c55e', bg: 'rgba(22,163,74,.12)',
                                 border: 'rgba(22,163,74,.45)',  rateLabel: 'Rate %',
-                                rateOf: _ => null,
-                                startOf: r => r.ann ? r.ann.start : null,
-                                wOf:     r => r.ann ? r.ann.w     : 0,
-                                endOf:   r => r.ann ? r.ann.end   : null,
+                                rateOf: r => (typeof r.annRatePct === 'number' ? r.annRatePct : null),
+                                startOf: r => r.ann ? (r.ann.start ?? null) : null,
+                                wOf:     r => r.ann ? r.ann.w : 0,
+                                endOf:   r => r.ann ? (r.ann.end ?? null) : null,
+                                deathStartOf: r => r.ann ? (r.ann.deathStart ?? null) : null,
+                                deathEndOf:   r => r.ann ? (r.ann.deathEnd ?? null) : null,
+                                growthOf: r => r.ann ? (r.ann.growth ?? null) : null,
+                                deathGrowthOf: r => r.ann ? (r.ann.deathGrowth ?? null) : null,
+                                usedOf:   r => r.ann ? !!r.ann.used : false,
                                 seriesKey: 'ann'
                             }
                         ];
@@ -2343,17 +2359,24 @@ markNeutral(savingsTipsOut);
                         const bktStats = {};
                         bktDefs.forEach(def => {
                             let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = startBalances[def.key] ?? null, depAge = null;
+                            let firstDeath = def.key === 'li' ? startBalances.liDeath : def.key === 'ann' ? startBalances.annDeath : null;
+                            let lastDeath = firstDeath || 0;
                             rows.forEach(r => {
                                 const w   = def.wOf(r);
                                 const end = def.endOf(r);
                                 const st  = def.startOf(r);
+                                const dSt = def.deathStartOf ? def.deathStartOf(r) : null;
+                                const dEnd = def.deathEndOf ? def.deathEndOf(r) : null;
                                 if (firstStart === null && st !== null) firstStart = st;
+                                if (firstDeath === null && dSt !== null) firstDeath = dSt;
                                 totalW   += w;
-                                if (w > 0) yearsUsed++;
+                                const used = def.usedOf ? def.usedOf(r) : (w > 0);
+                                if (used) yearsUsed++;
                                 if (end !== null) lastEnd = end;
+                                if (dEnd !== null) lastDeath = dEnd;
                                 if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
                             });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge };
+                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0 };
                         });
 
                         // Build tile HTML
@@ -2376,6 +2399,17 @@ markNeutral(savingsTipsOut);
                                       <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
                                       <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
                                       <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
+                                      ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
+                                      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Death Benefit Start</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:${def.color};">${fmtD(st.firstDeath)}</div>
+                                        </div>
+                                        <div>
+                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Death Benefit End</div>
+                                          <div style="font-size:.85rem;font-weight:800;color:${def.color};">${fmtD(st.lastDeath)}</div>
+                                        </div>
+                                      </div>` : ''}
                                       <div style="display:flex;gap:14px;margin-top:6px;">
                                         <div>
                                           <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total Gross W/D</div>
@@ -2437,12 +2471,20 @@ markNeutral(savingsTipsOut);
                                 // Stat cards
                                 const longevityTxt = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
                                 const statCards = [
-                                    { l: 'Starting Balance',  v: fmtD(st.firstStart) },
+                                    { l: def.key === 'ann' ? 'Starting Annuity Value' : def.key === 'li' ? 'Starting Cash Value' : 'Starting Balance',  v: fmtD(st.firstStart) },
                                     { l: 'Total Withdrawn',   v: fmtD(st.totalW), cls: 'color:#f87171' },
-                                    { l: 'Remaining Balance', v: fmtD(st.lastEnd), cls: 'color:#4ade80' },
+                                    { l: def.key === 'ann' ? 'Remaining Annuity' : def.key === 'li' ? 'Remaining Cash Value' : 'Remaining Balance', v: fmtD(st.lastEnd), cls: 'color:#4ade80' }
+                                ];
+                                if ((def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0)) {
+                                    statCards.splice(1, 0,
+                                        { l: 'Death Benefit Start', v: fmtD(st.firstDeath) },
+                                        { l: 'Death Benefit End',   v: fmtD(st.lastDeath), cls: 'color:#d9b35a' }
+                                    );
+                                }
+                                statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
                                     { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'color:#f87171' : 'color:#4ade80' }
-                                ];
+                                );
                                 document.getElementById('wfd_bktDrill_stats').innerHTML = statCards.map(c =>
                                     `<div style="background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.35);border-radius:10px;padding:10px 12px;">
                                        <div style="font-size:.68rem;font-weight:700;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase;">${c.l}</div>
@@ -2500,18 +2542,39 @@ markNeutral(savingsTipsOut);
                                 }
 
                                 // Per-year table
+                                const isLife = def.key === 'li';
+                                const isAnn = def.key === 'ann';
+                                const hdrCells = [
+                                    'Age',
+                                    isAnn ? 'Start Annuity Value' : isLife ? 'Start Cash Value' : 'Start Balance'
+                                ];
+                                if (isLife || isAnn) hdrCells.push(isLife ? 'Start Death Benefit' : 'Start Death Value');
+                                hdrCells.push(def.rateLabel);
+                                hdrCells.push('Withdrawal');
+                                if (isLife || isAnn) hdrCells.push('Growth / Credited');
+                                hdrCells.push(isAnn ? 'End Annuity Value' : isLife ? 'End Cash Value' : 'End Balance');
+                                if (isLife || isAnn) hdrCells.push(isLife ? 'End Death Benefit' : 'End Death Value');
+                                hdrCells.push('Used');
+
                                 const tableRows = rows.map(r => {
                                     const w   = def.wOf(r);
                                     const st0 = def.startOf(r);
                                     const end = def.endOf(r);
+                                    const deathStart = def.deathStartOf ? def.deathStartOf(r) : null;
+                                    const deathEnd   = def.deathEndOf ? def.deathEndOf(r) : null;
                                     const rate = def.rateOf(r);
-                                    const used = w > 0;
+                                    const growth = def.growthOf ? def.growthOf(r) : null;
+                                    const used = def.usedOf ? def.usedOf(r) : (w > 0);
+                                    const growthStyle = growth !== null ? (growth < -0.001 ? 'color:#f87171' : 'color:#4ade80') : 'color:#94a3b8';
                                     return `<tr style="opacity:${used ? '1' : '.55'};">
                                       <td style="padding:4px 7px;">${r.age}</td>
                                       <td style="padding:4px 7px;">${st0 !== null ? fmtD(st0) : '—'}</td>
+                                      ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathStart !== null ? fmtD(deathStart) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;${rate !== null && rate < -0.001 ? 'color:#f87171' : rate !== null && rate > 0.001 ? 'color:#4ade80' : 'color:#94a3b8'}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
                                       <td style="padding:4px 7px;${used ? 'color:#f87171;font-weight:700;' : 'color:#475569;'}">${used ? fmtD(w) : '—'}</td>
+                                      ${isLife || isAnn ? `<td style="padding:4px 7px;${growthStyle}">${growth !== null ? fmtD(growth) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
+                                      ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
                                       <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
                                     </tr>`;
                                 }).join('');
@@ -2520,12 +2583,7 @@ markNeutral(savingsTipsOut);
                                     <table style="width:100%;font-size:.73rem;color:#e2e8f0;border-collapse:collapse;">
                                       <thead style="position:sticky;top:0;background:#0b1529;">
                                         <tr>
-                                          <th style="padding:5px 7px;text-align:left;">Age</th>
-                                          <th style="padding:5px 7px;">Start Balance</th>
-                                          <th style="padding:5px 7px;">${def.rateLabel}</th>
-                                          <th style="padding:5px 7px;">Withdrawal</th>
-                                          <th style="padding:5px 7px;">End Balance</th>
-                                          <th style="padding:5px 7px;">Used</th>
+                                          ${hdrCells.map(h => `<th style="padding:5px 7px;">${h}</th>`).join('')}
                                         </tr>
                                       </thead>
                                       <tbody>${tableRows}</tbody>
@@ -2672,10 +2730,12 @@ markNeutral(savingsTipsOut);
                     const liGrowth      = pf(gid('wfd_liGrowth').value)    / 100;
                     const liTax         = pf(gid('wfd_liTax').value)       / 100;
                     const liEff         = (pf(gid('wfd_liEfficiency').value) || 100) / 100;
+                    const liDeathStart  = pf(gid('wfd_liDeath').value);
                     const liDownMkt     = gid('wfd_liDownMkt').checked;
 
                     const annReturn     = pf(gid('wfd_annReturn').value)   / 100;
                     const annTax        = pf(gid('wfd_annTax').value)      / 100;
+                    const annDeathStart = pf(gid('wfd_annDeath').value);
                     const annDownMkt    = gid('wfd_annDownMkt').checked;
                     const annTypeVar    = gid('wfd_annType').checked;
 
@@ -2707,7 +2767,10 @@ markNeutral(savingsTipsOut);
                     let liBal   = base * liAllocPct   / 100;
                     let annBal  = base * annAllocPct  / 100;
                     let emBal   = emergencyBal;
+                    let liDeathBal  = Math.max(0, liDeathStart);
+                    let annDeathBal = Math.max(0, annDeathStart);
                     const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
+                    const startLiDeath = liDeathBal, startAnnDeath = annDeathBal;
 
                     const shortfallTol = Math.max(100, incGap * 0.02); // tolerance used for visuals only
                     const onlyInvestmentsFunded = (invAllocPct > 0) && (liAllocPct <= 0) && (annAllocPct <= 0);
@@ -2717,6 +2780,8 @@ markNeutral(savingsTipsOut);
                     const invPts   = [invBal];
                     const liPts    = [liBal];
                     const annPts   = [annBal];
+                    const liDeathPts  = [liDeathBal];
+                    const annDeathPts = [annDeathBal];
                     const emPts    = [emBal];
                     const yLabels  = ['Age ' + retAge];
                     const auditRows = [];
@@ -2764,6 +2829,8 @@ markNeutral(savingsTipsOut);
                         const liStart0  = liBal;
                         const annStart0 = annBal;
                         const emStart0  = emBal;
+                        const liDeathStart0  = liDeathBal;
+                        const annDeathStart0 = annDeathBal;
                         const startBalTotal = invStart0 + liStart0 + annStart0 + emStart0;
                         const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
                         invReturnSeries.push(invYearR);
@@ -2875,15 +2942,30 @@ markNeutral(savingsTipsOut);
                         fundingSources.push(fundingSource);
 
                         // Withdrawal first, then growth
-                        invBal  = Math.max(0, invBal  - invW)  * (1 + effInvR);
-                        liBal   = Math.max(0, liBal   - liW)   * (1 + liGrowth);
-                        annBal  = Math.max(0, annBal  - annW)  * (1 + effAnnR);
+                        const invPre   = Math.max(0, invBal  - invW);
+                        const liPre    = Math.max(0, liBal   - liW);
+                        const annPre   = Math.max(0, annBal  - annW);
+                        const liDeathPre  = Math.max(0, liDeathBal  - liW);
+                        const annDeathPre = Math.max(0, annDeathBal - annW);
+
+                        invBal  = invPre  * (1 + effInvR);
+                        liBal   = liPre   * (1 + liGrowth);
+                        annBal  = annPre  * (1 + effAnnR);
+                        liDeathBal  = liDeathPre  * (1 + liGrowth);
+                        annDeathBal = annDeathPre * (1 + effAnnR);
                         emBal   = Math.max(0, emBal); // cash reserve, no growth
+
+                        const invGrowth = invBal - invPre;
+                        const liGrowthAmt = liBal - liPre;
+                        const annGrowthAmt = annBal - annPre;
+                        const liDeathGrowth = liDeathBal - liDeathPre;
+                        const annDeathGrowth = annDeathBal - annDeathPre;
 
                         totalInvDraw += invW; totalLiDraw += liW; totalAnnDraw += annW;
 
                         const totalNow = invBal + liBal + annBal + emBal;
                         invPts.push(invBal); liPts.push(liBal); annPts.push(annBal); emPts.push(emBal);
+                        liDeathPts.push(liDeathBal); annDeathPts.push(annDeathBal);
                         totalPts.push(totalNow);
                         if (totalNow > 0) lastPositiveAge = retAge + y;
                         yLabels.push('Age ' + (retAge + y));
@@ -2902,6 +2984,8 @@ markNeutral(savingsTipsOut);
                         auditRows.push({
                             age: retAge + y,
                             invReturnPct: invYearR * 100,
+                            liRatePct: liGrowth * 100,
+                            annRatePct: effAnnR * 100,
                             marketState,
                             sourceFunded: sourceFundedLabel,
                             startTotal: startBalTotal,
@@ -2910,10 +2994,10 @@ markNeutral(savingsTipsOut);
                             endTotal: invBal + liBal + annBal + emBal,
                             shortfall: yearShort,
                             // per-bucket detail — start is pre-withdrawal snapshot; end is post-growth balance
-                            inv:  invW  > 0 ? { start: invStart0, w: invW,  end: invBal  } : null,
-                            life: liW   > 0 ? { start: liStart0,  w: liW,   end: liBal   } : null,
-                            ann:  annW  > 0 ? { start: annStart0, w: annW,  end: annBal  } : null,
-                            em:   emUse > 0 ? { start: emStart0,  w: emUse, end: emBal   } : null
+                            inv:  (invStart0 > 0 || invW > 0) ? { start: invStart0, w: invW, end: invBal, growth: invGrowth, used: invW > 0 } : null,
+                            life: (liStart0 > 0 || liDeathStart0 > 0 || liW > 0) ? { cashStart: liStart0, deathStart: liDeathStart0, w: liW, cashEnd: liBal, deathEnd: liDeathBal, growth: liGrowthAmt, deathGrowth: liDeathGrowth, used: liW > 0 } : null,
+                            ann:  (annStart0 > 0 || annDeathStart0 > 0 || annW > 0) ? { start: annStart0, deathStart: annDeathStart0, w: annW, end: annBal, deathEnd: annDeathBal, growth: annGrowthAmt, deathGrowth: annDeathGrowth, used: annW > 0 } : null,
+                            em:   emUse > 0 ? { start: emStart0, w: emUse, end: emBal, used: emUse > 0 } : null
                         });
                     }
 
@@ -3022,7 +3106,7 @@ markNeutral(savingsTipsOut);
                                 failAge,
                                 cumulativeShortfall
                             },
-                            startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal },
+                            startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
                         barValues: { em: fy_emW, inv: fy_invW, li: fy_liW, ann: fy_annW },
@@ -3030,9 +3114,9 @@ markNeutral(savingsTipsOut);
                         emCard: { emergencyBal, fy_emW, totalEmUsed, emBal, depletionEmergAge },
                         warns,
                         audit: { rows: auditRows },
-                        chart: {
+                            chart: {
                             labels: yLabels,
-                            series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts },
+                            series: { total: totalPts, em: emPts, inv: invPts, li: liPts, ann: annPts, liDeath: liDeathPts, annDeath: annDeathPts },
                             marketStates,
                             fundingSources
                         }
