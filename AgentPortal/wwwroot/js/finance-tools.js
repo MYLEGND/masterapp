@@ -2560,12 +2560,20 @@ markNeutral(savingsTipsOut);
                 const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
 
                 const normalizeDistributionPayload = (payload) => {
+                    // accept JSON string payloads
+                    if (typeof payload === 'string') {
+                        try { payload = JSON.parse(payload); } catch { payload = {}; }
+                    }
                     let dist = payload?.distribution
                         || payload?.distributionPlanner
                         || payload?.distributionPlan
                         || payload?.wealthDistribution
                         || payload?.wfd
                         || {};
+                    // legacy may serialize the distribution block as a string
+                    if (typeof dist === 'string') {
+                        try { dist = JSON.parse(dist); } catch { dist = {}; }
+                    }
                     // If already shaped with inputs/checks/selects, return as-is
                     if (dist.inputs || dist.checks || dist.selects) return dist;
 
