@@ -2,6 +2,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 using System.Data;
 
 namespace AgentPortal.Services;
@@ -130,7 +131,7 @@ namespace AgentPortal.Services;
     }
 
     private static string NormalizeOwnerKey(string ownerId)
-        => (ownerId ?? string.Empty).Trim().ToLowerInvariant();
+        => IdentityKey.Normalize(ownerId);
 
     private static bool MatchesActor(ActionItem action, string actorId)
     {
@@ -140,24 +141,50 @@ namespace AgentPortal.Services;
             || string.Equals(NormalizeOwnerKey(action.EffectiveAgentOid), actorKey, StringComparison.Ordinal);
     }
 
-    public Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, CancellationToken ct = default)
+    public Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, string actorId, CancellationToken ct = default)
     {
+        var actorKey = NormalizeOwnerKey(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey))
+        {
+            return Task.FromResult<IReadOnlyList<ActionItem>>(Array.Empty<ActionItem>());
+        }
+
         return _db.ActionItems
             .AsNoTracking()
-            .Where(x => x.RelatedEntityType == relatedEntityType && x.RelatedEntityId == relatedEntityId && x.Status != ActionStatus.Dismissed)
+            .Where(x =>
+                x.RelatedEntityType == relatedEntityType &&
+                x.RelatedEntityId == relatedEntityId &&
+                x.Status != ActionStatus.Dismissed &&
+                ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+                 (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey))
             .OrderByDescending(x => x.CreatedUtc)
             .ToListAsync(ct)
             .ContinueWith(t => (IReadOnlyList<ActionItem>)t.Result, ct);
     }
 
-    public Task<ActionItem?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    public Task<ActionItem?> GetByIdAsync(Guid id, string actorId, CancellationToken ct = default)
     {
-        return _db.ActionItems.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+        var actorKey = NormalizeOwnerKey(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey))
+        {
+            return Task.FromResult<ActionItem?>(null);
+        }
+
+        return _db.ActionItems.AsNoTracking().FirstOrDefaultAsync(x =>
+            x.Id == id &&
+            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+             (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
     }
 
-    public async Task<ActionItem?> UpdateActionAsync(Guid id, string title, string? description, DateTime? dueDateUtc, ActionPriority priority, CancellationToken ct = default)
+    public async Task<ActionItem?> UpdateActionAsync(Guid id, string actorId, string title, string? description, DateTime? dueDateUtc, ActionPriority priority, CancellationToken ct = default)
     {
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == id, ct);
+        var actorKey = NormalizeOwnerKey(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return null;
+
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x =>
+            x.Id == id &&
+            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+             (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
         if (action == null) return null;
 
         action.Title = title.Trim();
@@ -169,7 +196,7 @@ namespace AgentPortal.Services;
         await TryAddActionLogAsync(new ActionLog
         {
             ActionId = id,
-            ActorId = action.OwnerId,
+            ActorId = actorId,
             Verb = "updated",
             PayloadJson = $"{title}|{priority}|{dueDateUtc}",
             OccurredUtc = action.UpdatedUtc.Value
@@ -179,9 +206,15 @@ namespace AgentPortal.Services;
         return action;
     }
 
-    public async Task<bool> DeleteActionAsync(Guid id, CancellationToken ct = default)
+    public async Task<bool> DeleteActionAsync(Guid id, string actorId, CancellationToken ct = default)
     {
-        var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == id, ct);
+        var actorKey = NormalizeOwnerKey(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return false;
+
+        var action = await _db.ActionItems.FirstOrDefaultAsync(x =>
+            x.Id == id &&
+            ((x.OwnerId ?? string.Empty).ToLower() == actorKey ||
+             (x.EffectiveAgentOid ?? string.Empty).ToLower() == actorKey), ct);
         if (action == null) return false;
 
         _db.ActionItems.Remove(action);

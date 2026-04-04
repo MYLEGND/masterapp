@@ -66,4 +66,83 @@ public class ExecutionEngineTests
         Assert.Equal(ActionStatus.Completed, completed!.Status);
         Assert.NotNull(completed.CompletedAtUtc);
     }
+
+    [Fact]
+    public async Task UpdateAction_DeniesNonOwner()
+    {
+        using var db = BuildDb();
+        var engine = new ExecutionEngine(db);
+        var action = new ActionItem
+        {
+            RelatedEntityType = RelatedEntityType.Client,
+            RelatedEntityId = "client-1",
+            Title = "Original",
+            OwnerId = "agent-1",
+            EffectiveAgentOid = "agent-1",
+            CreatedBy = "agent-1"
+        };
+        db.ActionItems.Add(action);
+        await db.SaveChangesAsync();
+
+        var denied = await engine.UpdateActionAsync(action.Id, "agent-2", "Updated", null, null, ActionPriority.P1);
+        Assert.Null(denied);
+
+        var persisted = await db.ActionItems.SingleAsync(x => x.Id == action.Id);
+        Assert.Equal("Original", persisted.Title);
+    }
+
+    [Fact]
+    public async Task DeleteAction_DeniesNonOwner()
+    {
+        using var db = BuildDb();
+        var engine = new ExecutionEngine(db);
+        var action = new ActionItem
+        {
+            RelatedEntityType = RelatedEntityType.Client,
+            RelatedEntityId = "client-1",
+            Title = "Delete test",
+            OwnerId = "agent-1",
+            EffectiveAgentOid = "agent-1",
+            CreatedBy = "agent-1"
+        };
+        db.ActionItems.Add(action);
+        await db.SaveChangesAsync();
+
+        var deleted = await engine.DeleteActionAsync(action.Id, "agent-2");
+        Assert.False(deleted);
+        Assert.True(await db.ActionItems.AnyAsync(x => x.Id == action.Id));
+    }
+
+    [Fact]
+    public async Task GetByRelated_ScopesToActor()
+    {
+        using var db = BuildDb();
+        var engine = new ExecutionEngine(db);
+        var relatedId = "client-42";
+
+        db.ActionItems.AddRange(
+            new ActionItem
+            {
+                RelatedEntityType = RelatedEntityType.Client,
+                RelatedEntityId = relatedId,
+                Title = "Mine",
+                OwnerId = "agent-1",
+                EffectiveAgentOid = "agent-1",
+                CreatedBy = "agent-1"
+            },
+            new ActionItem
+            {
+                RelatedEntityType = RelatedEntityType.Client,
+                RelatedEntityId = relatedId,
+                Title = "Not mine",
+                OwnerId = "agent-2",
+                EffectiveAgentOid = "agent-2",
+                CreatedBy = "agent-2"
+            });
+        await db.SaveChangesAsync();
+
+        var mine = await engine.GetByRelatedAsync(RelatedEntityType.Client, relatedId, "agent-1");
+        Assert.Single(mine);
+        Assert.Equal("Mine", mine[0].Title);
+    }
 }

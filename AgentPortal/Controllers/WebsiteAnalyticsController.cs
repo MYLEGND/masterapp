@@ -166,16 +166,10 @@ namespace AgentPortal.Controllers;
     private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
     {
         var isFounder = FounderGuard.IsFounder(User);
-        if (team && !isFounder) return ScopeContext.Global; // only founder can request team rollup
 
         // Effective agent (includes View-as-Agent)
         var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
         var effectiveProfileId = effectiveProfile?.Id;
-
-        if (team)
-        {
-            return ScopeContext.Global;
-        }
 
         // If founder is impersonating an agent, analytics must scope to that agent.
         // Never fall back to founder scope for view-as-agent requests.
@@ -218,6 +212,15 @@ namespace AgentPortal.Controllers;
                 "WebsiteAnalytics scope resolution failed for impersonated agent. effectiveOid={EffectiveOid}. Returning empty scope.",
                 _effectiveContext.EffectiveAgentOid ?? "(null)");
             return ScopeContext.ForAgent(Guid.Empty); // no data, never founder fallback in impersonation mode
+        }
+
+        if (team && !isFounder)
+        {
+            _logger.LogWarning("WebsiteAnalytics denied team scope elevation for non-founder caller.");
+        }
+        else if (team && isFounder)
+        {
+            return ScopeContext.Global;
         }
 
         // Founder default (not viewing as agent)

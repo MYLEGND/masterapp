@@ -24,5 +24,7 @@ public interface ICommitmentService
     Task<Commitment> CreateCommitmentAsync(CommitmentCreateRequest request, CancellationToken ct = default);
     Task<Commitment?> FulfillCommitmentAsync(Guid id, string actorId, CancellationToken ct = default);
     Task<Commitment?> BreakCommitmentAsync(Guid id, string actorId, CancellationToken ct = default);
+    Task<Commitment?> GetByIdForActorAsync(Guid id, string actorId, CancellationToken ct = default);
     Task<IReadOnlyList<Commitment>> GetByEntityAsync(RelatedEntityType entityType, string entityId, CancellationToken ct = default);
+    Task<IReadOnlyList<Commitment>> GetByEntityForActorAsync(RelatedEntityType entityType, string entityId, string actorId, CancellationToken ct = default);
 }

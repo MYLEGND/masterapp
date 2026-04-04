@@ -11,8 +11,8 @@ public interface IExecutionEngine
     Task<ActionItem?> ReassignAsync(Guid actionId, ActionOwnerType newOwnerType, string newOwnerId, CancellationToken ct = default);
     Task<IReadOnlyList<ActionItem>> GetTodayAsync(string ownerId, CancellationToken ct = default);
     Task<IReadOnlyList<ActionItem>> GetOverdueAsync(string ownerId, CancellationToken ct = default);
-    Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, CancellationToken ct = default);
-    Task<ActionItem?> GetByIdAsync(Guid id, CancellationToken ct = default);
-    Task<ActionItem?> UpdateActionAsync(Guid id, string title, string? description, DateTime? dueDateUtc, ActionPriority priority, CancellationToken ct = default);
-    Task<bool> DeleteActionAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, string actorId, CancellationToken ct = default);
+    Task<ActionItem?> GetByIdAsync(Guid id, string actorId, CancellationToken ct = default);
+    Task<ActionItem?> UpdateActionAsync(Guid id, string actorId, string title, string? description, DateTime? dueDateUtc, ActionPriority priority, CancellationToken ct = default);
+    Task<bool> DeleteActionAsync(Guid id, string actorId, CancellationToken ct = default);
 }

@@ -599,6 +599,21 @@ namespace AgentPortal.Controllers;
              ?? "").Trim();
     }
 
+    private string[] GetAgentIdCandidates(string agentOid)
+    {
+        var set = IdentityKey.NormalizeSet(User.GetUserIdCandidates());
+        var effectiveKey = IdentityKey.Normalize(agentOid);
+        if (!string.IsNullOrWhiteSpace(effectiveKey))
+        {
+            set.Add(effectiveKey);
+        }
+
+        return set.ToArray();
+    }
+
+    private Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId, CancellationToken ct = default)
+        => _db.AgentOwnsClientAsync(agentOid, clientUserId, GetAgentUpnForAudit(), GetAgentIdCandidates(agentOid), ct);
+
     private string GetAgentDisplayName()
     {
         var name = (User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "").Trim();
@@ -1420,7 +1435,14 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> Actions(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return BadRequest("Client id required");
-        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Client, id);
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, id))
+            return Forbid();
+
+        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Client, id, agentId);
         ViewBag.ClientId = id;
         return PartialView("~/Views/Clients/_ClientActionsTab.cshtml", actions);
     }
@@ -1429,12 +1451,16 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> Commitments(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return BadRequest("Client id required");
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, id))
+            return Forbid();
 
         try
         {
-            var commitments = await _commitments.GetByEntityAsync(RelatedEntityType.Client, id);
+            var commitments = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, id, agentId);
             ViewBag.ClientId = id;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", commitments);
@@ -1460,6 +1486,9 @@ namespace AgentPortal.Controllers;
         try { ownerId = NormLower(GetAgentOidOrThrow()); }
         catch { return Challenge(); }
 
+        if (!await AgentOwnsClientAsync(ownerId, req.ClientId))
+            return Forbid();
+
         var action = BuildClientAction(req, ownerId);
 
         await _execution.CreateActionAsync(action);
@@ -1474,8 +1503,12 @@ namespace AgentPortal.Controllers;
             return BadRequest("ClientId and Promise are required");
         if (req.DueDateUtc == null) return BadRequest("Due date is required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, req.ClientId))
+            return Forbid();
 
         var createRequest = new CommitmentCreateRequest(
             RelatedEntityType.Client,
@@ -1532,17 +1565,20 @@ namespace AgentPortal.Controllers;
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, agentId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Client) return BadRequest("Only client commitments are supported here.");
 
-            await _commitments.FulfillCommitmentAsync(id, agentId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Client, commit.RelatedEntityId);
+            var updated = await _commitments.FulfillCommitmentAsync(id, agentId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, commit.RelatedEntityId, agentId);
             ViewBag.ClientId = commit.RelatedEntityId;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", refreshed);
@@ -1563,17 +1599,20 @@ namespace AgentPortal.Controllers;
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, agentId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Client) return BadRequest("Only client commitments are supported here.");
 
-            await _commitments.BreakCommitmentAsync(id, agentId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Client, commit.RelatedEntityId);
+            var updated = await _commitments.BreakCommitmentAsync(id, agentId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, commit.RelatedEntityId, agentId);
             ViewBag.ClientId = commit.RelatedEntityId;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", refreshed);

@@ -1636,7 +1636,11 @@ public class LeadsController : Controller
     public async Task<IActionResult> Actions(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return BadRequest("Lead id required");
-        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Lead, id);
+        string agentId;
+        try { agentId = GetAgentIdOrChallenge(); }
+        catch { return Challenge(); }
+
+        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Lead, id, agentId);
         ViewBag.LeadId = id;
         return PartialView("~/Views/Leads/_ActionsTab.cshtml", actions);
     }

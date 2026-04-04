@@ -58,19 +58,11 @@ namespace AgentPortal.Controllers;
 
     private async Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId)
     {
-        var clientUserIdNorm = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserIdNorm)) return false;
-
-        var upn = GetAgentUpn();
-        var agentIds = GetAgentIdCandidates();
-
-        return await _db.AgentClients.AnyAsync(link =>
-            (link.ClientUserId ?? "").ToLower() == clientUserIdNorm &&
-            (
-                (link.AgentUserId ?? "").ToLower() == agentOid ||
-                agentIds.Contains((link.AgentUserId ?? "").ToLower()) ||
-                (!string.IsNullOrWhiteSpace(upn) && (link.AgentUpn ?? "").ToLower() == upn)
-            ));
+        return await _db.AgentOwnsClientAsync(
+            agentOid,
+            clientUserId,
+            GetAgentUpn(),
+            GetAgentIdCandidates());
     }
 
     private async Task<Domain.Entities.ClientProfile?> GetClientAsync(string clientUserId)

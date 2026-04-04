@@ -145,7 +145,15 @@ public class AnalyticsIngestController : ControllerBase
         }
 
         _db.AnalyticsEvents.Add(ev);
-        await _db.SaveChangesAsync();
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsClientEventIdDuplicate(ex))
+        {
+            _logger.LogInformation("AnalyticsIngest: duplicate ClientEventId ignored via DB constraint. clientEventId={ClientEventId}", req.ClientEventId);
+            return Ok(new { status = "duplicate_ignored" });
+        }
 
         return Ok(new { status = "ok", eventId = ev.EventId });
     }
@@ -167,6 +175,22 @@ public class AnalyticsIngestController : ControllerBase
 
     private bool IsSqliteProvider() =>
         _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsClientEventIdDuplicate(DbUpdateException ex)
+    {
+        var msg = ex.InnerException?.Message ?? ex.Message;
+        if (string.IsNullOrWhiteSpace(msg)) return false;
+
+        return
+            msg.Contains("ClientEventId", StringComparison.OrdinalIgnoreCase) &&
+            (
+                msg.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("duplicate", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("2601", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("2627", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("2067", StringComparison.OrdinalIgnoreCase)
+            );
+    }
 
     // Preflight responder for CORS
     [HttpOptions]

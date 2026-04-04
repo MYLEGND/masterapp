@@ -253,6 +253,10 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.VisitorId);
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
+            e.HasIndex(x => x.ClientEventId)
+                .IsUnique()
+                .HasDatabaseName("UX_AnalyticsEvents_ClientEventId")
+                .HasFilter("[ClientEventId] IS NOT NULL");
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
             e.HasIndex(x => new { x.AgentTrackingProfileId, x.EventUtc });

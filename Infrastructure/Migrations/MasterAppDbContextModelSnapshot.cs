@@ -512,6 +512,11 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("AgentTrackingProfileId");
 
+                    b.HasIndex("ClientEventId")
+                        .IsUnique()
+                        .HasFilter("[ClientEventId] IS NOT NULL")
+                        .HasDatabaseName("UX_AnalyticsEvents_ClientEventId");
+
                     b.HasIndex("ElementKey");
 
                     b.HasIndex("EventType");

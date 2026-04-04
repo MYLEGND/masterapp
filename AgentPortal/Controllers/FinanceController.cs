@@ -53,20 +53,11 @@ public class FinanceController : Controller
 
         private async Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId)
         {
-            var clientUserIdNorm = Norm(clientUserId);
-            if (string.IsNullOrWhiteSpace(agentOid) || string.IsNullOrWhiteSpace(clientUserIdNorm))
-                return false;
-
-            var upn = GetAgentUpn();
-            var agentIds = GetAgentIdCandidates();
-
-            return await _db.AgentClients.AnyAsync(link =>
-                (link.ClientUserId ?? string.Empty).ToLower() == clientUserIdNorm &&
-                (
-                    (link.AgentUserId ?? string.Empty).ToLower() == agentOid ||
-                    agentIds.Contains((link.AgentUserId ?? string.Empty).ToLower()) ||
-                    (!string.IsNullOrWhiteSpace(upn) && (link.AgentUpn ?? string.Empty).ToLower() == upn)
-                ));
+            return await _db.AgentOwnsClientAsync(
+                agentOid,
+                clientUserId,
+                GetAgentUpn(),
+                GetAgentIdCandidates());
         }
 
         [HttpGet]

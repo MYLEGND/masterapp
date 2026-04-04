@@ -6,6 +6,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace AgentPortal.Services;
 
@@ -13,6 +14,7 @@ public class CommitmentService : ICommitmentService
 {
     private readonly MasterAppDbContext _db;
     private readonly IExecutionEngine _execution;
+    private static string Normalize(string? value) => IdentityKey.Normalize(value);
 
     public CommitmentService(MasterAppDbContext db, IExecutionEngine execution)
     {
@@ -81,7 +83,15 @@ public class CommitmentService : ICommitmentService
 
     public async Task<Commitment?> FulfillCommitmentAsync(Guid id, string actorId, CancellationToken ct = default)
     {
-        var c = await _db.Commitments.FirstOrDefaultAsync(x => x.Id == id, ct);
+        var actorKey = Normalize(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return null;
+
+        var c = await _db.Commitments.FirstOrDefaultAsync(x =>
+            x.Id == id &&
+            (
+                (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                (x.CreatedBy ?? string.Empty).ToLower() == actorKey
+            ), ct);
         if (c == null) return null;
         c.Status = CommitmentStatus.Fulfilled;
         c.FulfilledAtUtc = DateTimeOffset.UtcNow;
@@ -96,17 +106,60 @@ public class CommitmentService : ICommitmentService
 
     public async Task<Commitment?> BreakCommitmentAsync(Guid id, string actorId, CancellationToken ct = default)
     {
-        var c = await _db.Commitments.FirstOrDefaultAsync(x => x.Id == id, ct);
+        var actorKey = Normalize(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return null;
+
+        var c = await _db.Commitments.FirstOrDefaultAsync(x =>
+            x.Id == id &&
+            (
+                (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                (x.CreatedBy ?? string.Empty).ToLower() == actorKey
+            ), ct);
         if (c == null) return null;
         c.Status = CommitmentStatus.Broken;
         await _db.SaveChangesAsync(ct);
         return c;
     }
 
+    public async Task<Commitment?> GetByIdForActorAsync(Guid id, string actorId, CancellationToken ct = default)
+    {
+        var actorKey = Normalize(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return null;
+
+        return await _db.Commitments.AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.Id == id &&
+                (
+                    (x.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                    (x.CreatedBy ?? string.Empty).ToLower() == actorKey
+                ), ct);
+    }
+
     public async Task<IReadOnlyList<Commitment>> GetByEntityAsync(RelatedEntityType entityType, string entityId, CancellationToken ct = default)
     {
         var list = await _db.Commitments.AsNoTracking()
             .Where(c => c.RelatedEntityType == entityType && c.RelatedEntityId == entityId)
+            .OrderBy(c => c.DueDateUtc)
+            .ToListAsync(ct);
+        return list;
+    }
+
+    public async Task<IReadOnlyList<Commitment>> GetByEntityForActorAsync(RelatedEntityType entityType, string entityId, string actorId, CancellationToken ct = default)
+    {
+        var actorKey = Normalize(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey))
+        {
+            return Array.Empty<Commitment>();
+        }
+
+        var list = await _db.Commitments.AsNoTracking()
+            .Where(c =>
+                c.RelatedEntityType == entityType &&
+                c.RelatedEntityId == entityId &&
+                (
+                    (c.PromisedById ?? string.Empty).ToLower() == actorKey ||
+                    (c.CreatedBy ?? string.Empty).ToLower() == actorKey
+                ))
             .OrderBy(c => c.DueDateUtc)
             .ToListAsync(ct);
         return list;
