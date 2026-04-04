@@ -31,33 +31,33 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         _resolver = resolver;
     }
 
-    private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope) =>
+    private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.AnalyticsEvents.AsNoTracking()
             .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
             .Where(EnvPredicateEvents())
-            .Where(ScopePredicateEvents(scope));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
-    private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope) =>
+    private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .Where(EnvPredicateLeads())
-            .Where(ScopePredicateLeads(scope));
+            .Where(ScopePredicateLeads(scope, scopedAgentIds));
 
-    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope) =>
+    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.AnalyticsEvents.AsNoTracking()
             .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
             .Where(EnvPredicateEvents())
-            .Where(ScopePredicateEvents(scope));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
-    private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope) =>
+    private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
             .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
             .Where(EnvPredicateLeads())
-            .Where(ScopePredicateLeads(scope));
+            .Where(ScopePredicateLeads(scope, scopedAgentIds));
 
     private bool EnvIncluded(string? env)
     {
@@ -91,10 +91,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return l => l.Environment == null || l.Environment == "" || l.Environment == "prod" || l.Environment == "production" || l.Environment == "dev" || l.Environment == "development";
     }
 
-    private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope)
+    private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)
     {
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
+            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
+            {
+                return e => e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value);
+            }
             var agentId = scope.AgentTrackingProfileId.Value;
             return e => e.AgentTrackingProfileId == agentId;
         }
@@ -102,14 +106,48 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return e => true;
     }
 
-    private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope)
+    private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
+            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
+            {
+                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
+            }
             var agentId = scope.AgentTrackingProfileId.Value;
             return l => l.AgentTrackingProfileId == agentId;
         }
         return l => true;
+    }
+
+    /// <summary>
+    /// Expands an agent scope to all tracking profile IDs sharing the same UPN.
+    /// This prevents analytics drop-offs when duplicate profile rows exist for one user.
+    /// </summary>
+    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope)
+    {
+        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+            return null;
+
+        var selectedId = scope.AgentTrackingProfileId.Value;
+        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.Id == selectedId)
+            .Select(p => p.AgentUpn)
+            .FirstOrDefaultAsync();
+
+        if (string.IsNullOrWhiteSpace(upn))
+            return new[] { selectedId };
+
+        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.AgentUpn == upn)
+            .Select(p => p.Id)
+            .Distinct()
+            .ToListAsync();
+
+        if (!ids.Contains(selectedId))
+            ids.Add(selectedId);
+
+        return ids.ToArray();
     }
 
     private static string? NormalizeEnv(string? env)
@@ -165,15 +203,16 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope).ToListAsync();
-        var leads = await BaseLeads(range, scope).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         // previous period for deltas
         var span = range.ToUtc - range.FromUtc;
         var prevFrom = range.FromUtc - span;
         var prevTo = range.ToUtc - span;
-        var prevEvents = await EventsInRange(prevFrom, prevTo, scope).ToListAsync();
-        var prevLeads = await LeadsInRange(prevFrom, prevTo, scope).ToListAsync();
+        var prevEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+        var prevLeads = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
 
         int pageViews = events.Count(e => e.EventType == "page_view");
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
@@ -258,7 +297,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
 
         var traffic = new TrafficOverviewDto
         {
@@ -314,8 +354,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope).ToListAsync();
-        var leads = await BaseLeads(range, scope).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         var pageViews = events.Where(e => e.EventType == "page_view")
             .GroupBy(e => e.PageKey ?? "unknown")
@@ -352,7 +393,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope)
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "cta_click")
             .ToListAsync();
 
@@ -372,7 +414,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
 
         int starts = events.Count(e => e.EventType == "quote_click");
         int formStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_"));
@@ -399,7 +442,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope)
     {
-        var events = await BaseEvents(range, scope)
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "lead_form_submit_success" ||
                         (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success")))
             .OrderByDescending(e => e.EventUtc)
@@ -423,12 +467,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, int take = 200)
     {
-        var leadsQuery = BaseLeads(range, scope)
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var leadsQuery = BaseLeads(range, scope, scopedAgentIds)
             .OrderByDescending(l => l.CreatedUtc)
             .Take(take);
 
         var leads = await leadsQuery.ToListAsync();
-        var total = await BaseLeads(range, scope).CountAsync();
+        var total = await BaseLeads(range, scope, scopedAgentIds).CountAsync();
 
         var dto = new LeadSnapshotDto
         {
