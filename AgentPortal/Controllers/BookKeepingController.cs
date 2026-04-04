@@ -101,9 +101,100 @@ public class BookKeepingController : Controller
     }
 
     [HttpGet]
-    public IActionResult AgentCommandCenter()
+    public async Task<IActionResult> AgentCommandCenter(CancellationToken ct = default)
     {
-        return View();
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var upn = GetAgentUpn();
+        var agentIds = GetAgentIdCandidates();
+
+        var assignedClientIds = await _db.AgentClients.AsNoTracking()
+            .Where(x =>
+                (x.AgentUserId ?? "").ToLower() == agentOid ||
+                agentIds.Contains((x.AgentUserId ?? "").ToLower()) ||
+                (!string.IsNullOrWhiteSpace(upn) && (x.AgentUpn ?? "").ToLower() == upn))
+            .Select(x => x.ClientUserId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToListAsync(ct);
+
+        var normalizedIds = assignedClientIds
+            .Select(Norm)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToList();
+
+        var vm = new AgentFinancialCommandCenterVm();
+        if (normalizedIds.Count == 0)
+            return View(vm);
+
+        var allClients = await _db.ClientProfiles.AsNoTracking()
+            .Where(c => normalizedIds.Contains((c.ClientUserId ?? "").ToLower()))
+            .ToListAsync(ct);
+
+        var businessClients = allClients
+            .Where(c => string.Equals(ResolveRecordType(c), "BusinessClient", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        vm.BusinessClientCount = businessClients.Count;
+        if (businessClients.Count == 0)
+            return View(vm);
+
+        var businessIds = businessClients
+            .Select(c => Norm(c.ClientUserId))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToList();
+
+        var connections = await _db.QuickBooksConnections.AsNoTracking()
+            .Where(x => x.IsActive && businessIds.Contains((x.OwnerUserId ?? "").ToLower()))
+            .ToListAsync(ct);
+
+        var snapshots = await _db.QuickBooksFinancialSnapshots.AsNoTracking()
+            .Where(x => businessIds.Contains((x.OwnerUserId ?? "").ToLower()))
+            .ToListAsync(ct);
+
+        var connectionByOwner = connections
+            .GroupBy(x => Norm(x.OwnerUserId))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedUtc).First());
+
+        var snapshotByOwner = snapshots
+            .GroupBy(x => Norm(x.OwnerUserId))
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.SyncedUtc).First());
+
+        var rows = new List<AgentFinancialClientRowVm>();
+        foreach (var client in businessClients)
+        {
+            var clientId = (client.ClientUserId ?? "").Trim();
+            var ownerKey = Norm(clientId);
+            connectionByOwner.TryGetValue(ownerKey, out var conn);
+            snapshotByOwner.TryGetValue(ownerKey, out var snap);
+
+            var fullName = $"{client.FirstName} {client.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(fullName)) fullName = clientId;
+
+            rows.Add(new AgentFinancialClientRowVm
+            {
+                ClientUserId = clientId,
+                ClientName = fullName,
+                IsQuickBooksConnected = conn != null,
+                RealmId = conn?.RealmId,
+                LastSyncUtc = conn?.LastSyncUtc ?? snap?.SyncedUtc,
+                LastSyncStatus = conn?.LastSyncStatus,
+                RevenueYtd = snap?.RevenueYtd ?? 0m,
+                NetProfitYtd = snap?.NetProfitYtd ?? 0m
+            });
+        }
+
+        vm.Clients = rows.OrderBy(x => x.ClientName).ToList();
+        vm.ConnectedClientCount = vm.Clients.Count(x => x.IsQuickBooksConnected);
+        vm.AggregateRevenueYtd = vm.Clients.Sum(x => x.RevenueYtd);
+        vm.AggregateNetProfitYtd = vm.Clients.Sum(x => x.NetProfitYtd);
+        vm.LatestSyncUtc = vm.Clients.Where(x => x.LastSyncUtc.HasValue).Select(x => x.LastSyncUtc).Max();
+
+        return View(vm);
     }
 
     [HttpGet]

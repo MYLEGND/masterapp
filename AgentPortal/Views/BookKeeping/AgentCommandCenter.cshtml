@@ -1,6 +1,9 @@
+@model AgentPortal.Models.AgentFinancialCommandCenterVm
+
 @{
     ViewData["Title"] = "Financial Command Center";
     Layout = "~/Views/Shared/_Layout.cshtml";
+    var m = Model ?? new AgentPortal.Models.AgentFinancialCommandCenterVm();
 }
 
 <div class="container py-4">
@@ -8,14 +11,95 @@
         <div class="card-body p-4">
             <h2 class="mb-2" style="font-weight:800;">Financial Command Center</h2>
             <p class="text-muted mb-4">
-                This is your independent agent command center inside AgentPortal.
-                Client-specific financial command centers remain available inside each Business Client workspace.
+                Agent-level QuickBooks overview across your Business Clients.
             </p>
 
-            <div class="d-flex flex-wrap gap-2">
-                <a class="btn btn-dark" asp-controller="Clients" asp-action="Index">Open Clients</a>
-                <a class="btn btn-outline-dark" asp-controller="Finance" asp-action="Index">Open Finance</a>
+            <div class="row g-3 mb-3">
+                <div class="col-md-3">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-muted small">Business Clients</div>
+                        <div class="fs-4 fw-bold">@m.BusinessClientCount</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-muted small">QuickBooks Connected</div>
+                        <div class="fs-4 fw-bold">@m.ConnectedClientCount</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-muted small">Aggregate Revenue YTD</div>
+                        <div class="fs-4 fw-bold">@m.AggregateRevenueYtd.ToString("C")</div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="border rounded p-3 h-100">
+                        <div class="text-muted small">Aggregate Net Profit YTD</div>
+                        <div class="fs-4 fw-bold @(m.AggregateNetProfitYtd >= 0 ? "text-success" : "text-danger")">@m.AggregateNetProfitYtd.ToString("C")</div>
+                    </div>
+                </div>
             </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Client QuickBooks Status</h5>
+                <small class="text-muted">Latest Sync: @(m.LatestSyncUtc?.ToLocalTime().ToString("MM/dd/yyyy hh:mm tt") ?? "Never")</small>
+            </div>
+
+            @if (m.Clients.Count == 0)
+            {
+                <div class="alert alert-light border mb-0">
+                    No business clients found for this agent yet.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead>
+                            <tr>
+                                <th>Client</th>
+                                <th>Status</th>
+                                <th>Realm</th>
+                                <th>Last Sync</th>
+                                <th class="text-end">Revenue YTD</th>
+                                <th class="text-end">Net Profit YTD</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in m.Clients)
+                            {
+                                <tr>
+                                    <td>@row.ClientName</td>
+                                    <td>
+                                        @if (row.IsQuickBooksConnected)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">Connected</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">Not Connected</span>
+                                        }
+                                    </td>
+                                    <td>@(string.IsNullOrWhiteSpace(row.RealmId) ? "-" : row.RealmId)</td>
+                                    <td>@(row.LastSyncUtc?.ToLocalTime().ToString("MM/dd/yyyy hh:mm tt") ?? "Never")</td>
+                                    <td class="text-end">@row.RevenueYtd.ToString("C")</td>
+                                    <td class="text-end @(row.NetProfitYtd >= 0 ? "text-success" : "text-danger")">@row.NetProfitYtd.ToString("C")</td>
+                                    <td class="text-end">
+                                        <a class="btn btn-sm btn-outline-dark"
+                                           asp-controller="ClientWorkspace"
+                                           asp-action="BookKeeping"
+                                           asp-route-clientUserId="@row.ClientUserId">
+                                            Open Client Command Center
+                                        </a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </div>
     </div>
 </div>
