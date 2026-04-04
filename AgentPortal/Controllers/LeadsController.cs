@@ -192,6 +192,9 @@ public class LeadsController : Controller
         return oid;
     }
 
+    private Task<bool> AgentOwnsLeadAsync(string agentId, string leadId, CancellationToken ct = default)
+        => _db.AgentOwnsLeadAsync(agentId, leadId, ct);
+
     private bool IsAdminUser()
     {
         var oid = (User?.FindFirst("oid")?.Value ?? "").Trim().ToLowerInvariant();
@@ -1114,7 +1117,6 @@ public class LeadsController : Controller
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // workstation lead bridge can stay open for long sessions; avoid stale token false-failures
     public async Task<IActionResult> ApplyOutcome([FromBody] LeadOutcomeRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.clientUserId)) return BadRequest("Lead id required");
@@ -1640,6 +1642,9 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
+        if (!await AgentOwnsLeadAsync(agentId, id))
+            return Forbid();
+
         var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Lead, id, agentId);
         ViewBag.LeadId = id;
         return PartialView("~/Views/Leads/_ActionsTab.cshtml", actions);
@@ -1653,9 +1658,12 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
+        if (!await AgentOwnsLeadAsync(agentId, id))
+            return Forbid();
+
         try
         {
-            var commitments = await _commitments.GetByEntityAsync(RelatedEntityType.Lead, id);
+            var commitments = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Lead, id, agentId);
             ViewBag.LeadId = id;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Leads/_CommitmentsTab.cshtml", commitments);
@@ -1671,7 +1679,6 @@ public class LeadsController : Controller
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view action form should survive token churn
     public async Task<IActionResult> CreateAction([FromForm] CreateLeadActionRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.LeadId) || string.IsNullOrWhiteSpace(req.Title))
@@ -1681,6 +1688,9 @@ public class LeadsController : Controller
         try { ownerId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
+        if (!await AgentOwnsLeadAsync(ownerId, req.LeadId))
+            return Forbid();
+
         var action = BuildLeadAction(req, ownerId);
 
         await _execution.CreateActionAsync(action);
@@ -1688,7 +1698,6 @@ public class LeadsController : Controller
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment form should survive token churn
     public async Task<IActionResult> CreateCommitment([FromForm] CreateCommitmentRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.LeadId) || string.IsNullOrWhiteSpace(req.PromiseText))
@@ -1700,6 +1709,9 @@ public class LeadsController : Controller
         string agentId;
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
+
+        if (!await AgentOwnsLeadAsync(agentId, req.LeadId))
+            return Forbid();
 
         var createRequest = new CommitmentCreateRequest(
             RelatedEntityType.Lead,
@@ -1751,7 +1763,6 @@ public class LeadsController : Controller
         };
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> FulfillCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
@@ -1762,12 +1773,14 @@ public class LeadsController : Controller
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, actorId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Lead) return BadRequest("Only lead commitments are supported here.");
 
-            await _commitments.FulfillCommitmentAsync(id, actorId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Lead, commit.RelatedEntityId);
+            var updated = await _commitments.FulfillCommitmentAsync(id, actorId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Lead, commit.RelatedEntityId, actorId);
             ViewBag.LeadId = commit.RelatedEntityId;
             ViewBag.AgentId = actorId;
             return PartialView("~/Views/Leads/_CommitmentsTab.cshtml", refreshed);
@@ -1783,7 +1796,6 @@ public class LeadsController : Controller
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> BreakCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
@@ -1794,12 +1806,14 @@ public class LeadsController : Controller
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, actorId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Lead) return BadRequest("Only lead commitments are supported here.");
 
-            await _commitments.BreakCommitmentAsync(id, actorId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Lead, commit.RelatedEntityId);
+            var updated = await _commitments.BreakCommitmentAsync(id, actorId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Lead, commit.RelatedEntityId, actorId);
             ViewBag.LeadId = commit.RelatedEntityId;
             ViewBag.AgentId = actorId;
             return PartialView("~/Views/Leads/_CommitmentsTab.cshtml", refreshed);

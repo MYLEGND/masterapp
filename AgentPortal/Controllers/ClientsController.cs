@@ -1476,7 +1476,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view action form should survive token churn
     public async Task<IActionResult> CreateAction([FromForm] CreateClientActionRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ClientId) || string.IsNullOrWhiteSpace(req.Title))
@@ -1496,7 +1495,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment form should survive token churn
     public async Task<IActionResult> CreateCommitment([FromForm] CreateClientCommitmentRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ClientId) || string.IsNullOrWhiteSpace(req.PromiseText))
@@ -1560,7 +1558,6 @@ namespace AgentPortal.Controllers;
         };
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> FulfillCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
@@ -1594,7 +1591,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> BreakCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
@@ -3283,7 +3279,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // allow persistent saves from Quick View without token churn after app restarts
     public async Task<IActionResult> SaveAdvancedMarketsInputs([FromBody] SaveAdvancedMarketsInputsRequest? request)
     {
         string agentOid;
@@ -3396,7 +3391,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
     }
 
     [HttpPost("/clients/{id}/financial-plan")]
-    [IgnoreAntiforgeryToken]
     public async Task<IActionResult> SaveFinancialPlan(Guid id, [FromBody] SaveFinancialPlanRequest? request)
     {
         string agentOid;

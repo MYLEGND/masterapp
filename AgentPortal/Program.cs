@@ -27,6 +27,7 @@ using Microsoft.Identity.Web.UI;
 using QuestPDF.Infrastructure;
 using System.Threading.RateLimiting;
 using System.IO;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -381,10 +382,21 @@ if (sqliteConn != null)
     EnsureSqliteBackup(sqliteConn);
 }
 
+var strictMigrations = builder.Environment.IsProduction()
+    || builder.Environment.IsStaging()
+    || string.Equals(builder.Configuration["Migrations:Strict"], "true", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(Environment.GetEnvironmentVariable("MIGRATION_STRICT"), "true", StringComparison.OrdinalIgnoreCase);
+
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
 {
-    // Suppress PendingModelChangesWarning in all environments so Migrate() never throws on snapshot drift
-    options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+    // In strict environments, treat model drift as fatal; in local/dev keep warnings noisy but non-blocking.
+    options.ConfigureWarnings(w =>
+    {
+        if (strictMigrations)
+            w.Throw(RelationalEventId.PendingModelChangesWarning);
+        else
+            w.Ignore(RelationalEventId.PendingModelChangesWarning);
+    });
 
     if (useSqlServer)
     {
@@ -462,6 +474,19 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Hard-stop on unapplied migrations in strict environments to prevent schema drift reaching prod.
+if (strictMigrations && !builder.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+    var pending = db.Database.GetPendingMigrations().ToList();
+    if (pending.Count > 0)
+    {
+        var preview = string.Join(", ", pending.Take(5));
+        throw new InvalidOperationException($"STARTUP BLOCKED: pending EF migrations detected ({pending.Count}). Apply migrations before deploy. First: {preview}");
+    }
+}
 
 // Auto-migrate SQLite (local dev only). SQL Server migrations must be applied explicitly
 // via 'dotnet ef database update' before deployment — never at runtime on production.

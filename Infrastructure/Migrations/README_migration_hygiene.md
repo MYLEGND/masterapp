@@ -6,6 +6,7 @@ Providers
 - SQLite (local dev / tests) – some older migrations used provider-conditional SQL; keep SQLite paths in sync.
 
 Known risks mitigated
+- Startup now hard-blocks in strict environments (Prod/Staging or MIGRATION_STRICT=true) when pending migrations exist.
 - 20260330094500_RepairAgentProfilesSqlite ensures AgentProfiles exists on SQLite before later ALTERs.
 - MigrationHealthHostedService logs provider, pending migrations, and presence of critical tables (ActionItems, ActionLogs, Blockers, DecisionRecords, Commitments) at startup without mutating schema.
 

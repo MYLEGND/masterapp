@@ -16,7 +16,7 @@ public sealed class MigrationHealthHostedService : IHostedService
 
     private static readonly string[] CriticalTables =
     {
-        "ActionItems", "ActionLogs", "Blockers", "DecisionRecords", "Commitments"
+        "ActionItems", "ActionLogs", "Blockers", "DecisionRecords", "Commitments", "AnalyticsEvents"
     };
 
     public MigrationHealthHostedService(IServiceProvider services, ILogger<MigrationHealthHostedService> logger)
