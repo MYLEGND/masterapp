@@ -1297,15 +1297,18 @@ markNeutral(savingsTipsOut);
                 return errs;
             }
             function showBlock(errs){
-                const block = document.getElementById('wfd_block');
-                const block2 = document.getElementById('wfd_block_top');
-                const setBlock = (el) => {
+                // Use a single visible warning box; prefer the top box if present.
+                const primary = document.getElementById('wfd_block_top') || document.getElementById('wfd_block');
+                const secondary = document.getElementById('wfd_block');
+                const apply = (el) => {
                     if (!el) return;
-                    if (!errs.length){ el.style.display='none'; return; }
+                    if (!errs.length){ el.style.display='none'; el.innerHTML=''; return; }
                     el.style.display='block';
                     el.innerHTML = errs.map(e=>`⚠️ ${e}`).join('<br>');
                 };
-                setBlock(block); setBlock(block2);
+                apply(primary);
+                // Ensure no duplicate render in the secondary container
+                if (secondary && secondary !== primary) { secondary.style.display = 'none'; secondary.innerHTML = ''; }
                 lastValidationErrors = errs;
             }
             function validateAndGate(){

@@ -640,8 +640,8 @@
 </aside>
 
 <!-- Accumulation + Distribution Modal (uses existing Legend modal system/backdrop) -->
-<div class="modal fade" id="clientFinPlanModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-centered">
+<div class="modal fade finplan-modal" id="clientFinPlanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
         <div class="modal-content" style="background:#0f172a; color:#e2e8f0; border:1.5px solid rgba(166,128,35,.5); border-radius:16px;">
             <div class="modal-header" style="border:0; align-items:flex-start;">
                 <div>
@@ -699,8 +699,9 @@
                                 </div>
                                 <div class="row g-2">
                             <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_invAlloc" /></div>
-                            <div class="col-6"><label class="form-label">Return %</label><input class="form-control" id="wfd_invReturn" /></div>
+                            <div class="col-6"><label class="form-label">Expected Annual Return %</label><input class="form-control" id="wfd_invReturn" /></div>
                             <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_invTax" /></div>
+                            <div class="col-6"><label class="form-label">Starting Dollar Amount</label><input class="form-control" id="wfd_invAmt" /></div>
                         </div>
                     </div>
 
@@ -717,12 +718,13 @@
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_liAlloc" /></div>
-                                    <div class="col-6"><label class="form-label">Growth %</label><input class="form-control" id="wfd_liGrowth" /></div>
+                                    <div class="col-6"><label class="form-label">Growth / Credited Rate %</label><input class="form-control" id="wfd_liGrowth" /></div>
                                     <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_liTax" /></div>
-                                    <div class="col-6"><label class="form-label">Efficiency %</label><input class="form-control" id="wfd_liEfficiency" /></div>
+                                    <div class="col-6"><label class="form-label">Access / Efficiency Factor %</label><input class="form-control" id="wfd_liEfficiency" /></div>
                                     <div class="col-6"><label class="form-label">Death Benefit</label><input class="form-control" id="wfd_liDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Starting Dollar Amount</label><input class="form-control" id="wfd_liAmt" /></div>
                                     <div class="col-6"><label class="form-label">Policy Type</label><select class="form-select" id="wfd_liType"></select></div>
-                                    <div class="col-6"><label class="form-label">Access</label><select class="form-select" id="wfd_liAccess"></select></div>
+                                    <div class="col-6"><label class="form-label">Access Method</label><select class="form-select" id="wfd_liAccess"></select></div>
                                 </div>
                             </div>
 
@@ -739,12 +741,12 @@
                                 </div>
                                 <div class="row g-2">
                                     <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_annAlloc" /></div>
-                                    <div class="col-6"><label class="form-label">Return %</label><input class="form-control" id="wfd_annReturn" /></div>
+                                    <div class="col-6"><label class="form-label">Credited / Expected Return %</label><input class="form-control" id="wfd_annReturn" /></div>
                                     <div class="col-6"><label class="form-label">Tax %</label><input class="form-control" id="wfd_annTax" /></div>
-                                    <div class="col-6"><label class="form-label">Death Benefit</label><input class="form-control" id="wfd_annDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Annuity Death Benefit (optional)</label><input class="form-control" id="wfd_annDeath" /></div>
                                     <div class="col-6"><label class="form-label">Rollup %</label><input class="form-control" id="wfd_annRollup" /></div>
-                                    <div class="col-6"><label class="form-label">Starting $</label><input class="form-control" id="wfd_annAmt" /></div>
-                                    <div class="col-6"><label class="form-label">Design</label><select class="form-select" id="wfd_annDesign"><option value="">-- SELECT DESIGN --</option></select></div>
+                                    <div class="col-6"><label class="form-label">Starting Annuity Value</label><input class="form-control" id="wfd_annAmt" /></div>
+                                    <div class="col-6"><label class="form-label">Annuity Design</label><select class="form-select" id="wfd_annDesign"><option value="">-- SELECT DESIGN --</option></select></div>
                                     <div class="col-6 d-flex flex-wrap align-items-center gap-2">
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="wfd_annIncomeRider">
@@ -845,4 +847,7 @@
     .dp-total-row{display:flex;align-items:center;justify-content:space-between;background:#0f172a;border:1px solid rgba(166,128,35,.4);border-radius:12px;padding:10px 12px;margin-top:12px;}
     .dp-total-label{font-weight:800;color:#cbd5e1;}
     .dp-total-value{font-weight:900;color:#d9b35a;font-size:1.1rem;}
+
+    /* Wider modal */
+    .finplan-modal .modal-dialog{max-width:1120px;width:calc(100% - 40px);}
 </style>
