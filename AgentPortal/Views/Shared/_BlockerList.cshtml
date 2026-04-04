@@ -1,6 +1,15 @@
 @model IEnumerable<Domain.Entities.Blocker>
 @{
     var emptyMessage = ViewData["EmptyMessage"] as string ?? "No blockers. Keep momentum by clearing risks early.";
+    var relatedEntityNames = ViewData["RelatedEntityNames"] as IDictionary<string, string>;
+    string RelatedKey(Domain.Enums.RelatedEntityType t, string? id)
+        => $"{(int)t}:{(id ?? string.Empty).Trim().ToLowerInvariant()}";
+    string RelatedTypeLabel(Domain.Enums.RelatedEntityType t) => t switch
+    {
+        Domain.Enums.RelatedEntityType.Lead => "Lead Card",
+        Domain.Enums.RelatedEntityType.Client => "Client Card",
+        _ => "Related Card"
+    };
 }
 <table class="table table-sm table-striped mb-0">
     <thead>
@@ -21,11 +30,18 @@
     {
         foreach (var b in Model)
         {
+            var relatedKey = RelatedKey(b.RelatedEntityType, b.RelatedEntityId);
+            string? relatedName = null;
+            var hasRelated = relatedEntityNames != null && relatedEntityNames.TryGetValue(relatedKey, out relatedName) && !string.IsNullOrWhiteSpace(relatedName);
             <tr>
                 <td>@b.BlockerReason</td>
                 <td>@b.BlockerType</td>
                 <td>
-                    <div>@b.RelatedEntityType</div>
+                    <div>@RelatedTypeLabel(b.RelatedEntityType)</div>
+                    @if (hasRelated)
+                    {
+                        <div class="fw-semibold">@relatedName</div>
+                    }
                     <div class="text-muted small">@b.RelatedEntityId</div>
                 </td>
                 <td>@b.Status</td>

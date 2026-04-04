@@ -2,6 +2,15 @@
 @{
     var showControls = (ViewData["ShowActionControls"] as bool?) == true;
     var emptyMessage = ViewData["EmptyMessage"] as string ?? "No actions yet. Create your next step.";
+    var relatedEntityNames = ViewData["RelatedEntityNames"] as IDictionary<string, string>;
+    string RelatedTypeLabel(Domain.Enums.RelatedEntityType t) => t switch
+    {
+        Domain.Enums.RelatedEntityType.Lead => "Lead Card",
+        Domain.Enums.RelatedEntityType.Client => "Client Card",
+        _ => "Related Card"
+    };
+    string RelatedKey(Domain.Enums.RelatedEntityType t, string? id)
+        => $"{(int)t}:{(id ?? string.Empty).Trim().ToLowerInvariant()}";
     string StatusClass(Domain.Enums.ActionStatus s) => s switch
     {
         Domain.Enums.ActionStatus.Completed => "status-completed",
@@ -55,6 +64,16 @@
         white-space: normal;
         word-break: break-word;
         overflow-wrap: anywhere;
+    }
+    .action-title{
+        font-weight: 700;
+        color:#0b1224;
+    }
+    .action-related{
+        font-size:.72rem;
+        color:#475569;
+        margin-top:2px;
+        line-height:1.2;
     }
     .action-table td.text-end{
         position: relative;
@@ -173,8 +192,17 @@
         foreach (var item in Model)
         {
             var statusClass = StatusClass(item.Status);
+            var relatedKey = RelatedKey(item.RelatedEntityType, item.RelatedEntityId);
+            string? relatedName = null;
+            var hasRelated = relatedEntityNames != null && relatedEntityNames.TryGetValue(relatedKey, out relatedName) && !string.IsNullOrWhiteSpace(relatedName);
             <tr class="action-row @statusClass">
-                <td>@item.Title</td>
+                <td>
+                    <div class="action-title">@item.Title</div>
+                    @if (hasRelated)
+                    {
+                        <div class="action-related">@RelatedTypeLabel(item.RelatedEntityType): @relatedName</div>
+                    }
+                </td>
                 <td>@(item.DueDateUtc?.ToLocalTime().ToString("MM/dd"))</td>
                 <td><span class="status-pill @statusClass">@item.Status</span></td>
                 <td>@item.Priority</td>
