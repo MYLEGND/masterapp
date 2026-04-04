@@ -1,0 +1,21 @@
+@{
+    ViewData["Title"] = "Financial Command Center";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container py-4">
+    <div class="card shadow-sm border-0" style="border-radius:14px;">
+        <div class="card-body p-4">
+            <h2 class="mb-2" style="font-weight:800;">Financial Command Center</h2>
+            <p class="text-muted mb-4">
+                This is your independent agent command center inside AgentPortal.
+                Client-specific financial command centers remain available inside each Business Client workspace.
+            </p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <a class="btn btn-dark" asp-controller="Clients" asp-action="Index">Open Clients</a>
+                <a class="btn btn-outline-dark" asp-controller="Finance" asp-action="Index">Open Finance</a>
+            </div>
+        </div>
+    </div>
+</div>

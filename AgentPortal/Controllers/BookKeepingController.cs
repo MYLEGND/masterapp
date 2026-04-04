@@ -86,8 +86,7 @@ public class BookKeepingController : Controller
     {
         if (string.IsNullOrWhiteSpace(clientUserId))
         {
-            TempData["QuickBooksMigrationNotice"] = "Bookkeeping is now QuickBooks-powered inside each business client workspace.";
-            return RedirectToAction("Index", "Clients");
+            return RedirectToAction(nameof(AgentCommandCenter));
         }
 
         string agentOid;
@@ -99,6 +98,12 @@ public class BookKeepingController : Controller
             return Forbid();
 
         return RedirectToAction("BookKeeping", "ClientWorkspace", new { clientUserId = normalized, monthKey });
+    }
+
+    [HttpGet]
+    public IActionResult AgentCommandCenter()
+    {
+        return View();
     }
 
     [HttpGet]
