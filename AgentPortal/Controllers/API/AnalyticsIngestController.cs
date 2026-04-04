@@ -135,6 +135,15 @@ public class AnalyticsIngestController : ControllerBase
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null
         };
 
+        // Legacy local SQLite databases may have AnalyticsEvents.Id as non-rowid bigint PK
+        // (not auto-generated). In that case we assign a monotonic Id so local ingest works.
+        if (IsSqliteProvider())
+        {
+            var nextId =
+                (await _db.AnalyticsEvents.AsNoTracking().MaxAsync(x => (long?)x.Id, HttpContext.RequestAborted) ?? 0L) + 1L;
+            ev.Id = nextId;
+        }
+
         _db.AnalyticsEvents.Add(ev);
         await _db.SaveChangesAsync();
 
@@ -146,6 +155,9 @@ public class AnalyticsIngestController : ControllerBase
 
     private string CurrentEnvironment() =>
         Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
+    private bool IsSqliteProvider() =>
+        _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;
 
     // Preflight responder for CORS
     [HttpOptions]

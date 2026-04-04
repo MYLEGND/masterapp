@@ -43,7 +43,13 @@ public sealed class SlugRoutingMiddleware : IMiddleware
             return;
         }
 
-        if (!path.StartsWith("/a", StringComparison.OrdinalIgnoreCase))
+        // Only treat "/a" and "/a/{slug}" as tracked-slug routes.
+        // This avoids hijacking unrelated endpoints like "/api/...".
+        var isAgentSlugRoute =
+            path.Equals("/a", StringComparison.OrdinalIgnoreCase) ||
+            path.StartsWith("/a/", StringComparison.OrdinalIgnoreCase);
+
+        if (!isAgentSlugRoute)
         {
             await next(context);
             return;
