@@ -2551,6 +2551,8 @@ markNeutral(savingsTipsOut);
                         }
                         if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove('text-danger'); }
                     }catch(err){
+                        // AbortError is expected when the user keeps typing; suppress noise.
+                        if (err?.name === 'AbortError') return;
                         if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add('text-danger'); }
                         if (dpResultsRef){ dpResultsRef.style.display = "none"; }
                         toast(err?.message || "Search failed.");
