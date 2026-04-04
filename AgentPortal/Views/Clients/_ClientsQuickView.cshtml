@@ -837,17 +837,57 @@
     .ph-note{color:#cbd5e1;font-size:0.9rem;}
     .ph-empty{color:#94a3b8;font-weight:700;}
 
-    /* Mini distribution planner styling (borrowed from main DP) */
-    .finplan-section{margin-bottom:16px;padding:14px;border:1px solid rgba(166,128,35,.35);border-radius:14px;background:#0c1222;}
-    .dp-bucket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:10px;}
-    .dp-bkt{border:1.5px solid rgba(166,128,35,.45);border-radius:14px;background:#0f172a;padding:12px 12px 10px;box-shadow:0 10px 30px rgba(0,0,0,.24);}
+    /* Mini distribution planner styling (matched to Finance DP) */
+    .finplan-modal .modal-dialog{max-width:1140px;width:calc(100% - 32px);}
+    .finplan-section{
+        margin-bottom:16px;
+        padding:14px 14px 12px;
+        border:1.5px solid rgba(166,128,35,.35);
+        border-radius:16px;
+        background:#0b1529;
+        box-shadow:0 12px 32px rgba(0,0,0,.32);
+    }
+    .finplan-section .form-label{font-weight:800;color:#cbd5e1;}
+    .finplan-section input.form-control,
+    .finplan-section select.form-select{
+        background:#0f1d38;
+        border:1.5px solid rgba(166,128,35,.45);
+        color:#e2e8f0;
+        border-radius:12px;
+        padding:10px 12px;
+        font-weight:800;
+    }
+    .finplan-section input.form-control:focus,
+    .finplan-section select.form-select:focus{
+        border-color:rgba(221,180,87,.9);
+        box-shadow:0 0 0 3px rgba(221,180,87,.15);
+    }
+    .dp-bucket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:10px;}
+    .dp-bkt{
+        border:1.6px solid rgba(166,128,35,.55);
+        border-radius:16px;
+        background:#0d1c36;
+        padding:14px 14px 12px;
+        box-shadow:0 16px 36px rgba(0,0,0,.32);
+    }
     .dp-bkt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
-    .dp-bkt-title{font-weight:900;letter-spacing:.3px;}
-    .dp-bkt-sub{font-size:.82rem;color:#94a3b8;}
-    .dp-total-row{display:flex;align-items:center;justify-content:space-between;background:#0f172a;border:1px solid rgba(166,128,35,.4);border-radius:12px;padding:10px 12px;margin-top:12px;}
-    .dp-total-label{font-weight:800;color:#cbd5e1;}
-    .dp-total-value{font-weight:900;color:#d9b35a;font-size:1.1rem;}
-
-    /* Wider modal */
-    .finplan-modal .modal-dialog{max-width:1120px;width:calc(100% - 40px);}
+    .dp-bkt-title{font-weight:1000;letter-spacing:.4px;}
+    .dp-bkt-sub{font-size:.82rem;color:#9fb4d1;}
+    .dp-bkt.investments{border-color:rgba(59,130,246,.6);}
+    .dp-bkt.life{border-color:rgba(221,180,87,.7);}
+    .dp-bkt.annuities{border-color:rgba(74,222,128,.6);}
+    .dp-total-row{
+        display:flex;align-items:center;justify-content:space-between;
+        background:#0d1c36;
+        border:1.5px solid rgba(166,128,35,.5);
+        border-radius:14px;
+        padding:12px;
+        margin-top:14px;
+        box-shadow:0 8px 20px rgba(0,0,0,.22);
+    }
+    .dp-total-label{font-weight:900;color:#e2e8f0;letter-spacing:.2px;}
+    .dp-total-value{font-weight:1000;color:#22c55e;font-size:1.1rem;}
+    /* toggle accent */
+    .finplan-section .form-check-input:checked{background-color:#d9b35a;border-color:#d9b35a;}
+    .finplan-section .form-check-input:focus{box-shadow:0 0 0 3px rgba(221,180,87,.25);}
 </style>
