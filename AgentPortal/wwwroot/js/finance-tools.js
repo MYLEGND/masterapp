@@ -869,10 +869,29 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 wfActionsEl.innerHTML = "";
             }
 
-            const wfResultsEl = document.getElementById("wfClientResults");
+            const wfSearchInput = document.getElementById("wfClientSearch");
+            let wfResultsEl = document.getElementById("wfClientResults");
 
             let wfSearchAbort = null;
             let wfSearchToken = 0;
+            // Shared client selector for WF + DP
+            let dpSearchInputRef = null;
+            let dpResultsRef = null;
+            const selectActiveClient = async (item) => {
+                if (!item || !item.clientUserId) return;
+                const name = item.displayName || item.clientUserId;
+                if (wfSearchInput) wfSearchInput.value = name;
+                if (dpSearchInputRef) dpSearchInputRef.value = name;
+                if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
+                if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
+                const statusEl = document.getElementById("wfPlanStatus");
+                if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
+                wfActiveClientId = item.clientUserId;
+                dpActiveClientId = item.clientUserId;
+                wfPlanVersion = 0; dpPlanVersion = 0;
+                wfPlanLoaded = false; dpPlanLoaded = false;
+                await loadWfPlan(item.clientUserId);
+            };
             async function searchWfClients(q){
                 const statusEl = document.getElementById("wfPlanStatus");
                 const qTrim = (q || "").trim();
@@ -923,14 +942,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                                 <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
                                 <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
                             `;
-                            div.addEventListener("click", async () => {
-                                wfResultsEl.style.display = "none";
-                                wfActiveClientId = item.clientUserId;
-                                wfPlanVersion = 0;
-                                wfPlanLoaded = false;
-                                if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
-                                await loadWfPlan(wfActiveClientId);
-                            });
+                            div.addEventListener("click", async () => { await selectActiveClient(item); });
                             frag.appendChild(div);
                         });
                         wfResultsEl.replaceChildren(frag);
@@ -2485,7 +2497,7 @@ markNeutral(savingsTipsOut);
                 let dpSearchAbort = null;
                 let dpSearchToken = 0;
                 let dpSearchTimer = null;
-                const dpResultsEl = document.getElementById('dpClientResults');
+                dpResultsRef = document.getElementById('dpClientResults');
                 async function searchDpClients(q){
                     const statusEl = document.getElementById('dpPlanStatus');
                     const qTrim = (q || "").trim();
@@ -2514,7 +2526,7 @@ markNeutral(savingsTipsOut);
                             if (dpResultsEl){ dpResultsEl.style.display = "none"; dpResultsEl.innerHTML = ""; }
                             return;
                         }
-                        if (dpResultsEl){
+                        if (dpResultsRef){
                             const frag = document.createDocumentFragment();
                             list.forEach(item => {
                                 const btn = document.createElement('button');
@@ -2528,26 +2540,16 @@ markNeutral(savingsTipsOut);
                                     <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
                                     <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
                                 `;
-                                btn.addEventListener('click', async ()=>{
-                                    dpResultsEl.style.display = "none";
-                                    wfActiveClientId = item.clientUserId;
-                                    dpActiveClientId = item.clientUserId;
-                                    wfPlanVersion = 0;
-                                    dpPlanVersion = 0;
-                                    wfPlanLoaded = false;
-                                    dpPlanLoaded = false;
-                                    if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove('text-danger'); }
-                                    await loadWfPlan(item.clientUserId); // WF load triggers DP hydrate
-                                });
+                                btn.addEventListener('click', async ()=>{ await selectActiveClient(item); });
                                 frag.appendChild(btn);
                             });
-                            dpResultsEl.replaceChildren(frag);
-                            dpResultsEl.style.display = "block";
+                            dpResultsRef.replaceChildren(frag);
+                            dpResultsRef.style.display = "block";
                         }
                         if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove('text-danger'); }
                     }catch(err){
                         if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add('text-danger'); }
-                        if (dpResultsEl){ dpResultsEl.style.display = "none"; }
+                        if (dpResultsRef){ dpResultsRef.style.display = "none"; }
                         toast(err?.message || "Search failed.");
                     }
                 }
