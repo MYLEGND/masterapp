@@ -195,7 +195,7 @@ namespace AgentPortal.Controllers;
         if (client == null || !string.Equals(ResolveRecordType(client), "BusinessClient", StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
-        return await RedirectToClientPortalAsync(client, "/BookKeeping/Reports");
+        return await RedirectToClientPortalAsync(client, "/BookKeeping");
         }
 
     [HttpGet]

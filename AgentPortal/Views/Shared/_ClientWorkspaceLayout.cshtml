@@ -37,7 +37,10 @@
             : "";
 
     string ActiveBookKeeping() =>
-        string.Equals(currentController, "BookKeeping", StringComparison.OrdinalIgnoreCase)
+        string.Equals(currentController, "BookKeeping", StringComparison.OrdinalIgnoreCase) ||
+        (string.Equals(currentController, "ClientWorkspace", StringComparison.OrdinalIgnoreCase) &&
+         (string.Equals(currentAction, "BookKeeping", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(currentAction, "BookKeepingReports", StringComparison.OrdinalIgnoreCase)))
             ? "active"
             : "";
 
@@ -739,10 +742,10 @@
                         {
                             <li class="nav-item">
                                 <a class="nav-link @(ActiveBookKeeping())"
-                                   asp-controller="BookKeeping"
-                                   asp-action="Index"
+                                   asp-controller="ClientWorkspace"
+                                   asp-action="BookKeeping"
                                    asp-route-clientUserId="@clientUserId">
-                                    Book Keeping
+                                    Financial Command Center
                                 </a>
                             </li>
                         }
@@ -936,10 +939,10 @@
             @if (showBookKeeping)
             {
                 <a class="explore-item" data-tone="ops"
-                   asp-controller="BookKeeping"
-                   asp-action="Index"
+                   asp-controller="ClientWorkspace"
+                   asp-action="BookKeeping"
                    asp-route-clientUserId="@clientUserId">
-                    <span>Book Keeping</span>
+                    <span>Financials</span>
                     <small>Ops</small>
                 </a>
             }
