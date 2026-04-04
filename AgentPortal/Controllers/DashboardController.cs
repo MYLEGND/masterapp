@@ -6,6 +6,7 @@ using AgentPortal.Models;
 using Shared.Auth;
 using Domain.Enums;
 using Infrastructure.Data;
+using AgentPortal.Services.Analytics;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Controllers;

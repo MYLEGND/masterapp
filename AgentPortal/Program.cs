@@ -113,8 +113,14 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 hcBuilder.AddCheck<AgentPortal.Health.LiveSyncPingHealthCheck>("livesync", tags: ["ready"]);
 hcBuilder.AddCheck<AgentPortal.Health.IngestHealthCheck>("ingest", tags: ["ready"]);
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
-builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-builder.Services.Decorate<IEmailSender, AgentPortal.Services.Resilience.ResilientEmailSender>();
+builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddSingleton<IEmailSender>(sp =>
+{
+    var inner = sp.GetRequiredService<SmtpEmailSender>();
+    var logger = sp.GetRequiredService<ILogger<AgentPortal.Services.Resilience.ResilientEmailSender>>();
+    var flags = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags>>();
+    return new AgentPortal.Services.Resilience.ResilientEmailSender(inner, logger, flags);
+});
 // Application Insights telemetry — only registered when connection string is present
 if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
     builder.Services.AddApplicationInsightsTelemetry();
