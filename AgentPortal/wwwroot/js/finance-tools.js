@@ -2712,6 +2712,7 @@ markNeutral(savingsTipsOut);
 
                 const dpSearchBtn = document.getElementById('dpClientSearchBtn');
                 const dpSearchInput = document.getElementById('dpClientSearch');
+                dpSearchInputRef = dpSearchInput;
                 const dpSearchRow = document.getElementById('dpClientSearchRow');
                 if (dpSearchRow) dpSearchRow.style.display = 'flex';
 
