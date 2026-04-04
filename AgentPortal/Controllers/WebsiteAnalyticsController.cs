@@ -6,6 +6,7 @@ using AgentPortal.Security;
 using AgentPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Controllers;
 
@@ -55,7 +56,8 @@ namespace AgentPortal.Controllers;
             ViewData["CallerProfileId"] = callerProfile.Id;
         }
 
-        if (FounderGuard.IsFounder(User))
+        var isViewingAsAgent = _effectiveContext.IsViewingAsAgent;
+        if (FounderGuard.IsFounder(User) && !isViewingAsAgent)
         {
             // Ensure founder personal link is root
             var rootBase = _config["Protect:PublicBaseUrl"] ?? "https://protect.mylegnd.com";
@@ -175,10 +177,47 @@ namespace AgentPortal.Controllers;
             return ScopeContext.Global;
         }
 
-        // If founder is impersonating an agent, use that agent scope
-        if (_effectiveContext.IsViewingAsAgent && effectiveProfileId.HasValue)
+        // If founder is impersonating an agent, analytics must scope to that agent.
+        // Never fall back to founder scope for view-as-agent requests.
+        if (_effectiveContext.IsViewingAsAgent)
         {
-            return ScopeContext.ForAgent(effectiveProfileId.Value);
+            if (effectiveProfileId.HasValue)
+            {
+                return ScopeContext.ForAgent(effectiveProfileId.Value);
+            }
+
+            var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
+            if (!string.IsNullOrWhiteSpace(effectiveOid))
+            {
+                // Fallback path: if a tracking profile is missing, provision one from AgentProfile metadata.
+                var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
+                if (byOid != null)
+                {
+                    return ScopeContext.ForAgent(byOid.Id);
+                }
+
+                var oidLower = effectiveOid.ToLowerInvariant();
+                var agentProfile = await _db.AgentProfiles.AsNoTracking()
+                    .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
+                    .OrderByDescending(a => a.UpdatedUtc)
+                    .FirstOrDefaultAsync();
+
+                var upn = agentProfile?.AgentUpn
+                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
+                var displayName = agentProfile?.FullName
+                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
+
+                if (!string.IsNullOrWhiteSpace(upn))
+                {
+                    var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
+                    return ScopeContext.ForAgent(ensured.Id);
+                }
+            }
+
+            _logger.LogWarning(
+                "WebsiteAnalytics scope resolution failed for impersonated agent. effectiveOid={EffectiveOid}. Returning empty scope.",
+                _effectiveContext.EffectiveAgentOid ?? "(null)");
+            return ScopeContext.ForAgent(Guid.Empty); // no data, never founder fallback in impersonation mode
         }
 
         // Founder default (not viewing as agent)

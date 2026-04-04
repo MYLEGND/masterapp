@@ -26,8 +26,15 @@ public sealed class AgentTrackingService : IAgentTrackingService
     public async Task<AgentTrackingProfile?> GetByUserIdAsync(string agentUserId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(agentUserId)) return null;
+        var key = agentUserId.Trim();
+        var profile = await _db.AgentTrackingProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.AgentUserId == key, ct);
+        if (profile != null) return profile;
+
+        // SQLite can behave case-sensitively for text equality; fall back to normalized match.
+        var lower = key.ToLowerInvariant();
         return await _db.AgentTrackingProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId, ct);
+            .FirstOrDefaultAsync(x => x.AgentUserId != null && x.AgentUserId.ToLower() == lower, ct);
     }
 
     public async Task<AgentTrackingProfile?> GetByUpnAsync(string agentUpn, CancellationToken ct = default)
@@ -46,9 +53,10 @@ public sealed class AgentTrackingService : IAgentTrackingService
             throw new ArgumentException("agentUserId is required", nameof(agentUserId));
         agentUpn ??= string.Empty;
 
+        var agentUserIdLower = agentUserId.ToLowerInvariant();
         var existing = await _db.AgentTrackingProfiles
             .Include(x => x.Aliases)
-            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId, ct);
+            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId || (x.AgentUserId != null && x.AgentUserId.ToLower() == agentUserIdLower), ct);
         if (existing != null)
         {
             // refresh UPN / display name if changed
