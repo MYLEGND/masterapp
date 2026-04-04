@@ -161,6 +161,8 @@ function wireActionForm(){
     event.preventDefault();
     if (!actionsContainer) return;
     const data = new FormData(form);
+    const showInDashboardInput = form.querySelector('input[name="ShowInCommandCenter"]');
+    data.set("ShowInCommandCenter", showInDashboardInput?.checked ? "true" : "false");
     const dueInput = form.querySelector('input[name="DueDateUtc"]');
     if (dueInput && dueInput.value){
       const local = new Date(dueInput.value);

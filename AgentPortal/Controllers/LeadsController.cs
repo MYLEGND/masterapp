@@ -1620,6 +1620,9 @@ public class LeadsController : Controller
         public DateTime? DueDateUtc { get; set; }
         public ActionPriority Priority { get; set; } = ActionPriority.P2;
         public bool ShowInCommandCenter { get; set; }
+        // Backward compatibility for stale cached clients posting older field names.
+        public bool ShowInDashboard { get; set; }
+        public bool IncludeInDashboard { get; set; }
     }
 
     public record CreateCommitmentRequest
@@ -1734,7 +1737,9 @@ public class LeadsController : Controller
             DueDateUtc = req.DueDateUtc,
             Status = ActionStatus.Planned,
             Priority = req.Priority,
-            ActionSurface = req.ShowInCommandCenter ? ActionSurface.CommandCenter : ActionSurface.CrmOnly,
+            ActionSurface = (req.ShowInCommandCenter || req.ShowInDashboard || req.IncludeInDashboard)
+                ? ActionSurface.CommandCenter
+                : ActionSurface.CrmOnly,
             Source = "lead-manual",
             SourceRef = $"{req.LeadId}-manual",
             CreatedBy = ownerId,
