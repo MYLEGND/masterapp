@@ -75,6 +75,19 @@ public sealed class SlugRoutingMiddleware : IMiddleware
             return;
         }
 
+        // Founder canonical path is always root-domain routes (no "/a/{slug}/...").
+        // Preserve attribution through founder context on the target route instead.
+        if (string.Equals(result.Profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase))
+        {
+            var founderCanonicalUri = new UriBuilder(context.Request.GetDisplayUrl())
+            {
+                Path = remainder
+            };
+            context.Response.StatusCode = StatusCodes.Status301MovedPermanently;
+            context.Response.Headers.Location = founderCanonicalUri.Uri.ToString();
+            return;
+        }
+
         // redirect aliases
         if (!result.IsCanonical && !string.IsNullOrWhiteSpace(result.CanonicalSlug))
         {

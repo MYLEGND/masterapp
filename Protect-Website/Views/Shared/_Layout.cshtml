@@ -599,7 +599,8 @@ footer.footer {
         // Preserve agent slug across internal navigation
         (function () {
             const slug = window.AGENT_TRACKING_SLUG;
-            if (!slug) return;
+            const isFounderPath = !!window.IS_FOUNDER_PATH;
+            if (!slug || isFounderPath) return;
             const prefix = `/a/${slug}`;
             const shouldRewrite = (url) => {
                 if (!url) return false;

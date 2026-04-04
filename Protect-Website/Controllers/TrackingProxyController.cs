@@ -37,6 +37,7 @@ public sealed class TrackingProxyController : ControllerBase
 
     [HttpPost]
     [Route("api/tracking/ingest")]
+    [Route("api/analytics/ingest")] // Compat alias for older tracking.js builds.
     [IgnoreAntiforgeryToken]
     [RequestSizeLimit(32 * 1024)]
     public async Task<IActionResult> Ingest([FromBody] AnalyticsEventRequest req, CancellationToken ct)
