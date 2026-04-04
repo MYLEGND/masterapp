@@ -1547,13 +1547,11 @@ markNeutral(savingsTipsOut);
       <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
       <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
       <div id="dpClientSearchRow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
-        <input id="dpClientSearch" class="form-control form-control-sm" style="width:200px;" placeholder="Search client" />
+        <input id="dpClientSearch" class="form-control form-control-sm" style="width:220px;" placeholder="Search client" />
         <button id="dpClientSearchBtn" class="btn btn-ghost btn-sm" type="button">Search</button>
-        <select id="dpClientSelect" class="form-select form-select-sm" style="width:220px;">
-          <option value=\"\">Select client…</option>
-        </select>
         <span id="dpPlanStatus" class="text-muted small">No client selected.</span>
       </div>
+      <div id="dpClientResults" class="list-group" style="display:none;margin-top:8px;"></div>
       <div class="wfd-steps" id="wfd_stepsNav">
         <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
         <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Buckets</div>
@@ -2481,11 +2479,25 @@ markNeutral(savingsTipsOut);
                 if (annIncomeChk) annIncomeChk.addEventListener('change', () => { toggleAnnRollup(); dpSaveDebounced(); });
 
                 // --- DP Client Search / Load / Save ---
+                let dpSearchAbort = null;
+                let dpSearchToken = 0;
+                let dpSearchTimer = null;
+                const dpResultsEl = document.getElementById('dpClientResults');
                 async function searchDpClients(q){
                     const statusEl = document.getElementById('dpPlanStatus');
+                    const qTrim = (q || "").trim();
+                    if (dpSearchAbort){ dpSearchAbort.abort(); dpSearchAbort = null; }
+                    dpSearchToken++;
+                    const token = dpSearchToken;
+                    if (qTrim.length === 0){
+                        if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove('text-danger'); }
+                        if (dpResultsEl){ dpResultsEl.style.display = "none"; dpResultsEl.innerHTML = ""; }
+                        return;
+                    }
                     if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove('text-danger'); }
                     try{
-                        const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(q||"")}`, { credentials:"include" });
+                        dpSearchAbort = new AbortController();
+                        const res = await fetch(`/Clients/FinancialPlanClients?q=${encodeURIComponent(qTrim)}`, { credentials:"include", signal: dpSearchAbort.signal });
                         let list = [];
                         if (!res.ok){
                             const txt = await res.text().catch(()=> "");
@@ -2493,23 +2505,46 @@ markNeutral(savingsTipsOut);
                         }
                         try { list = await res.json(); }
                         catch { throw new Error("Search response invalid."); }
-                        const sel = document.getElementById('dpClientSelect');
-                        if (sel){
-                            sel.innerHTML = `<option value=\"\">Select client…</option>`;
+                        if (token !== dpSearchToken) return; // stale
+                        if (!list || list.length === 0){
+                            if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add('text-danger'); }
+                            if (dpResultsEl){ dpResultsEl.style.display = "none"; dpResultsEl.innerHTML = ""; }
+                            return;
+                        }
+                        if (dpResultsEl){
+                            const frag = document.createDocumentFragment();
                             list.forEach(item => {
-                                const opt = document.createElement('option');
-                                opt.value = item.clientUserId;
-                                opt.textContent = `${item.displayName} (${item.clientUserId})`;
-                                opt.dataset.profileId = item.clientProfileId;
-                                sel.appendChild(opt);
+                                const btn = document.createElement('button');
+                                btn.type = "button";
+                                btn.className = "list-group-item list-group-item-action";
+                                btn.style.display = "flex";
+                                btn.style.flexDirection = "column";
+                                btn.style.alignItems = "flex-start";
+                                btn.innerHTML = `
+                                    <span style="font-weight:800;">${item.displayName || "Client"}</span>
+                                    <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
+                                    <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
+                                `;
+                                btn.addEventListener('click', async ()=>{
+                                    dpResultsEl.style.display = "none";
+                                    wfActiveClientId = item.clientUserId;
+                                    dpActiveClientId = item.clientUserId;
+                                    wfPlanVersion = 0;
+                                    dpPlanVersion = 0;
+                                    wfPlanLoaded = false;
+                                    dpPlanLoaded = false;
+                                    if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove('text-danger'); }
+                                    await loadWfPlan(item.clientUserId); // WF load triggers DP hydrate
+                                });
+                                frag.appendChild(btn);
                             });
+                            dpResultsEl.replaceChildren(frag);
+                            dpResultsEl.style.display = "block";
                         }
-                        if (statusEl){
-                            statusEl.textContent = list.length ? `Found ${list.length}` : "No results.";
-                            if (!list.length) statusEl.classList.add('text-danger'); else statusEl.classList.remove('text-danger');
-                        }
+                        if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove('text-danger'); }
                     }catch(err){
                         if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add('text-danger'); }
+                        if (dpResultsEl){ dpResultsEl.style.display = "none"; }
                         toast(err?.message || "Search failed.");
                     }
                 }
@@ -2672,7 +2707,6 @@ markNeutral(savingsTipsOut);
 
                 const dpSearchBtn = document.getElementById('dpClientSearchBtn');
                 const dpSearchInput = document.getElementById('dpClientSearch');
-                const dpSelect = document.getElementById('dpClientSelect');
                 const dpSearchRow = document.getElementById('dpClientSearchRow');
                 if (dpSearchRow) dpSearchRow.style.display = 'flex';
 
@@ -2689,18 +2723,9 @@ markNeutral(savingsTipsOut);
                             searchDpClients(dpSearchInput.value || "");
                         }
                     });
-                }
-                if (dpSelect) {
-                    dpSelect.addEventListener('change', async (e) => {
-                        const cid = e.target.value;
-                        if (!cid) return;
-                        wfActiveClientId = cid;
-                        dpActiveClientId = cid;
-                        wfPlanVersion = 0;
-                        dpPlanVersion = 0;
-                        wfPlanLoaded = false;
-                        dpPlanLoaded = false;
-                        await loadWfPlan(cid); // WF load will trigger DP load after WF hydrates
+                    dpSearchInput.addEventListener('input', () => {
+                        if (dpSearchTimer) clearTimeout(dpSearchTimer);
+                        dpSearchTimer = setTimeout(()=>searchDpClients(dpSearchInput.value || ""), 250);
                     });
                 }
 
