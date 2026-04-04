@@ -2568,15 +2568,28 @@ markNeutral(savingsTipsOut);
                         || {};
                     // If already shaped with inputs/checks/selects, return as-is
                     if (dist.inputs || dist.checks || dist.selects) return dist;
-                    const flat = dist;
-                    const built = { inputs:{}, checks:{}, selects:{}, meta: flat.meta || {} };
+
+                    const built = { inputs:{}, checks:{}, selects:{}, meta: dist.meta || {} };
                     const checkSet = new Set(distCheckIds);
                     const selectSet = new Set(distSelectIds);
-                    Object.keys(flat || {}).forEach(k=>{
-                        if (checkSet.has(k)) built.checks[k] = !!flat[k];
-                        else if (selectSet.has(k)) built.selects[k] = flat[k];
-                        else if (k.startsWith('wfd_')) built.inputs[k] = flat[k];
+
+                    const absorbFlat = (flatObj) => {
+                        Object.keys(flatObj || {}).forEach(k=>{
+                            const v = flatObj[k];
+                            if (checkSet.has(k)) built.checks[k] = !!v;
+                            else if (selectSet.has(k)) built.selects[k] = v;
+                            else if (k.startsWith('wfd_')) built.inputs[k] = v;
+                        });
+                    };
+
+                    // Legacy step-based saves
+                    ['step1','step2','step3'].forEach(step=>{
+                        if (dist[step] && typeof dist[step] === 'object') absorbFlat(dist[step]);
                     });
+
+                    // Flat legacy keys
+                    absorbFlat(dist);
+
                     return built;
                 };
 
