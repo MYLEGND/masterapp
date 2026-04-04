@@ -316,9 +316,9 @@ function ensureFinPlanSelectOptions(){
 }
 
 function updateFinPlanAllocTotal(){
-  const inv = parseFloat(($("#wfd_invAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
-  const li  = parseFloat(($("#wfd_liAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
-  const ann = parseFloat(($("#wfd_annAlloc")?.value || "").replace(/[^0-9.\\-]/g,"")) || 0;
+  const inv = parseFloat((($("#wfd_invAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
+  const li  = parseFloat((($("#wfd_liAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
+  const ann = parseFloat((($("#wfd_annAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
   const total = inv + li + ann;
   const el = document.getElementById("finPlanAllocTotal");
   if (el){
@@ -326,6 +326,27 @@ function updateFinPlanAllocTotal(){
     el.classList.toggle("text-success", Math.abs(total-100) < 0.1);
     el.classList.toggle("text-warning", Math.abs(total-100) >= 0.1);
   }
+
+  // DP visual parity: update badges and bars
+  const totEl = document.getElementById('wfd_allocTotal');
+  const stEl  = document.getElementById('wfd_allocStatus');
+  if (totEl){
+    const ready = Math.abs(total - 100) < 0.11;
+    totEl.textContent = `${total.toFixed(1)}%`;
+    totEl.className = ready ? 'wfd-alloc-good' : 'wfd-alloc-bad';
+    if (stEl){
+      stEl.textContent = ready ? '✓ Ready' : '— must equal 100%';
+      stEl.style.color = ready ? '#16a34a' : '#dc2626';
+    }
+  }
+
+  const mx = Math.max(inv, li, ann, 1);
+  const invBar = document.getElementById('wfd_invBar');
+  const liBar  = document.getElementById('wfd_liBar');
+  const annBar = document.getElementById('wfd_annBar');
+  if (invBar) invBar.style.height = Math.max(inv / mx * 100, 3) + '%';
+  if (liBar)  liBar.style.height  = Math.max(li  / mx * 100, 3) + '%';
+  if (annBar) annBar.style.height = Math.max(ann / mx * 100, 3) + '%';
 }
 
 async function saveFinPlan(){
