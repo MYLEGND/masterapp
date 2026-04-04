@@ -2509,7 +2509,7 @@ markNeutral(savingsTipsOut);
                     const token = dpSearchToken;
                     if (qTrim.length === 0){
                         if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove('text-danger'); }
-                        if (dpResultsEl){ dpResultsEl.style.display = "none"; dpResultsEl.innerHTML = ""; }
+                        if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
                         return;
                     }
                     if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove('text-danger'); }
@@ -2526,7 +2526,7 @@ markNeutral(savingsTipsOut);
                         if (token !== dpSearchToken) return; // stale
                         if (!list || list.length === 0){
                             if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add('text-danger'); }
-                            if (dpResultsEl){ dpResultsEl.style.display = "none"; dpResultsEl.innerHTML = ""; }
+                            if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
                             return;
                         }
                         if (dpResultsRef){
