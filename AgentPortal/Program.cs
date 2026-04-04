@@ -550,7 +550,12 @@ app.Use(async (context, next) =>
 });
 
 app.UseForwardedHeaders();
-app.UseHttpsRedirection();
+// Keep local proxy-to-portal calls simple in Development (Protect-Website -> AgentPortal)
+// by allowing HTTP on localhost. HTTPS redirection remains enforced outside Development.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseStaticFiles();
 
 // Required for SignalR WebSocket upgrades on Azure App Service

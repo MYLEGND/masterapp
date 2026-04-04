@@ -113,7 +113,7 @@ public class LeadSubmitController : ControllerBase
             CallTextConsent = req.CallTextConsent && !string.IsNullOrWhiteSpace(req.Phone),
             TermsAccepted = req.TermsAccepted,
             IsInternal = FounderGuard.IsFounder(User),
-            Environment = string.IsNullOrWhiteSpace(req.Environment) ? builderEnvironment() : req.Environment,
+            Environment = ResolveEnvironment(req.Environment),
             Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
             CreatedUtc = DateTime.UtcNow,
             Status = "New",
@@ -229,6 +229,15 @@ Notes: {lead.Notes}";
 
     private string builderEnvironment() =>
         Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
+    private string ResolveEnvironment(string? incoming)
+    {
+        var raw = string.IsNullOrWhiteSpace(incoming) ? builderEnvironment() : incoming!;
+        var normalized = raw.Trim();
+        if (normalized.StartsWith("prod", StringComparison.OrdinalIgnoreCase)) return "production";
+        if (normalized.StartsWith("dev", StringComparison.OrdinalIgnoreCase)) return "development";
+        return normalized;
+    }
 
     [HttpOptions]
     [IgnoreAntiforgeryToken]

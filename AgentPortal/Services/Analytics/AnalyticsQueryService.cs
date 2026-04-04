@@ -74,21 +74,27 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private Expression<Func<AnalyticsEvent, bool>> EnvPredicateEvents()
     {
         if (_envFilter == "prod")
-            return e => e.Environment == "prod" || e.Environment == "production";
+            return e => e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production";
         if (_envFilter == "dev")
-            return e => e.Environment == "dev" || e.Environment == "development";
+            return e => e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development";
         // legacy fallback
-        return e => e.Environment == null || e.Environment == "" || e.Environment == "prod" || e.Environment == "production" || e.Environment == "dev" || e.Environment == "development";
+        return e =>
+            e.Environment == null || e.Environment == "" ||
+            e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production" ||
+            e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development";
     }
 
     private Expression<Func<WebsiteLead, bool>> EnvPredicateLeads()
     {
         if (_envFilter == "prod")
-            return l => l.Environment == "prod" || l.Environment == "production";
+            return l => l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production";
         if (_envFilter == "dev")
-            return l => l.Environment == "dev" || l.Environment == "development";
+            return l => l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
         // legacy fallback
-        return l => l.Environment == null || l.Environment == "" || l.Environment == "prod" || l.Environment == "production" || l.Environment == "dev" || l.Environment == "development";
+        return l =>
+            l.Environment == null || l.Environment == "" ||
+            l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production" ||
+            l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
     }
 
     private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)

@@ -124,7 +124,7 @@ public class AnalyticsIngestController : ControllerBase
             UtmSource = TrimOrNull(req.UtmSource),
             UtmMedium = TrimOrNull(req.UtmMedium),
             UtmCampaign = TrimOrNull(req.UtmCampaign),
-            Environment = string.IsNullOrWhiteSpace(req.Environment) ? CurrentEnvironment() : req.Environment,
+            Environment = ResolveEnvironment(req.Environment),
             Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
             EventUtc = req.EventUtc ?? DateTime.UtcNow,
             ReceivedUtc = DateTime.UtcNow,
@@ -155,6 +155,15 @@ public class AnalyticsIngestController : ControllerBase
 
     private string CurrentEnvironment() =>
         Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+
+    private string ResolveEnvironment(string? incoming)
+    {
+        var raw = string.IsNullOrWhiteSpace(incoming) ? CurrentEnvironment() : incoming!;
+        var normalized = raw.Trim();
+        if (normalized.StartsWith("prod", StringComparison.OrdinalIgnoreCase)) return "production";
+        if (normalized.StartsWith("dev", StringComparison.OrdinalIgnoreCase)) return "development";
+        return normalized;
+    }
 
     private bool IsSqliteProvider() =>
         _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true;

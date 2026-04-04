@@ -80,23 +80,34 @@ public sealed class TrackingProxyController : ControllerBase
             return null;
         }
 
-        var target = $"{portalBase.TrimEnd('/')}{path}";
+        var client = _httpClientFactory.CreateClient();
+        Exception? lastError = null;
+        var isDevelopment = string.Equals(
+            _config["ASPNETCORE_ENVIRONMENT"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            "Development",
+            StringComparison.OrdinalIgnoreCase);
 
-        try
+        foreach (var baseUrl in BuildForwardBaseCandidates(portalBase, isDevelopment))
         {
-            var client = _httpClientFactory.CreateClient();
-            using var request = new HttpRequestMessage(HttpMethod.Post, target);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            request.Headers.Add("X-Shared-Secret", sharedSecret);
-            request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonPascalCase), Encoding.UTF8, "application/json");
+            var target = $"{baseUrl}{path}";
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, target);
+                request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                request.Headers.Add("X-Shared-Secret", sharedSecret);
+                request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonPascalCase), Encoding.UTF8, "application/json");
 
-            return await client.SendAsync(request, ct);
+                return await client.SendAsync(request, ct);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                _logger.LogWarning(ex, "Tracking proxy forward attempt failed to {Target}", target);
+            }
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Tracking proxy forward failed to {TargetPath}", path);
-            return null;
-        }
+
+        _logger.LogError(lastError, "Tracking proxy could not reach portal ingest endpoint. ConfiguredApiBase={ApiBase}", portalBase);
+        return null;
     }
 
     private static async Task<IActionResult> BuildPassThroughResultAsync(HttpResponseMessage response, CancellationToken ct)
@@ -109,6 +120,72 @@ public sealed class TrackingProxyController : ControllerBase
             ContentType = contentType,
             Content = body
         };
+    }
+
+    private static IEnumerable<string> BuildForwardBaseCandidates(string configuredBase, bool includeLocalDevFallbacks)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out var uri)) return;
+            if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var normalized = uri.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                seen.Add(normalized);
+            }
+        }
+
+        Add(configuredBase);
+
+        if (Uri.TryCreate(configuredBase, UriKind.Absolute, out var configuredUri))
+        {
+            var host = configuredUri.Host;
+            var isLocalHost =
+                string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
+
+            if (isLocalHost)
+            {
+                if (string.Equals(configuredUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    var httpFallback = new UriBuilder(configuredUri)
+                    {
+                        Scheme = Uri.UriSchemeHttp,
+                        Port = configuredUri.Port == 6205 ? 6206 : configuredUri.Port
+                    };
+                    Add(httpFallback.Uri.ToString());
+                }
+                else if (string.Equals(configuredUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    var httpsFallback = new UriBuilder(configuredUri)
+                    {
+                        Scheme = Uri.UriSchemeHttps,
+                        Port = configuredUri.Port == 6206 ? 6205 : configuredUri.Port
+                    };
+                    Add(httpsFallback.Uri.ToString());
+                }
+
+            }
+        }
+
+        // Local dev defaults are added in Development regardless of configured API base
+        // so stale shell overrides do not break local tracking proxy forwarding.
+        if (includeLocalDevFallbacks)
+        {
+            Add("http://localhost:6206");
+            Add("https://localhost:6205");
+        }
+
+        return seen;
     }
 
     /// <summary>
