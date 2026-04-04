@@ -2673,9 +2673,36 @@ markNeutral(savingsTipsOut);
                 const dpSearchBtn = document.getElementById('dpClientSearchBtn');
                 const dpSearchInput = document.getElementById('dpClientSearch');
                 const dpSelect = document.getElementById('dpClientSelect');
-                // Distribution planner now mirrors the Wealth Forecast client; hide standalone search/select UI.
                 const dpSearchRow = document.getElementById('dpClientSearchRow');
-                if (dpSearchRow) dpSearchRow.style.display = 'none';
+                if (dpSearchRow) dpSearchRow.style.display = 'flex';
+
+                if (dpSearchBtn) {
+                    dpSearchBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        searchDpClients(dpSearchInput?.value || "");
+                    });
+                }
+                if (dpSearchInput) {
+                    dpSearchInput.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchDpClients(dpSearchInput.value || "");
+                        }
+                    });
+                }
+                if (dpSelect) {
+                    dpSelect.addEventListener('change', async (e) => {
+                        const cid = e.target.value;
+                        if (!cid) return;
+                        wfActiveClientId = cid;
+                        dpActiveClientId = cid;
+                        wfPlanVersion = 0;
+                        dpPlanVersion = 0;
+                        wfPlanLoaded = false;
+                        dpPlanLoaded = false;
+                        await loadWfPlan(cid); // WF load will trigger DP load after WF hydrates
+                    });
+                }
 
                 // Annuity type label
                 // Removed legacy annType toggle listener (dropdown is source of truth)
