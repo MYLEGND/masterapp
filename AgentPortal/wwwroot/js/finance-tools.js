@@ -968,6 +968,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             }
 
             const wfPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
+            // DP helpers are assigned after the DP module initializes
+            let loadDpPlan = async function(){ console.warn("Distribution planner not ready yet."); };
+            let normalizeDistributionPayload = null;
 
             async function loadWfPlan(clientUserId){
                 const statusEl = document.getElementById("wfPlanStatus");
@@ -2594,7 +2597,7 @@ markNeutral(savingsTipsOut);
 
                 const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
 
-                const normalizeDistributionPayload = (payload) => {
+                normalizeDistributionPayload = (payload) => {
                     // accept JSON string payloads
                     if (typeof payload === 'string') {
                         try { payload = JSON.parse(payload); } catch { payload = {}; }
@@ -2636,7 +2639,7 @@ markNeutral(savingsTipsOut);
                     return built;
                 };
 
-                async function loadDpPlan(clientUserId, initAfter){
+                loadDpPlan = async function loadDpPlan(clientUserId, initAfter){
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (statusEl) statusEl.textContent = "Loading plan…";
                     dpPlanLoaded = false;
