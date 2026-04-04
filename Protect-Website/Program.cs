@@ -8,6 +8,7 @@ builder.Services.AddControllersWithViews(options =>
     options.Filters.Add<ProtectWebsite.Services.Tracking.TrackingViewDataFilter>();
 });
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
 
 // DbContext for tracking resolution
 static bool IsSqlServerConn(string? cs) =>
@@ -83,6 +84,7 @@ app.Use(async (context, next) =>
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapControllers();
 
 // 🔹 SAFELY set Azure port (does NOT break your email logic)
 var port = Environment.GetEnvironmentVariable("PORT");

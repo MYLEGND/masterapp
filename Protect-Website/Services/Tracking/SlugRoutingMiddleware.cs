@@ -25,11 +25,18 @@ public sealed class SlugRoutingMiddleware : IMiddleware
         // Root => founder context
         if (path == "/" || string.IsNullOrWhiteSpace(path))
         {
-            var founderProfile = await _resolver.ResolveByUpnAsync(_founderUpn, context.RequestAborted);
-            if (founderProfile.Found && founderProfile.Profile != null)
+            try
             {
-                context.Items["TrackingProfile"] = founderProfile.Profile;
-                context.Items["TrackingSlug"] = founderProfile.CanonicalSlug ?? founderProfile.Profile.Slug;
+                var founderProfile = await _resolver.ResolveByUpnAsync(_founderUpn, context.RequestAborted);
+                if (founderProfile.Found && founderProfile.Profile != null)
+                {
+                    context.Items["TrackingProfile"] = founderProfile.Profile;
+                    context.Items["TrackingSlug"] = founderProfile.CanonicalSlug ?? founderProfile.Profile.Slug;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "SlugRouting: founder profile resolve failed; continuing without tracking profile.");
             }
             context.Items["IsFounderPath"] = true;
             await next(context);
@@ -54,7 +61,21 @@ public sealed class SlugRoutingMiddleware : IMiddleware
         var slug = segments[1];
         var remainder = segments.Length > 2 ? "/" + string.Join('/', segments.Skip(2)) : "/";
 
-        var result = await _resolver.ResolveBySlugAsync(slug, context.RequestAborted);
+        ResolveResult result;
+        try
+        {
+            result = await _resolver.ResolveBySlugAsync(slug, context.RequestAborted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SlugRouting: slug resolve failed for {Slug}; continuing without profile attribution.", slug);
+            context.Items["TrackingSlug"] = slug;
+            context.Items["IsFounderPath"] = false;
+            context.Request.Path = remainder;
+            await next(context);
+            return;
+        }
+
         if (!result.Found || result.Profile == null)
         {
             _logger.LogInformation("SlugRouting: unknown slug {Slug} -> 404", slug);

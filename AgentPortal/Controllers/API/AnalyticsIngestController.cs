@@ -11,6 +11,7 @@ namespace AgentPortal.Controllers.Api;
 
 [ApiController]
 [Route("api/analytics/ingest")]
+[Route("api/tracking/ingest")] // Backward-compatible alias for older tracking snippets.
 [EnableCors("TrackingCors")]
 [AllowAnonymous]
 public class AnalyticsIngestController : ControllerBase

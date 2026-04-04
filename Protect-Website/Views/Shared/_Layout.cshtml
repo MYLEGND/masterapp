@@ -1,12 +1,9 @@
 ﻿@using Microsoft.AspNetCore.Http
 @inject IHttpContextAccessor HttpContextAccessor
-@inject Microsoft.Extensions.Configuration.IConfiguration Config
 @{
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
     var isFounderPath = ViewData["IsFounderPath"] as bool? ?? false;
-    var trackingSecretFallback = Config["Tracking:SharedSecret"] ?? string.Empty;
-    var trackingApiBaseFallback = Config["Tracking:ApiBase"] ?? string.Empty;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -594,17 +591,6 @@ footer.footer {
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Prefer env vars; fallback to appsettings values
-        window.TRACKING_SECRET = "@(Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? trackingSecretFallback)";
-        window.TRACKING_API_BASE = "@(Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? trackingApiBaseFallback)";
-        (function () {
-            if (!window.TRACKING_API_BASE || window.TRACKING_API_BASE === "") {
-                // Fallback: use portal host when on protect domain, else current origin
-                const origin = window.location.origin || "";
-                window.TRACKING_API_BASE = origin.includes('protect') ? 'https://portal.mylegnd.com' : origin || "https://localhost:6205";
-            }
-            window.LEAD_API_BASE = window.TRACKING_API_BASE;
-        })();
         document.body.dataset.pageKey = "@ViewData["PageKey"]";
     </script>
     <script src="~/js/tracking.js" asp-append-version="true"></script>

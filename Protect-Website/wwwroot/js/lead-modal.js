@@ -10,9 +10,7 @@
   const successEl = document.getElementById('leadSuccess');
   const interestSelect = document.getElementById('leadInterest');
   const pageKey = document.body.dataset.pageKey || '';
-  const SECRET = window.TRACKING_SECRET || '';
-  const API_BASE = (window.LEAD_API_BASE || window.TRACKING_API_BASE || '').replace(/\/$/, '');
-  const INGEST_URL = (API_BASE ? `${API_BASE}` : '') + '/api/lead/submit';
+  const INGEST_URL = '/api/lead/submit';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
   const SOFT_FLAG = 'lead_soft_seen';
@@ -167,8 +165,7 @@
       const res = await fetch(INGEST_URL, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-Shared-Secret': SECRET
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
       });

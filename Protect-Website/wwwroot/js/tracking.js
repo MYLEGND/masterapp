@@ -1,7 +1,5 @@
 (() => {
-  const SECRET = window.TRACKING_SECRET || '';
-  const API_BASE = (window.TRACKING_API_BASE || '').replace(/\/$/, '');
-  const INGEST_URL = (API_BASE ? `${API_BASE}` : '') + '/api/analytics/ingest';
+  const INGEST_URL = '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
@@ -54,7 +52,6 @@
 
   async function sendEvent(payload) {
     try {
-      if (!SECRET) return;
       const body = {
         ClientEventId: uuid(),
         EventType: payload.EventType,
@@ -90,8 +87,7 @@
       await fetch(INGEST_URL, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'X-Shared-Secret': SECRET
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(body)
       });
