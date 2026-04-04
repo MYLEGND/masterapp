@@ -3517,12 +3517,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
             meta.StageEnteredUtc = DateTime.UtcNow;
             var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
             var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-            var bookkeepingEntries = await _db.BookkeepingEntries
-                .Where(x => x.Scope == BookkeepingScope.ClientShared && x.OwnerUserId == oldClientUserId)
-                .ToListAsync();
-            var recurringExpenses = await _db.RecurringExpenses
-                .Where(x => x.Scope == BookkeepingScope.ClientShared && x.OwnerUserId == oldClientUserId)
-                .ToListAsync();
 
             var recreatedLinks = agentLinks.Select(link => new AgentClient
             {
@@ -3550,14 +3544,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             if (householdMembers.Count > 0)
                 _db.HouseholdMembers.RemoveRange(householdMembers);
-
-            await _db.SaveChangesAsync();
-
-            foreach (var entry in bookkeepingEntries)
-                entry.OwnerUserId = newClientObjectId;
-
-            foreach (var expense in recurringExpenses)
-                expense.OwnerUserId = newClientObjectId;
 
             await _db.SaveChangesAsync();
 
@@ -4122,17 +4108,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
             var linkCount = await _db.AgentClients.CountAsync(x => x.ClientUserId == clientUserIdNorm);
             if (linkCount != 1)
                 throw new Exception("Safety stop: client is linked to multiple agents. Refusing to delete Entra user.");
-
-            // ✅ Delete ClientShared finance data (shared workspace) for that client
-            var bk = await _db.BookkeepingEntries
-                .Where(x => x.OwnerUserId == clientUserIdNorm && x.Scope == BookkeepingScope.ClientShared)
-                .ToListAsync();
-            if (bk.Count > 0) _db.BookkeepingEntries.RemoveRange(bk);
-
-            var rec = await _db.RecurringExpenses
-                .Where(x => x.OwnerUserId == clientUserIdNorm && x.Scope == BookkeepingScope.ClientShared)
-                .ToListAsync();
-            if (rec.Count > 0) _db.RecurringExpenses.RemoveRange(rec);
 
             // Delete Entra user
             await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);

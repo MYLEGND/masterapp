@@ -36,14 +36,6 @@
             ? "active"
             : "";
 
-    string ActiveBookKeeping() =>
-        string.Equals(currentController, "BookKeeping", StringComparison.OrdinalIgnoreCase) ||
-        (string.Equals(currentController, "ClientWorkspace", StringComparison.OrdinalIgnoreCase) &&
-         (string.Equals(currentAction, "BookKeeping", StringComparison.OrdinalIgnoreCase) ||
-          string.Equals(currentAction, "BookKeepingReports", StringComparison.OrdinalIgnoreCase)))
-            ? "active"
-            : "";
-
     string ActiveFinance() =>
         string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase)
             ? "active"
@@ -734,22 +726,6 @@
                             </a>
                         </li>
 
-                        @{
-                            var clientRecordType = (string)(ViewBag.ClientRecordType ?? "Lead");
-                            var showBookKeeping = string.Equals(clientRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
-                        }
-                        @if (showBookKeeping)
-                        {
-                            <li class="nav-item">
-                                <a class="nav-link @(ActiveBookKeeping())"
-                                   asp-controller="ClientWorkspace"
-                                   asp-action="BookKeeping"
-                                   asp-route-clientUserId="@clientUserId">
-                                    Financial Command Center
-                                </a>
-                            </li>
-                        }
-
                         <li class="nav-item dropdown">
                             <a class="nav-link @(ActiveWorkspace("Resources") == "active" || ActiveWorkspace("Training") == "active" ? "active" : "")">Explore More</a>
                             <div class="dropdown-menu-centered">
@@ -935,17 +911,6 @@
                 <span>Finance</span>
                 <small>Money</small>
             </a>
-
-            @if (showBookKeeping)
-            {
-                <a class="explore-item" data-tone="ops"
-                   asp-controller="ClientWorkspace"
-                   asp-action="BookKeeping"
-                   asp-route-clientUserId="@clientUserId">
-                    <span>Financials</span>
-                    <small>Ops</small>
-                </a>
-            }
 
             <a class="explore-item" data-tone="library"
                asp-controller="ClientWorkspace"

@@ -152,52 +152,6 @@ namespace AgentPortal.Controllers;
         return await RedirectToClientPortalAsync(client, "/finance");
         }
 
-        [HttpGet]
-        public async Task<IActionResult> BookKeeping(string clientUserId, string? monthKey = null)
-        {
-            string agentOid;
-            try { agentOid = GetAgentOidOrThrow(); }
-            catch { return Challenge(); }
-
-        clientUserId = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserId))
-            return RedirectToAction("Index", "Clients");
-
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
-            return Forbid();
-
-        var client = await GetClientAsync(clientUserId);
-        if (client == null || !string.Equals(ResolveRecordType(client), "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-
-        var path = "/BookKeeping";
-        if (!string.IsNullOrWhiteSpace(monthKey))
-            path += $"?monthKey={Uri.EscapeDataString(monthKey)}";
-
-        return await RedirectToClientPortalAsync(client, path);
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> BookKeepingReports(string clientUserId)
-        {
-        string agentOid;
-        try { agentOid = GetAgentOidOrThrow(); }
-        catch { return Challenge(); }
-
-        clientUserId = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserId))
-            return RedirectToAction("Index", "Clients");
-
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
-            return Forbid();
-
-        var client = await GetClientAsync(clientUserId);
-        if (client == null || !string.Equals(ResolveRecordType(client), "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-
-        return await RedirectToClientPortalAsync(client, "/BookKeeping");
-        }
-
     [HttpGet]
         public async Task<IActionResult> Profile(string clientUserId)
         {

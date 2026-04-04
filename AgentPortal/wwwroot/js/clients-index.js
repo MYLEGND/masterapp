@@ -1553,7 +1553,7 @@ function crmStatusLabel(status){
 
 const pipelineStages = [
   { key: "Client", label: "Clients", tone: "good", className: "stage-client", note: "Portal-enabled clients with active access to the shared client workspace." },
-  { key: "BusinessClient", label: "Business Clients", tone: "good", className: "stage-businessclient", note: "Business clients with finance and bookkeeping workspace access." },
+  { key: "BusinessClient", label: "Business Clients", tone: "good", className: "stage-businessclient", note: "Business clients with expanded finance workspace access." },
   { key: "Opportunities", label: "Opportunities", tone: "warn", className: "stage-opportunities", note: "Qualified opportunities that need pressure and movement before becoming full clients." },
   { key: "NewLead", label: "Lead", tone: "warn", className: "stage-newlead", note: "Fresh incoming records that need first contact and qualification." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
