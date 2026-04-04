@@ -44,7 +44,7 @@ namespace AgentPortal.Services;
     {
         var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
         if (action == null) return null;
-        if (!string.Equals(action.OwnerId, actorId, StringComparison.OrdinalIgnoreCase)) return null;
+        if (!MatchesActor(action, actorId)) return null;
         action.Status = ActionStatus.Completed;
         action.CompletedAtUtc = DateTime.UtcNow;
         action.UpdatedUtc = action.CompletedAtUtc;
@@ -63,6 +63,7 @@ namespace AgentPortal.Services;
     {
         var action = await _db.ActionItems.FirstOrDefaultAsync(x => x.Id == actionId, ct);
         if (action == null) return null;
+        if (!MatchesActor(action, actorId)) return null;
         action.Status = ActionStatus.Dismissed;
         action.DismissedReason = reason;
         action.UpdatedUtc = DateTime.UtcNow;
@@ -100,9 +101,10 @@ namespace AgentPortal.Services;
     public Task<IReadOnlyList<ActionItem>> GetTodayAsync(string ownerId, CancellationToken ct = default)
     {
         var todayUtc = DateTime.UtcNow.Date;
+        var normalizedOwnerId = NormalizeOwnerKey(ownerId);
         return _db.ActionItems
             .AsNoTracking()
-            .Where(x => x.OwnerId == ownerId
+            .Where(x => (x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
                         && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
                         && (x.DueDateUtc == null ||
                             (x.DueDateUtc >= todayUtc && x.DueDateUtc < todayUtc.AddDays(1)))
@@ -115,15 +117,27 @@ namespace AgentPortal.Services;
     public Task<IReadOnlyList<ActionItem>> GetOverdueAsync(string ownerId, CancellationToken ct = default)
     {
         var nowUtc = DateTime.UtcNow;
+        var normalizedOwnerId = NormalizeOwnerKey(ownerId);
         return _db.ActionItems
             .AsNoTracking()
-            .Where(x => x.OwnerId == ownerId
+            .Where(x => (x.OwnerId == normalizedOwnerId || x.EffectiveAgentOid == normalizedOwnerId)
                         && (x.ActionSurface == ActionSurface.CommandCenter || x.IsEscalated)
                         && x.DueDateUtc < nowUtc
                         && x.Status != ActionStatus.Completed && x.Status != ActionStatus.Dismissed)
             .OrderBy(x => x.DueDateUtc)
             .ToListAsync(ct)
             .ContinueWith(t => (IReadOnlyList<ActionItem>)t.Result, ct);
+    }
+
+    private static string NormalizeOwnerKey(string ownerId)
+        => (ownerId ?? string.Empty).Trim().ToLowerInvariant();
+
+    private static bool MatchesActor(ActionItem action, string actorId)
+    {
+        var actorKey = NormalizeOwnerKey(actorId);
+        if (string.IsNullOrWhiteSpace(actorKey)) return false;
+        return string.Equals(NormalizeOwnerKey(action.OwnerId), actorKey, StringComparison.Ordinal)
+            || string.Equals(NormalizeOwnerKey(action.EffectiveAgentOid), actorKey, StringComparison.Ordinal);
     }
 
     public Task<IReadOnlyList<ActionItem>> GetByRelatedAsync(RelatedEntityType relatedEntityType, string relatedEntityId, CancellationToken ct = default)

@@ -17,12 +17,14 @@ public class DashboardController : Controller
     private readonly IExecutionEngine _execution;
     private readonly IBlockerService _blockers;
     private readonly MasterAppDbContext _db;
+    private readonly EffectiveAgentContext _agentContext;
 
-    public DashboardController(IExecutionEngine execution, IBlockerService blockers, MasterAppDbContext db)
+    public DashboardController(IExecutionEngine execution, IBlockerService blockers, MasterAppDbContext db, EffectiveAgentContext agentContext)
     {
         _execution = execution;
         _blockers = blockers;
         _db = db;
+        _agentContext = agentContext;
     }
 
     [HttpGet]
@@ -36,7 +38,13 @@ public class DashboardController : Controller
         return Json(new { today = today.Count, overdue = overdue.Count, blockers = blockers.Count });
     }
 
-    private string CurrentUserId() => User.GetStableUserId();
+    private string CurrentUserId()
+    {
+        var effective = _agentContext.EffectiveAgentOid;
+        if (!string.IsNullOrWhiteSpace(effective))
+            return effective.Trim().ToLowerInvariant();
+        return User.GetStableUserId();
+    }
 
     // GET: /Dashboard  (and /Dashboard/Index)
     [HttpGet]

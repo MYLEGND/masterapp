@@ -54,7 +54,11 @@ internal static class ControllerTestHelpers
     {
         var blockers = Mock.Of<IBlockerService>();
         var http = new DefaultHttpContext { User = user };
-        var controller = new DashboardController(execution, blockers)
+        var accessor = new HttpContextAccessor { HttpContext = http };
+        var tracking = Mock.Of<IAgentTrackingService>();
+        var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
+        var db = BuildDb();
+        var controller = new DashboardController(execution, blockers, db, effCtx)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

@@ -1453,8 +1453,9 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(req.ClientId) || string.IsNullOrWhiteSpace(req.Title))
             return BadRequest("ClientId and Title required");
 
-        var ownerId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
+        string ownerId;
+        try { ownerId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
 
         var action = BuildClientAction(req, ownerId);
 
