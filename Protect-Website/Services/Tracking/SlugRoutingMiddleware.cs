@@ -22,27 +22,6 @@ public sealed class SlugRoutingMiddleware : IMiddleware
     {
         var path = context.Request.Path.Value ?? string.Empty;
 
-        // Root => founder context
-        if (path == "/" || string.IsNullOrWhiteSpace(path))
-        {
-            try
-            {
-                var founderProfile = await _resolver.ResolveByUpnAsync(_founderUpn, context.RequestAborted);
-                if (founderProfile.Found && founderProfile.Profile != null)
-                {
-                    context.Items["TrackingProfile"] = founderProfile.Profile;
-                    context.Items["TrackingSlug"] = founderProfile.CanonicalSlug ?? founderProfile.Profile.Slug;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "SlugRouting: founder profile resolve failed; continuing without tracking profile.");
-            }
-            context.Items["IsFounderPath"] = true;
-            await next(context);
-            return;
-        }
-
         // Only treat "/a" and "/a/{slug}" as tracked-slug routes.
         // This avoids hijacking unrelated endpoints like "/api/...".
         var isAgentSlugRoute =
@@ -51,6 +30,12 @@ public sealed class SlugRoutingMiddleware : IMiddleware
 
         if (!isAgentSlugRoute)
         {
+            // Default domain behavior: founder owns non-agent pages.
+            // Skip API/static requests to avoid unnecessary DB lookups.
+            if (!ShouldSkipFounderContext(path))
+            {
+                await AttachFounderContextAsync(context);
+            }
             await next(context);
             return;
         }
@@ -109,5 +94,39 @@ public sealed class SlugRoutingMiddleware : IMiddleware
 
         context.Request.Path = remainder;
         await next(context);
+    }
+
+    private async Task AttachFounderContextAsync(HttpContext context)
+    {
+        try
+        {
+            var founderProfile = await _resolver.ResolveByUpnAsync(_founderUpn, context.RequestAborted);
+            if (founderProfile.Found && founderProfile.Profile != null)
+            {
+                context.Items["TrackingProfile"] = founderProfile.Profile;
+                context.Items["TrackingSlug"] = founderProfile.CanonicalSlug ?? founderProfile.Profile.Slug;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SlugRouting: founder profile resolve failed; continuing without tracking profile.");
+        }
+
+        context.Items["IsFounderPath"] = true;
+    }
+
+    private static bool ShouldSkipFounderContext(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || path == "/")
+            return false;
+
+        if (path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Most static assets include an extension.
+        if (Path.HasExtension(path))
+            return true;
+
+        return false;
     }
 }

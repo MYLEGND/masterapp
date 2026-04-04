@@ -58,7 +58,10 @@ public sealed class AgentTrackingResolver
         try
         {
             var profile = await _db.AgentTrackingProfiles.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.AgentUpn == upn, ct);
+                .Where(p => p.AgentUpn == upn)
+                .OrderBy(p => p.CreatedUtc)
+                .ThenBy(p => p.Id)
+                .FirstOrDefaultAsync(ct);
             if (profile == null) return ResolveResult.NotFound;
             return new ResolveResult(profile, profile.Slug, profile.Slug, IsCanonical: true, Found: true);
         }

@@ -19,12 +19,20 @@ public sealed class TrackingProxyController : ControllerBase
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<TrackingProxyController> _logger;
+    private readonly Services.Tracking.AgentTrackingResolver _resolver;
+    private readonly string _founderUpn;
 
-    public TrackingProxyController(IHttpClientFactory httpClientFactory, IConfiguration config, ILogger<TrackingProxyController> logger)
+    public TrackingProxyController(
+        IHttpClientFactory httpClientFactory,
+        IConfiguration config,
+        ILogger<TrackingProxyController> logger,
+        Services.Tracking.AgentTrackingResolver resolver)
     {
         _httpClientFactory = httpClientFactory;
         _config = config;
         _logger = logger;
+        _resolver = resolver;
+        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
     }
 
     [HttpPost]
@@ -38,6 +46,8 @@ public sealed class TrackingProxyController : ControllerBase
 
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
+
+        await EnsureAgentAttributionAsync(req, ct);
 
         var response = await ForwardAsync("/api/analytics/ingest", req, ct);
         if (response == null)
@@ -99,6 +109,61 @@ public sealed class TrackingProxyController : ControllerBase
             ContentType = contentType,
             Content = body
         };
+    }
+
+    /// <summary>
+    /// Ensures analytics events carry attribution even if client-side globals are missing.
+    /// Priority:
+    /// 1) Existing explicit payload values
+    /// 2) Slug parsed from /a/{slug}/... path
+    /// 3) Founder fallback for default-domain pages
+    /// </summary>
+    private async Task EnsureAgentAttributionAsync(AnalyticsEventRequest req, CancellationToken ct)
+    {
+        // If a slug is provided but profile id is missing, resolve it.
+        if (!req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+        {
+            var bySlug = await _resolver.ResolveBySlugAsync(req.AgentSlug.Trim(), ct);
+            if (bySlug.Found && bySlug.Profile != null)
+            {
+                req.AgentTrackingProfileId = bySlug.Profile.Id;
+                req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+                return;
+            }
+        }
+
+        // Already fully attributed.
+        if (req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+            return;
+
+        // Attempt slug extraction from page path ("/a/{slug}/...").
+        var path = (req.Path ?? string.Empty).Trim();
+        if (path.StartsWith("/a/", StringComparison.OrdinalIgnoreCase))
+        {
+            var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2)
+            {
+                var slug = segments[1];
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, ct);
+                if (bySlug.Found && bySlug.Profile != null)
+                {
+                    req.AgentTrackingProfileId = bySlug.Profile.Id;
+                    req.AgentSlug = bySlug.CanonicalSlug ?? bySlug.Profile.Slug;
+                    return;
+                }
+            }
+        }
+
+        // Founder default-domain fallback.
+        if (!req.AgentTrackingProfileId.HasValue && string.IsNullOrWhiteSpace(req.AgentSlug))
+        {
+            var founder = await _resolver.ResolveByUpnAsync(_founderUpn, ct);
+            if (founder.Found && founder.Profile != null)
+            {
+                req.AgentTrackingProfileId = founder.Profile.Id;
+                req.AgentSlug = founder.CanonicalSlug ?? founder.Profile.Slug;
+            }
+        }
     }
 
     public sealed class AnalyticsEventRequest

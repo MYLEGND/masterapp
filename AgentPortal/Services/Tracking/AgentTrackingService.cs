@@ -34,7 +34,10 @@ public sealed class AgentTrackingService : IAgentTrackingService
     {
         if (string.IsNullOrWhiteSpace(agentUpn)) return null;
         return await _db.AgentTrackingProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.AgentUpn == agentUpn, ct);
+            .Where(x => x.AgentUpn == agentUpn)
+            .OrderBy(x => x.CreatedUtc)
+            .ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<AgentTrackingProfile> EnsureProfileAsync(string agentUserId, string agentUpn, string? displayName = null, CancellationToken ct = default)
