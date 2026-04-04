@@ -617,22 +617,26 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wf-input-grid{
             display:flex;
             flex-direction:column;
-            gap:14px;
+            gap:13px;
+            width:100%;
         }
         .wf-row{
             display:grid;
-            gap:12px;
+            column-gap:14px;
+            row-gap:6px;
             align-items:end;
         }
-        .wf-row.row-primary{ grid-template-columns: minmax(180px,1fr) minmax(180px,1fr) minmax(120px,0.6fr); }
-        .wf-row.row-duo{ grid-template-columns: repeat(2, minmax(200px,1fr)); }
-        .wf-row.row-trio{ grid-template-columns: repeat(3, minmax(150px,1fr)); }
+        .wf-row .wb-label{ margin-bottom:4px; }
+        .wf-row.row-primary{ grid-template-columns: 1.5fr 1.5fr 1fr; }
+        .wf-row.row-duo{ grid-template-columns: 1fr 1fr; }
+        .wf-row.row-trio{ grid-template-columns: 1fr 1fr 1fr; }
         .wf-disrupt-card{
             border:1px solid rgba(166,128,35,0.35);
             border-radius:14px;
-            padding:14px 16px 12px;
+            padding:18px 18px 16px;
             background:rgba(166,128,35,0.06);
             box-shadow:0 8px 18px rgba(0,0,0,0.06);
+            margin-top:30px;
         }
         .wf-disrupt-head{
             display:flex;
@@ -652,10 +656,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             font-size:.82rem;
             line-height:1.25;
         }
-        .wf-disrupt-grid{
+        .wf-disrupt-row{
             display:grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px,1fr));
-            gap:10px 12px;
+            grid-template-columns: 1fr 1fr;
+            column-gap:14px;
+            row-gap:12px;
         }
     </style>
 
@@ -695,7 +700,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     </div>
                     <div>
                         <label class="wb-label">
-                            Working Period (Years)
+                            Work Period
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 20 • 30 (years you plan to keep earning/saving)">i</span>
                         </label>
                         <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023;" />
@@ -763,7 +768,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         <div class="wf-disrupt-title">Income Disruption / Disability Income</div>
                         <div class="wf-disrupt-sub">Model a temporary income loss and disability income replacement during accumulation.</div>
                     </div>
-                    <div class="wf-disrupt-grid">
+                    <div class="wf-disrupt-row" style="margin-bottom:12px;">
                         <div>
                             <label class="wb-label">Disruption Start Year</label>
                             <input id="wbDisruptStartYear" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="1" />
@@ -772,6 +777,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <label class="wb-label">Years of Income Disruption</label>
                             <input id="wbDisruptYears" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
                         </div>
+                    </div>
+                    <div class="wf-disrupt-row">
                         <div>
                             <label class="wb-label">Months of Income Disruption</label>
                             <input id="wbDisruptMonths" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
@@ -1230,12 +1237,14 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 if (disruptMonthsEl && disruptMonthsEl.value) disruptMonthsEl.value = Math.floor(disruptMonths).toLocaleString();
                 if (disabilityPctEl && disabilityPctEl.value) disabilityPctEl.value = (disabilityPct * 100).toLocaleString();
 
-                const savingsRate = Math.max(0, 1 - tax - liabilities - lifestyle);
-
                 // Guard against divide-by-zero / runaway inflation inputs
                 const inflation = Math.max(-0.95, inflationRaw);
                 const nominalReturn = Math.max(-0.95, nominalReturnRaw);
                 const realGrowthRate = (1 + nominalReturn) / (1 + inflation) - 1;
+
+                // Baseline annual expense anchors (do not shrink during disruption)
+                const baselineLiabAmt = income * liabilities;
+                const baselineLifeAmt = income * lifestyle;
 
                 let investedBalance = startingBalance;
                 let cumulativeSpend = 0;
@@ -1252,9 +1261,14 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     const overlap = Math.max(0, Math.min(yearEnd, startTime + disruptDuration) - Math.max(yearStart, startTime));
                     const disruptionFraction = clamp(overlap, 0, 1);
 
-                    const effectiveIncome = income * (1 - disruptionFraction * (1 - disabilityPct));
-                    const annualSavings = effectiveIncome * savingsRate;
-                    const annualSpend = effectiveIncome - annualSavings;
+                    const earnedIncome = income * (1 - disruptionFraction);
+                    const replacementIncome = income * disabilityPct * disruptionFraction;
+                    const effectiveIncome = earnedIncome + replacementIncome;
+                    const taxAmt = effectiveIncome * tax;
+                    const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt;
+                    const annualSavingsRaw = effectiveIncome - annualExpenses;
+                    const annualSavings = Math.max(0, annualSavingsRaw);
+                    const annualSpend = annualExpenses; // track true expense outflow
 
                     investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
                     cumulativeSpend += annualSpend;
@@ -1267,7 +1281,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 }
 
                 const avgSavingsRate = totalIncome > 0 ? totalSavings / totalIncome : 0;
-                const totalSpend = totalIncome - totalSavings;
+                const totalSpend = cumulativeSpend;
                 const avgAnnualSavings = years > 0 ? totalSavings / years : totalSavings;
                 const avgAnnualSpend = years > 0 ? totalSpend / years : totalSpend;
 
