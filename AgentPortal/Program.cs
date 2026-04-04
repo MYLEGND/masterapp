@@ -59,6 +59,9 @@ builder.Services
 // ✅ REQUIRED: Identity UI endpoints are Razor Pages
 builder.Services.AddRazorPages().AddMicrosoftIdentityUI();
 
+// Feature flags (all default false; override via configuration)
+builder.Services.Configure<AgentPortal.Models.AppFeatureFlags>(builder.Configuration.GetSection("Features"));
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("FounderOnly", policy =>
@@ -96,13 +99,22 @@ builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
 builder.Services.AddSingleton<PiiProtector>();
+builder.Services.AddSingleton<IngestSignatureValidator>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<AgentPortal.Services.ImportValidation.LeadImportValidator>();
+builder.Services.AddScoped<DerivedAnalyticsService>();
+builder.Services.AddHttpClient("ResilientDefault")
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 var hcBuilder = builder.Services.AddHealthChecks()
     .AddCheck<DbReadinessCheck>("db", tags: ["ready"]);
 // Redis health check registered only when Redis is configured (redisConn declared above)
 if (!string.IsNullOrWhiteSpace(redisConn))
     hcBuilder.AddCheck<RedisReadinessCheck>("redis", tags: ["ready"]);
+hcBuilder.AddCheck<AgentPortal.Health.LiveSyncPingHealthCheck>("livesync", tags: ["ready"]);
+hcBuilder.AddCheck<AgentPortal.Health.IngestHealthCheck>("ingest", tags: ["ready"]);
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.Decorate<IEmailSender, AgentPortal.Services.Resilience.ResilientEmailSender>();
 // Application Insights telemetry — only registered when connection string is present
 if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
     builder.Services.AddApplicationInsightsTelemetry();
@@ -171,6 +183,16 @@ else
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("ingest", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
     options.AddPolicy("anon-public", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
@@ -486,6 +508,17 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
         var preview = string.Join(", ", pending.Take(5));
         throw new InvalidOperationException($"STARTUP BLOCKED: pending EF migrations detected ({pending.Count}). Apply migrations before deploy. First: {preview}");
     }
+
+    // Optional: require Redis for SignalR when the feature flag is enabled
+    var flags = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags>>().Value;
+    if (flags.SignalRRequireRedis && string.IsNullOrWhiteSpace(builder.Configuration["SignalR:RedisConnectionString"]))
+    {
+        throw new InvalidOperationException("STARTUP BLOCKED: SignalR Redis connection is required in production when SignalRRequireRedis is enabled.");
+    }
+
+    // Emit applied migration signature for observability
+    var applied = db.Database.GetAppliedMigrations().ToList();
+    app.Logger.LogInformation("Migrations applied: {AppliedCount} latest={LatestMigration}", applied.Count, applied.LastOrDefault() ?? "(none)");
 }
 
 // Auto-migrate SQLite (local dev only). SQL Server migrations must be applied explicitly

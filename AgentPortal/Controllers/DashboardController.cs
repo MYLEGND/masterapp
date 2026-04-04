@@ -18,13 +18,17 @@ public class DashboardController : Controller
     private readonly IBlockerService _blockers;
     private readonly MasterAppDbContext _db;
     private readonly EffectiveAgentContext _agentContext;
+    private readonly DerivedAnalyticsService _derivedAnalytics;
+    private readonly AppFeatureFlags _featureFlags;
 
-    public DashboardController(IExecutionEngine execution, IBlockerService blockers, MasterAppDbContext db, EffectiveAgentContext agentContext)
+    public DashboardController(IExecutionEngine execution, IBlockerService blockers, MasterAppDbContext db, EffectiveAgentContext agentContext, DerivedAnalyticsService derivedAnalytics, Microsoft.Extensions.Options.IOptions<AppFeatureFlags> featureFlags)
     {
         _execution = execution;
         _blockers = blockers;
         _db = db;
         _agentContext = agentContext;
+        _derivedAnalytics = derivedAnalytics;
+        _featureFlags = featureFlags.Value;
     }
 
     [HttpGet]
@@ -59,6 +63,11 @@ public class DashboardController : Controller
             Overdue = await _execution.GetOverdueAsync(ownerId),
             Blockers = await _blockers.GetOpenByOwnerAsync(ownerId)
         };
+
+        if (_featureFlags.DerivedInsightsEnabled)
+        {
+            vm.DerivedAnalytics = await _derivedAnalytics.GetAsync(ownerId);
+        }
 
         return View(vm); // renders Views/Dashboard/Index.cshtml
     }

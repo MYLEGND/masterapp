@@ -43,7 +43,9 @@ internal static class ControllerTestHelpers
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance)
+        var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
+        var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
+        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

@@ -25,6 +25,7 @@ public class CalendarController : Controller
     private readonly ITokenAcquisition _tokenAcquisition;
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     // Scopes must match what you consent to in /calendar/connect
     private static readonly string[] CalendarScopes = new[] { "offline_access", "Calendars.ReadWrite" };
@@ -34,11 +35,13 @@ public class CalendarController : Controller
 
     public CalendarController(ITokenAcquisition tokenAcquisition,
         ILogger<CalendarController> logger,
-        MasterAppDbContext db)
+        MasterAppDbContext db,
+        IHttpClientFactory httpClientFactory)
     {
         _tokenAcquisition = tokenAcquisition;
         _logger = logger;
         _db = db;
+        _httpClientFactory = httpClientFactory;
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -232,7 +235,7 @@ public class CalendarController : Controller
         {
             var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
 
-            using var httpClient = new HttpClient();
+            using var httpClient = _httpClientFactory.CreateClient("ResilientDefault");
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
             httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
 
@@ -262,7 +265,7 @@ public class CalendarController : Controller
             try
             {
                 var mailboxToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarAvailabilityScopes);
-                using var mailboxClient = new HttpClient();
+                using var mailboxClient = _httpClientFactory.CreateClient("ResilientDefault");
                 mailboxClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", mailboxToken);
                 mailboxClient.DefaultRequestHeaders.Add("Accept", "application/json");
                 using var mailboxResponse = await mailboxClient.GetAsync("https://graph.microsoft.com/v1.0/me/mailboxSettings?$select=timeZone,workingHours");
@@ -467,7 +470,7 @@ public class CalendarController : Controller
             // Ensure token exists (will throw if not consented)
             var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
 
-            var httpClient = new HttpClient();
+            var httpClient = _httpClientFactory.CreateClient("ResilientDefault");
             httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
             var graph = new GraphServiceClient(httpClient);

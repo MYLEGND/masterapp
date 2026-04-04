@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AgentPortal.Controllers.Api;
 
@@ -20,13 +21,17 @@ public class AnalyticsIngestController : ControllerBase
     private readonly IConfiguration _config;
     private readonly Services.Tracking.AgentTrackingResolver _resolver;
     private readonly ILogger<AnalyticsIngestController> _logger;
+    private readonly AgentPortal.Models.AppFeatureFlags _flags;
+    private readonly IngestSignatureValidator _signatureValidator;
 
-    public AnalyticsIngestController(MasterAppDbContext db, IConfiguration config, Services.Tracking.AgentTrackingResolver resolver, ILogger<AnalyticsIngestController> logger)
+    public AnalyticsIngestController(MasterAppDbContext db, IConfiguration config, Services.Tracking.AgentTrackingResolver resolver, ILogger<AnalyticsIngestController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
     {
         _db = db;
         _config = config;
         _resolver = resolver;
         _logger = logger;
+        _flags = flags.Value;
+        _signatureValidator = signatureValidator;
     }
 
     private static readonly HashSet<string> AllowedEventTypes = new(StringComparer.OrdinalIgnoreCase)
@@ -74,6 +79,7 @@ public class AnalyticsIngestController : ControllerBase
 
     [HttpPost]
     [IgnoreAntiforgeryToken]
+    [EnableRateLimiting("ingest")]
     [RequestSizeLimit(32 * 1024)] // 32 KB — well above any valid analytics event payload
     public async Task<IActionResult> Ingest([FromBody] AnalyticsEventRequest req)
     {
@@ -84,6 +90,17 @@ public class AnalyticsIngestController : ControllerBase
         {
             _logger.LogWarning("AnalyticsIngest: invalid shared secret from {Host}", Request.Host.ToString());
             return Unauthorized(new { error = "invalid_secret" });
+        }
+
+        if (_flags.IngestHmacEnabled)
+        {
+            if (!Guid.TryParse(Request.Headers["X-Request-Id"].FirstOrDefault(), out var requestId))
+                return Unauthorized(new { error = "missing_request_id" });
+            if (!DateTimeOffset.TryParse(Request.Headers["X-Timestamp"].FirstOrDefault(), out var ts))
+                return Unauthorized(new { error = "invalid_timestamp" });
+
+            if (!_signatureValidator.TryValidate(requestId, ts, Request.Headers["X-Signature"].FirstOrDefault(), out var reason))
+                return Unauthorized(new { error = reason });
         }
 
         if (!ModelState.IsValid)

@@ -25,6 +25,8 @@ public class LeadsController : Controller
     private readonly IExecutionEngine _execution;
     private readonly ICommitmentService _commitments;
     private readonly ILogger<LeadsController> _logger;
+    private readonly AgentPortal.Models.AppFeatureFlags _featureFlags;
+    private readonly AgentPortal.Services.ImportValidation.LeadImportValidator _leadImportValidator;
     private const string CommitmentsUnavailableMessage = "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
     private static readonly string[] ProductBuckets =
     {
@@ -158,7 +160,7 @@ public class LeadsController : Controller
         public List<string>? Ids { get; set; }
     }
 
-    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger)
+    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator)
     {
         _db = db;
         _agentTimeZoneResolver = agentTimeZoneResolver;
@@ -167,6 +169,8 @@ public class LeadsController : Controller
         _execution = execution;
         _commitments = commitments;
         _logger = logger;
+        _featureFlags = featureFlags.Value;
+        _leadImportValidator = leadImportValidator;
     }
 
     // Centralized canonical selector to avoid drift across endpoints.
@@ -1518,6 +1522,17 @@ public class LeadsController : Controller
                     skipped++;
                     errors.Add($"Row {rowNumber}: missing phone (and phone #2).");
                     return;
+                }
+
+                if (_featureFlags.ImportValidatorEnabled)
+                {
+                    var validation = _leadImportValidator.Validate(first, last, email, phoneRaw);
+                    if (!validation.IsValid)
+                    {
+                        skipped++;
+                        errors.Add($"Row {rowNumber}: {string.Join("; ", validation.Errors)}");
+                        return;
+                    }
                 }
 
                 DateTime? dob = null;

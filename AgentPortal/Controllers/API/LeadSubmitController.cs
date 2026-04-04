@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using AgentPortal.Services;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace AgentPortal.Controllers.Api;
 
@@ -22,14 +23,18 @@ public class LeadSubmitController : ControllerBase
     private readonly Services.Tracking.AgentTrackingResolver _resolver;
     private readonly ILogger<LeadSubmitController> _logger;
     private readonly string _founderUpn;
+    private readonly AgentPortal.Models.AppFeatureFlags _flags;
+    private readonly IngestSignatureValidator _signatureValidator;
 
-    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Services.Tracking.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger)
+    public LeadSubmitController(MasterAppDbContext db, IConfiguration config, IEmailSender emailSender, Services.Tracking.AgentTrackingResolver resolver, ILogger<LeadSubmitController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> flags, IngestSignatureValidator signatureValidator)
     {
         _db = db;
         _config = config;
         _emailSender = emailSender;
         _resolver = resolver;
         _logger = logger;
+        _flags = flags.Value;
+        _signatureValidator = signatureValidator;
         _founderUpn = _config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
@@ -64,6 +69,7 @@ public class LeadSubmitController : ControllerBase
 
     [HttpPost]
     [IgnoreAntiforgeryToken]
+    [EnableRateLimiting("ingest")]
     [RequestSizeLimit(16 * 1024)] // 16 KB — well above any valid lead submission
     public async Task<IActionResult> Submit([FromBody] LeadSubmitRequest req)
     {
@@ -73,6 +79,17 @@ public class LeadSubmitController : ControllerBase
         if (string.IsNullOrWhiteSpace(expected) || !string.Equals(expected, provided, StringComparison.Ordinal))
         {
             return Unauthorized(new { error = "invalid_secret" });
+        }
+
+        if (_flags.IngestHmacEnabled)
+        {
+            if (!Guid.TryParse(Request.Headers["X-Request-Id"].FirstOrDefault(), out var requestId))
+                return Unauthorized(new { error = "missing_request_id" });
+            if (!DateTimeOffset.TryParse(Request.Headers["X-Timestamp"].FirstOrDefault(), out var ts))
+                return Unauthorized(new { error = "invalid_timestamp" });
+
+            if (!_signatureValidator.TryValidate(requestId, ts, Request.Headers["X-Signature"].FirstOrDefault(), out var reason))
+                return Unauthorized(new { error = reason });
         }
 
         if (!ModelState.IsValid)
