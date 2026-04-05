@@ -187,6 +187,7 @@ function resetFinPlanForm(){
 
 function finPlanPayload(){
   const wf = {
+    wbStartingBalance: $("#wbStartingBalance")?.value || "",
     wbIncome: $("#wbIncome")?.value || "",
     wbYears: $("#wbYears")?.value || "",
     wbInflation: $("#wbInflation")?.value || "",

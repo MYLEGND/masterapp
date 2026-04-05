@@ -1267,8 +1267,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     const effectiveIncome = earnedIncome + replacementIncome;
                     const taxAmt = effectiveIncome * tax;
                     const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt;
-                    const annualSavingsRaw = effectiveIncome - annualExpenses;
-                    const annualSavings = Math.max(0, annualSavingsRaw);
+                    const annualSavings = effectiveIncome - annualExpenses; // allow negative to reflect shortfall
                     const annualSpend = annualExpenses; // track true expense outflow
 
                     investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
