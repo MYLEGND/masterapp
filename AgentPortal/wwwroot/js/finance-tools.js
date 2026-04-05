@@ -1837,6 +1837,8 @@ markNeutral(savingsTipsOut);
 .wfd-res-val.green{color:#4ade80;}
 .wfd-res-val.gold{color:#d9b35a;}
 .wfd-res-val.red{color:#f87171;}
+.wfd-res-val.blue{color:#60a5fa;}
+.wfd-res-val.orange{color:#fb923c;}
 .wfd-return-pos{color:#22c55e;font-weight:800;}
 .wfd-return-flat{color:#94a3b8;font-weight:700;}
 .wfd-return-neg{color:#ef4444;font-weight:800;}
@@ -4515,17 +4517,17 @@ markNeutral(savingsTipsOut);
 
                     // --- Result cards ---
                     const cards = [
-                        { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: '' },
+                        { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: 'gold' },
                         { l: 'Guaranteed Income (after-tax)',          v: fmtD(guarInc),      c: 'green' },
-                        { l: 'Income Gap (from Assets)',   v: fmtD(incGap),       c: incGap > desiredInc * 0.85 ? 'red' : '' },
-                        active.em  ? { l: 'Plan Emergency W/D (Gross)',         v: fmtD(totalEmUsed),  c: '' } : null,
-                        active.inv ? { l: 'Plan Investments W/D (Gross)', v: fmtD(totalInvDraw), c: '' } : null,
-                        active.li  ? { l: 'Plan Life Ins W/D (Gross)',    v: fmtD(totalLiDraw),  c: '' } : null,
-                        active.ann ? { l: 'Plan Annuity Funding (Gross)',     v: fmtD(totalAnnGrossFunded), c: '' } : null,
-                        { l: 'Plan Gross Sourced',     v: fmtD(totalGrossSourced),     c: '' },
+                        { l: 'Income Gap (from Assets)',   v: fmtD(incGap),       c: incGap > desiredInc * 0.85 ? 'red' : 'gold' },
+                        active.em  ? { l: 'Plan Emergency W/D (Gross)',         v: fmtD(totalEmUsed),  c: 'orange' } : null,
+                        active.inv ? { l: 'Plan Investments W/D (Gross)', v: fmtD(totalInvDraw), c: 'blue' } : null,
+                        active.li  ? { l: 'Plan Life Ins W/D (Gross)',    v: fmtD(totalLiDraw),  c: 'gold' } : null,
+                        active.ann ? { l: 'Plan Annuity Funding (Gross)',     v: fmtD(totalAnnGrossFunded), c: 'green' } : null,
+                        { l: 'Plan Gross Sourced',     v: fmtD(totalGrossSourced),     c: 'blue' },
                         { l: 'Plan Spendable (After-Tax)',  v: fmtD(totalSpendableAllYears),      c: incomeSufficient ? 'green' : 'red' },
-                        { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : '' },
-                        { l: 'Cumulative Shortfall',       v: fmtD(cumulativeShortfall), c: cumulativeShortfall > 0 ? 'red' : '' },
+                        { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : 'green' },
+                        { l: 'Cumulative Shortfall',       v: fmtD(cumulativeShortfall), c: cumulativeShortfall > 0 ? 'red' : 'green' },
                         { l: 'Any-Year Funding Failure',   v: anyYearFailure ? 'Yes' : 'No', c: anyYearFailure ? 'red' : 'green' },
                         { l: 'Last Continuous Funded Year',      v: lastFundedAge ? `Age ${lastFundedAge}` : '—', c: anyYearFailure ? 'red' : 'green' },
                         { l: 'Asset Longevity',            v: assetsLast ? `Lasts to Age ${endAge}` : `Depletes @ Age ${depAge}`, c: assetsLast ? 'green' : 'red' },
