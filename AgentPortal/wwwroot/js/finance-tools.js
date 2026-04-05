@@ -613,6 +613,60 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         }
         .wf-dist-launch-btn:active { transform: translateY(0); filter: brightness(.95); }
         .wf-dist-launch-btn .wfd-btn-icon { font-size: 1rem; line-height: 1; }
+        /* ── WF chart popout ── */
+        .wf-chart-modal-backdrop{
+            position:fixed;
+            inset:0;
+            background:rgba(0,0,0,0.55);
+            z-index:2147480000;
+            display:none;
+            align-items:center;
+            justify-content:center;
+            padding:20px;
+        }
+        .wf-chart-modal{
+            background:#0f172a;
+            border:1.5px solid #a68023;
+            border-radius:18px;
+            box-shadow:0 18px 55px rgba(0,0,0,0.35);
+            width:min(1200px, 96vw);
+            height:min(760px, 88vh);
+            display:flex;
+            flex-direction:column;
+            overflow:hidden;
+            position:relative;
+        }
+        .wf-chart-modal-head{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            padding:14px 16px;
+            border-bottom:1px solid rgba(255,255,255,0.08);
+            color:#eaf2ff;
+        }
+        .wf-chart-modal-head h4{
+            margin:0;
+            font-weight:900;
+            letter-spacing:.4px;
+            color:#d9b35a;
+        }
+        .wf-chart-modal-body{
+            flex:1;
+            padding:12px 16px 18px;
+        }
+        .wf-chart-modal canvas{
+            width:100% !important;
+            height:100% !important;
+        }
+        .wf-chart-close{
+            background:transparent;
+            border:1px solid rgba(255,255,255,.25);
+            color:#eaf2ff;
+            border-radius:10px;
+            padding:6px 10px;
+            font-weight:700;
+            cursor:pointer;
+        }
         /* ── Wealth Forecast input grid (left side only) ── */
         .wf-input-grid{
             display:flex;
@@ -826,6 +880,19 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             </div>
         </div>
     </div>
+
+    <!-- Full-screen chart modal -->
+    <div id="wfChartModalBackdrop" class="wf-chart-modal-backdrop" aria-hidden="true">
+        <div class="wf-chart-modal" role="dialog" aria-modal="true" aria-label="Wealth Forecast full chart">
+            <div class="wf-chart-modal-head">
+                <h4>Wealth Forecast — Full View</h4>
+                <button type="button" class="wf-chart-close" id="wfChartCloseBtn">Close</button>
+            </div>
+            <div class="wf-chart-modal-body">
+                <canvas id="wfChartModalCanvas"></canvas>
+            </div>
+        </div>
+    </div>
 </div>`;
 
             // Grab container and elements
@@ -851,7 +918,13 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             const actualSavingsOut = document.getElementById("wbActualSavings");
             const savingsTipsOut = document.getElementById("wbSavingsTips");
             const chartEl = document.getElementById("wfChart");
+            const chartModalBackdrop = document.getElementById("wfChartModalBackdrop");
+            const chartModalCanvas = document.getElementById("wfChartModalCanvas");
+            const chartModalClose = document.getElementById("wfChartCloseBtn");
             let wfChart = null;
+            let wfModalChart = null;
+            let wfChartData = null;
+            let wfChartClickBound = false;
             const wealthToggle = document.getElementById('wf_toggleWealth');
             const spendToggle  = document.getElementById('wf_toggleSpend');
 
@@ -912,6 +985,87 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             // Apply visual styles
             applyToolBoxStyles(container);
+
+            // Modal helpers
+            async function renderWfModalChart(){
+                if (!chartModalCanvas || !wfChartData) return;
+                await ensureChartJs();
+                if (wfModalChart){
+                    wfModalChart.destroy();
+                    wfModalChart = null;
+                }
+                const ctx = chartModalCanvas.getContext("2d");
+                wfModalChart = new Chart(ctx, {
+                    type:"line",
+                    data:{
+                        labels: wfChartData.labels,
+                        datasets:[
+                            {
+                                label:"Projected Wealth",
+                                data: wfChartData.wealthPoints,
+                                borderColor:"#16a34a",
+                                borderWidth:3,
+                                tension:0.25,
+                                fill:false,
+                                pointRadius:3,
+                                pointHoverRadius:6
+                            },
+                            {
+                                label:"Cumulative Spending",
+                                data: wfChartData.spendPoints,
+                                borderColor:"#dc2626",
+                                borderWidth:3,
+                                tension:0.25,
+                                fill:false,
+                                pointRadius:3,
+                                pointHoverRadius:6
+                            }
+                        ]
+                    },
+                    options:{
+                        responsive:true,
+                        maintainAspectRatio:false,
+                        interaction:{ mode:'nearest', intersect:true },
+                        events:['click'],
+                        plugins:{
+                            legend:{ labels:{ color:"#eaf2ff", usePointStyle:true } },
+                            tooltip:{
+                                enabled:true,
+                                callbacks:{
+                                    label: ctx => ` ${ctx.dataset.label}: ${ctx.formattedValue}`
+                                }
+                            }
+                        },
+                        scales:{
+                            x:{ ticks:{ color:"#eaf2ff" }, grid:{ color:"rgba(255,255,255,.08)" }, title:{ display:true, text:"Year", color:"#eaf2ff" } },
+                            y:{ ticks:{ color:"#eaf2ff", callback:v=>`$${Number(v).toLocaleString()}` }, grid:{ color:"rgba(255,255,255,.08)" }, title:{ display:true, text:"Balance / Spend ($)", color:"#eaf2ff" } }
+                        }
+                    }
+                });
+            }
+
+            function showWfModal(){
+                if (!chartModalBackdrop || !wfChartData) return;
+                chartModalBackdrop.style.display = "flex";
+                chartModalBackdrop.setAttribute("aria-hidden","false");
+                document.body.style.overflow = "hidden";
+                void renderWfModalChart();
+            }
+
+            function hideWfModal(){
+                if (!chartModalBackdrop) return;
+                chartModalBackdrop.style.display = "none";
+                chartModalBackdrop.setAttribute("aria-hidden","true");
+                document.body.style.overflow = "";
+                if (wfModalChart){
+                    wfModalChart.destroy();
+                    wfModalChart = null;
+                }
+            }
+
+            chartModalBackdrop?.addEventListener("click", (e) => { if (e.target === chartModalBackdrop) hideWfModal(); });
+            chartModalClose?.addEventListener("click", hideWfModal);
+            document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideWfModal(); });
 
             // Load saved state AFTER DOM exists
             const TOOL_KEY = "WealthForecast";
@@ -1280,6 +1434,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     spendPoints.push(-cumulativeSpend);
                 }
 
+                wfChartData = { labels, wealthPoints, spendPoints };
+
                 const avgSavingsRate = totalIncome > 0 ? totalSavings / totalIncome : 0;
                 const totalSpend = cumulativeSpend;
                 const avgAnnualSavings = years > 0 ? totalSavings / years : totalSavings;
@@ -1427,6 +1583,12 @@ markNeutral(savingsTipsOut);
                         applyChartVisibility(false);
                         wfChart.update("none");
                     }
+                }
+
+                // Click to open modal
+                if (chartEl && !wfChartClickBound){
+                    chartEl.addEventListener("click", () => showWfModal());
+                    wfChartClickBound = true;
                 }
 
                 const sTips = avgSavingsRate < 0.2
