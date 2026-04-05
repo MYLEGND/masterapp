@@ -1026,7 +1026,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         responsive:true,
                         maintainAspectRatio:false,
                         interaction:{ mode:'nearest', intersect:true },
-                        events:['click'],
+                        events:['mousemove','mouseout','click','touchstart','touchmove'],
                         plugins:{
                             legend:{ labels:{ color:"#eaf2ff", usePointStyle:true } },
                             tooltip:{
