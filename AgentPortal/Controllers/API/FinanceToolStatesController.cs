@@ -103,6 +103,38 @@ namespace AgentPortal.Controllers.API
             public string JsonState { get; set; } = "{}";
         }
 
+        private string? ValidateDistributionCanonical(JsonObject canonical)
+        {
+            double GetD(string name, double def = 0)
+            {
+                if (canonical[name] is JsonValue v && v.TryGetValue<double>(out var d)) return d;
+                return def;
+            }
+            bool InRange(double v, double min, double max) => v >= min && v <= max;
+            var retireAge = GetD("retireAge");
+            var endAge = GetD("endAge");
+            if (retireAge <= 0) return "retireAge must be > 0";
+            if (endAge <= retireAge) return "endAge must be greater than retireAge";
+            if (GetD("retirementBase") < 0) return "retirementBase must be >= 0";
+            if (GetD("desiredIncome") < 0) return "desiredIncome must be >= 0";
+            if (GetD("guaranteedIncome") < 0) return "guaranteedIncome must be >= 0";
+            if (GetD("emergencyReserve") < 0) return "emergencyReserve must be >= 0";
+            double inv = GetD("invAllocPct"), li = GetD("liAllocPct"), ann = GetD("annAllocPct");
+            if (!InRange(inv,0,100) || !InRange(li,0,100) || !InRange(ann,0,100))
+                return "Allocation percents must be between 0 and 100";
+            if (Math.Abs(inv + li + ann - 100) > 0.001)
+                return "Allocation percents must total 100%";
+            double rtnMin=-50, rtnMax=20;
+            if (!InRange(GetD("invReturnPct"), rtnMin, rtnMax)) return "invReturnPct out of range";
+            if (!InRange(GetD("liReturnPct"), rtnMin, rtnMax)) return "liReturnPct out of range";
+            if (!InRange(GetD("annReturnPct"), rtnMin, rtnMax)) return "annReturnPct out of range";
+            double taxMin=0, taxMax=100;
+            if (!InRange(GetD("invTaxPct"), taxMin, taxMax)) return "invTaxPct out of range";
+            if (!InRange(GetD("liTaxPct"), taxMin, taxMax)) return "liTaxPct out of range";
+            if (!InRange(GetD("annTaxPct"), taxMin, taxMax)) return "annTaxPct out of range";
+            return null;
+        }
+
         [HttpGet("load")]
         public async Task<IActionResult> Load(Guid clientProfileId, string? clientUserId, string toolId)
         {
@@ -133,6 +165,25 @@ namespace AgentPortal.Controllers.API
         {
             if (req == null || string.IsNullOrWhiteSpace(req.ToolId))
                 return BadRequest();
+
+            try
+            {
+                var root = JsonNode.Parse(req.JsonState) as JsonObject ?? new JsonObject();
+                if (string.Equals(req.ToolId, "DistributionPlanner", StringComparison.OrdinalIgnoreCase))
+                {
+                    var canonical = root["canonicalInput"] as JsonObject;
+                    if (canonical != null)
+                    {
+                        var err = ValidateDistributionCanonical(canonical);
+                        if (!string.IsNullOrWhiteSpace(err))
+                            return BadRequest(err);
+                    }
+                }
+            }
+            catch
+            {
+                return BadRequest("Invalid JSON state.");
+            }
 
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(req.ClientProfileId, req.ClientUserId);
             if (resolvedClientProfileId == null)

@@ -2851,6 +2851,68 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public int? Version { get; set; }
     }
 
+    public sealed class DistributionPlanCanonicalInput
+    {
+        public string SchemaVersion { get; set; } = "1.0";
+        public int PlanVersion { get; set; } = 1;
+        public double RetireAge { get; set; }
+        public double EndAge { get; set; }
+        public double InflationPct { get; set; }
+        public double RetirementBase { get; set; }
+        public double DesiredIncome { get; set; }
+        public double GuaranteedIncome { get; set; }
+        public double EmergencyReserve { get; set; }
+        public bool ManualBaseOverride { get; set; }
+        public double InvAllocPct { get; set; }
+        public double InvReturnPct { get; set; }
+        public double InvTaxPct { get; set; }
+        public double LiAllocPct { get; set; }
+        public double LiReturnPct { get; set; }
+        public double LiTaxPct { get; set; }
+        public string LiAccessMode { get; set; } = "withdrawal";
+        public string LiPolicyType { get; set; } = "whole";
+        public double AnnAllocPct { get; set; }
+        public double AnnReturnPct { get; set; }
+        public double AnnTaxPct { get; set; }
+        public string AnnDesign { get; set; } = "fixed";
+        public List<string> WithdrawalOrder { get; set; } = new List<string> { "inv", "li", "ann", "reserve" };
+    }
+
+    private static string? ValidateDistributionCanonical(JsonObject canonical)
+    {
+        double GetD(string name, double def = 0)
+        {
+            if (canonical[name] is JsonValue v && v.TryGetValue<double>(out var d)) return d;
+            return def;
+        }
+        bool InRange(double v, double min, double max) => v >= min && v <= max;
+        var retireAge = GetD("retireAge");
+        var endAge = GetD("endAge");
+        if (retireAge <= 0) return "retireAge must be > 0";
+        if (endAge <= retireAge) return "endAge must be greater than retireAge";
+        var retirementBase = GetD("retirementBase");
+        if (retirementBase < 0) return "retirementBase must be >= 0";
+        if (GetD("desiredIncome") < 0) return "desiredIncome must be >= 0";
+        if (GetD("guaranteedIncome") < 0) return "guaranteedIncome must be >= 0";
+        if (GetD("emergencyReserve") < 0) return "emergencyReserve must be >= 0";
+
+        double inv = GetD("invAllocPct"), li = GetD("liAllocPct"), ann = GetD("annAllocPct");
+        if (!InRange(inv,0,100) || !InRange(li,0,100) || !InRange(ann,0,100))
+            return "Allocation percents must be between 0 and 100";
+        if (Math.Abs(inv + li + ann - 100) > 0.001)
+            return "Allocation percents must total 100%";
+
+        double rtnMin=-50, rtnMax=20;
+        if (!InRange(GetD("invReturnPct"), rtnMin, rtnMax)) return "invReturnPct out of range";
+        if (!InRange(GetD("liReturnPct"), rtnMin, rtnMax)) return "liReturnPct out of range";
+        if (!InRange(GetD("annReturnPct"), rtnMin, rtnMax)) return "annReturnPct out of range";
+        double taxMin=0, taxMax=100;
+        if (!InRange(GetD("invTaxPct"), taxMin, taxMax)) return "invTaxPct out of range";
+        if (!InRange(GetD("liTaxPct"), taxMin, taxMax)) return "liTaxPct out of range";
+        if (!InRange(GetD("annTaxPct"), taxMin, taxMax)) return "annTaxPct out of range";
+        return null;
+    }
+
     public sealed class OutcomeRequest
     {
         public string ClientUserId { get; set; } = "";
@@ -3423,6 +3485,28 @@ meta.Activities ??= new List<ClientCrmActivity>();
             var incomingJson = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
             // Include deleted rows so we can revive instead of violating unique index
             var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
+            // Validate canonical distribution planner payload if present
+            try
+            {
+                var root = JsonNode.Parse(incomingJson) as JsonObject ?? new JsonObject();
+                var dist = root["distribution"] as JsonObject;
+                var canonical = dist?["canonicalInput"] as JsonObject;
+                if (canonical != null)
+                {
+                    var err = ValidateDistributionCanonical(canonical);
+                    if (!string.IsNullOrWhiteSpace(err))
+                    {
+                        _logger.LogWarning("FinancialPlan SAVE validation failed profileId={ProfileId} error={Error}", id, err);
+                        return BadRequest(err);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "FinancialPlan SAVE validation parse error profileId={ProfileId}", id);
+                return BadRequest("Invalid financial plan payload.");
+            }
+
             var sanitized = SanitizeFinancialPlanJson(incomingJson, row?.JsonData);
             if (row == null)
             {

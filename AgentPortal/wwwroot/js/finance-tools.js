@@ -3955,189 +3955,112 @@ markNeutral(savingsTipsOut);
                 gid('wfd_editFoundation')?.addEventListener('click', ()=>setStep('1'));
                 gid('wfd_editBuckets')?.addEventListener('click', ()=>setStep('2'));
                 gid('wfd_editStrategy')?.addEventListener('click', ()=>setStep('3'));
-                gid('wfd_runBase')?.addEventListener('click', ()=>{
-                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'fixed';
-                    gid('wfd_manualReturns').value = '';
-                    gid('wfd_calcBtn').click();
-                });
-                gid('wfd_runDown')?.addEventListener('click', ()=>{
-                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'random';
-                    const threshold = gid('wfd_downThreshold'); if (threshold) threshold.value = '0';
-                    gid('wfd_protectInvest').checked = true;
-                    gid('wfd_calcBtn').click();
-                });
-                gid('wfd_runScenario')?.addEventListener('click', ()=>{
-                    if (typeof wfdScenarioCache === 'object') wfdScenarioCache = [];
-                    const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'random';
-                    gid('wfd_genScenario')?.click();
-                });
-
-                gid('wfd_calcBtn').addEventListener('click', async () => {
-                    const preErrs = validateDist();
-                    showBlock(preErrs);
-                    if (preErrs.length) return;
-
-                    try { await ensureChartJs(); } catch (_) { /* chart unavailable; renderResults handles gracefully */ }
-
-                    const base          = pf(gid('wfd_base').value);
-                    const retAge        = pf(gid('wfd_retAge').value);
-                    const endAge        = pf(gid('wfd_endAge').value);
-                    const years         = Math.floor(endAge - retAge);
-                    const desiredInc    = pf(gid('wfd_desiredIncome').value);
-                    const guarInc       = pf(gid('wfd_guaranteedIncome').value);
-                    const incGap        = Math.max(desiredInc - guarInc, 0);
-                    let emergencyBal    = Math.max(0, pf(gid('wfd_emergency').value));
-
-                    const invAllocPct   = pf(gid('wfd_invAlloc').value);
-                    const liAllocPct    = pf(gid('wfd_liAlloc').value);
-                    const annAllocPct   = pf(gid('wfd_annAlloc').value);
-
-                    const invReturn     = pf(gid('wfd_invReturn').value)   / 100;
-                    const invTax        = pf(gid('wfd_invTax').value)      / 100;
-                    const invDownMkt    = gid('wfd_invDownMkt').checked;
-
-                    const liGrowth      = pf(gid('wfd_liGrowth').value)    / 100;
-                    const liTax         = pf(gid('wfd_liTax').value)       / 100;
-                    const liEff         = (pf(gid('wfd_liEfficiency').value) || 100) / 100;
-                    const liDeathStart  = pf(gid('wfd_liDeath').value);
-                    const liDownMkt     = gid('wfd_liDownMkt').checked;
-
-                    const annReturn     = pf(gid('wfd_annReturn').value)   / 100;
-                    const annTax        = pf(gid('wfd_annTax').value)      / 100;
-                    const annDeathStart = pf(gid('wfd_annDeath').value);
-                    const annDownMkt    = gid('wfd_annDownMkt').checked;
-                    const annDbRider    = gid('wfd_annDbRider').checked;
-                    const annIncomeRider= gid('wfd_annIncomeRider').checked;
-                    const annRollupRate = (pf(gid('wfd_annRollup').value) || 5) / 100;
-                    const annDesign     = gid('wfd_annDesign').value || 'fixed';
-                    const liType        = gid('wfd_liType').value || 'whole';
-                    const liAccess      = gid('wfd_liAccess').value || 'withdrawal';
-
-                    let strategy        = gid('wfd_strategy').value;
-                    if (strategy === 'downmarket') strategy = 'guardrail'; // legacy persisted value
-                    const protectInvest = gid('wfd_protectInvest').checked;
-                    const gapSource     = gid('wfd_gapSource').value || 'life';
-                    const scenarioMode  = gid('wfd_scenarioMode').value || 'fixed';
-                    const downThreshold = pf(gid('wfd_downThreshold').value) / 100;
-                    const manualReturnTxt = gid('wfd_manualReturns').value || '';
-                    const priOrder      = getPriorityOrder();
-                    const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
-                    const annVarReturns = generateRandomReturns(years, annReturn * 100).map(v => v / 100);
-
-                    // --- Validation ---
-                    const errs = validateDist();
-                    gid('wfd_warnArea').innerHTML = '';
-                    if (errs.length > 0) {
-                        gid('wfd_warnArea').innerHTML = errs.map(e => `<div class="wfd-warn-box">⚠️ ${e}</div>`).join('');
-                        if (distMeta.hasValidResults && distMeta.result) {
-                            hydrateResultsFromMeta();
-                        } else {
-                            renderEmptyResults();
+                // ---------- Canonical DP wiring ----------
+                function hideUnsupportedDpControls(){
+                    ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider','wfd_annRollup','wfd_liEfficiency','wfd_liDeath','wfd_annDeath','wfd_scenarioMode','wfd_gapSource','wfd_downThreshold','wfd_manualReturns','wfd_genScenario','wfd_runDown','wfd_runScenario','wfd_strategy','wfd_annRollupWrap'].forEach(id=>{
+                        const el = gid(id);
+                        if (!el) return;
+                        const wrap = el.closest('.wfd-tog-wrap') || el.closest('.wfd-row') || el.parentElement;
+                        if (wrap && wrap.style) wrap.style.display = 'none';
+                        el.style.display = 'none';
+                        if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') {
+                            el.disabled = true;
                         }
-                        return;
-                    }
+                    });
+                }
+                hideUnsupportedDpControls();
 
-                    // --- Starting balances ---
-                    let invBal  = base * invAllocPct  / 100;
-                    let liBal   = base * liAllocPct   / 100;
-                    let annBal  = base * annAllocPct  / 100;
-                    let emBal   = emergencyBal;
-                    let liDeathBal  = Math.max(0, liDeathStart);
-                    let annDeathBal = annDbRider ? Math.max(0, annDeathStart || annBal) : annBal;
-                    let annRiderBase = annDbRider ? annDeathBal : 0;
-                    // whole_loan: tracks outstanding loan balance (not subtracted from cash value)
-                    const liLoanRate = 0.05; // 5% annual policy loan interest (fixed rate default)
-                    let liLoanBal = 0;
-                    // income rider (optional): dual-account — cash value + guaranteed income base
-                    // income rider rollup rate (independent of market returns)
-                    const annRollupRateDec = annIncomeRider ? annRollupRate : 0;
-                    // age-banded payout rate: higher payout at older retirement ages (locked on first income draw)
-                    const annPayoutRateForAge = (age) => age < 60 ? 0.040 : age < 65 ? 0.045 : age < 70 ? 0.050 : age < 75 ? 0.055 : 0.060;
-                    let annLockedPayoutRate = annPayoutRateForAge(retAge); // provisional; re-locked at income start
-                    let annIncomeBase = annIncomeRider ? annBal : 0;
-                    let annIncomeBenefit = annIncomeRider ? annIncomeBase * annLockedPayoutRate : 0;
-                    let annIncomeStarted = false; // income rider: tracks whether income draw has begun (locks rollup + payout rate)
-                    const startInvBal = invBal, startLiBal = liBal, startAnnBal = annBal, startEmBal = emBal;
-                    const startLiDeath = liDeathBal, startAnnDeath = annDeathBal;
-
-                    const shortfallTol = Math.max(100, incGap * 0.02); // tolerance used for visuals only
-                    const onlyInvestmentsFunded = (invAllocPct > 0) && (liAllocPct <= 0) && (annAllocPct <= 0);
-
-                    // --- Year-by-year simulation ---
-                    const totalPts = [invBal + liBal + annBal + emBal];
-                    const invPts   = [invBal];
-                    const liPts    = [liBal];
-                    const annPts   = [annBal];
-                    const annReturnSeries = [];
-                    const liDeathPts  = [liDeathBal];
-                    const annDeathPts = [annDeathBal];
-                    const emPts    = [emBal];
-                    const yLabels  = ['Age ' + retAge];
-                    const auditRows = [];
-                    const marketStates = [];
-                    const fundingSources = [];
-                    const invReturnSeries = [];
-
-                    let depletionYr = null;
-                    let depletionEmerg = null;
-                    let liLapsed = false;
-                    let fy_emW = 0, fy_invW = 0, fy_liW = 0, fy_annW = 0; // first-year withdrawals
-                    let year1Shortfall = 0;
-                    let anyYearShortfall = false;
-                    let cumulativeShortfall = 0;
-                    let firstFailureYear = null;
-                    let lastFullyFundedAge = null;
-                    let lastPositiveAge = retAge;
-                    let totalEmUsed = 0;
-                    let totalInvDraw = 0, totalLiDraw = 0, totalAnnDraw = 0;
-                    let depletionEmergAge = null;
-                    let downYearCount = 0;
-
-                    const bucketLabels = { investments:'Investments', life:'Life Insurance', annuities:'Annuities', emergency:'Emergency' };
-                    const uniqSeq = (arr) => arr.filter((v,i) => v && (i === 0 || arr[i-1] !== v));
-                    const joinArrow = (arr) => arr.map(b => bucketLabels[b] || b).join(' → ');
-                    const joinPlus  = (arr) => arr.map(b => bucketLabels[b] || b).join(' + ');
-                    const buildFundingLabel = ({ path, investGuarded, marketState, invW, strategy }) => {
-                        const clean = uniqSeq(path);
-                        if (investGuarded && marketState === 'down') {
-                            const nonInv = clean.filter(p => p !== 'investments');
-                            if (invW <= 0) {
-                                if (nonInv.length) return `Protected Investments; ${joinArrow(nonInv)}`;
-                                return 'Protected Investments; no draw';
-                            }
-                            if (nonInv.length) return `Protected Investments; ${joinArrow(nonInv)} → Investments (fallback)`;
-                            return 'Protected Investments; Investments (fallback)';
-                        }
-                        if (clean.length === 0) return 'None';
-                        if (clean.length === 1) return bucketLabels[clean[0]] || clean[0];
-                        return strategy === 'proportional' ? joinPlus(clean) : joinArrow(clean);
+                function buildCanonicalDpInput(){
+                    const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
+                    const manualOverride = !!gid('wfd_manualOverride')?.checked;
+                    const baseFromWf = window.__wfFinalBalance || 0;
+                    const base = manualOverride ? pf(gid('wfd_base')?.value) : baseFromWf;
+                    if (!manualOverride && gid('wfd_base')) gid('wfd_base').value = (baseFromWf || 0).toLocaleString();
+                    return {
+                        schemaVersion: (window.DP_CONSTANTS||{}).DP_SCHEMA_VERSION || "1.0",
+                        planVersion: distMeta.planVersion || 1,
+                        retireAge: pf(gid('wfd_retAge')?.value),
+                        endAge: pf(gid('wfd_endAge')?.value),
+                        inflationPct: (window.DP_CONSTANTS?.DP_DEFAULTS?.inflationPct) ?? 3,
+                        retirementBase: base,
+                        desiredIncome: pf(gid('wfd_desiredIncome')?.value),
+                        guaranteedIncome: pf(gid('wfd_guaranteedIncome')?.value),
+                        emergencyReserve: pf(gid('wfd_emergency')?.value),
+                        manualBaseOverride: manualOverride,
+                        invAllocPct: pf(gid('wfd_invAlloc')?.value),
+                        invReturnPct: pf(gid('wfd_invReturn')?.value),
+                        invTaxPct: pf(gid('wfd_invTax')?.value),
+                        liAllocPct: pf(gid('wfd_liAlloc')?.value),
+                        liReturnPct: pf(gid('wfd_liGrowth')?.value),
+                        liTaxPct: pf(gid('wfd_liTax')?.value),
+                        liAccessMode: (gid('wfd_liAccess')?.value || 'withdrawal'),
+                        liPolicyType: (gid('wfd_liType')?.value || 'whole'),
+                        annAllocPct: pf(gid('wfd_annAlloc')?.value),
+                        annReturnPct: pf(gid('wfd_annReturn')?.value),
+                        annTaxPct: pf(gid('wfd_annTax')?.value),
+                        annDesign: (gid('wfd_annDesign')?.value || 'fixed'),
+                        withdrawalOrder: window.DP_CONSTANTS?.DP_WITHDRAWAL_ORDER_DEFAULT || ["inv","li","ann","reserve"]
                     };
+                }
 
-                    for (let y = 1; y <= years; y++) {
-                        // Snapshot each bucket before any withdrawal or growth this iteration
-                        const invStart0 = invBal;
-                        const liStart0  = liBal;
-                        const annStart0 = annBal;
-                        const emStart0  = emBal;
-                        const liDeathStart0  = liDeathBal;
-                        const annDeathStart0 = annDeathBal;
-                        const startBalTotal = invStart0 + liStart0 + annStart0 + emStart0;
-                        const invYearR = (scenarioReturns[y-1] !== undefined ? scenarioReturns[y-1] : invReturn);
-                        // Life design-driven growth
-                        let liYearR = liGrowth;
-                        if (liType === 'iul') liYearR = Math.max(0, Math.min(Math.max(invYearR, 0), 0.12) * 0.6); // capped + participation for conservatism
-                        else if (liType === 'vul') liYearR = invYearR;
-                        else if (liType === 'legacy_rpu') liYearR = Math.min(liGrowth, 0.03); // conservative credited
+                function renderEmptyResults(){
+                    ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff','wfd_healthBadge'].forEach(id=>{
+                        const el = gid(id); if (el) el.textContent = '—';
+                    });
+                    gid('wfd_warnArea') && (gid('wfd_warnArea').innerHTML = '');
+                }
 
-                        // Annuity design-driven growth
-                        const annBaseVarR = (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn);
-                        let annYearR = annReturn;
-                        if (annDesign === 'variable') annYearR = annBaseVarR;
-                        else if (annDesign === 'fixedIndexed') {
-                            const capped = Math.min(Math.max(annBaseVarR, 0), 0.10);
-                            annYearR = Math.max(0, (capped * 0.6) - 0.01); // 60% participation minus 1% spread
-                        }
-                        if (annIncomeRider) {
+                function formatMoney(v){ const n = Number(v)||0; return '$' + Math.round(n).toLocaleString(); }
+
+                function renderCanonicalResults(res){
+                    gid('wfd_warnArea') && (gid('wfd_warnArea').innerHTML = '');
+                    const sum = res.summary || {};
+                    const depletionText = sum.depletionYearOverall === null ? 'Sustainable' : `Depletes Yr ${sum.depletionYearOverall+1}`;
+                    const incomeEl = gid('wfd_sumIncome'); if (incomeEl) incomeEl.textContent = formatMoney(sum.avgIncomeDeliveredNet || 0);
+                    const healthEl = gid('wfd_sumHealth'); if (healthEl) healthEl.textContent = depletionText;
+                    const longevityEl = gid('wfd_sumLongevity'); if (longevityEl) longevityEl.textContent = formatMoney(sum.totalEndBalance || 0);
+                    const suffEl = gid('wfd_sumIncomeSuff'); if (suffEl) suffEl.textContent = sum.totalShortfall > 0 ? `Shortfall ${formatMoney(sum.totalShortfall)}` : 'Covered';
+                    const badge = gid('wfd_healthBadge'); if (badge){
+                        badge.textContent = sum.depletionYearOverall === null ? 'Good' : 'At Risk';
+                        badge.className = sum.depletionYearOverall === null ? 'wfd-badge good' : 'wfd-badge warn';
+                    }
+                    // basic series rendering: bar heights represent end balances
+                    const lastIdx = (res.series?.wealthSeries?.length || 1) -1;
+                    const endInv = res.series?.bucketSeries?.inv?.[lastIdx] || 0;
+                    const endLi  = res.series?.bucketSeries?.li?.[lastIdx] || 0;
+                    const endAnn = res.series?.bucketSeries?.ann?.[lastIdx] || 0;
+                    const endEm  = res.series?.bucketSeries?.reserve?.[lastIdx] || 0;
+                    const mx = Math.max(endInv,endLi,endAnn,endEm,1);
+                    const setHeight = (id,val)=>{ const el = gid(id); if (el) el.style.height = Math.max(val/mx*100,3)+'%'; };
+                    setHeight('wfd_invBar', endInv);
+                    setHeight('wfd_liBar', endLi);
+                    setHeight('wfd_annBar', endAnn);
+                    const setLbl = (id,prefix,val)=>{ const el = gid(id); if (el) el.innerHTML = `${prefix}<br>${formatMoney(val)}`; };
+                    setLbl('wfd_invWLbl','Investments', endInv);
+                    setLbl('wfd_liWLbl','Life Ins', endLi);
+                    setLbl('wfd_annWLbl','Annuities', endAnn);
+                    setLbl('wfd_emWLbl','Emergency', endEm);
+                    if (gid('wfd_results')) gid('wfd_results').style.display = 'block';
+                }
+
+                const handleDpRun = async () => {
+                    const plan = buildCanonicalDpInput();
+                    const errs = window.DP_VALIDATORS?.validatePlanInput ? window.DP_VALIDATORS.validatePlanInput(plan) : [{message:"Validator unavailable"}];
+                    const warnArea = gid('wfd_warnArea');
+                    const showErrs = (list)=>{ if (warnArea) warnArea.innerHTML = list.map(e=>`<div class="wfd-warn-box">⚠️ ${e.message || e}</div>`).join(''); };
+                    if (errs.length){ showErrs(errs); renderEmptyResults(); return; }
+                    const result = window.runDistributionPlan ? window.runDistributionPlan(plan) : { errors:[{message:"Engine unavailable"}]};
+                    if (result.errors && result.errors.length){ showErrs(result.errors); renderEmptyResults(); return; }
+                    distMeta.hasValidResults = true;
+                    distMeta.result = result;
+                    renderCanonicalResults(result);
+                    setStep('4');
+                };
+
+                gid('wfd_calcBtn').addEventListener('click', handleDpRun);
+                gid('wfd_runBase')?.addEventListener('click', handleDpRun);
+                gid('wfd_runDown')?.addEventListener('click', handleDpRun);
+                gid('wfd_runScenario')?.addEventListener('click', handleDpRun);
                             // Income base rolls up only during deferral; locks once income draw begins
                             if (!annIncomeStarted) {
                                 annIncomeBase = annIncomeBase * (1 + annRollupRateDec);

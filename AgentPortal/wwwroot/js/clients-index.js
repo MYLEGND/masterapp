@@ -186,33 +186,41 @@ function resetFinPlanForm(){
 }
 
 function finPlanPayload(){
-  const wf = {
-    wbStartingBalance: $("#wbStartingBalance")?.value || "",
-    wbIncome: $("#wbIncome")?.value || "",
-    wbYears: $("#wbYears")?.value || "",
-    wbInflation: $("#wbInflation")?.value || "",
-    wbReturn: $("#wbReturn")?.value || "",
-    wbTax: $("#wbTax")?.value || "",
-    wbLiabilities: $("#wbLiabilities")?.value || "",
-    wbLifestyle: $("#wbLifestyle")?.value || ""
+  const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
+  const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
+  const base = manualOverride ? pf($("#wfd_base")?.value) : (window.__wfFinalBalance || 0);
+  if (!manualOverride && $("#wfd_base")) $("#wfd_base").value = (base||0).toLocaleString();
+
+  const canonical = {
+    schemaVersion: (window.DP_CONSTANTS?.DP_SCHEMA_VERSION) || "1.0",
+    planVersion: finPlanVersion || 1,
+    retireAge: pf($("#wfd_retAge")?.value),
+    endAge: pf($("#wfd_endAge")?.value),
+    inflationPct: (window.DP_CONSTANTS?.DP_DEFAULTS?.inflationPct) ?? 3,
+    retirementBase: base,
+    desiredIncome: pf($("#wfd_desiredIncome")?.value),
+    guaranteedIncome: pf($("#wfd_guaranteedIncome")?.value),
+    emergencyReserve: pf($("#wfd_emergency")?.value),
+    manualBaseOverride: manualOverride,
+    invAllocPct: pf($("#wfd_invAlloc")?.value),
+    invReturnPct: pf($("#wfd_invReturn")?.value),
+    invTaxPct: pf($("#wfd_invTax")?.value),
+    liAllocPct: pf($("#wfd_liAlloc")?.value),
+    liReturnPct: pf($("#wfd_liGrowth")?.value),
+    liTaxPct: pf($("#wfd_liTax")?.value),
+    liAccessMode: ($("#wfd_liAccess")?.value || "withdrawal"),
+    liPolicyType: ($("#wfd_liType")?.value || "whole"),
+    annAllocPct: pf($("#wfd_annAlloc")?.value),
+    annReturnPct: pf($("#wfd_annReturn")?.value),
+    annTaxPct: pf($("#wfd_annTax")?.value),
+    annDesign: ($("#wfd_annDesign")?.value || "fixed"),
+    withdrawalOrder: (window.DP_CONSTANTS?.DP_WITHDRAWAL_ORDER_DEFAULT) || ["inv","li","ann","reserve"]
   };
-  const distInputs = {};
-  ['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
-   'wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath',
-   'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annRollup'].forEach(id => { const el = document.getElementById(id); if (el) distInputs[id] = el.value; });
-
-  const distChecks = {};
-  ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest']
-    .forEach(id => { const el = document.getElementById(id); if (el) distChecks[id] = !!el.checked; });
-
-  const distSelects = {};
-  ['wfd_liType','wfd_liAccess','wfd_annDesign']
-    .forEach(id => { const el = document.getElementById(id); if (el) distSelects[id] = el.value; });
 
   return {
     version: finPlanVersion,
-    wealthForecast: { inputs: wf },
-    distribution: { inputs: distInputs, checks: distChecks, selects: distSelects, meta:{ source:'crm' } }
+    wealthForecast: { inputs: { wbStartingBalance: $("#wbStartingBalance")?.value || "", wbIncome: $("#wbIncome")?.value || "", wbYears: $("#wbYears")?.value || "", wbInflation: $("#wbInflation")?.value || "", wbReturn: $("#wbReturn")?.value || "", wbTax: $("#wbTax")?.value || "", wbLiabilities: $("#wbLiabilities")?.value || "", wbLifestyle: $("#wbLifestyle")?.value || "" } },
+    distribution: { canonicalInput: canonical, meta:{ source:'crm' } }
   };
 }
 
@@ -253,21 +261,31 @@ function hydrateFinPlan(jsonData){
   const wf = payload.wealthForecast?.inputs || {};
   Object.keys(wf).forEach(id => { const el = document.getElementById(id); if (el) el.value = wf[id]; });
 
-  const distInputs = payload.distribution?.inputs || {};
-  Object.keys(distInputs).forEach(id => { const el = document.getElementById(id); if (el) el.value = distInputs[id]; });
-
-  const distChecks = payload.distribution?.checks || {};
-  Object.keys(distChecks).forEach(id => { const el = document.getElementById(id); if (el) el.checked = !!distChecks[id]; });
-
-  const distSelects = payload.distribution?.selects || {};
-  Object.keys(distSelects).forEach(id => { const el = document.getElementById(id); if (el) {
-    // if option not present, add it so value displays
-    if (el.tagName === "SELECT" && el.querySelector(`option[value="${distSelects[id]}"]`) === null){
-      const opt = document.createElement("option"); opt.value = distSelects[id]; opt.textContent = distSelects[id];
-      el.appendChild(opt);
-    }
-    el.value = distSelects[id];
-  } });
+  const canonical = payload.distribution?.canonicalInput || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ""; };
+  const setChecked = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  setVal("wfd_base", canonical.retirementBase ?? "");
+  setChecked("wfd_manualOverride", !!canonical.manualBaseOverride);
+  setVal("wfd_retAge", canonical.retireAge ?? "");
+  setVal("wfd_endAge", canonical.endAge ?? "");
+  setVal("wfd_emergency", canonical.emergencyReserve ?? "");
+  setVal("wfd_desiredIncome", canonical.desiredIncome ?? "");
+  setVal("wfd_guaranteedIncome", canonical.guaranteedIncome ?? "");
+  setVal("wfd_invAlloc", canonical.invAllocPct ?? "");
+  setVal("wfd_invReturn", canonical.invReturnPct ?? "");
+  setVal("wfd_invTax", canonical.invTaxPct ?? "");
+  setVal("wfd_liAlloc", canonical.liAllocPct ?? "");
+  setVal("wfd_liGrowth", canonical.liReturnPct ?? "");
+  setVal("wfd_liTax", canonical.liTaxPct ?? "");
+  setVal("wfd_annAlloc", canonical.annAllocPct ?? "");
+  setVal("wfd_annReturn", canonical.annReturnPct ?? "");
+  setVal("wfd_annTax", canonical.annTaxPct ?? "");
+  const liAccess = canonical.liAccessMode || "withdrawal";
+  const liType = canonical.liPolicyType || "whole";
+  const annDesign = canonical.annDesign || "fixed";
+  const liAccessEl = document.getElementById("wfd_liAccess"); if (liAccessEl) liAccessEl.value = liAccess;
+  const liTypeEl = document.getElementById("wfd_liType"); if (liTypeEl) liTypeEl.value = liType;
+  const annDesignEl = document.getElementById("wfd_annDesign"); if (annDesignEl) annDesignEl.value = annDesign;
   updateFinPlanAllocTotal();
 }
 
@@ -314,6 +332,16 @@ function ensureFinPlanSelectOptions(){
     { value:"fixedIndexed", label:"Fixed Indexed Annuity" },
     { value:"variable",     label:"Variable Annuity" }
   ]);
+
+  // hide unsupported v1 controls in CRM DP
+  ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider','wfd_annRollup','wfd_liEfficiency','wfd_liDeath','wfd_annDeath','wfd_scenarioMode','wfd_gapSource','wfd_downThreshold','wfd_manualReturns','wfd_genScenario','wfd_runDown','wfd_runScenario','wfd_strategy','wfd_annRollupWrap'].forEach(id=>{
+    const el = document.getElementById(id);
+    if (!el) return;
+    const wrap = el.closest('.wfd-tog-wrap') || el.closest('.wfd-row') || el.parentElement;
+    if (wrap && wrap.style) wrap.style.display = 'none';
+    el.style.display = 'none';
+    if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') el.disabled = true;
+  });
 }
 
 function updateFinPlanAllocTotal(trigger = "generic"){
@@ -334,7 +362,7 @@ function updateFinPlanAllocTotal(trigger = "generic"){
     $("#wfd_annAlloc").value = "0";
   } else if (trigger === "inv" && !finPlanAllocManual){
     const remaining = Math.max(0, 100 - invPct);
-    const half = +(remaining / 2).toFixed(1);
+  const half = +(remaining / 2).toFixed(1);
     liPct = half;
     annPct = remaining - half;
     $("#wfd_liAlloc").value = liPct.toString();
@@ -373,6 +401,12 @@ function updateFinPlanAllocTotal(trigger = "generic"){
 
 async function saveFinPlan(){
   const payload = finPlanPayload();
+  const canonical = payload.distribution?.canonicalInput;
+  const errs = window.DP_VALIDATORS?.validatePlanInput ? window.DP_VALIDATORS.validatePlanInput(canonical) : [{message:"Validator unavailable"}];
+  if (errs.length){
+    showFinPlanError(errs.map(e=>e.message).join("; "));
+    return;
+  }
   const clientUserId = finPlanActiveClientId || $("#finPlanClientUserId")?.value || "";
   if (!clientUserId){
     showFinPlanError("Missing client id.");
@@ -1793,6 +1827,7 @@ const finPlanModalId = "clientFinPlanModal";
 let finPlanModal = null;
 let finPlanActiveClientId = null;
 let finPlanVersion = 0;
+let finPlanAllocManual = false; // align with workstation auto-split behavior
 let finPlanAllocManual = false; // tracks manual LI/ANN edits
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
