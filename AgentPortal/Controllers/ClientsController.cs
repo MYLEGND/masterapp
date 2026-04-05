@@ -392,6 +392,19 @@ namespace AgentPortal.Controllers;
             MergeObject(resSelects, incomingSelects);
         }
 
+        // Distribution canonical input (CRM quick-view payload)
+        var incomingCanonical = incomingDist["canonicalInput"] as JsonObject;
+        if (incomingCanonical != null && incomingCanonical.Count > 0)
+        {
+            var resCanonical = resDist["canonicalInput"] as JsonObject;
+            if (resCanonical == null)
+            {
+                resCanonical = new JsonObject();
+                resDist["canonicalInput"] = resCanonical;
+            }
+            MergeObject(resCanonical, incomingCanonical);
+        }
+
         var incomingMeta = incomingDist["meta"] as JsonObject;
         if (incomingMeta != null && incomingMeta.Count > 0)
         {

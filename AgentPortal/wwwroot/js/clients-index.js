@@ -373,13 +373,7 @@ function ensureFinPlanSelectOptions(){
   const setOptions = (id, opts) => {
     const sel = document.getElementById(id);
     if (!sel) return;
-    const hasPlaceholder = sel.querySelector('option[value=\"\"]');
-    if (!hasPlaceholder){
-      const ph = document.createElement("option");
-      ph.value = ""; ph.textContent = `-- SELECT ${sel.getAttribute('data-placeholder') || 'OPTION'} --`;
-      sel.insertBefore(ph, sel.firstChild);
-    }
-    if (sel.children.length <= 1){
+    if (sel.children.length === 0){
       opts.forEach(o => {
         const opt = document.createElement("option");
         opt.value = o.value; opt.textContent = o.label;
@@ -391,7 +385,7 @@ function ensureFinPlanSelectOptions(){
     { value:"whole",      label:"Whole Life" },
     { value:"iul",        label:"Indexed UL" },
     { value:"vul",        label:"Variable UL" },
-    { value:"legacy_rpu", label:"Legacy / RPU" }
+    { value:"legacy_rpu", label:"Legacy / Reduced Paid-Up" }
   ]);
 
   setOptions("wfd_liAccess", [
@@ -406,15 +400,7 @@ function ensureFinPlanSelectOptions(){
     { value:"variable",     label:"Variable Annuity" }
   ]);
 
-  // hide unsupported v1 controls in CRM DP
-  ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider','wfd_annRollup','wfd_liEfficiency','wfd_liDeath','wfd_annDeath','wfd_scenarioMode','wfd_gapSource','wfd_downThreshold','wfd_manualReturns','wfd_genScenario','wfd_runDown','wfd_runScenario','wfd_strategy','wfd_annRollupWrap'].forEach(id=>{
-    const el = document.getElementById(id);
-    if (!el) return;
-    const wrap = el.closest('.wfd-tog-wrap') || el.closest('.wfd-row') || el.parentElement;
-    if (wrap && wrap.style) wrap.style.display = 'none';
-    el.style.display = 'none';
-    if (el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA') el.disabled = true;
-  });
+  // Keep all DP controls visible in CRM quick view for exact parity with Finance DP.
 }
 
 function updateFinPlanAllocTotal(trigger = "generic"){
@@ -460,7 +446,6 @@ function updateFinPlanAllocTotal(trigger = "generic"){
   };
   setMoney('wfd_invAmt', base * (invPct / 100));
   setMoney('wfd_liAmt', base * (liPct / 100));
-  setMoney('wfd_liAmtDisplay', base * (liPct / 100));
   setMoney('wfd_annAmt', base * (annPct / 100));
 
   // DP visual parity: update badges and bars

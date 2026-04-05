@@ -3109,7 +3109,8 @@ markNeutral(savingsTipsOut);
                 }
 
                 const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
-                const dpCrmWriteEnabled = false; // DP is read-only against CRM; keep search/load only.
+                const dpCrmReadEnabled = true; // DP auto-loads selected client's saved distribution data.
+                const dpCrmWriteEnabled = false; // DP edits stay local on Finance page.
 
                 normalizeDistributionPayload = (payload) => {
                     // accept JSON string payloads
@@ -3157,6 +3158,14 @@ markNeutral(savingsTipsOut);
                     const statusEl = document.getElementById('dpPlanStatus');
                     if (statusEl) statusEl.textContent = "Loading plan…";
                     dpPlanLoaded = false;
+                    if (!dpCrmReadEnabled) {
+                        if (statusEl) statusEl.textContent = "DP uses local/session state only (CRM load disabled).";
+                        dpPlanLoaded = true;
+                        syncBase();
+                        updateBktAmounts();
+                        if (initAfter) distInitAfterHydrate();
+                        return;
+                    }
                     try{
                         const res = await fetch(dpPlanUrl(clientUserId), { credentials:"include" });
                         if (!res.ok) throw new Error(`Load failed (${res.status})`);
@@ -3424,7 +3433,7 @@ markNeutral(savingsTipsOut);
                         if (wfSearchInput) wfSearchInput.value = restoreClientName || restoreClientId;
                         if (dpSearchInputRef) dpSearchInputRef.value = restoreClientName || restoreClientId;
                         await loadWfPlan(restoreClientId);
-                        await loadDpPlan(restoreClientId);
+                        if (dpCrmReadEnabled) await loadDpPlan(restoreClientId);
                     }
 
                     const startStep = dpSession.lastStep || distMeta.lastStep || '1';
