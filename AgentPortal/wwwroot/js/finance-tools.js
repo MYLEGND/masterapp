@@ -812,8 +812,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             <div class="wf-summary-box">
                 <table class="table table-sm mb-2">
                     <tr><th>Real Growth Rate</th><td id="wbRealGrowth">0%</td></tr>
-                    <tr><th>Savings</th><td id="wbSavingsPercent">0%</td></tr>
-                    <tr><th>Annual Savings</th><td id="wbActualSavings">$0</td></tr>
+                    <tr><th>Avg Savings Rate</th><td id="wbSavingsPercent">0%</td></tr>
+                    <tr><th>Avg Annual Savings</th><td id="wbActualSavings">$0</td></tr>
                 </table>
                 <table class="table table-sm mb-0">
                     <tr><th>Tips & Suggestions</th><td id="wbSavingsTips" class="wf-tip-text">
