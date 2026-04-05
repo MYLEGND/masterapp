@@ -3476,6 +3476,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
         try
         {
             ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            if (profile == null && request.ClientProfileId.HasValue && request.ClientProfileId.Value != Guid.Empty)
+                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId.Value);
             if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
                 profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
 

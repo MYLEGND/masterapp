@@ -183,6 +183,10 @@ function resetFinPlanForm(){
   $("#finPlanError").style.display = "none";
   $("#finPlanStatusLabel").textContent = "Loading…";
   $("#finPlanClientLabel").textContent = "";
+  const profileIdEl = document.getElementById("finPlanClientProfileId");
+  if (profileIdEl) profileIdEl.value = "";
+  const userIdEl = document.getElementById("finPlanClientUserId");
+  if (userIdEl) userIdEl.value = "";
   updateFinPlanAllocTotal();
 }
 
@@ -311,6 +315,7 @@ async function loadFinPlan(clientUserId){
     }
     finPlanVersion = data.version || 0;
     $("#finPlanVersion").value = finPlanVersion;
+    if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
     if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
     if (data.clientName) $("#finPlanClientLabel").textContent = data.clientName;
     else $("#finPlanClientLabel").textContent = data.clientUserId || "";
@@ -488,8 +493,10 @@ async function saveFinPlan(){
     showFinPlanError(errs.map(e=>e.message).join("; "));
     return;
   }
+  const clientProfileId = $("#finPlanClientProfileId")?.value?.trim() || "";
   const clientUserId = finPlanActiveClientId || $("#finPlanClientUserId")?.value || "";
-  if (!clientUserId){
+  const routeId = clientProfileId || clientUserId;
+  if (!routeId){
     showFinPlanError("Missing client id.");
     return;
   }
@@ -499,7 +506,7 @@ async function saveFinPlan(){
   }
   showFinPlanError("");
   $("#finPlanStatusLabel").textContent = "Saving…";
-  const planUrl = `/clients/${encodeURIComponent(clientUserId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
+  const planUrl = `/clients/${encodeURIComponent(routeId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
   const res = await fetch(planUrl, {
     method:"POST",
     credentials:"include",
@@ -507,13 +514,14 @@ async function saveFinPlan(){
       "Content-Type":"application/json",
       "RequestVerificationToken": getAntiForgeryToken()
     },
-    body: JSON.stringify({ clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
+    body: JSON.stringify({ clientProfileId, clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
   });
   if (!res.ok){
+    const errorText = (await res.text().catch(() => "")).trim();
     if (res.status === 409){
       showFinPlanError("Version conflict — reload the latest plan before saving.");
     } else {
-      showFinPlanError(`Save failed (${res.status}).`);
+      showFinPlanError(errorText || `Save failed (${res.status}).`);
     }
     $("#finPlanStatusLabel").textContent = "Save failed";
     return;
@@ -521,6 +529,8 @@ async function saveFinPlan(){
   const data = await res.json();
   finPlanVersion = data.version || payload.version;
   $("#finPlanVersion").value = finPlanVersion;
+  if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
+  if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
   $("#finPlanStatusLabel").textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
   toast("Plan saved.", { autoClose: 1800 });
 }
