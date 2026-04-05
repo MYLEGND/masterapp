@@ -2435,7 +2435,7 @@ markNeutral(savingsTipsOut);
                 // Step navigation + meta
                 const steps = ['1','2','3','4'];
                 let activeStep = '1';
-                var distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null };
+                var distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null, open:false };
                 function syncStepVisibility() {
                     document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
                         const isActive = w.dataset.step === activeStep;
@@ -2527,6 +2527,7 @@ markNeutral(savingsTipsOut);
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
                 const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
+                const DIST_META_LOCAL_KEY = plannerScopeKey('DistributionPlannerMetaLocal');
                 let dpPlanLoaded = false;
 
                 function dpCollectInputs(){
@@ -2575,11 +2576,25 @@ markNeutral(savingsTipsOut);
                     }
                 };
                 let hydrating = false;
-                function saveMeta(){ if (DIST_META_KEY) savePersistedState(DIST_META_KEY, distMeta); }
+                function saveMeta(){
+                    try { localStorage.setItem(DIST_META_LOCAL_KEY, JSON.stringify(distMeta || {})); } catch (_) { }
+                    if (DIST_META_KEY && !disableLocalForDP) savePersistedState(DIST_META_KEY, distMeta);
+                }
                 async function loadMeta(){
-                    if (!DIST_META_KEY) return;
-                    const m = await loadPersistedState(DIST_META_KEY);
-                    if (m && typeof m === 'object') distMeta = { hasValidResults:!!m.hasValidResults, lastStep:m.lastStep || '1', stale:!!m.stale, result:m.result || null };
+                    let m = null;
+                    try { m = JSON.parse(localStorage.getItem(DIST_META_LOCAL_KEY) || 'null'); } catch { m = null; }
+                    if ((!m || typeof m !== 'object') && DIST_META_KEY && !disableLocalForDP) {
+                        m = await loadPersistedState(DIST_META_KEY);
+                    }
+                    if (m && typeof m === 'object') {
+                        distMeta = {
+                            hasValidResults: !!m.hasValidResults,
+                            lastStep: m.lastStep || '1',
+                            stale: !!m.stale,
+                            result: m.result || null,
+                            open: !!m.open
+                        };
+                    }
                 }
 
                 // Market scenario helpers
@@ -3312,6 +3327,9 @@ markNeutral(savingsTipsOut);
                     hydrating = true;
                     await loadMeta();
                     await loadDistState();
+                    const dpSession = loadDpUiSession();
+                    const restoreClientId = (dpSession.activeClientId || '').trim();
+                    const restoreClientName = (dpSession.activeClientName || '').trim();
                     togglePriorityRow();
                     markStrategyButtons();
                     setPriorityOrder(getPriorityOrder());
@@ -3324,9 +3342,20 @@ markNeutral(savingsTipsOut);
                     toggleAnnRollup();
                     syncBase();
                     validateAndGate();
-                    const startStep = distMeta.lastStep || '1';
+
+                    if (restoreClientId) {
+                        wfActiveClientId = restoreClientId;
+                        dpActiveClientId = restoreClientId;
+                        if (wfSearchInput) wfSearchInput.value = restoreClientName || restoreClientId;
+                        if (dpSearchInputRef) dpSearchInputRef.value = restoreClientName || restoreClientId;
+                        await loadWfPlan(restoreClientId);
+                        await loadDpPlan(restoreClientId);
+                    }
+
+                    const startStep = dpSession.lastStep || distMeta.lastStep || '1';
                     setStep(startStep); // internally calls hydrateResultsFromMeta if step === '4'
-                    if (distMeta.open) {
+                    const shouldOpenDp = !!(dpSession.modalOpen || distMeta.open);
+                    if (shouldOpenDp) {
                         showDistModal(startStep);
                     }
                     hydrating = false;
