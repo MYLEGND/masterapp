@@ -4112,6 +4112,8 @@ markNeutral(savingsTipsOut);
                     let lastPositiveAge = retAge;
                     let totalEmUsed = 0;
                     let totalInvDraw = 0, totalLiDraw = 0, totalAnnDraw = 0;
+                    let totalAnnGrossFunded = 0;
+                    let totalBucketNetFunded = 0;
                     let depletionEmergAge = null;
                     let downYearCount = 0;
 
@@ -4151,13 +4153,22 @@ markNeutral(savingsTipsOut);
                         else if (liType === 'vul') liYearR = invYearR;
                         else if (liType === 'legacy_rpu') liYearR = Math.min(liGrowth, 0.03); // conservative credited
 
-                        // Annuity design-driven growth
+                        // Annuity design-driven growth (product-specific rules)
                         const annBaseVarR = (annVarReturns[y-1] !== undefined ? annVarReturns[y-1] : annReturn);
                         let annYearR = annReturn;
-                        if (annDesign === 'variable') annYearR = annBaseVarR;
-                        else if (annDesign === 'fixedIndexed') {
-                            const capped = Math.min(Math.max(annBaseVarR, 0), 0.10);
-                            annYearR = Math.max(0, (capped * 0.6) - 0.01); // 60% participation minus 1% spread
+                        if (annDesign === 'fixed') {
+                            // Fixed annuity: declared/guaranteed credited rate
+                            annYearR = Math.max(annReturn, -0.99);
+                        } else if (annDesign === 'fixedIndexed') {
+                            // FIA: market-linked with floor/cap/participation
+                            const floor = 0.00;
+                            const cap = Math.max(0, annReturn);   // uses configured APR as cap proxy
+                            const participation = 0.85;            // standard planning assumption
+                            const indexedCredit = annBaseVarR * participation;
+                            annYearR = Math.min(cap, Math.max(floor, indexedCredit));
+                        } else if (annDesign === 'variable') {
+                            // Variable annuity: market-linked subaccount return
+                            annYearR = annBaseVarR;
                         }
                         if (annIncomeRider) {
                             // Income base rolls up only during deferral; locks once income draw begins
@@ -4286,6 +4297,8 @@ markNeutral(savingsTipsOut);
                         const annNetContribution = annIncomeRider ? annIncomeBenefit : netFromGross(annW, annTax);
                         const annGrossContribution = annIncomeRider ? annIncomeBenefit : annW;
                         let fundedNet = netFromGross(invW, invTax) + netFromGross(liW, liEffTax) + annNetContribution + emUse;
+                        totalAnnGrossFunded += annGrossContribution;
+                        totalBucketNetFunded += fundedNet;
                         const yearShort = Math.max(incGap - fundedNet, 0);
                         if (y === 1) year1Shortfall = yearShort;
                         cumulativeShortfall += yearShort;
@@ -4309,7 +4322,7 @@ markNeutral(savingsTipsOut);
                         const annPre   = Math.max(0, annBal  - annW - riderPaidFromAccount);
                         // Death benefit start-of-year snapshot (conservative level DB unless explicitly modeled otherwise)
                         const liDeathPre  = liDeathBal;
-                        const annDeathPre = annDbRider ? annDeathBal : Math.max(0, annDeathBal - annW);
+                        const annDeathPre = annDeathBal;
 
                         invBal  = invPre  * (1 + effInvR);
                         liBal   = liPre   * (1 + effLiR);
@@ -4345,10 +4358,14 @@ markNeutral(savingsTipsOut);
                             liDeathBal = Math.max(0, liDeathPre);
                         }
                         if (annDbRider) {
-                            // true high-water-mark: ratchet steps up only when account value exceeds prior high
+                            // Death-benefit rider model:
+                            // distributions reduce rider base, then high-water-mark ratchet can step it up.
+                            const annDistForDb = annW + riderPaidFromAccount;
+                            annRiderBase = Math.max(0, annRiderBase - annDistForDb);
                             annRiderBase = Math.max(annRiderBase, annBal);
                             annDeathBal = Math.max(annBal, annRiderBase);
                         } else {
+                            // No rider: annuity death value follows account value.
                             annDeathBal = annBal;
                         }
                         emBal   = Math.max(0, emBal); // cash reserve, no growth
@@ -4441,13 +4458,16 @@ markNeutral(savingsTipsOut);
                     const annGrossContributionFY = annIncomeRider ? annIncomeBenefit : fy_annW;
                     const net_annW  = annIncomeRider ? annIncomeBenefit : (fy_annW * (1 - annTax));
                     const net_emW   = fy_emW;
-                    const totalNetW = net_invW + net_liW + net_annW + net_emW; // after-tax from asset buckets only
-                    const totalGrW  = fy_invW + fy_liW + annGrossContributionFY + fy_emW; // gross from asset buckets only
+                    const totalNetW = net_invW + net_liW + net_annW + net_emW; // year-1 after-tax from asset buckets only
+                    const totalGrW  = fy_invW + fy_liW + annGrossContributionFY + fy_emW; // year-1 gross from asset buckets only
                     const firstYearShortfall = year1Shortfall;
                     // --- Horizon-wide tracking ---
                     const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
                     const sourcedAfterTax = totalNetW;
                     const atSpend   = guarInc + sourcedAfterTax; // total after-tax spendable including guaranteed income
+                    const totalGuarIncome = guarInc * years;
+                    const totalGrossSourced = totalInvDraw + totalLiDraw + totalAnnGrossFunded + totalEmUsed;
+                    const totalSpendableAllYears = totalBucketNetFunded + totalGuarIncome;
                     const finalTot  = totalPts[totalPts.length - 1];
                     const depAge    = depletionYr ? retAge + depletionYr : null;
 
@@ -4498,12 +4518,12 @@ markNeutral(savingsTipsOut);
                         { l: 'Desired Annual Income',      v: fmtD(desiredInc),   c: '' },
                         { l: 'Guaranteed Income (after-tax)',          v: fmtD(guarInc),      c: 'green' },
                         { l: 'Income Gap (from Assets)',   v: fmtD(incGap),       c: incGap > desiredInc * 0.85 ? 'red' : '' },
-                        active.em  ? { l: 'Yr 1 Emergency W/D',         v: fmtD(fy_emW),  c: '' } : null,
-                        active.inv ? { l: 'Yr 1 Investments Gross W/D', v: fmtD(fy_invW), c: '' } : null,
-                        active.li  ? { l: 'Yr 1 Life Ins Gross W/D',    v: fmtD(fy_liW),  c: '' } : null,
-                        active.ann ? { l: 'Yr 1 Annuity Gross W/D',     v: fmtD(annGrossContributionFY), c: '' } : null,
-                        { l: 'Total Yr 1 Gross Withdrawals',     v: fmtD(totalGrW),     c: '' },
-                        { l: 'After-Tax Spendable (Yr1)',  v: fmtD(atSpend),      c: incomeSufficient ? 'green' : 'red' },
+                        active.em  ? { l: 'Plan Emergency W/D (Gross)',         v: fmtD(totalEmUsed),  c: '' } : null,
+                        active.inv ? { l: 'Plan Investments W/D (Gross)', v: fmtD(totalInvDraw), c: '' } : null,
+                        active.li  ? { l: 'Plan Life Ins W/D (Gross)',    v: fmtD(totalLiDraw),  c: '' } : null,
+                        active.ann ? { l: 'Plan Annuity Funding (Gross)',     v: fmtD(totalAnnGrossFunded), c: '' } : null,
+                        { l: 'Plan Gross Sourced',     v: fmtD(totalGrossSourced),     c: '' },
+                        { l: 'Plan Spendable (After-Tax)',  v: fmtD(totalSpendableAllYears),      c: incomeSufficient ? 'green' : 'red' },
                         { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : '' },
                         { l: 'Cumulative Shortfall',       v: fmtD(cumulativeShortfall), c: cumulativeShortfall > 0 ? 'red' : '' },
                         { l: 'Any-Year Funding Failure',   v: anyYearFailure ? 'Yes' : 'No', c: anyYearFailure ? 'red' : 'green' },
@@ -4513,15 +4533,15 @@ markNeutral(savingsTipsOut);
                     ].filter(Boolean);
                     // --- Source parts (used in canonical result) ---
                     const srcParts = [];
-                    if (active.em)  srcParts.push(`From Emergency: ${fmtD(fy_emW)}`);
-                    if (active.inv) srcParts.push(`From Investments (gross): ${fmtD(fy_invW)}`);
-                    if (active.li)  srcParts.push(`From Life Insurance (gross): ${fmtD(fy_liW)}`);
-                    if (active.ann) srcParts.push(`From Annuities (gross): ${fmtD(annGrossContributionFY)}`);
-                    srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
-                    srcParts.push(`After-Tax from Buckets: ${fmtD(sourcedAfterTax)}`);
-                    srcParts.push(`Guaranteed Income (after-tax): ${fmtD(guarInc)}`);
-                    srcParts.push(`Total Spendable (after-tax): ${fmtD(atSpend)}`);
-                    if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
+                    if (active.em)  srcParts.push(`From Emergency (plan gross): ${fmtD(totalEmUsed)}`);
+                    if (active.inv) srcParts.push(`From Investments (plan gross): ${fmtD(totalInvDraw)}`);
+                    if (active.li)  srcParts.push(`From Life Insurance (plan gross): ${fmtD(totalLiDraw)}`);
+                    if (active.ann) srcParts.push(`From Annuities (plan gross): ${fmtD(totalAnnGrossFunded)}`);
+                    srcParts.push(`Total Gross Sourced (plan): ${fmtD(totalGrossSourced)}`);
+                    srcParts.push(`After-Tax from Buckets (plan): ${fmtD(totalBucketNetFunded)}`);
+                    srcParts.push(`Guaranteed Income (plan after-tax): ${fmtD(totalGuarIncome)}`);
+                    srcParts.push(`Total Spendable (plan after-tax): ${fmtD(totalSpendableAllYears)}`);
+                    if (cumulativeShortfall>0) srcParts.push(`Unfunded Shortfall (plan): ${fmtD(cumulativeShortfall)}`);
                     if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
 
                     // --- Warnings (used in canonical result) ---
@@ -4566,7 +4586,7 @@ markNeutral(savingsTipsOut);
                             startBalances: { inv: startInvBal, li: startLiBal, ann: startAnnBal, em: startEmBal, liDeath: startLiDeath, annDeath: startAnnDeath },
                         cards,
                         sourceParts: srcParts,
-                        barValues: { em: fy_emW, inv: fy_invW, li: fy_liW, ann: annGrossContributionFY },
+                        barValues: { em: totalEmUsed, inv: totalInvDraw, li: totalLiDraw, ann: totalAnnGrossFunded },
                         active,
                         emCard: { emergencyBal, fy_emW, totalEmUsed, emBal, depletionEmergAge },
                         warns,
