@@ -655,6 +655,7 @@
                 <form id="finPlanForm">
                     <input type="hidden" id="finPlanVersion" value="0" />
                     <input type="hidden" id="finPlanClientUserId" value="" />
+                    <input type="hidden" id="wfd_base" value="" />
                     <div class="finplan-section">
                         <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Wealth Forecast Inputs</div>
                         <div class="row g-2 mt-1">
@@ -685,137 +686,100 @@
                     </div>
 
                     <div class="finplan-section">
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;">
-                            <div>
-                                <p class="fw-bold text-uppercase small" style="color:#94a3b8;margin:0;">2 — Three Bucket Allocation</p>
-                                <p class="text-muted small mb-0">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
-                            </div>
-                            <!-- legacy target kept for existing JS updates; visually replaced by DP badges -->
-                            <div class="d-none"><span id="finPlanAllocTotal">0%</span></div>
-                            <div class="wfd-alloc-row" style="margin-top:4px;">
-                                <span style="font-size:.85rem;font-weight:600;color:#475569;">Total Allocated:</span>
-                                <span id="wfd_allocTotal" class="wfd-alloc-bad">0%</span>
-                                <span id="wfd_allocStatus" style="font-size:.78rem;font-weight:600;color:#dc2626;">— must equal 100%</span>
-                            </div>
-                        </div>
-
-                        <div class="wfd-bkt-vis" id="wfd_allocVis">
-                            <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_invBar" class="wfd-bkt-bar" style="height:3px;background:#3b82f6;"></div>
-                                <div class="wfd-bkt-bar-lbl">Investments</div>
-                            </div>
-                            <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_liBar" class="wfd-bkt-bar" style="height:3px;background:#a68023;"></div>
-                                <div class="wfd-bkt-bar-lbl">Life Ins</div>
-                            </div>
-                            <div class="wfd-bkt-bar-wrap">
-                                <div id="wfd_annBar" class="wfd-bkt-bar" style="height:3px;background:#16a34a;"></div>
-                                <div class="wfd-bkt-bar-lbl">Annuities</div>
-                            </div>
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                            <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Three Bucket Allocation</div>
+                            <div class="text-muted small">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</div>
                         </div>
 
                         <div class="wfd-bkt-grid">
-
-                            <!-- A: Investments -->
-                            <div id="wfd_invCard" class="wfd-bkt" style="border-color:rgba(59,130,246,.4);">
-                                <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
-                                <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
-                                    <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: Off</span>
+                            <!-- Investments -->
+                            <div class="wfd-bkt-card wfd-bkt-inv">
+                                <div class="wfd-bkt-head">
+                                    <div>
+                                        <p class="wfd-bkt-title text-primary mb-0">A — Investments</p>
+                                        <p class="wfd-bkt-sub mb-0">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
+                                    </div>
+                                    <div class="wfd-dm-toggle">
+                                        <span class="wfd-dm-label">Down-Market:</span>
+                                        <label class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="wfd_invDownMkt">
+                                        </label>
+                                    </div>
                                 </div>
-                                <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
-                                <input id="wfd_invAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="60" />
-                                <label class="wfd-lbl" for="wfd_invAmt">Starting Dollar Amount</label>
-                                <input id="wfd_invAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
-                                <label class="wfd-lbl" for="wfd_invReturn">Expected Annual Return %</label>
-                                <input id="wfd_invReturn" class="wfd-inp" type="number" step="0.1" placeholder="7.0" />
-                                <label class="wfd-lbl" for="wfd_invTax">Tax Rate %</label>
-                                <input id="wfd_invTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
-                                <div class="wfd-tog-wrap">
-                                    <label class="wfd-tog"><input type="checkbox" id="wfd_invDownMkt" /><span class="wfd-tog-sl"></span></label>
-                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
-                                </div>
-                            </div>
-
-                            <!-- B: Life Insurance -->
-                            <div id="wfd_liCard" class="wfd-bkt" style="border-color:rgba(166,128,35,.45);">
-                                <p class="wfd-bkt-title" style="color:#a68023;">B — Life Insurance / Equivalent</p>
-                                <p class="wfd-bkt-sub">Stability Buffer — Cash value life insurance, overfunded permanent insurance, protected strategies</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
-                                    <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
-                                </div>
-                                <label class="wfd-lbl" for="wfd_liType">Policy Type</label>
-                                <select id="wfd_liType" class="wfd-inp" style="cursor:pointer;">
-                                    <option value="whole">Whole Life</option>
-                                    <option value="iul">Indexed UL</option>
-                                    <option value="vul">Variable UL</option>
-                                    <option value="legacy_rpu">Legacy / Reduced Paid-Up</option>
-                                </select>
-                                <label class="wfd-lbl" for="wfd_liAccess">Access Method</label>
-                                <select id="wfd_liAccess" class="wfd-inp" style="cursor:pointer;">
-                                    <option value="withdrawal">Withdrawals</option>
-                                    <option value="loan">Policy Loans</option>
-                                    <option value="none">No Distributions</option>
-                                </select>
-                                <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
-                                <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
-                                <label class="wfd-lbl" for="wfd_liDeath">Death Benefit</label>
-                                <input id="wfd_liDeath" class="wfd-inp" type="text" placeholder="e.g., 500,000" />
-                                <label class="wfd-lbl" for="wfd_liAmt">Whole Life Cash Value</label>
-                                <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
-                                <label class="wfd-lbl" for="wfd_liGrowth">Growth / Credited Rate %</label>
-                                <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
-                                <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
-                                <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
-                                <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
-                                <input id="wfd_liEfficiency" class="wfd-inp" type="number" step="0.1" placeholder="100" />
-                                <div class="wfd-tog-wrap">
-                                    <label class="wfd-tog"><input type="checkbox" id="wfd_liDownMkt" checked /><span class="wfd-tog-sl"></span></label>
-                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_invAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Starting Dollar Amount</label><input class="form-control" id="wfd_invAmt" readonly /></div>
+                                    <div class="col-6"><label class="form-label">Expected Annual Return %</label><input class="form-control" id="wfd_invReturn" /></div>
+                                    <div class="col-6"><label class="form-label">Tax Rate %</label><input class="form-control" id="wfd_invTax" /></div>
                                 </div>
                             </div>
 
-                            <!-- C: Annuities -->
-                            <div id="wfd_annCard" class="wfd-bkt" style="border-color:rgba(22,163,74,.4);">
-                                <p class="wfd-bkt-title" style="color:#15803d;">C — Annuities</p>
-                                <p class="wfd-bkt-sub">Income Floor — Protected income / accumulation hybrid</p>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
-                                    <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+                            <!-- Life Insurance -->
+                            <div class="wfd-bkt-card wfd-bkt-life">
+                                <div class="wfd-bkt-head">
+                                    <div>
+                                        <p class="wfd-bkt-title text-warning mb-0">B — Life Insurance / Equivalent</p>
+                                        <p class="wfd-bkt-sub mb-0">Stability Buffer — cash value life insurance, overfunded permanent insurance, protected strategies</p>
+                                    </div>
+                                    <div class="wfd-dm-toggle">
+                                        <span class="wfd-dm-label">Down-Market:</span>
+                                        <label class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="wfd_liDownMkt">
+                                        </label>
+                                    </div>
                                 </div>
-                                <label class="wfd-lbl" for="wfd_annDesign">Annuity Design</label>
-                                <select id="wfd_annDesign" class="wfd-inp" style="cursor:pointer;">
-                                    <option value="fixed">Fixed Annuity</option>
-                                    <option value="fixedIndexed">Fixed Indexed Annuity</option>
-                                    <option value="variable">Variable Annuity</option>
-                                </select>
-                                <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
-                                <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
-                                <label class="wfd-lbl" for="wfd_annDeath">Annuity Death Benefit (optional)</label>
-                                <input id="wfd_annDeath" class="wfd-inp" type="text" placeholder="e.g., 250,000" />
-                                <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
-                                <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
-                                <div class="wfd-tog-wrap" style="margin-top:4px;">
-                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
-                                    <span class="wfd-tog-lbl">Income Rider</span>
-                                </div>
-                                <div id="wfd_annRollupWrap" style="display:none;">
-                                    <label class="wfd-lbl" for="wfd_annRollup">Income Rider Rollup Rate (%)</label>
-                                    <input id="wfd_annRollup" class="wfd-inp" type="number" step="0.1" placeholder="5.0" value="5.0" />
-                                </div>
-                                <div class="wfd-tog-wrap" style="margin-top:4px;">
-                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
-                                    <span class="wfd-tog-lbl">Death Benefit Rider</span>
-                                </div>
-                                <label class="wfd-lbl" for="wfd_annReturn">Credited / Expected Return %</label>
-                                <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
-                                <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
-                                <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
-                                <div class="wfd-tog-wrap">
-                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annDownMkt" checked /><span class="wfd-tog-sl"></span></label>
-                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_liAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Starting Dollar Amount</label><input class="form-control" id="wfd_liAmt" readonly /></div>
+                                    <div class="col-6"><label class="form-label">Growth / Credited Rate %</label><input class="form-control" id="wfd_liGrowth" /></div>
+                                    <div class="col-6"><label class="form-label">Tax Rate %</label><input class="form-control" id="wfd_liTax" /></div>
+                                    <div class="col-6"><label class="form-label">Access / Efficiency Factor %</label><input class="form-control" id="wfd_liEfficiency" /></div>
+                                    <div class="col-6"><label class="form-label">Death Benefit</label><input class="form-control" id="wfd_liDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Whole Life Cash Value</label><input class="form-control" id="wfd_liAmtDisplay" readonly /></div>
+                                    <div class="col-6"><label class="form-label">Policy Type</label><select class="form-select" id="wfd_liType"></select></div>
+                                    <div class="col-6"><label class="form-label">Access Method</label><select class="form-select" id="wfd_liAccess"></select></div>
                                 </div>
                             </div>
 
+                            <!-- Annuities -->
+                            <div class="wfd-bkt-card wfd-bkt-ann">
+                                <div class="wfd-bkt-head">
+                                    <div>
+                                        <p class="wfd-bkt-title text-success mb-0">C — Annuities</p>
+                                        <p class="wfd-bkt-sub mb-0">Income Floor — Protected income / accumulation hybrid</p>
+                                    </div>
+                                    <div class="wfd-dm-toggle">
+                                        <span class="wfd-dm-label">Down-Market:</span>
+                                        <label class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="wfd_annDownMkt">
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="row g-2">
+                                    <div class="col-6"><label class="form-label">Allocation %</label><input class="form-control" id="wfd_annAlloc" /></div>
+                                    <div class="col-6"><label class="form-label">Starting Annuity Value</label><input class="form-control" id="wfd_annAmt" readonly /></div>
+                                    <div class="col-6"><label class="form-label">Credited / Expected Return %</label><input class="form-control" id="wfd_annReturn" /></div>
+                                    <div class="col-6"><label class="form-label">Tax Rate %</label><input class="form-control" id="wfd_annTax" /></div>
+                                    <div class="col-6"><label class="form-label">Annuity Death Benefit (optional)</label><input class="form-control" id="wfd_annDeath" /></div>
+                                    <div class="col-6"><label class="form-label">Rollup %</label><input class="form-control" id="wfd_annRollup" /></div>
+                                    <div class="col-6"><label class="form-label">Annuity Design</label><select class="form-select" id="wfd_annDesign"><option value="">-- SELECT DESIGN --</option></select></div>
+                                    <div class="col-6 d-flex flex-wrap align-items-center gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="wfd_annIncomeRider">
+                                            <label class="form-check-label" for="wfd_annIncomeRider">Income Rider</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="wfd_annDbRider">
+                                            <label class="form-check-label" for="wfd_annDbRider">Death Benefit Rider</label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="wfd-total-row">
+                            <div class="wfd-total-label">Total Allocated</div>
+                            <div class="wfd-total-value" id="finPlanAllocTotal">0%</div>
                         </div>
                     </div>
 
@@ -889,72 +853,60 @@
     .ph-note{color:#cbd5e1;font-size:0.9rem;}
     .ph-empty{color:#94a3b8;font-weight:700;}
 
-    /* Finance DP visual system scoped to CRM modal */
-    #clientFinPlanModal .modal-dialog{max-width:1200px;width:calc(100% - 28px);}
-    #clientFinPlanModal .finplan-section{
+    /* Mini distribution planner styling (matched to Finance DP) */
+    .finplan-modal .modal-dialog{max-width:1140px;width:calc(100% - 32px);}
+    .finplan-section{
         margin-bottom:16px;
-        padding:16px 18px 14px;
+        padding:14px 14px 12px;
         border:1.5px solid rgba(166,128,35,.35);
-        border-radius:18px;
+        border-radius:16px;
         background:#0b1529;
         box-shadow:0 12px 32px rgba(0,0,0,.32);
     }
-    #clientFinPlanModal .finplan-section .form-label{font-weight:800;color:#cbd5e1;}
-    #clientFinPlanModal .finplan-section input.form-control,
-    #clientFinPlanModal .finplan-section select.form-select{
-        background:#0f172a;
-        border:1.5px solid rgba(217,179,90,.55);
+    .finplan-section .form-label{font-weight:800;color:#cbd5e1;}
+    .finplan-section input.form-control,
+    .finplan-section select.form-select{
+        background:#0f1d38;
+        border:1.5px solid rgba(166,128,35,.45);
         color:#e2e8f0;
         border-radius:12px;
         padding:10px 12px;
         font-weight:800;
     }
-    #clientFinPlanModal .finplan-section input.form-control:focus,
-    #clientFinPlanModal .finplan-section select.form-select:focus{
-        border-color:#d9b35a;
-        box-shadow:0 0 0 3px rgba(217,179,90,.2);
-        background:#111e3a;
+    .finplan-section input.form-control:focus,
+    .finplan-section select.form-select:focus{
+        border-color:rgba(221,180,87,.9);
+        box-shadow:0 0 0 3px rgba(221,180,87,.15);
     }
 
-    /* DP bucket classes (copied from Finance DP) */
-    #clientFinPlanModal .wfd-bkt-grid{display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;}
-    #clientFinPlanModal .wfd-bkt{flex:1;min-width:320px;background:#0f172a;border:1.5px solid rgba(166,128,35,.45);border-radius:14px;padding:16px 14px;box-shadow:0 8px 24px rgba(0,0,0,.22);}
-    #clientFinPlanModal .wfd-bkt-title{font-weight:800;font-size:.97rem;color:#e2e8f0;margin:0 0 2px;}
-    #clientFinPlanModal .wfd-bkt-sub{font-size:.73rem;color:#cbd5e1;margin:0 0 8px;line-height:1.4;}
-    #clientFinPlanModal .wfd-alloc-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:6px;}
-    #clientFinPlanModal .wfd-bkt-vis{display:flex;gap:10px;align-items:flex-end;height:110px;margin:12px 0 0;justify-content:center;color:#e5e7eb;}
-    #clientFinPlanModal .wfd-bkt-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;}
-    #clientFinPlanModal .wfd-bkt-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;transition:height .3s ease;}
-    #clientFinPlanModal .wfd-bkt-bar-lbl{font-size:.7rem;font-weight:700;text-align:center;color:#e5e7eb;line-height:1.3;}
-    #clientFinPlanModal .wfd-tog-wrap{display:flex;align-items:center;gap:10px;margin-top:12px;}
-    #clientFinPlanModal .wfd-tog{position:relative;width:38px;height:20px;display:inline-block;flex-shrink:0;}
-    #clientFinPlanModal .wfd-tog input{opacity:0;width:0;height:0;}
-    #clientFinPlanModal .wfd-tog-sl{position:absolute;inset:0;background:#1f2937;border-radius:99px;cursor:pointer;transition:background .2s;border:1px solid rgba(217,179,90,.5);}
-    #clientFinPlanModal .wfd-tog input:checked + .wfd-tog-sl{background:#d9b35a;}
-    #clientFinPlanModal .wfd-tog-sl:before{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;left:3px;top:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
-    #clientFinPlanModal .wfd-tog input:checked + .wfd-tog-sl:before{transform:translateX(18px);}
-    #clientFinPlanModal .wfd-tog-lbl{font-size:.8rem;font-weight:600;color:#475569;}
-    #clientFinPlanModal .wfd-dm-badge{display:inline-block;padding:6px 10px;border-radius:999px;font-weight:800;font-size:.78rem;color:#0f172a;background:#cbd5e1;border:1px solid rgba(255,255,255,.3);}
-    #clientFinPlanModal .wfd-bkt.investments{border-color:rgba(59,130,246,.45);}
-    #clientFinPlanModal .wfd-bkt.life{border-color:rgba(221,180,87,.6);}
-    #clientFinPlanModal .wfd-bkt.annuities{border-color:rgba(22,163,74,.5);}
-    #clientFinPlanModal .wfd-lbl{display:block;font-weight:650;font-size:.82rem;color:#e2e8f0;margin:12px 0 3px;}
-    #clientFinPlanModal .wfd-inp{
-        width:100%;padding:10px 12px;
-        border:1.5px solid rgba(217,179,90,.7);border-radius:10px;
-        font-size:.92rem;font-weight:700;color:#e2e8f0;
-        background:#0f172a;box-sizing:border-box;
-        transition:border-color .15s, box-shadow .15s;
+    /* Buckets (match Finance DP) */
+    .wfd-bkt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:12px;}
+    .wfd-bkt-card{
+        border:1.6px solid rgba(166,128,35,.55);
+        border-radius:16px;
+        background:#0d1c36;
+        padding:14px 14px 12px;
+        box-shadow:0 16px 36px rgba(0,0,0,.32);
     }
-    #clientFinPlanModal .wfd-inp::placeholder{color:#94a3b8;}
-    #clientFinPlanModal .wfd-inp[readonly]{background:#0d1a30;color:#94a3b8;cursor:default;}
-    #clientFinPlanModal .wfd-inp:focus{outline:none;border-color:#d9b35a;background:#111e3a;box-shadow:0 0 0 2px rgba(217,179,90,.22);}
+    .wfd-bkt-inv{border-color:rgba(59,130,246,.6);}
+    .wfd-bkt-life{border-color:rgba(221,180,87,.7);}
+    .wfd-bkt-ann{border-color:rgba(74,222,128,.6);}
+    .wfd-bkt-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}
+    .wfd-bkt-title{font-weight:1000;letter-spacing:.35px;font-size:1.02rem;}
+    .wfd-bkt-sub{font-size:.82rem;color:#9fb4d1;}
+    .wfd-dm-toggle{display:flex;align-items:center;gap:8px;}
+    .wfd-dm-label{font-size:.85rem;color:#cbd5e1;font-weight:800;}
     #clientFinPlanModal .wfd-total-row{
-        display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+        display:flex;align-items:center;justify-content:space-between;
+        background:#0d1c36;
+        border:1.5px solid rgba(166,128,35,.5);
+        border-radius:14px;
+        padding:12px;
         margin-top:12px;
-        font-weight:800;color:#cbd5e1;
+        box-shadow:0 8px 20px rgba(0,0,0,.22);
     }
-    #clientFinPlanModal .wfd-alloc-bad{color:#dc2626;font-weight:800;}
-    #clientFinPlanModal .wfd-alloc-good{color:#16a34a;font-weight:800;}
-    #clientFinPlanModal .wfd-alloc-status{font-size:.78rem;font-weight:600;color:#dc2626;}
+    .wfd-total-label{font-weight:900;color:#e2e8f0;letter-spacing:.2px;}
+    .wfd-total-value{font-weight:1000;color:#22c55e;font-size:1.1rem;}
+    .finplan-section .form-check-input:checked{background-color:#d9b35a;border-color:#d9b35a;}
+    .finplan-section .form-check-input:focus{box-shadow:0 0 0 3px rgba(221,180,87,.25);}
 </style>

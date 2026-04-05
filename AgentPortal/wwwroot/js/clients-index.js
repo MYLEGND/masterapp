@@ -176,6 +176,7 @@ async function openFinPlanModal(clientUserId){
 
 function resetFinPlanForm(){
   finPlanVersion = 0;
+  window.__wfFinalBalance = null;
   const form = document.getElementById("finPlanForm");
   if (!form) return;
   form.reset();
@@ -185,10 +186,47 @@ function resetFinPlanForm(){
   updateFinPlanAllocTotal();
 }
 
+function recalcFinPlanWealthForecastBalance(){
+  const toNumber = (id, def = 0) => {
+    const raw = ((document.getElementById(id)?.value) || "").toString().replace(/,/g, '').replace('%', '');
+    const num = parseFloat(raw);
+    return Number.isFinite(num) ? num : def;
+  };
+  const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+
+  const income = Math.max(0, toNumber("wbIncome", 0));
+  const startingBalance = Math.max(0, toNumber("wbStartingBalance", 0));
+  const years = Math.max(0, Math.floor(toNumber("wbYears", 0)));
+  const inflation = Math.max(-0.95, toNumber("wbInflation", 0) / 100);
+  const nominalReturn = Math.max(-0.95, toNumber("wbReturn", 0) / 100);
+  const tax = clamp(toNumber("wbTax", 0) / 100, 0, 1);
+  const liabilities = clamp(toNumber("wbLiabilities", 0) / 100, 0, 1);
+  const lifestyle = clamp(toNumber("wbLifestyle", 0) / 100, 0, 1);
+  const realGrowthRate = (1 + nominalReturn) / (1 + inflation) - 1;
+
+  const baselineLiabAmt = income * liabilities;
+  const baselineLifeAmt = income * lifestyle;
+
+  let investedBalance = startingBalance;
+  for (let y = 1; y <= years; y++) {
+    const annualExpenses = (income * tax) + baselineLiabAmt + baselineLifeAmt;
+    const annualSavings = income - annualExpenses;
+    investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
+  }
+
+  window.__wfFinalBalance = investedBalance > 0 ? investedBalance : null;
+  const baseEl = document.getElementById("wfd_base");
+  if (baseEl && !document.getElementById("wfd_manualOverride")?.checked) {
+    baseEl.value = window.__wfFinalBalance ? Math.round(window.__wfFinalBalance).toLocaleString() : "";
+  }
+  return window.__wfFinalBalance || 0;
+}
+
 function finPlanPayload(){
   const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
   const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
-  const base = manualOverride ? pf($("#wfd_base")?.value) : (window.__wfFinalBalance || 0);
+  const wfFinalBalance = recalcFinPlanWealthForecastBalance();
+  const base = manualOverride ? pf($("#wfd_base")?.value) : wfFinalBalance;
   if (!manualOverride && $("#wfd_base")) $("#wfd_base").value = (base||0).toLocaleString();
 
   const canonical = {
@@ -315,6 +353,7 @@ function hydrateFinPlan(jsonData){
   const liAccessEl = document.getElementById("wfd_liAccess"); if (liAccessEl) liAccessEl.value = liAccess;
   const liTypeEl = document.getElementById("wfd_liType"); if (liTypeEl) liTypeEl.value = liType;
   const annDesignEl = document.getElementById("wfd_annDesign"); if (annDesignEl) annDesignEl.value = annDesign;
+  recalcFinPlanWealthForecastBalance();
   updateFinPlanAllocTotal();
 }
 
@@ -399,12 +438,25 @@ function updateFinPlanAllocTotal(trigger = "generic"){
   }
 
   const total = invPct + liPct + annPct;
+  const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
+  const base = manualOverride
+    ? (parseFloat(((document.getElementById("wfd_base")?.value || "").replace(/[^0-9.\-]/g, ""))) || 0)
+    : (window.__wfFinalBalance || 0);
   const el = document.getElementById("finPlanAllocTotal");
   if (el){
     el.textContent = `${total.toFixed(1)}%`;
     el.classList.toggle("text-success", Math.abs(total-100) < 0.1);
     el.classList.toggle("text-warning", Math.abs(total-100) >= 0.1);
   }
+
+  const setMoney = (id, val) => {
+    const target = document.getElementById(id);
+    if (target) target.value = Math.round(val || 0).toLocaleString();
+  };
+  setMoney('wfd_invAmt', base * (invPct / 100));
+  setMoney('wfd_liAmt', base * (liPct / 100));
+  setMoney('wfd_liAmtDisplay', base * (liPct / 100));
+  setMoney('wfd_annAmt', base * (annPct / 100));
 
   // DP visual parity: update badges and bars
   const totEl = document.getElementById('wfd_allocTotal');
@@ -477,6 +529,11 @@ document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { voi
 document.getElementById("wfd_invAlloc")?.addEventListener("input", ()=>{ updateFinPlanAllocTotal("inv"); });
 document.getElementById("wfd_liAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("li"); });
 document.getElementById("wfd_annAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("ann"); });
+['wbStartingBalance','wbIncome','wbYears','wbInflation','wbReturn','wbTax','wbLiabilities','wbLifestyle'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  ['input','change','blur'].forEach(evt => el.addEventListener(evt, ()=>{ recalcFinPlanWealthForecastBalance(); scheduleDpPreview(); }));
+});
 ['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liAccess','wfd_liType','wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDesign','wfd_manualOverride','wfd_base'].forEach(id=>{
   const el = document.getElementById(id);
   if (!el) return;
@@ -1863,7 +1920,6 @@ let finPlanModal = null;
 let finPlanActiveClientId = null;
 let finPlanVersion = 0;
 let finPlanAllocManual = false; // align with workstation auto-split behavior
-let finPlanAllocManual = false; // tracks manual LI/ANN edits
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
 const noteOverlay = document.querySelector("[data-note-self-overlay]");

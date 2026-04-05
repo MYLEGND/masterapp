@@ -2365,6 +2365,7 @@ markNeutral(savingsTipsOut);
           <div class="wfd-acc collapsed">
             <button class="wfd-acc-btn" data-target="wfd_tipsWrap">Year-by-Year Audit</button>
             <div id="wfd_tipsWrap" class="wfd-acc-body">
+                              <div id="wfd_legacyTiles" style="display:block;margin:0 0 10px;"></div>
               <div id="wfd_bktTiles" style="display:none;margin-bottom:14px;"></div>
               <div id="wfd_tips" style="margin-top:0;"></div>
             </div>
@@ -3473,6 +3474,8 @@ markNeutral(savingsTipsOut);
                     const msg = `<div style="padding:12px;border:1px dashed rgba(217,179,90,.6);border-radius:10px;background:rgba(255,255,255,.03);color:#cbd5e1;font-weight:700;">Run the plan to view results, funding analysis, and stress-test outputs.${ctaHtml}</div>`;
                     const resGrid = gid('wfd_resGrid'); if (resGrid) resGrid.innerHTML = msg;
                     const src = gid('wfd_sourceBreak'); if (src) src.innerHTML = '';
+                    const legacyTiles = gid('wfd_legacyTiles');
+                    if (legacyTiles) legacyTiles.innerHTML = '';
                     const emCard = gid('wfd_emCard'); if (emCard) emCard.style.display = 'none';
                     const warn = gid('wfd_warnArea'); if (warn) warn.innerHTML = '';
                     const tips = gid('wfd_tips'); if (tips) tips.innerHTML = msg;
@@ -3534,6 +3537,33 @@ markNeutral(savingsTipsOut);
                     // Source line
                     const src = gid('wfd_sourceBreak');
                     if (src) src.innerHTML = (sourceParts && sourceParts.length) ? sourceParts.join(' • ') : '';
+
+                    // End-of-plan legacy tiles (displayed in Year-by-Year Audit above bucket tiles)
+                    const series = result.chart?.series || {};
+                    const lastOf = (arr) => Array.isArray(arr) && arr.length ? Number(arr[arr.length - 1]) || 0 : 0;
+                    const invLeft = Math.max(0, lastOf(series.inv));
+                    const lifeDeathBenefitLeft = Math.max(0, lastOf(series.liDeath));
+                    const annuityDeathBenefitLeft = Math.max(0, lastOf(series.annDeath));
+                    const totalLegacyLeft = invLeft + lifeDeathBenefitLeft + annuityDeathBenefitLeft;
+                    const legacyTiles = gid('wfd_legacyTiles');
+                    if (legacyTiles) {
+                        const tile = (label, value, color = '#f8fafc') => `
+                            <div style="flex:1 1 180px;min-width:170px;background:rgba(15,23,42,.72);border:1px solid rgba(217,179,90,.35);border-radius:10px;padding:10px 12px;min-height:72px;display:flex;flex-direction:column;justify-content:center;">
+                                <div style="font-size:.69rem;font-weight:700;letter-spacing:.15px;color:#94a3b8;line-height:1.2;">${label}</div>
+                                <div style="font-size:1.03rem;font-weight:900;color:${color};margin-top:5px;">${fmtD(value)}</div>
+                            </div>`;
+                        const op = (symbol) => `<div style="display:flex;align-items:center;justify-content:center;min-width:20px;font-size:1.25rem;font-weight:900;color:#ef4444;line-height:1;">${symbol}</div>`;
+                        legacyTiles.innerHTML = `
+                            <div style="display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;">
+                                ${tile('Investments Left (End of Plan)', invLeft, '#60a5fa')}
+                                ${op('+')}
+                                ${tile('Life Insurance Death Benefit Left', lifeDeathBenefitLeft, '#d9b35a')}
+                                ${op('+')}
+                                ${tile('Annuities Death Benefit Left', annuityDeathBenefitLeft, '#34d399')}
+                                ${op('=')}
+                                ${tile('Total Legacy Left (Combined)', totalLegacyLeft, '#4ade80')}
+                            </div>`;
+                    }
 
                     // Bars
                     const barSet = [
