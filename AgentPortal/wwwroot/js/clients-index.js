@@ -316,11 +316,32 @@ function ensureFinPlanSelectOptions(){
   ]);
 }
 
-function updateFinPlanAllocTotal(){
+function updateFinPlanAllocTotal(trigger = "generic"){
   const inv = parseFloat((($("#wfd_invAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
   const li  = parseFloat((($("#wfd_liAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
   const ann = parseFloat((($("#wfd_annAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
-  const total = inv + li + ann;
+  let invPct = inv;
+  let liPct  = li;
+  let annPct = ann;
+
+  if (invPct >= 100){
+    invPct = 100;
+    liPct = 0;
+    annPct = 0;
+    finPlanAllocManual = false;
+    $("#wfd_invAlloc").value = "100";
+    $("#wfd_liAlloc").value = "0";
+    $("#wfd_annAlloc").value = "0";
+  } else if (trigger === "inv" && !finPlanAllocManual){
+    const remaining = Math.max(0, 100 - invPct);
+    const half = +(remaining / 2).toFixed(1);
+    liPct = half;
+    annPct = remaining - half;
+    $("#wfd_liAlloc").value = liPct.toString();
+    $("#wfd_annAlloc").value = annPct.toString();
+  }
+
+  const total = invPct + liPct + annPct;
   const el = document.getElementById("finPlanAllocTotal");
   if (el){
     el.textContent = `${total.toFixed(1)}%`;
@@ -341,13 +362,13 @@ function updateFinPlanAllocTotal(){
     }
   }
 
-  const mx = Math.max(inv, li, ann, 1);
+  const mx = Math.max(invPct, liPct, annPct, 1);
   const invBar = document.getElementById('wfd_invBar');
   const liBar  = document.getElementById('wfd_liBar');
   const annBar = document.getElementById('wfd_annBar');
-  if (invBar) invBar.style.height = Math.max(inv / mx * 100, 3) + '%';
-  if (liBar)  liBar.style.height  = Math.max(li  / mx * 100, 3) + '%';
-  if (annBar) annBar.style.height = Math.max(ann / mx * 100, 3) + '%';
+  if (invBar) invBar.style.height = Math.max(invPct / mx * 100, 3) + '%';
+  if (liBar)  liBar.style.height  = Math.max(liPct  / mx * 100, 3) + '%';
+  if (annBar) annBar.style.height = Math.max(annPct / mx * 100, 3) + '%';
 }
 
 async function saveFinPlan(){
@@ -390,9 +411,9 @@ async function saveFinPlan(){
 }
 
 document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { void saveFinPlan(); });
-["wfd_invAlloc","wfd_liAlloc","wfd_annAlloc"].forEach(id=>{
-  document.getElementById(id)?.addEventListener("input", updateFinPlanAllocTotal);
-});
+document.getElementById("wfd_invAlloc")?.addEventListener("input", ()=>{ updateFinPlanAllocTotal("inv"); });
+document.getElementById("wfd_liAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("li"); });
+document.getElementById("wfd_annAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("ann"); });
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
