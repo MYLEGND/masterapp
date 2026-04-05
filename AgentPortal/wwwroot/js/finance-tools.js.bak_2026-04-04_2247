@@ -2452,10 +2452,6 @@ markNeutral(savingsTipsOut);
                     if (step === '4' && !skipHydrate) {
                         hydrateResultsFromMeta();
                     }
-                    if (step === '2') {
-                        // Ensure allocation visual always re-syncs from live % inputs
-                        updateBktAmounts('step-nav');
-                    }
                 }
                 document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
                     chip.addEventListener('click', ()=>setStep(chip.dataset.step));
@@ -2554,6 +2550,48 @@ markNeutral(savingsTipsOut);
                     const m = await loadPersistedState(DIST_META_KEY);
                     if (m && typeof m === 'object') distMeta = { hasValidResults:!!m.hasValidResults, lastStep:m.lastStep || '1', stale:!!m.stale, result:m.result || null };
                 }
+
+                // Market scenario helpers
+                let wfdScenarioCache = [];
+                let wfdScenarioMeta = { mode:'fixed', years:0 };
+                function parseManualReturns(txt){
+                    return (txt || '').split(/[\n,]+/).map(pf).filter(v => !isNaN(v));
+                }
+                function generateRandomReturns(years, meanPct){
+                    const arr = [];
+                    const mean = isFinite(meanPct) ? meanPct : 6;
+                    for (let i=0; i<Math.max(years,1); i++){
+                        const drift = (Math.random() * 12) - 6; // +/-6%
+                        const shock = (Math.random() < 0.2) ? (Math.random()*-15 - 5) : 0; // occasional drawdown
+                        arr.push(Math.max(-40, mean + drift + shock));
+                    }
+                    return arr;
+                }
+                function buildScenarioReturns(years, mode, baseReturnDec, manualTxt){
+                    if (years <= 0) return [];
+                    const basePct = (baseReturnDec || 0) * 100;
+                    if (mode === 'manual'){
+                        const vals = parseManualReturns(manualTxt);
+                        if (vals.length === 0) return Array(years).fill(baseReturnDec);
+                        while (vals.length < years) vals.push(vals[vals.length-1]);
+                        return vals.slice(0, years).map(v => v / 100);
+                    }
+                    if (mode === 'random'){
+                        if (wfdScenarioCache.length === years && wfdScenarioMeta.mode === 'random') {
+                            return wfdScenarioCache.map(v => v / 100);
+                        }
+                        const gen = generateRandomReturns(years, basePct);
+                        wfdScenarioCache = gen;
+                        wfdScenarioMeta = { mode:'random', years };
+                        const txtArea = document.getElementById('wfd_manualReturns');
+                        if (txtArea) txtArea.value = gen.map(v=>v.toFixed(1)).join(', ');
+                        saveDistState();
+                        return gen.map(v => v / 100);
+                    }
+                    // fixed
+                    return Array(years).fill(baseReturnDec);
+                }
+
                 const priorityOptions = [
                     { v:'emergency',  l:'Emergency Savings' },
                     { v:'investments',l:'Investments' },
@@ -2821,18 +2859,11 @@ markNeutral(savingsTipsOut);
                         ['wfd_invAmt','wfd_liAmt','wfd_annAmt'].forEach(id => { gid(id).value = 'Enter Retirement Base'; });
                     }
 
-                    // Step 2 bar heights MUST reflect allocation % only (0–100 scale)
-                    const pctHeight = (pct) => {
-                        const p = Math.max(0, Math.min(100, Number(pct) || 0));
-                        if (p <= 0) return '0%';
-                        return Math.max(p, 3) + '%';
-                    };
-                    const invBar = gid('wfd_invBar');
-                    const liBar = gid('wfd_liBar');
-                    const annBar = gid('wfd_annBar');
-                    if (invBar) invBar.style.height = pctHeight(inv);
-                    if (liBar) liBar.style.height = pctHeight(li);
-                    if (annBar) annBar.style.height = pctHeight(ann);
+                    // Proportional bar heights
+                    const mx = Math.max(inv, li, ann, 1);
+                    gid('wfd_invBar').style.height = Math.max(inv / mx * 100, 3) + '%';
+                    gid('wfd_liBar').style.height  = Math.max(li  / mx * 100, 3) + '%';
+                    gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
                 }
                 const invAllocEl = gid('wfd_invAlloc');
                 const liAllocEl  = gid('wfd_liAlloc');
@@ -3124,10 +3155,6 @@ markNeutral(savingsTipsOut);
                 }
 
                 // Strategy change
-                const togglePriorityRow = () => {
-                    const show = ['priority','guardrail'].includes(gid('wfd_strategy').value);
-                    gid('wfd_priorityRow').style.display = show ? 'block' : 'none';
-                };
                 const markStrategyButtons = () => {
                     const strat = gid('wfd_strategy').value;
                     [['wfd_strat_prop','proportional'],['wfd_strat_pri','priority'],['wfd_strat_guard','guardrail']].forEach(([id,val])=>{
@@ -3261,169 +3288,6 @@ markNeutral(savingsTipsOut);
                     hydrating = false;
                 })();
 
-                // ========================
-                // Main Distribution Calculation
-                // ========================
-                let distChart = null;
-                const goResults = () => setStep('4', { skipHydrate: true });
-
-                function renderEmptyResults(){
-                    const ctaHtml = `
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                          <button id="wfd_emptyRun" class="wfd-calc-btn" type="button" style="flex:1;min-width:140px;max-width:200px;">Run Plan</button>
-                          <button id="wfd_emptyStrategy" class="wfd-calc-btn wfd-secondary" type="button" style="flex:1;min-width:140px;max-width:200px;">Go to Strategy</button>
-                        </div>`;
-                    const msg = `<div style="padding:12px;border:1px dashed rgba(217,179,90,.6);border-radius:10px;background:rgba(255,255,255,.03);color:#cbd5e1;font-weight:700;">Run the plan to view results, funding analysis, and stress-test outputs.${ctaHtml}</div>`;
-                    const resGrid = gid('wfd_resGrid'); if (resGrid) resGrid.innerHTML = msg;
-                    const src = gid('wfd_sourceBreak'); if (src) src.innerHTML = '';
-                    const emCard = gid('wfd_emCard'); if (emCard) emCard.style.display = 'none';
-                    const warn = gid('wfd_warnArea'); if (warn) warn.innerHTML = '';
-                    const tips = gid('wfd_tips'); if (tips) tips.innerHTML = msg;
-                    const chart = gid('wfd_chart');
-                    if (chart && chart.tagName.toLowerCase() === 'canvas') {
-                        if (dpChart){ dpChart.destroy(); dpChart = null; }
-                        const ctx = chart.getContext('2d'); ctx && ctx.clearRect(0,0,chart.width, chart.height);
-                    }
-                    const summaryIds = ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff'];
-                    summaryIds.forEach(id=>{ const el = gid(id); if (el){ el.textContent='—'; el.className='wfd-sum-value'; }});
-                    const hb = gid('wfd_healthBadge'); if (hb){ hb.textContent='—'; hb.className='wfd-badge'; }
-                    if (gid('wfd_results')) gid('wfd_results').style.display = 'block';
-
-                    const runBtn = gid('wfd_emptyRun');
-                    if (runBtn) runBtn.onclick = () => gid('wfd_calcBtn').click();
-                    const stratBtn = gid('wfd_emptyStrategy');
-                    if (stratBtn) stratBtn.onclick = () => setStep('3');
-                }
-
-                                function renderResults(result, isStale=false){
-                    return renderCanonicalResults(result, isStale);
-                }
-
-function hydrateResultsFromMeta(){
-                    const legacy = distMeta.hasValidResults && distMeta.result && (!distMeta.result.summary || !distMeta.result.series);
-                    if (legacy) {
-                        distMeta.hasValidResults = false;
-                        const warn = gid('wfd_warnArea');
-                        if (warn) warn.innerHTML = '<div class="wfd-warn-box">⚠️ Older plan data detected. Please rerun the Distribution Planner to refresh results.</div>';
-                        renderEmptyResults();
-                        return;
-                    }
-                    if (distMeta.hasValidResults && distMeta.result && distMeta.result.summary && distMeta.result.series){
-                        renderResults(distMeta.result, distMeta.stale);
-                    } else {
-                        renderEmptyResults();
-                    }
-                }
-
-                gid('wfd_run').addEventListener('click', () => gid('wfd_calcBtn').click());
-                gid('wfd_recalcBtn')?.addEventListener('click', () => gid('wfd_calcBtn').click());
-                gid('wfd_prev').addEventListener('click', () => {
-                    const idx = Math.max(0, steps.indexOf(activeStep)-1);
-                    setStep(steps[idx]);
-                });
-                gid('wfd_next').addEventListener('click', () => {
-                    if (activeStep === '3') {
-                        // If we already have a valid run, jump straight to Results; otherwise trigger a run.
-                        if (distMeta.hasValidResults && distMeta.result) {
-                            setStep('4');
-                            hydrateResultsFromMeta();
-                            return;
-                        }
-                        gid('wfd_calcBtn').click();
-                        return;
-                    }
-                    const idx = Math.min(steps.length-1, steps.indexOf(activeStep)+1);
-                    setStep(steps[idx]);
-                });
-                gid('wfd_editFoundation')?.addEventListener('click', ()=>setStep('1'));
-                gid('wfd_editBuckets')?.addEventListener('click', ()=>setStep('2'));
-                gid('wfd_editStrategy')?.addEventListener('click', ()=>setStep('3'));
-                // ---------- Distribution Planner wiring (full UI) ----------
-
-                function buildCanonicalDpInput(){
-                    const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
-                    const parseReturns = (raw) => {
-                        if (!raw) return [];
-                        return raw
-                            .toString()
-                            .split(/[\n,]+/)
-                            .map(s => Number((s || '').trim()))
-                            .filter(n => !isNaN(n));
-                    };
-                    const mapPriorityKey = (k) => {
-                        if (k === 'emergency') return 'reserve';
-                        if (k === 'investments') return 'inv';
-                        if (k === 'life') return 'li';
-                        if (k === 'annuities') return 'ann';
-                        return null;
-                    };
-                    const manualOverride = !!gid('wfd_manualOverride')?.checked;
-                    const baseFromWf = window.__wfFinalBalance || 0;
-                    const base = manualOverride ? pf(gid('wfd_base')?.value) : baseFromWf;
-                    const strategy = (gid('wfd_strategy')?.value || 'proportional');
-                    const priorityOrderUi = getPriorityOrder();
-                    const priorityOrder = priorityOrderUi.map(mapPriorityKey).filter(Boolean);
-                    const defaultOrder = window.DP_CONSTANTS?.DP_WITHDRAWAL_ORDER_DEFAULT || ["inv","li","ann","reserve"];
-                    const manualReturns = parseReturns(gid('wfd_manualReturns')?.value || '');
-                    const annIncomeRider = !!gid('wfd_annIncomeRider')?.checked;
-                    if (!manualOverride && gid('wfd_base')) gid('wfd_base').value = (baseFromWf || 0).toLocaleString();
-                    return {
-                        schemaVersion: (window.DP_CONSTANTS||{}).DP_SCHEMA_VERSION || "1.0",
-                        planVersion: distMeta.planVersion || 1,
-                        retireAge: pf(gid('wfd_retAge')?.value),
-                        endAge: pf(gid('wfd_endAge')?.value),
-                        inflationPct: (window.DP_CONSTANTS?.DP_DEFAULTS?.inflationPct) ?? 3,
-                        retirementBase: base,
-                        desiredIncome: pf(gid('wfd_desiredIncome')?.value),
-                        guaranteedIncome: pf(gid('wfd_guaranteedIncome')?.value),
-                        emergencyReserve: pf(gid('wfd_emergency')?.value),
-                        manualBaseOverride: manualOverride,
-                        invAllocPct: pf(gid('wfd_invAlloc')?.value),
-                        invReturnPct: pf(gid('wfd_invReturn')?.value),
-                        invTaxPct: pf(gid('wfd_invTax')?.value),
-                        liAllocPct: pf(gid('wfd_liAlloc')?.value),
-                        liReturnPct: pf(gid('wfd_liGrowth')?.value),
-                        liTaxPct: pf(gid('wfd_liTax')?.value),
-                        liEfficiencyPct: pf(gid('wfd_liEfficiency')?.value),
-                        liDeathBenefit: pf(gid('wfd_liDeath')?.value),
-                        liAccessMode: (gid('wfd_liAccess')?.value || 'withdrawal'),
-                        liPolicyType: (gid('wfd_liType')?.value || 'whole'),
-                        annAllocPct: pf(gid('wfd_annAlloc')?.value),
-                        annReturnPct: pf(gid('wfd_annReturn')?.value),
-                        annTaxPct: pf(gid('wfd_annTax')?.value),
-                        annDeathBenefit: pf(gid('wfd_annDeath')?.value),
-                        annDesign: (gid('wfd_annDesign')?.value || 'fixed'),
-                        strategy,
-                        priorityOrder,
-                        priorityOrderUi,
-                        protectInvest: !!gid('wfd_protectInvest')?.checked,
-                        gapSource: (gid('wfd_gapSource')?.value || 'life'),
-                        scenarioMode: (gid('wfd_scenarioMode')?.value || 'fixed'),
-                        downThreshold: pf(gid('wfd_downThreshold')?.value),
-                        manualReturns,
-                        invDownMarket: !!gid('wfd_invDownMkt')?.checked,
-                        liDownMarket: !!gid('wfd_liDownMkt')?.checked,
-                        annDownMarket: !!gid('wfd_annDownMkt')?.checked,
-                        annIncomeRider,
-                        annDbRider: !!gid('wfd_annDbRider')?.checked,
-                        annRollupPct: annIncomeRider ? pf(gid('wfd_annRollup')?.value) : 0,
-                        withdrawalOrder: strategy === 'priority' && priorityOrder.length ? priorityOrder : defaultOrder
-                    };
-                }
-
-                function renderEmptyResults(){
-                    ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff','wfd_healthBadge'].forEach(id=>{
-                        const el = gid(id); if (el) el.textContent = '—';
-                    });
-                    gid('wfd_warnArea') && (gid('wfd_warnArea').innerHTML = '');
-                    gid('wfd_resGrid') && (gid('wfd_resGrid').innerHTML = '');
-                    gid('wfd_sourceBreak') && (gid('wfd_sourceBreak').innerHTML = 'Run the plan to view funding source detail.');
-                    gid('wfd_tips') && (gid('wfd_tips').innerHTML = '<div class="wfd-mini-note">Run the plan to view year-by-year audit.</div>');
-                    const emDefaults = [['wfd_emNow','—'],['wfd_emUsed','—'],['wfd_emTotal','—'],['wfd_emRemain','—'],['wfd_emDeplete','—']];
-                    emDefaults.forEach(([id,val]) => { const el = gid(id); if (el) el.textContent = val; });
-                    const emStatus = gid('wfd_emStatus');
-                    if (emStatus) { emStatus.textContent = '—'; emStatus.className = 'wfd-badge'; }
-                }
 
                 function formatMoney(v){ const n = Number(v)||0; return '$' + Math.round(n).toLocaleString(); }
 
@@ -3431,102 +3295,26 @@ function hydrateResultsFromMeta(){
                 function renderCanonicalResults(res){
                     gid('wfd_warnArea') && (gid('wfd_warnArea').innerHTML = '');
                     const sum = res.summary || {};
-                    const rows = Array.isArray(res.auditRows) ? res.auditRows : [];
-                    const first = rows[0] || {};
-                    const last = rows[rows.length - 1] || {};
-                    const years = rows.length || Number(res.displayMeta?.simulationYears || 0);
-                    const fundedYears = rows.filter(r => (Number(r.shortfall || 0) <= 1e-6)).length;
-                    const fundedPct = years > 0 ? (fundedYears / years) * 100 : 0;
-                    const firstYearGross = (first.withdrawalsInvGross || 0) + (first.withdrawalsLiGross || 0) + (first.withdrawalsAnnGross || 0) + (first.withdrawalsReserveGross || 0);
-                    const firstYearTaxes = first.taxesTotal || 0;
-                    const firstYearNet = first.netIncomeDelivered || 0;
-                    const firstYearShort = first.shortfall || 0;
-                    const firstYearDesired = first.desiredIncomeTarget || 0;
-                    const firstYearGuaranteed = first.guaranteedIncome || 0;
-                    const endInv = last.endInv || 0;
-                    const endLi  = last.endLi || 0;
-                    const endAnn = last.endAnn || 0;
-                    const endEm  = last.endReserve || 0;
-                    const emUsedYear1 = first.withdrawalsReserveGross || 0;
-                    const emUsedTotal = rows.reduce((s,r)=>s + (Number(r.withdrawalsReserveGross)||0), 0);
-                    const emStart = Number(res.inputsSnapshot?.emergencyReserve || 0);
-                    const emRemain = endEm;
-                    const emDepleteYr = rows.find(r => Number(r.endReserve || 0) <= 1e-6 && Number(r.startReserve || 0) > 0)?.yearIndex;
-                    const modeLabel = (sum.scenarioMode || 'fixed') === 'random' ? 'Random path' : (sum.scenarioMode || 'fixed') === 'manual' ? 'Manual path' : 'Fixed path';
-                    const gapLabelMap = {
-                        life:'Life Insurance first', annuities:'Annuities first', lifeThenAnnuities:'Life then Annuities',
-                        annThenLife:'Annuities then Life', split:'Split Life + Annuities', custom:'Custom priority'
-                    };
                     const depletionText = sum.depletionYearOverall === null ? 'Sustainable' : `Depletes Yr ${sum.depletionYearOverall+1}`;
                     const incomeEl = gid('wfd_sumIncome'); if (incomeEl) incomeEl.textContent = formatMoney(sum.avgIncomeDeliveredNet || 0);
                     const healthEl = gid('wfd_sumHealth'); if (healthEl) healthEl.textContent = depletionText;
                     const longevityEl = gid('wfd_sumLongevity'); if (longevityEl) longevityEl.textContent = formatMoney(sum.totalEndBalance || 0);
-                    const suffEl = gid('wfd_sumIncomeSuff'); if (suffEl) suffEl.textContent = sum.totalShortfall > 0 ? `${fundedPct.toFixed(0)}% funded · Shortfall ${formatMoney(sum.totalShortfall)}` : `${fundedPct.toFixed(0)}% funded · Covered`;
+                    const suffEl = gid('wfd_sumIncomeSuff'); if (suffEl) suffEl.textContent = sum.totalShortfall > 0 ? `Shortfall ${formatMoney(sum.totalShortfall)}` : 'Covered';
                     const badge = gid('wfd_healthBadge'); if (badge){
-                        const healthy = sum.depletionYearOverall === null && (sum.totalShortfall || 0) <= 1e-6;
-                        const tight = !healthy && (sum.totalShortfall || 0) < (sum.avgIncomeDeliveredNet || 0) * 0.5;
-                        badge.textContent = healthy ? 'Healthy' : tight ? 'Tight' : 'At Risk';
-                        badge.className = healthy ? 'wfd-badge wfd-hlthy' : tight ? 'wfd-badge wfd-tight' : 'wfd-badge wfd-risk';
+                        badge.textContent = sum.depletionYearOverall === null ? 'Good' : 'At Risk';
+                        badge.className = sum.depletionYearOverall === null ? 'wfd-badge good' : 'wfd-badge warn';
                     }
-
-                    // Rich result cards
-                    const cardData = [
-                        { l:'Yr1 Desired Income', v:formatMoney(firstYearDesired), c:'' },
-                        { l:'Yr1 Guaranteed Income', v:formatMoney(firstYearGuaranteed), c:'green' },
-                        { l:'Yr1 Gross Withdrawals', v:formatMoney(firstYearGross), c:'' },
-                        { l:'Yr1 Taxes', v:formatMoney(firstYearTaxes), c:firstYearTaxes > 0 ? 'gold' : '' },
-                        { l:'Yr1 Net Delivered', v:formatMoney(firstYearNet), c:firstYearShort > 0 ? 'red' : 'green' },
-                        { l:'Yr1 Shortfall', v:formatMoney(firstYearShort), c:firstYearShort > 0 ? 'red' : 'green' },
-                        { l:'Down-Market Years', v:String(sum.downYearCount || 0), c:(sum.downYearCount || 0) > 0 ? 'gold' : '' },
-                        { l:'Guardrail Activations', v:String(sum.guardrailActivationYears || 0), c:(sum.guardrailActivationYears || 0) > 0 ? 'gold' : '' },
-                        { l:'Total Taxes Paid', v:formatMoney(sum.totalTaxesPaid || 0), c:'' },
-                        { l:'Total Shortfall', v:formatMoney(sum.totalShortfall || 0), c:(sum.totalShortfall || 0) > 0 ? 'red' : 'green' },
-                        { l:'Rider Income (Gross)', v:formatMoney(sum.totalRiderIncomeGross || 0), c:(sum.totalRiderIncomeGross || 0) > 0 ? 'green' : '' },
-                        { l:'Rider Charges', v:formatMoney(sum.totalRiderCharges || 0), c:(sum.totalRiderCharges || 0) > 0 ? 'gold' : '' }
-                    ];
-                    const resGrid = gid('wfd_resGrid');
-                    if (resGrid) {
-                        resGrid.innerHTML = cardData.map(cd => `
-                            <div class="wfd-res-card">
-                              <p class="wfd-res-lbl">${cd.l}</p>
-                              <p class="wfd-res-val ${cd.c || ''}">${cd.v}</p>
-                            </div>
-                        `).join('');
-                    }
-
-                    const sourceBreak = gid('wfd_sourceBreak');
-                    if (sourceBreak) {
-                        const firstSource = first.fundingSource || '—';
-                        const lastSource = last.fundingSource || '—';
-                        sourceBreak.innerHTML = `
-                            <div><strong>Strategy:</strong> ${sum.strategy || 'proportional'} · <strong>Gap Source:</strong> ${gapLabelMap[sum.gapSource] || (sum.gapSource || '—')} · <strong>Scenario:</strong> ${modeLabel}</div>
-                            <div><strong>First-Year Draw Source:</strong> ${firstSource}</div>
-                            <div><strong>Last-Year Draw Source:</strong> ${lastSource}</div>
-                            <div><strong>Design:</strong> Life ${sum.liPolicyType || 'whole'} · Annuity ${sum.annDesign || 'fixed'} · Income Rider ${sum.annIncomeRider ? 'On' : 'Off'} · DB Rider ${sum.annDbRider ? 'On' : 'Off'}</div>
-                        `;
-                    }
-
-                    // Emergency card
-                    const setTxt = (id,v) => { const el = gid(id); if (el) el.textContent = v; };
-                    setTxt('wfd_emNow', formatMoney(emStart));
-                    setTxt('wfd_emUsed', formatMoney(emUsedYear1));
-                    setTxt('wfd_emTotal', formatMoney(emUsedTotal));
-                    setTxt('wfd_emRemain', formatMoney(emRemain));
-                    setTxt('wfd_emDeplete', emDepleteYr !== undefined ? `Yr ${Number(emDepleteYr) + 1}` : 'Sustainable');
-                    const emStatus = gid('wfd_emStatus');
-                    if (emStatus) {
-                        const depleted = emDepleteYr !== undefined;
-                        emStatus.textContent = depleted ? 'Depletes' : 'Stable';
-                        emStatus.className = depleted ? 'wfd-badge wfd-risk' : 'wfd-badge wfd-hlthy';
-                    }
-
                     // basic series rendering: bar heights represent end balances
+                    const lastIdx = (res.series?.wealthSeries?.length || 1) -1;
+                    const endInv = res.series?.bucketSeries?.inv?.[lastIdx] || 0;
+                    const endLi  = res.series?.bucketSeries?.li?.[lastIdx] || 0;
+                    const endAnn = res.series?.bucketSeries?.ann?.[lastIdx] || 0;
+                    const endEm  = res.series?.bucketSeries?.reserve?.[lastIdx] || 0;
                     const mx = Math.max(endInv,endLi,endAnn,endEm,1);
                     const setHeight = (id,val)=>{ const el = gid(id); if (el) el.style.height = Math.max(val/mx*100,3)+'%'; };
-                    // Results view uses withdrawal/funding bars only; do not overwrite Step 2 allocation bars
-                    setHeight('wfd_invWBar', endInv);
-                    setHeight('wfd_liWBar', endLi);
-                    setHeight('wfd_annWBar', endAnn);
+                    setHeight('wfd_invBar', endInv);
+                    setHeight('wfd_liBar', endLi);
+                    setHeight('wfd_annBar', endAnn);
                     const setLbl = (id,prefix,val)=>{ const el = gid(id); if (el) el.innerHTML = `${prefix}<br>${formatMoney(val)}`; };
                     setLbl('wfd_invWLbl','Investments', endInv);
                     setLbl('wfd_liWLbl','Life Ins', endLi);
@@ -3542,11 +3330,8 @@ function hydrateResultsFromMeta(){
                             data:{
                                 labels: res.series.wealthSeries.map((_,i)=>`Yr ${i+1}`),
                                 datasets:[
-                                    { label:'Total Wealth', data: res.series.wealthSeries, borderColor:'#16a34a', borderWidth:3, fill:false, tension:0.25 },
-                                    { label:'Investments', data: res.series.bucketSeries?.inv || [], borderColor:'#3b82f6', borderWidth:2, fill:false, tension:0.2 },
-                                    { label:'Life Insurance', data: res.series.bucketSeries?.li || [], borderColor:'#d9b35a', borderWidth:2, fill:false, tension:0.2 },
-                                    { label:'Annuities', data: res.series.bucketSeries?.ann || [], borderColor:'#22c55e', borderWidth:2, fill:false, tension:0.2 },
-                                    { label:'Emergency Reserve', data: res.series.bucketSeries?.reserve || [], borderColor:'#f59e0b', borderWidth:2, fill:false, tension:0.2 }
+                                    { label:'Wealth', data: res.series.wealthSeries, borderColor:'#16a34a', borderWidth:3, fill:false, tension:0.25 },
+                                    { label:'Cumulative Net Spend', data: res.series.spendSeries, borderColor:'#dc2626', borderWidth:3, fill:false, tension:0.25 }
                                 ]
                             },
                             options:{
@@ -3559,21 +3344,6 @@ function hydrateResultsFromMeta(){
                         });
                     }
 
-                                        // Warnings / stress narrative
-                                        const warnArea = gid('wfd_warnArea');
-                                        if (warnArea) {
-                                                const warnLines = [];
-                                                if ((sum.totalShortfall || 0) > 0) warnLines.push({ t:'warn', m:`Plan has aggregate shortfall of ${formatMoney(sum.totalShortfall)}.` });
-                                                if (sum.depletionYearOverall !== null && sum.depletionYearOverall !== undefined) warnLines.push({ t:'warn', m:`Portfolio depletion occurs in year ${Number(sum.depletionYearOverall) + 1}.` });
-                                                if ((sum.downYearCount || 0) > 0) warnLines.push({ t:'info', m:`Stress years encountered: ${sum.downYearCount} down-market year(s).` });
-                                                if ((sum.guardrailActivationYears || 0) > 0) warnLines.push({ t:'info', m:`Protect-invest guardrail activated in ${sum.guardrailActivationYears} year(s).` });
-                                                if ((sum.totalRiderIncomeGross || 0) > 0) warnLines.push({ t:'info', m:`Income rider contributed ${formatMoney(sum.totalRiderIncomeGross)} gross over plan horizon.` });
-                                                (res.warnings || []).forEach(w => warnLines.push({ t:w.type === 'warn' ? 'warn' : 'info', m:w.message || w.msg || String(w) }));
-                                                warnArea.innerHTML = warnLines.length
-                                                        ? warnLines.map(w => `<div class="${w.t === 'warn' ? 'wfd-warn-box' : 'wfd-info-box'}">${w.t === 'warn' ? '⚠️' : 'ℹ️'} ${w.m}</div>`).join('')
-                                                        : '<div class="wfd-info-box">No structural warnings. Plan appears stable under selected design assumptions.</div>';
-                                        }
-
                     // Audit table (top 50 rows)
                     const tips = gid('wfd_tips');
                     if (tips && Array.isArray(res.auditRows)){
@@ -3581,12 +3351,8 @@ function hydrateResultsFromMeta(){
                             <tr>
                               <td>${r.yearIndex+1}</td>
                               <td>${r.age}</td>
-                                                            <td>${r.marketState || 'normal'}</td>
-                                                            <td>${r.fundingSource || '—'}</td>
                               <td>${formatMoney(r.netIncomeDelivered)}</td>
                               <td>${formatMoney(r.shortfall)}</td>
-                                                            <td>${formatMoney((r.withdrawalsInvGross||0) + (r.withdrawalsLiGross||0) + (r.withdrawalsAnnGross||0) + (r.withdrawalsReserveGross||0))}</td>
-                                                            <td>${formatMoney(r.taxesTotal || 0)}</td>
                               <td>${formatMoney(r.endInv)}</td>
                               <td>${formatMoney(r.endLi)}</td>
                               <td>${formatMoney(r.endAnn)}</td>
@@ -3595,7 +3361,7 @@ function hydrateResultsFromMeta(){
                         tips.innerHTML = `
                           <table class="table table-sm table-dark" style="font-size:.82rem;">
                             <thead><tr>
-                                                            <th>Year</th><th>Age</th><th>Market</th><th>Source</th><th>Net Income</th><th>Shortfall</th><th>Gross W/D</th><th>Taxes</th>
+                              <th>Year</th><th>Age</th><th>Net Income</th><th>Shortfall</th>
                               <th>Inv End</th><th>LI End</th><th>Ann End</th><th>Reserve End</th>
                             </tr></thead>
                             <tbody>${rows}</tbody>
@@ -3605,14 +3371,8 @@ function hydrateResultsFromMeta(){
                     if (gid('wfd_results')) gid('wfd_results').style.display = 'block';
                 }
 
-                const handleDpRun = async (mode = 'base') => {
+                const handleDpRun = async () => {
                     const plan = buildCanonicalDpInput();
-                    if (mode === 'down') {
-                        plan.forceDownMarket = true;
-                    }
-                    if (mode === 'scenario' && plan.scenarioMode === 'fixed') {
-                        plan.scenarioMode = 'random';
-                    }
                     const errs = window.DP_VALIDATORS?.validatePlanInput ? window.DP_VALIDATORS.validatePlanInput(plan) : [{message:"Validator unavailable"}];
                     const warnArea = gid('wfd_warnArea');
                     const showErrs = (list)=>{ if (warnArea) warnArea.innerHTML = list.map(e=>`<div class="wfd-warn-box">⚠️ ${e.message || e}</div>`).join(''); };
@@ -3620,34 +3380,15 @@ function hydrateResultsFromMeta(){
                     const result = window.runDistributionPlan ? window.runDistributionPlan(plan) : { errors:[{message:"Engine unavailable"}]};
                     if (result.errors && result.errors.length){ showErrs(result.errors); renderEmptyResults(); return; }
                     distMeta.hasValidResults = true;
-                    distMeta.stale = false;
                     distMeta.result = result;
                     renderCanonicalResults(result);
                     setStep('4');
                 };
 
-                gid('wfd_calcBtn').addEventListener('click', () => handleDpRun('base'));
-                gid('wfd_runBase')?.addEventListener('click', () => handleDpRun('base'));
-                gid('wfd_runDown')?.addEventListener('click', () => handleDpRun('down'));
-                gid('wfd_runScenario')?.addEventListener('click', () => handleDpRun('scenario'));
-                gid('wfd_genScenario')?.addEventListener('click', () => {
-                    const pfn = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
-                    const years = Math.max(1, Math.floor(pfn(gid('wfd_endAge')?.value) - pfn(gid('wfd_retAge')?.value) + 1));
-                    const baseR = pfn(gid('wfd_invReturn')?.value);
-                    const scen = Array.from({ length: years }, () => {
-                        const r = baseR + ((Math.random() - 0.5) * 16);
-                        return Math.max(-35, Math.min(20, r));
-                    });
-                    const box = gid('wfd_manualReturns');
-                    if (box) box.value = scen.map(v => v.toFixed(2)).join(', ');
-                    const modeSel = gid('wfd_scenarioMode');
-                    if (modeSel) modeSel.value = 'manual';
-                    saveDistState();
-                });
-
-            } // end: if (!document.getElementById(DIST_OVR_ID))
-
-            // Distribution button opens modal and syncs base
+                gid('wfd_calcBtn').addEventListener('click', handleDpRun);
+                gid('wfd_runBase')?.addEventListener('click', handleDpRun);
+                gid('wfd_runDown')?.addEventListener('click', handleDpRun);
+                gid('wfd_runScenario')?.addEventListener('click', handleDpRun);
                 distBtn.addEventListener('click', () => {
                     const overlay = document.getElementById(DIST_OVR_ID);
                     if (!overlay) {
@@ -3682,6 +3423,7 @@ function hydrateResultsFromMeta(){
                     saveWfPlanDebounced();
                 });
             });
+        }
 
 // ==========================================================
 // 2️⃣ SAVINGS ACCELERATOR (ELEVATED) + Tooltips
@@ -6701,8 +6443,6 @@ if (t.id === "DebtAssetPulse") {
     // ✅ initial compute + paint (for persisted state)
     updateDAP();
     } // ✅ closes if (t.id === "DebtAssetPulse")
-
-    } // ✅ closes dropdown handler function body
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
