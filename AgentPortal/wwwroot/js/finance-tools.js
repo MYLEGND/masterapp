@@ -2284,7 +2284,7 @@ markNeutral(savingsTipsOut);
               </div>
             </div>
           </div>
-          <div class="wfd-acc">
+                    <div class="wfd-acc collapsed">
             <button class="wfd-acc-btn" data-target="wfd_fundingWrap">Funding Breakdown</button>
             <div id="wfd_fundingWrap" class="wfd-acc-body">
               <div class="wfd-res-grid" id="wfd_resGrid"></div>
@@ -2426,6 +2426,16 @@ markNeutral(savingsTipsOut);
                         w.style.display = isActive ? 'block' : 'none';
                     });
                 }
+                function applyResultsAccordionDefaults(){
+                    const openTargets = new Set(['wfd_summaryWrap','wfd_chartWrapAcc']);
+                    document.querySelectorAll('.wfd-acc-btn').forEach(btn => {
+                        const parent = btn.closest('.wfd-acc');
+                        const target = btn.dataset.target;
+                        if (!parent || !target) return;
+                        if (openTargets.has(target)) parent.classList.remove('collapsed');
+                        else parent.classList.add('collapsed');
+                    });
+                }
                 function setStep(step, { skipHydrate = false } = {}){
                     activeStep = step;
                     document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
@@ -2448,6 +2458,9 @@ markNeutral(savingsTipsOut);
                         } else {
                             run.style.display = 'none';
                         }
+                    }
+                    if (step === '4') {
+                        applyResultsAccordionDefaults();
                     }
                     if (step === '4' && !skipHydrate) {
                         hydrateResultsFromMeta();
@@ -4218,7 +4231,7 @@ markNeutral(savingsTipsOut);
                                 const liShare  = needLeftNet * (liAvail  / total);
                                 const annShare = needLeftNet * (annAvail / total);
                                 if (allowLife && liAvail > 0) {
-                                    const liTaxSplit = liDesign === 'whole_loan' ? 0 : liTax;
+                                    const liTaxSplit = liAccess === 'loan' ? 0 : liTax;
                                     const draw = Math.min(liAvail, liTaxSplit < 1 ? liShare / (1 - liTaxSplit) : liShare);
                                     liW += draw; needLeftNet -= netFromGross(draw, liTaxSplit);
                                     recordBucket('life', draw);
@@ -4321,10 +4334,16 @@ markNeutral(savingsTipsOut);
                         let annCharges = 0;
                         if (annDesign === 'variable') { /* charge already applied in net effect above; track for audit */ annCharges += annBal * 0; }
                         if (annIncomeRider) { const riderCharge = annIncomeBase * 0.006; annCharges += riderCharge; annBal = Math.max(0, annBal - riderCharge); }
-                        // Death benefit evolution by design (default: level, no automatic accrual)
-                        let liDeathNext = liDeathPre;
-                        // Future increasing DB options would adjust liDeathNext here; none are enabled by default.
-                        liDeathBal = liDeathNext;
+                        // Life death benefit behavior (model assumption):
+                        // - APR/crediting compounds CASH VALUE (liBal), not death benefit by default.
+                        // - Gross death benefit is level unless directly reduced by distributions.
+                        // - Policy loans reduce NET death benefit separately via outstanding loan balance.
+                        // This is applied consistently across Whole, IUL, VUL, and Legacy RPU in this planner.
+                        if (liAccess === 'withdrawal') {
+                            liDeathBal = Math.max(0, liDeathPre - liW);
+                        } else {
+                            liDeathBal = Math.max(0, liDeathPre);
+                        }
                         if (annDbRider) {
                             // true high-water-mark: ratchet steps up only when account value exceeds prior high
                             annRiderBase = Math.max(annRiderBase, annBal);
@@ -4370,7 +4389,7 @@ markNeutral(savingsTipsOut);
                         auditRows.push({
                             age: retAge + y,
                             invReturnPct: invYearR * 100,
-                            liRatePct: liGrowth * 100,
+                            liRatePct: effLiR * 100,
                             annRatePct: effAnnR * 100,
                             marketState,
                             sourceFunded: sourceFundedLabel,
@@ -4422,12 +4441,13 @@ markNeutral(savingsTipsOut);
                     const annGrossContributionFY = annIncomeRider ? annIncomeBenefit : fy_annW;
                     const net_annW  = annIncomeRider ? annIncomeBenefit : (fy_annW * (1 - annTax));
                     const net_emW   = fy_emW;
-                    const totalNetW = net_invW + net_liW + net_annW + net_emW;
-                    const totalGrW  = fy_invW + fy_liW + annGrossContributionFY + fy_emW;
+                    const totalNetW = net_invW + net_liW + net_annW + net_emW; // after-tax from asset buckets only
+                    const totalGrW  = fy_invW + fy_liW + annGrossContributionFY + fy_emW; // gross from asset buckets only
                     const firstYearShortfall = year1Shortfall;
                     // --- Horizon-wide tracking ---
                     const shortfall = firstYearShortfall; // single source of truth for Yr1 shortfall
-                    const atSpend   = guarInc + totalNetW;
+                    const sourcedAfterTax = totalNetW;
+                    const atSpend   = guarInc + sourcedAfterTax; // total after-tax spendable including guaranteed income
                     const finalTot  = totalPts[totalPts.length - 1];
                     const depAge    = depletionYr ? retAge + depletionYr : null;
 
@@ -4481,7 +4501,7 @@ markNeutral(savingsTipsOut);
                         active.em  ? { l: 'Yr 1 Emergency W/D',         v: fmtD(fy_emW),  c: '' } : null,
                         active.inv ? { l: 'Yr 1 Investments Gross W/D', v: fmtD(fy_invW), c: '' } : null,
                         active.li  ? { l: 'Yr 1 Life Ins Gross W/D',    v: fmtD(fy_liW),  c: '' } : null,
-                        active.ann ? { l: 'Yr 1 Annuity Gross W/D',     v: fmtD(fy_annW), c: '' } : null,
+                        active.ann ? { l: 'Yr 1 Annuity Gross W/D',     v: fmtD(annGrossContributionFY), c: '' } : null,
                         { l: 'Total Yr 1 Gross Withdrawals',     v: fmtD(totalGrW),     c: '' },
                         { l: 'After-Tax Spendable (Yr1)',  v: fmtD(atSpend),      c: incomeSufficient ? 'green' : 'red' },
                         { l: 'First-Year Shortfall',       v: fmtD(firstYearShortfall), c: firstYearShortfall > shortfallTol ? 'red' : '' },
@@ -4498,7 +4518,9 @@ markNeutral(savingsTipsOut);
                     if (active.li)  srcParts.push(`From Life Insurance (gross): ${fmtD(fy_liW)}`);
                     if (active.ann) srcParts.push(`From Annuities (gross): ${fmtD(annGrossContributionFY)}`);
                     srcParts.push(`Total Gross Sourced: ${fmtD(totalGrW)}`);
-                    srcParts.push(`After-Tax Spendable: ${fmtD(atSpend)}`);
+                    srcParts.push(`After-Tax from Buckets: ${fmtD(sourcedAfterTax)}`);
+                    srcParts.push(`Guaranteed Income (after-tax): ${fmtD(guarInc)}`);
+                    srcParts.push(`Total Spendable (after-tax): ${fmtD(atSpend)}`);
                     if (shortfall>0) srcParts.push(`Unfunded Shortfall: ${fmtD(shortfall)}`);
                     if (downYearCount > 0 && protectInvest) srcParts.push(`Protection active in ${downYearCount} down-market year(s)`);
 
