@@ -228,6 +228,10 @@ function recalcFinPlanWealthForecastBalance(){
 
 function finPlanPayload(){
   const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
+  const parseManualReturns = (txt) => String(txt || "")
+    .split(/[\n,]+/)
+    .map(s => Number(String(s).trim()))
+    .filter(n => Number.isFinite(n));
   const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
   const wfFinalBalance = recalcFinPlanWealthForecastBalance();
   const base = manualOverride ? pf($("#wfd_base")?.value) : wfFinalBalance;
@@ -256,6 +260,21 @@ function finPlanPayload(){
     annReturnPct: pf($("#wfd_annReturn")?.value),
     annTaxPct: pf($("#wfd_annTax")?.value),
     annDesign: ($("#wfd_annDesign")?.value || "fixed"),
+    invDownMarket: !!document.getElementById("wfd_invDownMkt")?.checked,
+    liDownMarket: !!document.getElementById("wfd_liDownMkt")?.checked,
+    annDownMarket: !!document.getElementById("wfd_annDownMkt")?.checked,
+    protectInvest: !!document.getElementById("wfd_protectInvest")?.checked,
+    annIncomeRider: !!document.getElementById("wfd_annIncomeRider")?.checked,
+    annDbRider: !!document.getElementById("wfd_annDbRider")?.checked,
+    annRollupPct: pf($("#wfd_annRollup")?.value),
+    liEfficiencyPct: pf($("#wfd_liEfficiency")?.value),
+    annDeathBenefit: pf($("#wfd_annDeath")?.value),
+    liDeathBenefit: pf($("#wfd_liDeath")?.value),
+    strategy: ($("#wfd_strategy")?.value || "proportional"),
+    gapSource: ($("#wfd_gapSource")?.value || "life"),
+    downThreshold: pf($("#wfd_downThreshold")?.value),
+    scenarioMode: ($("#wfd_scenarioMode")?.value || "fixed"),
+    manualReturns: parseManualReturns($("#wfd_manualReturns")?.value),
     withdrawalOrder: (window.DP_CONSTANTS?.DP_WITHDRAWAL_ORDER_DEFAULT) || ["inv","li","ann","reserve"]
   };
 
@@ -358,8 +377,50 @@ function hydrateFinPlan(jsonData){
   const liAccessEl = document.getElementById("wfd_liAccess"); if (liAccessEl) liAccessEl.value = liAccess;
   const liTypeEl = document.getElementById("wfd_liType"); if (liTypeEl) liTypeEl.value = liType;
   const annDesignEl = document.getElementById("wfd_annDesign"); if (annDesignEl) annDesignEl.value = annDesign;
+  const setCheck = (id, val, fallback = false) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = (typeof val === "boolean") ? val : fallback;
+  };
+  setCheck("wfd_invDownMkt", canonical.invDownMarket, false);
+  setCheck("wfd_liDownMkt", canonical.liDownMarket, true);
+  setCheck("wfd_annDownMkt", canonical.annDownMarket, true);
+  setCheck("wfd_protectInvest", canonical.protectInvest, true);
+  setCheck("wfd_annIncomeRider", canonical.annIncomeRider, false);
+  setCheck("wfd_annDbRider", canonical.annDbRider, false);
+  setVal("wfd_annRollup", canonical.annRollupPct ?? "");
+  setVal("wfd_liEfficiency", canonical.liEfficiencyPct ?? "");
+  setVal("wfd_annDeath", canonical.annDeathBenefit ?? "");
+  setVal("wfd_liDeath", canonical.liDeathBenefit ?? "");
+  setVal("wfd_strategy", canonical.strategy ?? "proportional");
+  setVal("wfd_gapSource", canonical.gapSource ?? "life");
+  setVal("wfd_downThreshold", canonical.downThreshold ?? "0");
+  setVal("wfd_scenarioMode", canonical.scenarioMode ?? "fixed");
+  const manualReturnsEl = document.getElementById("wfd_manualReturns");
+  if (manualReturnsEl && Array.isArray(canonical.manualReturns)) {
+    manualReturnsEl.value = canonical.manualReturns.join(", ");
+  }
   recalcFinPlanWealthForecastBalance();
   updateFinPlanAllocTotal();
+  updateFinPlanDownMarketState();
+}
+
+function updateFinPlanDownMarketState(){
+  const gid = (id) => document.getElementById(id);
+  const rows = [
+    { chk:'wfd_invDownMkt', badge:'wfd_invDmBadge', card:'wfd_invCard' },
+    { chk:'wfd_liDownMkt',  badge:'wfd_liDmBadge',  card:'wfd_liCard' },
+    { chk:'wfd_annDownMkt', badge:'wfd_annDmBadge', card:'wfd_annCard' }
+  ];
+  rows.forEach(r => {
+    const on = !!gid(r.chk)?.checked;
+    const badge = gid(r.badge);
+    const card = gid(r.card);
+    if (badge){
+      badge.textContent = on ? 'Down-Market: On' : 'Down-Market: Off';
+      badge.classList.toggle('off', !on);
+    }
+    if (card) card.classList.toggle('wfd-dm-off', !on);
+  });
 }
 
 function showFinPlanError(msg){
@@ -524,16 +585,22 @@ document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { voi
 document.getElementById("wfd_invAlloc")?.addEventListener("input", ()=>{ updateFinPlanAllocTotal("inv"); });
 document.getElementById("wfd_liAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("li"); });
 document.getElementById("wfd_annAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("ann"); });
+['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('change', ()=>{ updateFinPlanDownMarketState(); scheduleDpPreview(); });
+});
 ['wbStartingBalance','wbIncome','wbYears','wbInflation','wbReturn','wbTax','wbLiabilities','wbLifestyle'].forEach(id=>{
   const el = document.getElementById(id);
   if (!el) return;
   ['input','change','blur'].forEach(evt => el.addEventListener(evt, ()=>{ recalcFinPlanWealthForecastBalance(); scheduleDpPreview(); }));
 });
-['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liAccess','wfd_liType','wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDesign','wfd_manualOverride','wfd_base'].forEach(id=>{
+['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liAccess','wfd_liType','wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDesign','wfd_manualOverride','wfd_base','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider','wfd_annRollup','wfd_liEfficiency','wfd_annDeath','wfd_liDeath','wfd_strategy','wfd_gapSource','wfd_downThreshold','wfd_scenarioMode','wfd_manualReturns'].forEach(id=>{
   const el = document.getElementById(id);
   if (!el) return;
   ['input','change','blur'].forEach(evt=> el.addEventListener(evt, scheduleDpPreview));
 });
+updateFinPlanDownMarketState();
 scheduleDpPreview();
 
 function norm(v){ return (v || "").toString().trim(); }
