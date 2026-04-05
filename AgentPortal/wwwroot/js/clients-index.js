@@ -224,6 +224,35 @@ function finPlanPayload(){
   };
 }
 
+let finPlanPreviewTimer = null;
+function scheduleDpPreview(){
+  clearTimeout(finPlanPreviewTimer);
+  finPlanPreviewTimer = setTimeout(runDpPreview, 280);
+}
+
+function runDpPreview(){
+  const status = $("#finPlanStatusLabel");
+  if (!window.DP_VALIDATORS?.validatePlanInput || !window.runDistributionPlan){
+    if (status) status.textContent = "Ready";
+    return;
+  }
+  const canonical = finPlanPayload().distribution?.canonicalInput || {};
+  const errs = window.DP_VALIDATORS.validatePlanInput(canonical);
+  if (errs.length){
+    if (status) status.textContent = `Needs fix: ${errs[0].message}`;
+    return;
+  }
+  const res = window.runDistributionPlan(canonical);
+  if (res.errors?.length){
+    if (status) status.textContent = `Error: ${res.errors[0].message}`;
+    return;
+  }
+  const sum = res.summary || {};
+  const fmt = (v)=> (Number(v)||0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
+  const shortTxt = sum.totalShortfall > 0 ? ` | Shortfall ${fmt(sum.totalShortfall)}` : "";
+  if (status) status.textContent = `Preview: Avg Net ${fmt(sum.avgIncomeDeliveredNet||0)} | End ${fmt(sum.totalEndBalance||0)}${shortTxt}`;
+}
+
 async function loadFinPlan(clientUserId){
   const status = $("#finPlanStatusLabel");
   const label = $("#finPlanClientLabel");
@@ -448,6 +477,12 @@ document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { voi
 document.getElementById("wfd_invAlloc")?.addEventListener("input", ()=>{ updateFinPlanAllocTotal("inv"); });
 document.getElementById("wfd_liAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("li"); });
 document.getElementById("wfd_annAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("ann"); });
+['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liAccess','wfd_liType','wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDesign','wfd_manualOverride','wfd_base'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  ['input','change','blur'].forEach(evt=> el.addEventListener(evt, scheduleDpPreview));
+});
+scheduleDpPreview();
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }

@@ -3334,6 +3334,7 @@ markNeutral(savingsTipsOut);
                     const tips = gid('wfd_tips'); if (tips) tips.innerHTML = msg;
                     const chart = gid('wfd_chart');
                     if (chart && chart.tagName.toLowerCase() === 'canvas') {
+                        if (dpChart){ dpChart.destroy(); dpChart = null; }
                         const ctx = chart.getContext('2d'); ctx && ctx.clearRect(0,0,chart.width, chart.height);
                     }
                     const summaryIds = ['wfd_sumIncome','wfd_sumHealth','wfd_sumLongevity','wfd_sumIncomeSuff'];
@@ -3348,255 +3349,8 @@ markNeutral(savingsTipsOut);
                 }
 
                 function renderResults(result, isStale=false){
-                    if (!result) { renderEmptyResults(); return; }
-                    const { summary, cards, sourceParts, barValues, active, emCard, warns, audit, chart } = result;
-                    const annDesign   = result.annDesign || 'fixed';
-                    const annuityType = annDesign === 'variable' ? 'Variable' : annDesign === 'fixedIndexed' ? 'Fixed Indexed' : 'Fixed';
-                    const annRiderLabels = [];
-                    const hasIncRider = !!result.annIncomeRider;
-                    const hasDbRider  = !!result.annDbRider;
-                    const annRollupPct = result.annRollupRate ?? null;
-                    if (hasIncRider) annRiderLabels.push('Income Rider');
-                    if (hasDbRider)  annRiderLabels.push('Death Benefit Rider');
-                    const annDesignDisplay = annRiderLabels.length ? `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'} + ${annRiderLabels.join(' + ')}` : `${annuityType}${annuityType.includes('Annuity') ? '' : ' Annuity'}`;
-                    const liType      = result.liType || 'Life';
-                    const liAccess    = result.liAccess || 'Access';
-                    const lifeDesignLabel = result.lifeDesignLabel || `${liType} — ${liAccess}`;
-
-                    // Summary
-                    const setSum = (id, val, cls) => {
-                        const el = gid(id); if (!el) return;
-                        el.textContent = val;
-                        el.className = 'wfd-sum-value';
-                        if (cls) el.classList.add(cls);
-                    };
-                    setSum('wfd_sumIncome', fmtD(summary.atSpend), summary.incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
-                    setSum('wfd_sumHealth', summary.health, summary.healthCls);
-                    setSum('wfd_sumLongevity', summary.depAge ? `Depletes @ Age ${summary.depAge}` : `Lasts to Age ${summary.endAge}`, summary.depAge ? 'wfd-sum-bad' : 'wfd-sum-good');
-                    setSum('wfd_sumIncomeSuff',
-                        summary.incomeSufficient ? `Fully funded to Age ${summary.endAge}` :
-                        summary.failAge ? `Income fails @ Age ${summary.failAge}` : `Underfunded (${fmtD(summary.cumulativeShortfall)})`,
-                        summary.incomeSufficient ? 'wfd-sum-good' : 'wfd-sum-bad');
-                    const hb = gid('wfd_healthBadge');
-                    if (hb){ hb.textContent = summary.health; hb.className = 'wfd-badge ' + summary.healthCls; }
-
-                    // Cards
-                    const startBalances = result.startBalances || {};
-                    const resGrid = gid('wfd_resGrid');
-                    if (resGrid) resGrid.innerHTML = (cards||[]).map(c =>
-                        `<div class="wfd-res-card"><p class="wfd-res-lbl">${c.l}</p><p class="wfd-res-val ${c.c}">${c.v}</p></div>`
-                    ).join('') || '<div class="wfd-res-card"><p class="wfd-res-lbl">No data</p><p class="wfd-res-val">—</p></div>';
-
-                    // Source line
-                    const src = gid('wfd_sourceBreak');
-                    if (src) src.innerHTML = (sourceParts && sourceParts.length) ? sourceParts.join(' • ') : '';
-
-                    // Bars
-                    const barSet = [
-                        active.em  ? { bar:'wfd_emWBar',  lbl:'wfd_emWLbl',  txt:'Emergency',   val:barValues.em } : null,
-                        active.inv ? { bar:'wfd_invWBar', lbl:'wfd_invWLbl', txt:'Investments', val:barValues.inv } : null,
-                        active.li  ? { bar:'wfd_liWBar',  lbl:'wfd_liWLbl',  txt:'Life Ins',    val:barValues.li } : null,
-                        active.ann ? { bar:'wfd_annWBar', lbl:'wfd_annWLbl', txt:'Annuities',   val:barValues.ann } : null,
-                    ].filter(Boolean);
-                    const mxW = Math.max(...barSet.map(b=>b.val), 1);
-                    barSet.forEach(b=>{
-                        gid(b.bar).style.height = Math.max(b.val / mxW * 100, 3) + '%';
-                        gid(b.lbl).innerHTML = `${b.txt}<br>${fmtD(b.val)}`;
-                        gid(b.bar).parentElement.style.display = '';
-                    });
-                    ['wfd_emWBar','wfd_invWBar','wfd_liWBar','wfd_annWBar'].forEach(id=>{
-                        const el = gid(id)?.parentElement;
-                        if (el && !barSet.some(b=>b.bar===id)) el.style.display='none';
-                    });
-
-                    // Emergency card
-                    const emWrap = gid('wfd_emCard');
-                    if (emWrap){
-                        emWrap.style.display = active.em ? '' : 'none';
-                        const setVal = (id,val)=>{ const el=gid(id); if (el) el.textContent = val; };
-                        setVal('wfd_emNow', fmtD(emCard.emergencyBal));
-                        setVal('wfd_emUsed', fmtD(emCard.fy_emW));
-                        setVal('wfd_emTotal', fmtD(emCard.totalEmUsed));
-                        setVal('wfd_emRemain', fmtD(emCard.emBal));
-                        setVal('wfd_emDeplete', emCard.depletionEmergAge ? `Depletes @ Age ${emCard.depletionEmergAge}` : `Active to Age ${summary.endAge}`);
-                        const badge = gid('wfd_emStatus');
-                        if (badge){
-                            const emHealthy = emCard.emBal > 0;
-                            badge.textContent = emHealthy ? 'Reserve Active' : 'Reserve Exhausted';
-                            badge.className = 'wfd-badge ' + (emHealthy ? 'wfd-hlthy' : 'wfd-risk');
-                        }
-                    }
-
-                    // Warnings
-                    const warn = gid('wfd_warnArea');
-                    const staleNote = isStale ? [{type:'info', msg:'Inputs changed. Re-run the plan to refresh results.'}] : [];
-                    if (warn) warn.innerHTML = [...staleNote, ...(warns||[])].map(w =>
-                        `<div class="${w.type === 'warn' ? 'wfd-warn-box' : 'wfd-info-box'}">${w.type === 'warn' ? '⚠️' : 'ℹ️'} ${w.msg}</div>`
-                    ).join('');
-
-                    // Audit
-                    const auditEl = gid('wfd_tips');
-                    if (auditEl){
-                        const rtnClass = (pct) => {
-                            if (pct < -0.001) return 'wfd-return-neg';
-                            if (pct <= 0.001) return 'wfd-return-flat';
-                            return 'wfd-return-pos';
-                        };
-                        // Build per-bucket detail chips — only for buckets with actual withdrawals
-                        const bktDetail = (r) => {
-                            const chips = [];
-                            if (r.inv && r.inv.w > 0)  chips.push(`<span class="wfd-bkt-chip wfd-bkt-inv"><b>Investments</b> &nbsp;${fmtD(r.inv.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.inv.w)}</span> → ${fmtD(r.inv.end ?? 0)}</span>`);
-                            if (r.life && r.life.w > 0) {
-                                const loanTxt = r.life.loanBal !== null && r.life.loanBal !== undefined ? ` | Loan ${fmtD(r.life.loanBal)}` : '';
-                                const netTxt = r.life.deathEndNet !== undefined ? ` | Net DB ${fmtD(r.life.deathEndNet)}` : '';
-                                const chargeTxt = r.life.charges ? ` | Charges ${fmtD(r.life.charges)}` : '';
-                                const statusTxt = r.life.status ? ` | Status ${r.life.status}` : '';
-                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-li"><b>Life Ins</b> &nbsp;Cash ${fmtD(r.life.cashStart ?? r.life.start ?? 0)} → <span class="wfd-neg">-${fmtD(r.life.w)}</span> → ${fmtD(r.life.cashEnd ?? r.life.end ?? 0)} | DB ${fmtD(r.life.deathStart ?? 0)} → ${fmtD(r.life.deathEndGross ?? r.life.deathEnd ?? 0)}${loanTxt}${netTxt}${chargeTxt}${statusTxt}</span>`);
-                            }
-                            const annUsedFromAcct = r.ann ? (r.ann.w + (r.ann.riderPaidFromAccount || 0)) : 0;
-                            const annIncome = r.ann?.riderIncome || 0;
-                            if (r.ann && (annUsedFromAcct > 0 || annIncome > 0)) {
-                                const acctPart = annUsedFromAcct > 0 ? ` → <span class="wfd-neg">-${fmtD(annUsedFromAcct)}</span>` : '';
-                                const riderPart = annIncome > 0 ? ` | Rider Income ${fmtD(annIncome)}` : '';
-                                const chargePart = r.ann.charges ? ` | Charges ${fmtD(r.ann.charges)}` : '';
-                                const netPlan = r.ann.fundedNet ? ` | Net to Plan ${fmtD(r.ann.fundedNet)}` : '';
-                                chips.push(`<span class="wfd-bkt-chip wfd-bkt-ann"><b>Annuities</b> &nbsp;${fmtD(r.ann.start ?? 0)}${acctPart} → ${fmtD(r.ann.end ?? 0)}${riderPart}${chargePart}${netPlan}</span>`);
-                            }
-                            if (r.em && r.em.w > 0)   chips.push(`<span class="wfd-bkt-chip wfd-bkt-em"><b>Emergency</b> &nbsp;${fmtD(r.em.start)} → <span class="wfd-neg">-${fmtD(r.em.w)}</span> → ${fmtD(r.em.end)}</span>`);
-                            return chips.length ? chips.join('') : '';
-                        };
-                        const rows = (audit.rows||[]).map(r => {
-                            const detail = bktDetail(r);
-                            return `
-                            <tr class="wfd-audit-main">
-                              <td>${r.age}</td>
-                              <td>${fmtD(r.startTotal)}</td>
-                              <td class="${rtnClass(r.invReturnPct)}">${(r.invReturnPct).toFixed(1)}%</td>
-                              <td>${r.marketState === 'down' ? '⬇ Down' : 'Normal'}</td>
-                              <td><strong>${r.sourceFunded || '—'}</strong></td>
-                              <td class="wfd-neg">${fmtD(r.withdrawTotal)}</td>
-                              <td class="wfd-pos">${fmtD(r.netIncome)}</td>
-                              <td class="${r.shortfall > 0 ? 'wfd-neg' : ''}">${r.shortfall > 0 ? fmtD(r.shortfall) : '—'}</td>
-                              <td class="wfd-grow">${fmtD(r.endTotal)}</td>
-                            </tr>${detail ? `<tr class="wfd-audit-detail"><td colspan="9"><div class="wfd-bkt-chips">${detail}</div></td></tr>` : ''}`;
-                        }).join('');
-                        auditEl.innerHTML = `
-                          <style>
-                            .wfd-audit-main td { padding: 5px 7px; border-bottom: 1px solid rgba(217,179,90,.12); vertical-align: middle; }
-                            .wfd-audit-main th { padding: 6px 7px; }
-                            .wfd-audit-detail td { padding: 0 7px 7px; border-bottom: 1px solid rgba(217,179,90,.18); }
-                            .wfd-bkt-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
-                            .wfd-bkt-chip { font-size: .7rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
-                            .wfd-bkt-inv  { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
-                            .wfd-bkt-li   { background: rgba(166,128,35,.15); border: 1px solid rgba(166,128,35,.4); color: #d9b35a; }
-                            .wfd-bkt-ann  { background: rgba(22,163,74,.15);  border: 1px solid rgba(22,163,74,.4);  color: #86efac; }
-                            .wfd-bkt-em   { background: rgba(148,163,184,.12);border: 1px solid rgba(148,163,184,.3);color: #cbd5e1; }
-                            .wfd-bkt-chip .wfd-neg { color: #f87171; }
-                          </style>
-                          <div style="max-height:380px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
-                            <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
-                              <thead style="position:sticky;top:0;background:#0b1529;z-index:1;">
-                                <tr>
-                                  <th style="padding:6px 7px;">Age</th>
-                                  <th>Start Bal</th>
-                                  <th>Inv Return</th>
-                                  <th>Market</th>
-                                  <th>Source Funded</th>
-                                  <th>Withdrawals (Gross)</th>
-                                  <th>Net Income</th>
-                                  <th>Shortfall</th>
-                                  <th>End Bal</th>
-                                </tr>
-                              </thead>
-                              <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
-                            </table>
-                          </div>`;
-                    }
-
-                    // Bucket drill-down tiles + modal
-                    const tilesEl = gid('wfd_bktTiles');
-                    if (tilesEl) {
-                        const rows = audit.rows || [];
-                        const annuityTypeLabel = annDesignDisplay;
-                        const bktDefs = [
-                            {
-                                key: 'inv',  label: 'Investments',    color: '#3b82f6', bg: 'rgba(59,130,246,.12)',
-                                border: 'rgba(59,130,246,.45)', rateLabel: 'Return %',
-                                rateOf: r => r.invReturnPct,
-                                startOf: r => r.inv ? (r.inv.start ?? null) : null,
-                                wOf:     r => r.inv ? r.inv.w : 0,
-                                endOf:   r => r.inv ? (r.inv.end ?? null) : null,
-                                growthOf: r => r.inv ? (r.inv.growth ?? null) : null,
-                                usedOf:   r => r.inv ? !!r.inv.used : false,
-                                seriesKey: 'inv'
-                            },
-                            {
-                                key: 'li', label: result.liType === 'legacy_rpu' ? 'Legacy / Preservation' : 'Life Insurance', color: '#d9b35a', bg: 'rgba(166,128,35,.12)',
-                                border: 'rgba(166,128,35,.55)', rateLabel: 'Credited %',
-                                rateOf: r => (typeof r.liRatePct === 'number' ? r.liRatePct : null),
-                                startOf: r => r.life ? (r.life.cashStart ?? r.life.start ?? null) : null,
-                                wOf:     r => r.life ? r.life.w : 0,
-                                endOf:   r => r.life ? (r.life.cashEnd ?? r.life.end ?? null) : null,
-                                deathStartOf: r => r.life ? (r.life.deathStart ?? null) : null,
-                                deathEndOf:   r => r.life ? (r.life.deathEndGross ?? null) : null,
-                                netDeathOf:   r => r.life ? (r.life.deathEndNet ?? null) : null,
-                                loanOf:       r => r.life ? (r.life.loanBal ?? null) : null,
-                                growthOf: r => r.life ? (r.life.growth ?? null) : null,
-                                deathGrowthOf: r => r.life ? (r.life.deathGrowth ?? null) : null,
-                                usedOf:   r => r.life ? !!r.life.used : false,
-                                seriesKey: 'li'
-                            },
-                            {
-                                key: 'ann',  label: 'Annuities',      color: '#22c55e', bg: 'rgba(22,163,74,.12)',
-                                border: 'rgba(22,163,74,.45)',  rateLabel: 'Rate %',
-                                rateOf: r => (typeof r.annRatePct === 'number' ? r.annRatePct : null),
-                                startOf: r => r.ann ? (r.ann.start ?? null) : null,
-                                wOf:     r => r.ann ? (r.ann.w + (r.ann.riderPaidFromAccount || 0)) : 0,
-                                endOf:   r => r.ann ? (r.ann.end ?? null) : null,
-                                deathStartOf: r => r.ann ? (r.ann.deathStart ?? null) : null,
-                                deathEndOf:   r => r.ann ? (r.ann.deathEnd ?? null) : null,
-                                growthOf: r => r.ann ? (r.ann.growth ?? null) : null,
-                                deathGrowthOf: r => r.ann ? (r.ann.deathGrowth ?? null) : null,
-                                usedOf:   r => r.ann ? !!r.ann.used : false,
-                                seriesKey: 'ann'
-                            }
-                        ];
-
-                        // Compute per-bucket aggregates
-                        const bktStats = {};
-                        bktDefs.forEach(def => {
-                            let totalW = 0, yearsUsed = 0, lastEnd = 0, firstStart = startBalances[def.key] ?? null, depAge = null;
-                            let firstDeath = def.key === 'li' ? startBalances.liDeath : def.key === 'ann' ? startBalances.annDeath : null;
-                            let firstNetDeath = firstDeath;
-                            let firstLoan = 0;
-                            let lastDeath = firstDeath || 0;
-                            let lastNetDeath = firstNetDeath || 0;
-                            let lastLoan = 0;
-                            let lastStatus = 'Active';
-                            rows.forEach(r => {
-                                const w   = def.wOf(r);
-                                const end = def.endOf(r);
-                                const st  = def.startOf(r);
-                                const dSt = def.deathStartOf ? def.deathStartOf(r) : null;
-                                const dEnd = def.deathEndOf ? def.deathEndOf(r) : null;
-                                const netEnd = def.netDeathOf ? def.netDeathOf(r) : dEnd;
-                                const loan   = def.loanOf ? def.loanOf(r) : null;
-                                if (firstStart === null && st !== null) firstStart = st;
-                                if (firstDeath === null && dSt !== null) firstDeath = dSt;
-                                if (firstNetDeath === null && netEnd !== null) firstNetDeath = netEnd;
-                                if (firstLoan === null && loan !== null) firstLoan = loan;
-                                totalW   += w;
-                                const used = def.usedOf ? def.usedOf(r) : (w > 0);
-                                if (used) yearsUsed++;
-                                if (end !== null) lastEnd = end;
-                                if (dEnd !== null) lastDeath = dEnd;
-                                if (netEnd !== null) lastNetDeath = netEnd;
-                                if (loan !== null) lastLoan = loan;
-                                if (def.key === 'li' && r.life && r.life.status) lastStatus = r.life.status;
-                                if (lastEnd <= 0 && depAge === null && firstStart !== null) depAge = r.age;
-                            });
-                            bktStats[def.key] = { totalW, yearsUsed, lastEnd, firstStart: firstStart || 0, depAge, firstDeath: firstDeath || 0, lastDeath: lastDeath || 0, firstNetDeath: firstNetDeath || 0, lastNetDeath: lastNetDeath || 0, lastLoan: lastLoan || 0, lastStatus, annType: def.key === 'ann' ? annuityType : null, annDesign };
-                        });
+                    // Legacy renderer kept for compatibility but routed to canonical results.
+                    return renderCanonicalResults(result, isStale);
 
                         // Build tile HTML
                         const activeDefs = bktDefs.filter(d => active[d.key]);
@@ -3925,7 +3679,7 @@ markNeutral(savingsTipsOut);
                 }
 
                 function hydrateResultsFromMeta(){
-                    if (distMeta.hasValidResults && distMeta.result){
+                    if (distMeta.hasValidResults && distMeta.result && distMeta.result.summary && distMeta.result.series){
                         renderResults(distMeta.result, distMeta.stale);
                     } else {
                         renderEmptyResults();
@@ -4012,6 +3766,7 @@ markNeutral(savingsTipsOut);
 
                 function formatMoney(v){ const n = Number(v)||0; return '$' + Math.round(n).toLocaleString(); }
 
+                let dpChart = null;
                 function renderCanonicalResults(res){
                     gid('wfd_warnArea') && (gid('wfd_warnArea').innerHTML = '');
                     const sum = res.summary || {};
@@ -4040,6 +3795,54 @@ markNeutral(savingsTipsOut);
                     setLbl('wfd_liWLbl','Life Ins', endLi);
                     setLbl('wfd_annWLbl','Annuities', endAnn);
                     setLbl('wfd_emWLbl','Emergency', endEm);
+
+                    // Chart from canonical series
+                    const chartCanvas = gid('wfd_chart');
+                    if (chartCanvas && typeof Chart !== "undefined" && res.series){
+                        if (dpChart){ dpChart.destroy(); dpChart = null; }
+                        dpChart = new Chart(chartCanvas.getContext('2d'), {
+                            type:'line',
+                            data:{
+                                labels: res.series.wealthSeries.map((_,i)=>`Yr ${i+1}`),
+                                datasets:[
+                                    { label:'Wealth', data: res.series.wealthSeries, borderColor:'#16a34a', borderWidth:3, fill:false, tension:0.25 },
+                                    { label:'Cumulative Net Spend', data: res.series.spendSeries, borderColor:'#dc2626', borderWidth:3, fill:false, tension:0.25 }
+                                ]
+                            },
+                            options:{
+                                responsive:true,
+                                maintainAspectRatio:false,
+                                plugins:{ legend:{ labels:{ color:"#eaf2ff", usePointStyle:true } } },
+                                scales:{ x:{ ticks:{ color:"#eaf2ff" }, grid:{ color:"rgba(255,255,255,.08)" }},
+                                         y:{ ticks:{ color:"#eaf2ff", callback:v=>'$'+Number(v).toLocaleString() }, grid:{ color:"rgba(255,255,255,.08)" } } }
+                            }
+                        });
+                    }
+
+                    // Audit table (top 50 rows)
+                    const tips = gid('wfd_tips');
+                    if (tips && Array.isArray(res.auditRows)){
+                        const rows = res.auditRows.slice(0,50).map(r=>`
+                            <tr>
+                              <td>${r.yearIndex+1}</td>
+                              <td>${r.age}</td>
+                              <td>${formatMoney(r.netIncomeDelivered)}</td>
+                              <td>${formatMoney(r.shortfall)}</td>
+                              <td>${formatMoney(r.endInv)}</td>
+                              <td>${formatMoney(r.endLi)}</td>
+                              <td>${formatMoney(r.endAnn)}</td>
+                              <td>${formatMoney(r.endReserve)}</td>
+                            </tr>`).join('');
+                        tips.innerHTML = `
+                          <table class="table table-sm table-dark" style="font-size:.82rem;">
+                            <thead><tr>
+                              <th>Year</th><th>Age</th><th>Net Income</th><th>Shortfall</th>
+                              <th>Inv End</th><th>LI End</th><th>Ann End</th><th>Reserve End</th>
+                            </tr></thead>
+                            <tbody>${rows}</tbody>
+                          </table>`;
+                    }
+
                     if (gid('wfd_results')) gid('wfd_results').style.display = 'block';
                 }
 
