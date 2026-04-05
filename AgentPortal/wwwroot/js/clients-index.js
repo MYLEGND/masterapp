@@ -1772,6 +1772,7 @@ const finPlanModalId = "clientFinPlanModal";
 let finPlanModal = null;
 let finPlanActiveClientId = null;
 let finPlanVersion = 0;
+let finPlanAllocManual = false; // tracks manual LI/ANN edits
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
 const noteOverlay = document.querySelector("[data-note-self-overlay]");

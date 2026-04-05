@@ -2811,8 +2811,10 @@ markNeutral(savingsTipsOut);
                 gid('wfd_desiredIncome').addEventListener('input', updateGap);
                 gid('wfd_guaranteedIncome').addEventListener('input', updateGap);
 
+                let dpAllocManual = false; // user has manually adjusted LI/ANN allocations
+
                 // Bucket dollar amounts + allocation bar visual
-                function updateBktAmounts() {
+                function updateBktAmounts(trigger = 'generic') {
                     const base = pf(gid('wfd_base').value);
                     let inv = pf(gid('wfd_invAlloc').value);
                     let li  = pf(gid('wfd_liAlloc').value);
@@ -2821,11 +2823,20 @@ markNeutral(savingsTipsOut);
                     // Convenience: if Investments set to 100%, zero other buckets automatically
                     if (inv >= 100) {
                         inv = 100;
+                        dpAllocManual = false; // reset manual once we force 100/0/0
                         if (li !== 0 || ann !== 0) {
                             li = 0; ann = 0;
                             gid('wfd_liAlloc').value = '0';
                             gid('wfd_annAlloc').value = '0';
                         }
+                    } else if (trigger === 'inv' && !dpAllocManual) {
+                        // Auto-split remainder 50/50 when user hasn't manually overridden
+                        const remaining = Math.max(0, 100 - inv);
+                        const half = +(remaining / 2).toFixed(1);
+                        li = half;
+                        ann = remaining - half; // ensure totals match 100 with rounding
+                        gid('wfd_liAlloc').value = li.toString();
+                        gid('wfd_annAlloc').value = ann.toString();
                     }
                     const total = inv + li + ann;
 
@@ -2854,9 +2865,12 @@ markNeutral(savingsTipsOut);
                     gid('wfd_liBar').style.height  = Math.max(li  / mx * 100, 3) + '%';
                     gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
                 }
-                ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
-                    gid(id).addEventListener('input', () => { updateBktAmounts(); dpSaveDebounced(); });
-                });
+                const invAllocEl = gid('wfd_invAlloc');
+                const liAllocEl  = gid('wfd_liAlloc');
+                const annAllocEl = gid('wfd_annAlloc');
+                invAllocEl?.addEventListener('input', () => { updateBktAmounts('inv'); dpSaveDebounced(); });
+                liAllocEl?.addEventListener('input', () => { dpAllocManual = true; updateBktAmounts('li'); dpSaveDebounced(); });
+                annAllocEl?.addEventListener('input', () => { dpAllocManual = true; updateBktAmounts('ann'); dpSaveDebounced(); });
                 ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
                     if (el) el.addEventListener('change', () => { updateDMState(); dpSaveDebounced(); });
