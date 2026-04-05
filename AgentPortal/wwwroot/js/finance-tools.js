@@ -1261,8 +1261,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     const overlap = Math.max(0, Math.min(yearEnd, startTime + disruptDuration) - Math.max(yearStart, startTime));
                     const disruptionFraction = clamp(overlap, 0, 1);
 
-                    const earnedIncome = income * (1 - disruptionFraction);
-                    const replacementIncome = income * disabilityPct * disruptionFraction;
+                    const lostIncome = income * disruptionFraction;
+                    const replacementIncome = lostIncome * disabilityPct;
+                    const earnedIncome = income - lostIncome;
                     const effectiveIncome = earnedIncome + replacementIncome;
                     const taxAmt = effectiveIncome * tax;
                     const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt;
