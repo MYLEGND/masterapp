@@ -367,7 +367,10 @@ async function saveFinPlan(){
   const res = await fetch(planUrl, {
     method:"POST",
     credentials:"include",
-    headers:{ "Content-Type":"application/json" },
+    headers:{
+      "Content-Type":"application/json",
+      "RequestVerificationToken": getAntiForgeryToken()
+    },
     body: JSON.stringify({ clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
   });
   if (!res.ok){

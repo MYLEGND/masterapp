@@ -1266,12 +1266,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     const earnedIncome = income - lostIncome;
                     const effectiveIncome = earnedIncome + replacementIncome;
                     const taxAmt = effectiveIncome * tax;
-                    const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt;
+                    const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt; // single source of truth
                     const annualSavings = effectiveIncome - annualExpenses; // allow negative to reflect shortfall
-                    const annualSpend = annualExpenses; // track true expense outflow
+                    const annualSpend = annualExpenses; // track true expense outflow (no scaling)
 
                     investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
-                    cumulativeSpend += annualSpend;
+                    cumulativeSpend += annualExpenses;
                     totalSavings += annualSavings;
                     totalIncome += effectiveIncome;
 
