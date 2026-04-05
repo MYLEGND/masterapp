@@ -2242,6 +2242,14 @@ markNeutral(savingsTipsOut);
             <option value="manual">Manual yearly returns</option>
           </select>
         </div>
+                <div class="wfd-col">
+                    <label class="wfd-lbl" for="wfd_stressProfile">Historical Stress Profile</label>
+                    <select id="wfd_stressProfile" class="wfd-inp" style="cursor:pointer;">
+                        <option value="conservative">Conservative</option>
+                        <option value="balanced" selected>Balanced</option>
+                        <option value="aggressive">Aggressive</option>
+                    </select>
+                </div>
       </div>
 
       <div class="wfd-row" style="margin-top:10px;gap:12px;flex-wrap:wrap;">
@@ -2525,7 +2533,7 @@ markNeutral(savingsTipsOut);
         'wfd_downThreshold','wfd_manualReturns'
                 ];
                 const distCheckIds = ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_annIncomeRider','wfd_annDbRider','wfd_protectInvest'];
-                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_liType','wfd_liAccess','wfd_annDesign'];
+                const distSelectIds = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_stressProfile','wfd_liType','wfd_liAccess','wfd_annDesign'];
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const DIST_META_LOCAL_KEY = plannerScopeKey('DistributionPlannerMetaLocal');
                 let dpPlanLoaded = false;
@@ -2572,7 +2580,7 @@ markNeutral(savingsTipsOut);
                     step3: {
                         inputs: ['wfd_downThreshold','wfd_manualReturns'],
                         checks: ['wfd_protectInvest'],
-                        selects: ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode']
+                        selects: ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_stressProfile']
                     }
                 };
                 let hydrating = false;
@@ -2600,20 +2608,74 @@ markNeutral(savingsTipsOut);
                 // Market scenario helpers
                 let wfdScenarioCache = [];
                 let wfdScenarioMeta = { mode:'fixed', years:0 };
+                // Historical annual market return events (%), 1930-2026 (S&P yearly performance snapshots)
+                const HIST_SP500_RETURNS_PCT_1930_2026 = [
+                    -28.48,-47.07,-15.15,46.59,-5.94,41.37,27.92,-38.59,25.21,-5.45,
+                    -15.29,-17.86,12.43,19.45,13.8,30.72,-11.87,0,-0.65,10.26,
+                    21.78,16.46,11.78,-6.62,45.02,26.4,2.62,-14.31,38.06,8.48,
+                    -2.97,23.13,-11.81,18.89,12.97,9.06,-13.09,20.09,7.66,-11.36,
+                    0.1,10.79,15.63,-17.37,-29.72,31.55,19.15,-11.5,1.06,12.31,
+                    25.77,-9.73,14.76,17.27,1.4,26.33,14.62,2.03,12.4,27.25,
+                    -6.56,26.31,4.46,7.06,-1.54,34.11,20.26,31.01,26.67,19.53,
+                    -10.14,-13.04,-23.37,26.38,8.99,3,13.62,3.53,-38.49,23.45,
+                    12.78,0,13.41,29.6,11.39,-0.73,9.54,19.42,-6.24,28.88,
+                    16.26,26.89,-19.44,24.23,23.31,16.39,-3.84
+                ];
+                const HIST_STRESS_BLOCKS = [
+                    [-28.48,-47.07,-15.15,46.59],
+                    [-38.59,25.21],
+                    [-29.72,31.55],
+                    [-23.37,26.38],
+                    [-38.49,23.45],
+                    [-19.44,24.23]
+                ];
                 function parseManualReturns(txt){
                     return (txt || '').split(/[\n,]+/).map(pf).filter(v => !isNaN(v));
                 }
-                function generateRandomReturns(years, meanPct){
-                    const arr = [];
-                    const mean = isFinite(meanPct) ? meanPct : 6;
-                    for (let i=0; i<Math.max(years,1); i++){
-                        const drift = (Math.random() * 12) - 6; // +/-6%
-                        const shock = (Math.random() < 0.2) ? (Math.random()*-15 - 5) : 0; // occasional drawdown
-                        arr.push(Math.max(-40, mean + drift + shock));
+                function generateRandomReturns(years, meanPct, stressProfile){
+                    const n = Math.max(years, 1);
+                    const hist = HIST_SP500_RETURNS_PCT_1930_2026;
+                    const histMean = hist.reduce((s, v) => s + v, 0) / Math.max(hist.length, 1);
+                    const targetMean = isFinite(meanPct) ? meanPct : histMean;
+                    const profile = String(stressProfile || 'balanced').toLowerCase();
+                    const cfg = profile === 'conservative'
+                        ? { stressProb: 0.16, negTail: 1.03, rebound: 1.04, meanTilt: 0.48, minLen: 3, lenSpan: 4 }
+                        : profile === 'aggressive'
+                            ? { stressProb: 0.42, negTail: 1.24, rebound: 1.10, meanTilt: 0.18, minLen: 2, lenSpan: 4 }
+                            : { stressProb: 0.28, negTail: 1.12, rebound: 1.08, meanTilt: 0.35, minLen: 2, lenSpan: 4 };
+                    // Keep historical shape; only partially tilt toward user-selected expected return.
+                    const meanShift = (targetMean - histMean) * cfg.meanTilt;
+
+                    const out = [];
+                    while (out.length < n) {
+                        // Periodically inject real historical stress/rebound blocks to preserve tail behavior.
+                        if (Math.random() < cfg.stressProb) {
+                            const block = HIST_STRESS_BLOCKS[Math.floor(Math.random() * HIST_STRESS_BLOCKS.length)];
+                            for (let i = 0; i < block.length && out.length < n; i++) {
+                                let v = block[i] + meanShift * (block[i] >= 0 ? 0.30 : 0.10);
+                                if (v < 0) v *= cfg.negTail;
+                                v = Math.max(-55, Math.min(55, v));
+                                out.push(v);
+                            }
+                            continue;
+                        }
+
+                        // Block bootstrap from real yearly sequence to keep realistic up/down clustering.
+                        const start = Math.floor(Math.random() * hist.length);
+                        const len = cfg.minLen + Math.floor(Math.random() * cfg.lenSpan);
+                        for (let j = 0; j < len && out.length < n; j++) {
+                            const raw = hist[(start + j) % hist.length];
+                            let v = raw + meanShift;
+                            if (v < 0) v *= Math.max(1, cfg.negTail - 0.02);
+                            if (out.length > 0 && out[out.length - 1] <= -20 && v > 0) v *= cfg.rebound;
+                            v = Math.max(-55, Math.min(55, v));
+                            out.push(v);
+                        }
                     }
-                    return arr;
+
+                    return out.slice(0, n).map(v => Math.round(v * 10) / 10);
                 }
-                function buildScenarioReturns(years, mode, baseReturnDec, manualTxt){
+                function buildScenarioReturns(years, mode, baseReturnDec, manualTxt, stressProfile){
                     if (years <= 0) return [];
                     const basePct = (baseReturnDec || 0) * 100;
                     if (mode === 'manual'){
@@ -2623,12 +2685,12 @@ markNeutral(savingsTipsOut);
                         return vals.slice(0, years).map(v => v / 100);
                     }
                     if (mode === 'random'){
-                        if (wfdScenarioCache.length === years && wfdScenarioMeta.mode === 'random') {
+                        if (wfdScenarioCache.length === years && wfdScenarioMeta.mode === 'random' && wfdScenarioMeta.profile === (stressProfile || 'balanced') && Math.abs((wfdScenarioMeta.basePct ?? basePct) - basePct) < 0.01) {
                             return wfdScenarioCache.map(v => v / 100);
                         }
-                        const gen = generateRandomReturns(years, basePct);
+                        const gen = generateRandomReturns(years, basePct, stressProfile);
                         wfdScenarioCache = gen;
-                        wfdScenarioMeta = { mode:'random', years };
+                        wfdScenarioMeta = { mode:'random', years, profile: (stressProfile || 'balanced'), basePct };
                         const txtArea = document.getElementById('wfd_manualReturns');
                         if (txtArea) txtArea.value = gen.map(v=>v.toFixed(1)).join(', ');
                         saveDistState();
@@ -2759,6 +2821,7 @@ markNeutral(savingsTipsOut);
                     if (stratEl && stratEl.value === 'downmarket') stratEl.value = 'guardrail';
                     if (gid('wfd_gapSource') && !gid('wfd_gapSource').value) gid('wfd_gapSource').value = 'life';
                     if (gid('wfd_scenarioMode') && !gid('wfd_scenarioMode').value) gid('wfd_scenarioMode').value = 'fixed';
+                    if (gid('wfd_stressProfile') && !gid('wfd_stressProfile').value) gid('wfd_stressProfile').value = 'balanced';
                     if (gid('wfd_downThreshold') && gid('wfd_downThreshold').value === '') gid('wfd_downThreshold').value = '0';
                     if (gid('wfd_liType') && !gid('wfd_liType').value) gid('wfd_liType').value = 'whole';
                     if (gid('wfd_liAccess') && !gid('wfd_liAccess').value) gid('wfd_liAccess').value = 'withdrawal';
@@ -3023,7 +3086,7 @@ markNeutral(savingsTipsOut);
                     Object.keys(selects).forEach(id => {
                         const el = gid(id);
                         if (!el) return;
-                        const legacyBlock = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode'];
+                        const legacyBlock = ['wfd_strategy','wfd_pri1','wfd_pri2','wfd_pri3','wfd_pri4','wfd_gapSource','wfd_scenarioMode','wfd_stressProfile'];
                         if (fromCrm && legacyBlock.includes(id)) return; // CRM cannot override strategy/scenario
                         el.value = selects[id];
                     });
@@ -3287,6 +3350,7 @@ markNeutral(savingsTipsOut);
                         const prot  = gid('wfd_protectInvest'); if (prot) prot.checked = true;
                         const gap = gid('wfd_gapSource'); if (gap && !gap.value) gap.value = 'life';
                         const scen = gid('wfd_scenarioMode'); if (scen && !scen.value) scen.value = 'fixed';
+                        const profile = gid('wfd_stressProfile'); if (profile && !profile.value) profile.value = 'balanced';
                     }
                     updateGap();
                     updateYrs();
@@ -3373,9 +3437,10 @@ markNeutral(savingsTipsOut);
                     const endVal = pf(gid('wfd_endAge').value);
                     const yrs = Math.max(1, Math.floor(endVal - retVal || 0));
                     const basePct = pf(gid('wfd_invReturn').value);
-                    const list = generateRandomReturns(yrs, basePct);
+                    const stressProfile = gid('wfd_stressProfile')?.value || 'balanced';
+                    const list = generateRandomReturns(yrs, basePct, stressProfile);
                     wfdScenarioCache = list;
-                    wfdScenarioMeta = { mode:'random', years: yrs };
+                    wfdScenarioMeta = { mode:'random', years: yrs, profile: stressProfile, basePct };
                     const area = gid('wfd_manualReturns');
                     if (area) area.value = list.map(v=>v.toFixed(1)).join(', ');
                     gid('wfd_scenarioMode').value = 'random';
@@ -3383,7 +3448,7 @@ markNeutral(savingsTipsOut);
                 });
                 const manualArea = gid('wfd_manualReturns');
                 if (manualArea) manualArea.addEventListener('input', saveDistStateDebounced);
-                ['wfd_gapSource','wfd_scenarioMode'].forEach(id=>{
+                ['wfd_gapSource','wfd_scenarioMode','wfd_stressProfile'].forEach(id=>{
                     const el = gid(id); if (el) el.addEventListener('change', saveDistStateDebounced);
                 });
 
@@ -4087,11 +4152,12 @@ markNeutral(savingsTipsOut);
                     const protectInvest = gid('wfd_protectInvest').checked;
                     const gapSource     = gid('wfd_gapSource').value || 'life';
                     const scenarioMode  = gid('wfd_scenarioMode').value || 'fixed';
+                    const stressProfile = gid('wfd_stressProfile')?.value || 'balanced';
                     const downThreshold = pf(gid('wfd_downThreshold').value) / 100;
                     const manualReturnTxt = gid('wfd_manualReturns').value || '';
                     const priOrder      = getPriorityOrder();
-                    const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt);
-                    const annVarReturns = generateRandomReturns(years, annReturn * 100).map(v => v / 100);
+                    const scenarioReturns = buildScenarioReturns(years, scenarioMode, invReturn, manualReturnTxt, stressProfile);
+                    const annVarReturns = generateRandomReturns(years, annReturn * 100, 'balanced').map(v => v / 100);
 
                     // --- Validation ---
                     const errs = validateDist();
@@ -4608,7 +4674,7 @@ markNeutral(savingsTipsOut);
                     if (downYearCount > 0 && protectInvest)
                         warns.push({ type:'info', msg:`Investment bucket was protected in ${downYearCount} down-market year(s); safer buckets filled the gap first.` });
                     if (scenarioMode === 'random')
-                        warns.push({ type:'info', msg:`Randomized market path is an illustration for stress-testing only — not a prediction or guarantee.` });
+                        warns.push({ type:'info', msg:`Historical ${stressProfile} stress profile path is an illustration for stress-testing only — not a prediction or guarantee.` });
 
                     // --- Persist + hydrate canonical result ---
                         const result = {
