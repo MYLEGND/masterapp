@@ -3108,6 +3108,7 @@ markNeutral(savingsTipsOut);
                 }
 
                 const dpPlanUrl = (cid) => `/clients/${encodeURIComponent(cid)}/financial-plan?clientUserId=${encodeURIComponent(cid)}`;
+                const dpCrmWriteEnabled = false; // DP is read-only against CRM; keep search/load only.
 
                 normalizeDistributionPayload = (payload) => {
                     // accept JSON string payloads
@@ -3169,7 +3170,10 @@ markNeutral(savingsTipsOut);
                         const distPayload = normalizeDistributionPayload(payload);
                         dpPlanCache.distribution = distPayload;
                         hydrateDistribution(distPayload);
-                        if (statusEl) statusEl.textContent = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                        if (statusEl) {
+                            const loadedTxt = data.updatedUtc ? `Loaded (updated ${new Date(data.updatedUtc).toLocaleString()})` : "Loaded";
+                            statusEl.textContent = dpCrmWriteEnabled ? loadedTxt : `${loadedTxt} • DP edits are local only`;
+                        }
                         dpPlanLoaded = true;
                         // re-sync base/buckets once WF balance is known
                         syncBase();
@@ -3191,6 +3195,11 @@ markNeutral(savingsTipsOut);
                     if (!dpActiveClientId) return;
                     if (!dpPlanLoaded) {
                         showDpError("Plan not loaded — select and load a client first.");
+                        return;
+                    }
+                    if (!dpCrmWriteEnabled) {
+                        const statusEl = document.getElementById('dpPlanStatus');
+                        if (statusEl) statusEl.textContent = "DP edits are local only (CRM write-back disabled).";
                         return;
                     }
                     const payload = dpPayload();
@@ -3216,6 +3225,7 @@ markNeutral(savingsTipsOut);
                 function dpSaveDebounced(){
                     if (!dpActiveClientId) return;
                     if (!dpPlanLoaded) return;
+                    if (!dpCrmWriteEnabled) return;
                     if (dpSaveTimer) clearTimeout(dpSaveTimer);
                     dpSaveTimer = setTimeout(() => { void saveDpPlan(); }, 700);
                 }
