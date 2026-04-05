@@ -402,6 +402,16 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         let dpPlanVersion = 0;
         let dpPlanCache = {}; // preserve WF section when saving from DP
         let dpSaveTimer = null;
+        const dpUiSessionKey = plannerScopeKey('DistributionPlannerUiSession');
+        const loadDpUiSession = () => {
+            try { return JSON.parse(localStorage.getItem(dpUiSessionKey) || '{}') || {}; }
+            catch { return {}; }
+        };
+        const saveDpUiSession = (patch = {}) => {
+            const merged = { ...loadDpUiSession(), ...(patch || {}) };
+            try { localStorage.setItem(dpUiSessionKey, JSON.stringify(merged)); } catch (_) { }
+            return merged;
+        };
 
         // ==========================================================
         // 1️⃣ WEALTH FORECAST (ELEVATED) + Tooltips
@@ -1153,6 +1163,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
                 wfActiveClientId = item.clientUserId;
                 dpActiveClientId = item.clientUserId;
+                saveDpUiSession({ activeClientId: item.clientUserId, activeClientName: name });
                 wfPlanVersion = 0; dpPlanVersion = 0;
                 wfPlanLoaded = false; dpPlanLoaded = false;
                 await loadWfPlan(item.clientUserId);
@@ -1169,6 +1180,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove("text-danger"); }
                     if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
                     wfActiveClientId = null;
+                    dpActiveClientId = null;
+                    saveDpUiSession({ activeClientId: null, activeClientName: null });
                     return;
                 }
                 if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove("text-danger"); }
@@ -2401,6 +2414,7 @@ markNeutral(savingsTipsOut);
                     if (focusTrapHandler) modal.removeEventListener('keydown', focusTrapHandler);
                     if (lastActiveEl) lastActiveEl.focus();
                     distMeta.open = false; saveMeta();
+                    saveDpUiSession({ modalOpen: false, lastStep: activeStep });
                 };
                 gid('wfd_close').addEventListener('click', closeDistModal);
                 const showDistModal = (stepToOpen='1') => {
@@ -2416,6 +2430,7 @@ markNeutral(savingsTipsOut);
                     setStep(reopenStep);
                     if (reopenStep === '4') hydrateResultsFromMeta();
                     distMeta.open = true; saveMeta();
+                    saveDpUiSession({ modalOpen: true, lastStep: reopenStep });
                 };
                 // Step navigation + meta
                 const steps = ['1','2','3','4'];
@@ -2445,6 +2460,7 @@ markNeutral(savingsTipsOut);
                     });
                     syncStepVisibility();
                     distMeta.lastStep = step; saveMeta(); saveDistState();
+                    saveDpUiSession({ lastStep: step });
                     gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
                     const next = gid('wfd_next');
                     const run  = gid('wfd_run');
