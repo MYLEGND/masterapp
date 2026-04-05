@@ -613,109 +613,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         }
         .wf-dist-launch-btn:active { transform: translateY(0); filter: brightness(.95); }
         .wf-dist-launch-btn .wfd-btn-icon { font-size: 1rem; line-height: 1; }
-        /* ── WF chart popout ── */
-        .wf-chart-modal-backdrop{
-            position:fixed;
-            inset:0;
-            background:rgba(0,0,0,0.55);
-            z-index:2147480000;
-            display:none;
-            align-items:center;
-            justify-content:center;
-            padding:20px;
-        }
-        .wf-chart-modal{
-            background:#0f172a;
-            border:1.5px solid #a68023;
-            border-radius:18px;
-            box-shadow:0 18px 55px rgba(0,0,0,0.35);
-            width:min(1200px, 96vw);
-            height:min(760px, 88vh);
-            display:flex;
-            flex-direction:column;
-            overflow:hidden;
-            position:relative;
-        }
-        .wf-chart-modal-head{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            padding:14px 16px;
-            border-bottom:1px solid rgba(255,255,255,0.08);
-            color:#eaf2ff;
-        }
-        .wf-chart-modal-head h4{
-            margin:0;
-            font-weight:900;
-            letter-spacing:.4px;
-            color:#d9b35a;
-        }
-        .wf-chart-modal-body{
-            flex:1;
-            padding:12px 16px 18px;
-        }
-        .wf-chart-modal canvas{
-            width:100% !important;
-            height:100% !important;
-        }
-        .wf-chart-close{
-            background:transparent;
-            border:1px solid rgba(255,255,255,.25);
-            color:#eaf2ff;
-            border-radius:10px;
-            padding:6px 10px;
-            font-weight:700;
-            cursor:pointer;
-        }
-        /* ── Wealth Forecast input grid (left side only) ── */
-        .wf-input-grid{
-            display:flex;
-            flex-direction:column;
-            gap:13px;
-            width:100%;
-        }
-        .wf-row{
-            display:grid;
-            column-gap:14px;
-            row-gap:6px;
-            align-items:end;
-        }
-        .wf-row .wb-label{ margin-bottom:4px; }
-        .wf-row.row-primary{ grid-template-columns: 1.5fr 1.5fr 1fr; }
-        .wf-row.row-duo{ grid-template-columns: 1fr 1fr; }
-        .wf-row.row-trio{ grid-template-columns: 1fr 1fr 1fr; }
-        .wf-disrupt-card{
-            border:1px solid rgba(166,128,35,0.35);
-            border-radius:14px;
-            padding:18px 18px 16px;
-            background:rgba(166,128,35,0.06);
-            box-shadow:0 8px 18px rgba(0,0,0,0.06);
-            margin-top:30px;
-        }
-        .wf-disrupt-head{
-            display:flex;
-            flex-direction:column;
-            gap:2px;
-            margin-bottom:10px;
-        }
-        .wf-disrupt-title{
-            font-weight:800;
-            color:#a68023;
-            text-transform:uppercase;
-            letter-spacing:0.5px;
-            font-size:.9rem;
-        }
-        .wf-disrupt-sub{
-            color:#475569;
-            font-size:.82rem;
-            line-height:1.25;
-        }
-        .wf-disrupt-row{
-            display:grid;
-            grid-template-columns: 1fr 1fr;
-            column-gap:14px;
-            row-gap:12px;
-        }
     </style>
 
     <div id="wbTipLayer"></div>
@@ -730,122 +627,65 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
     <div style="display:flex; flex-wrap:wrap; gap:50px;">
         <!-- Inputs Column -->
         <div style="flex:1; min-width:400px;">
-            <div class="wf-input-grid">
-                <div class="wf-row row-primary">
-                    <div>
-                        <label class="wb-label">
-                            Starting Balance
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 25,000 • 100,000 • 250,000 (existing investable assets at start)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbStartingBalance" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="wb-label">
-                            Annual Income
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 60,000 • 85,500 • 120,000 (gross annual pay)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbIncome" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="wb-label">
-                            Work Period
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 20 • 30 (years you plan to keep earning/saving)">i</span>
-                        </label>
-                        <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023;" />
-                    </div>
-                </div>
 
-                <div class="wf-row row-duo">
-                    <div>
-                        <label class="wb-label">
-                            Inflation
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 2.5 • 3 • 4 (average annual inflation %)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbInflation" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="wb-label">
-                            After-Tax Rate of Return
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 5 • 7 • 9 (after-tax investment return %)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbReturn" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                        </div>
-                    </div>
-                </div>
+            <label class="wb-label">
+                Annual Income
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 60,000 • 85,500 • 120,000 (gross annual pay)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbIncome" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+            </div>
 
-                <div class="wf-row row-trio">
-                    <div>
-                        <label class="wb-label">
-                            Tax Bracket
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 12 • 22 • 24 (effective/estimated rate %)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbTax" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="wb-label">
-                            Fixed Liabilities
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 18 • 25 (debt payments as % of income)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbLiabilities" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="wb-label">
-                            Lifestyle Spending
-                            <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 35 • 45 • 55 (living costs + wants as % of income)">i</span>
-                        </label>
-                        <div style="position:relative;">
-                            <input id="wbLifestyle" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                        </div>
-                    </div>
-                </div>
+            <label class="wb-label">
+                Working Period (Years)
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 20 • 30 (years you plan to keep earning/saving)">i</span>
+            </label>
+            <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023;" />
 
-                <div class="wf-disrupt-card">
-                    <div class="wf-disrupt-head">
-                        <div class="wf-disrupt-title">Income Disruption / Disability Income</div>
-                        <div class="wf-disrupt-sub">Model a temporary income loss and disability income replacement during accumulation.</div>
-                    </div>
-                    <div class="wf-disrupt-row" style="margin-bottom:12px;">
-                        <div>
-                            <label class="wb-label">Disruption Start Year</label>
-                            <input id="wbDisruptStartYear" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="1" />
-                        </div>
-                        <div>
-                            <label class="wb-label">Years of Income Disruption</label>
-                            <input id="wbDisruptYears" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
-                        </div>
-                    </div>
-                    <div class="wf-disrupt-row">
-                        <div>
-                            <label class="wb-label">Months of Income Disruption</label>
-                            <input id="wbDisruptMonths" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
-                        </div>
-                        <div>
-                            <label class="wb-label">Disability Income Replacement %</label>
-                            <div style="position:relative;">
-                                <input id="wbDisabilityPct" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#a68023; padding-right:30px;" placeholder="0" />
-                                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <label class="wb-label">
+                Inflation
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 2.5 • 3 • 4 (average annual inflation %)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbInflation" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+            </div>
+
+            <label class="wb-label">
+                After-Tax Rate of Return
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 5 • 7 • 9 (after-tax investment return %)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbReturn" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+            </div>
+
+            <label class="wb-label">
+                Tax Bracket
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 12 • 22 • 24 (effective/estimated rate %)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbTax" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+            </div>
+
+            <label class="wb-label">
+                Fixed Liabilities
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 18 • 25 (debt payments as % of income)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbLiabilities" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+            </div>
+
+            <label class="wb-label">
+                Lifestyle Spending
+                <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 35 • 45 • 55 (living costs + wants as % of income)">i</span>
+            </label>
+            <div style="position:relative;">
+                <input id="wbLifestyle" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
             </div>
 
         </div>
@@ -866,8 +706,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             <div class="wf-summary-box">
                 <table class="table table-sm mb-2">
                     <tr><th>Real Growth Rate</th><td id="wbRealGrowth">0%</td></tr>
-                    <tr><th>Avg Savings Rate</th><td id="wbSavingsPercent">0%</td></tr>
-                    <tr><th>Avg Annual Savings</th><td id="wbActualSavings">$0</td></tr>
+                    <tr><th>Savings</th><td id="wbSavingsPercent">0%</td></tr>
+                    <tr><th>Annual Savings</th><td id="wbActualSavings">$0</td></tr>
                 </table>
                 <table class="table table-sm mb-0">
                     <tr><th>Tips & Suggestions</th><td id="wbSavingsTips" class="wf-tip-text">
@@ -877,19 +717,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 <!-- hidden holders to keep IDs for logic -->
                 <span id="wbEarnings" style="display:none">$0</span>
                 <span id="wbWealth" style="display:none">$0</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Full-screen chart modal -->
-    <div id="wfChartModalBackdrop" class="wf-chart-modal-backdrop" aria-hidden="true">
-        <div class="wf-chart-modal" role="dialog" aria-modal="true" aria-label="Wealth Forecast full chart">
-            <div class="wf-chart-modal-head">
-                <h4>Wealth Forecast — Full View</h4>
-                <button type="button" class="wf-chart-close" id="wfChartCloseBtn">Close</button>
-            </div>
-            <div class="wf-chart-modal-body">
-                <canvas id="wfChartModalCanvas"></canvas>
             </div>
         </div>
     </div>
@@ -904,11 +731,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             const taxEl = document.getElementById("wbTax");
             const liabEl = document.getElementById("wbLiabilities");
             const lifeEl = document.getElementById("wbLifestyle");
-            const startingBalEl = document.getElementById("wbStartingBalance");
-            const disruptStartEl = document.getElementById("wbDisruptStartYear");
-            const disruptYearsEl = document.getElementById("wbDisruptYears");
-            const disruptMonthsEl = document.getElementById("wbDisruptMonths");
-            const disabilityPctEl = document.getElementById("wbDisabilityPct");
 
             const earningsOut = document.getElementById("wbEarnings");
             const wealthOut = document.getElementById("wbWealth");
@@ -918,13 +740,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             const actualSavingsOut = document.getElementById("wbActualSavings");
             const savingsTipsOut = document.getElementById("wbSavingsTips");
             const chartEl = document.getElementById("wfChart");
-            const chartModalBackdrop = document.getElementById("wfChartModalBackdrop");
-            const chartModalCanvas = document.getElementById("wfChartModalCanvas");
-            const chartModalClose = document.getElementById("wfChartCloseBtn");
             let wfChart = null;
-            let wfModalChart = null;
-            let wfChartData = null;
-            let wfChartClickBound = false;
             const wealthToggle = document.getElementById('wf_toggleWealth');
             const spendToggle  = document.getElementById('wf_toggleSpend');
 
@@ -986,87 +802,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             // Apply visual styles
             applyToolBoxStyles(container);
 
-            // Modal helpers
-            async function renderWfModalChart(){
-                if (!chartModalCanvas || !wfChartData) return;
-                await ensureChartJs();
-                if (wfModalChart){
-                    wfModalChart.destroy();
-                    wfModalChart = null;
-                }
-                const ctx = chartModalCanvas.getContext("2d");
-                wfModalChart = new Chart(ctx, {
-                    type:"line",
-                    data:{
-                        labels: wfChartData.labels,
-                        datasets:[
-                            {
-                                label:"Projected Wealth",
-                                data: wfChartData.wealthPoints,
-                                borderColor:"#16a34a",
-                                borderWidth:3,
-                                tension:0.25,
-                                fill:false,
-                                pointRadius:3,
-                                pointHoverRadius:6
-                            },
-                            {
-                                label:"Cumulative Spending",
-                                data: wfChartData.spendPoints,
-                                borderColor:"#dc2626",
-                                borderWidth:3,
-                                tension:0.25,
-                                fill:false,
-                                pointRadius:3,
-                                pointHoverRadius:6
-                            }
-                        ]
-                    },
-                    options:{
-                        responsive:true,
-                        maintainAspectRatio:false,
-                        interaction:{ mode:'nearest', intersect:true },
-                        events:['mousemove','mouseout','click','touchstart','touchmove'],
-                        plugins:{
-                            legend:{ labels:{ color:"#eaf2ff", usePointStyle:true } },
-                            tooltip:{
-                                enabled:true,
-                                callbacks:{
-                                    label: ctx => ` ${ctx.dataset.label}: ${ctx.formattedValue}`
-                                }
-                            }
-                        },
-                        scales:{
-                            x:{ ticks:{ color:"#eaf2ff" }, grid:{ color:"rgba(255,255,255,.08)" }, title:{ display:true, text:"Year", color:"#eaf2ff" } },
-                            y:{ ticks:{ color:"#eaf2ff", callback:v=>`$${Number(v).toLocaleString()}` }, grid:{ color:"rgba(255,255,255,.08)" }, title:{ display:true, text:"Balance / Spend ($)", color:"#eaf2ff" } }
-                        }
-                    }
-                });
-            }
-
-            function showWfModal(){
-                if (!chartModalBackdrop || !wfChartData) return;
-                chartModalBackdrop.style.display = "flex";
-                chartModalBackdrop.setAttribute("aria-hidden","false");
-                document.body.style.overflow = "hidden";
-                void renderWfModalChart();
-            }
-
-            function hideWfModal(){
-                if (!chartModalBackdrop) return;
-                chartModalBackdrop.style.display = "none";
-                chartModalBackdrop.setAttribute("aria-hidden","true");
-                document.body.style.overflow = "";
-                if (wfModalChart){
-                    wfModalChart.destroy();
-                    wfModalChart = null;
-                }
-            }
-
-            chartModalBackdrop?.addEventListener("click", (e) => { if (e.target === chartModalBackdrop) hideWfModal(); });
-            chartModalClose?.addEventListener("click", hideWfModal);
-            document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideWfModal(); });
-
             // Load saved state AFTER DOM exists
             const TOOL_KEY = "WealthForecast";
             await loadToolState(TOOL_KEY);
@@ -1120,7 +855,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             // ==============================
             // Format inputs with commas on blur
             // ==============================
-            [startingBalEl, incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl, disruptStartEl, disruptYearsEl, disruptMonthsEl, disabilityPctEl].forEach(el => {
+            [incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => {
                 el.addEventListener("blur", () => {
                     let val = el.value.replace(/,/g, '').replace('%', '');
                     if (!isNaN(val) && val !== '') {
@@ -1223,35 +958,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             function hydrateWfInputs(payload){
                 const wf = (payload && payload.wealthForecast && payload.wealthForecast.inputs) || {};
-                const map = {
-                    wbStartingBalance: startingBalEl,
-                    wbIncome: incomeEl,
-                    wbYears: yearsEl,
-                    wbInflation: inflEl,
-                    wbReturn: retEl,
-                    wbTax: taxEl,
-                    wbLiabilities: liabEl,
-                    wbLifestyle: lifeEl,
-                    wbDisruptStartYear: disruptStartEl,
-                    wbDisruptYears: disruptYearsEl,
-                    wbDisruptMonths: disruptMonthsEl,
-                    wbDisabilityPct: disabilityPctEl
-                };
+                const map = { wbIncome: incomeEl, wbYears: yearsEl, wbInflation: inflEl, wbReturn: retEl, wbTax: taxEl, wbLiabilities: liabEl, wbLifestyle: lifeEl };
                 Object.keys(map).forEach(id => { if (map[id] && wf[id] !== undefined) map[id].value = wf[id]; });
-
-                const defaults = {
-                    wbStartingBalance: "0",
-                    wbDisruptStartYear: wf.wbDisruptStartYear ?? "1",
-                    wbDisruptYears: wf.wbDisruptYears ?? "0",
-                    wbDisruptMonths: wf.wbDisruptMonths ?? "0",
-                    wbDisabilityPct: wf.wbDisabilityPct ?? "0"
-                };
-                Object.entries(defaults).forEach(([id, val]) => {
-                    const el = map[id];
-                    if (el && (el.value === undefined || el.value === null || el.value === "")) {
-                        el.value = val;
-                    }
-                });
             }
 
             function wfPayload(){
@@ -1259,18 +967,13 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     version: wfPlanVersion,
                     wealthForecast: {
                         inputs: {
-                            wbStartingBalance: startingBalEl.value || "",
                             wbIncome: incomeEl.value || "",
                             wbYears: yearsEl.value || "",
                             wbInflation: inflEl.value || "",
                             wbReturn: retEl.value || "",
                             wbTax: taxEl.value || "",
                             wbLiabilities: liabEl.value || "",
-                            wbLifestyle: lifeEl.value || "",
-                            wbDisruptStartYear: disruptStartEl.value || "",
-                            wbDisruptYears: disruptYearsEl.value || "",
-                            wbDisruptMonths: disruptMonthsEl.value || "",
-                            wbDisabilityPct: disabilityPctEl.value || ""
+                            wbLifestyle: lifeEl.value || ""
                         }
                     }
                 };
@@ -1357,123 +1060,61 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             // Main calculation function
             function calcWealthForecast() {
-                const toNumber = (el, def = 0) => {
-                    const raw = (el?.value || "").toString().replace(/,/g, '').replace('%', '');
-                    const num = parseFloat(raw);
-                    return Number.isFinite(num) ? num : def;
-                };
-                const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
+                const income = +incomeEl.value.replace(/,/g, '').replace('%', '') || 0;
+                const years = +yearsEl.value.replace(/,/g, '').replace('%', '') || 0;
+                const inflation = (+inflEl.value.replace(/,/g, '').replace('%', '') || 0) / 100;
+                const nominalReturn = (+retEl.value.replace(/,/g, '').replace('%', '') || 0) / 100;
+                const tax = (+taxEl.value.replace(/,/g, '').replace('%', '') || 0) / 100;
+                const liabilities = (+liabEl.value.replace(/,/g, '').replace('%', '') || 0) / 100;
+                const lifestyle = (+lifeEl.value.replace(/,/g, '').replace('%', '') || 0) / 100;
 
-                const income = Math.max(0, toNumber(incomeEl, 0));
-                const startingBalance = Math.max(0, toNumber(startingBalEl, 0));
-                const years = Math.max(0, Math.floor(toNumber(yearsEl, 0)));
-                const inflationRaw = toNumber(inflEl, 0) / 100;
-                const nominalReturnRaw = toNumber(retEl, 0) / 100;
-                const tax = clamp(toNumber(taxEl, 0) / 100, 0, 1);
-                const liabilities = clamp(toNumber(liabEl, 0) / 100, 0, 1);
-                const lifestyle = clamp(toNumber(lifeEl, 0) / 100, 0, 1);
+                let savingsRate = 1 - tax - liabilities - lifestyle;
+                if (savingsRate < 0) savingsRate = 0;
 
-                let disruptStart = Math.max(1, Math.floor(toNumber(disruptStartEl, 1)));
-                let disruptYears = Math.max(0, Math.floor(toNumber(disruptYearsEl, 0)));
-                let disruptMonths = clamp(Math.floor(toNumber(disruptMonthsEl, 0)), 0, 11);
-                const disabilityPct = clamp(toNumber(disabilityPctEl, 0), 0, 60) / 100;
-
-                // Clamp disruption to working window
-                if (years > 0) disruptStart = clamp(disruptStart, 1, years);
-                const startTime = Math.max(0, disruptStart - 1);
-                let disruptDuration = disruptYears + (disruptMonths / 12);
-                const maxDuration = Math.max(0, years - startTime);
-                if (disruptDuration > maxDuration) disruptDuration = maxDuration;
-
-                // Reflect clamped values in UI for clarity
-                if (disruptStartEl && disruptStartEl.value) disruptStartEl.value = disruptStart.toLocaleString();
-                if (disruptYearsEl && disruptYearsEl.value) disruptYearsEl.value = Math.floor(disruptYears).toLocaleString();
-                if (disruptMonthsEl && disruptMonthsEl.value) disruptMonthsEl.value = Math.floor(disruptMonths).toLocaleString();
-                if (disabilityPctEl && disabilityPctEl.value) disabilityPctEl.value = (disabilityPct * 100).toLocaleString();
-
-                // Guard against divide-by-zero / runaway inflation inputs
-                const inflation = Math.max(-0.95, inflationRaw);
-                const nominalReturn = Math.max(-0.95, nominalReturnRaw);
+                const annualSavings = income * savingsRate;
+                const annualSpend = income - annualSavings;
                 const realGrowthRate = (1 + nominalReturn) / (1 + inflation) - 1;
 
-                // Baseline annual expense anchors (do not shrink during disruption)
-                const baselineLiabAmt = income * liabilities;
-                const baselineLifeAmt = income * lifestyle;
-
-                let investedBalance = startingBalance;
+                let investedBalance = 0;
                 let cumulativeSpend = 0;
-                let totalSavings = 0;
-                let totalIncome = 0;
-
-                const wealthPoints = [investedBalance];
+                const wealthPoints = [0];
                 const spendPoints = [0];
                 const labels = ["Year 0"];
-
                 for (let y = 1; y <= years; y++) {
-                    const yearStart = y - 1;
-                    const yearEnd = y;
-                    const overlap = Math.max(0, Math.min(yearEnd, startTime + disruptDuration) - Math.max(yearStart, startTime));
-                    const disruptionFraction = clamp(overlap, 0, 1);
-
-                    const lostIncome = income * disruptionFraction;
-                    const replacementIncome = lostIncome * disabilityPct;
-                    const earnedIncome = income - lostIncome;
-                    const effectiveIncome = earnedIncome + replacementIncome;
-                    const taxAmt = effectiveIncome * tax;
-                    const annualExpenses = taxAmt + baselineLiabAmt + baselineLifeAmt; // single source of truth
-                    const annualSavings = effectiveIncome - annualExpenses; // allow negative to reflect shortfall
-                    const annualSpend = annualExpenses; // track true expense outflow (no scaling)
-
                     investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
-                    cumulativeSpend += annualExpenses;
-                    totalSavings += annualSavings;
-                    totalIncome += effectiveIncome;
-
+                    cumulativeSpend += annualSpend;
                     labels.push(`Year ${y}`);
                     wealthPoints.push(investedBalance);
                     spendPoints.push(-cumulativeSpend);
                 }
 
-                wfChartData = { labels, wealthPoints, spendPoints };
-
-                const avgSavingsRate = totalIncome > 0 ? totalSavings / totalIncome : 0;
-                const totalSpend = cumulativeSpend;
-                const avgAnnualSavings = years > 0 ? totalSavings / years : totalSavings;
-                const avgAnnualSpend = years > 0 ? totalSpend / years : totalSpend;
-
                 // Update outputs
-                earningsOut.textContent = `$${Math.round(totalIncome).toLocaleString()}`;
-                wealthOut.textContent = `$${Math.round(investedBalance).toLocaleString()}`;
+                earningsOut.textContent = `$${(income * years).toLocaleString()}`;
+                wealthOut.textContent = `$${investedBalance.toLocaleString()}`;
+                // Expose final balance for Distribution modal
                 window.__wfFinalBalance = investedBalance > 0 ? investedBalance : null;
                 if (typeof window.__wfOnBalanceUpdate === 'function') window.__wfOnBalanceUpdate(window.__wfFinalBalance);
                 window.__wfState = {
                     annualIncome: income,
-                    startingBalance,
                     workingYears: years,
                     inflationPct: inflation * 100,
                     returnPct: nominalReturn * 100,
                     taxPct: tax * 100,
                     liabilitiesPct: liabilities * 100,
                     lifestylePct: lifestyle * 100,
-                    annualSavings: avgAnnualSavings,
-                    annualSpend: avgAnnualSpend,
-                    realGrowthPct: realGrowthRate * 100,
-                    disruptionStartYear: disruptStart,
-                    disruptionYears: disruptYears,
-                    disruptionMonths: disruptMonths,
-                    disabilityReplacementPct: disabilityPct * 100,
-                    finalBalance: investedBalance
+                    annualSavings,
+                    annualSpend,
+                    realGrowthPct: realGrowthRate * 100
                 };
                 if (typeof window.__wfUpdateDistributionDefaults === 'function') {
                     window.__wfUpdateDistributionDefaults(window.__wfState);
                 }
                 realGrowthOut.textContent = `${(realGrowthRate * 100).toFixed(2)}%`;
-                savingsPercentOut.textContent = `${(avgSavingsRate * 100).toFixed(2)}%`;
-                actualSavingsOut.textContent = `$${Math.round(avgAnnualSavings).toLocaleString()}`;
+                savingsPercentOut.textContent = `${(savingsRate * 100).toFixed(2)}%`;
+                actualSavingsOut.textContent = `$${annualSavings.toLocaleString()}`;
 
 // Inputs: income = green, % drains = red, years/return/inflation neutral
 markIncome(incomeEl);
-markNeutral(startingBalEl);
 markExpense(taxEl);
 markExpense(liabEl);
 markExpense(lifeEl);
@@ -1481,10 +1122,6 @@ markExpense(lifeEl);
 markNeutral(yearsEl);
 markNeutral(inflEl);
 markNeutral(retEl);
-markNeutral(disruptStartEl);
-markNeutral(disruptYearsEl);
-markNeutral(disruptMonthsEl);
-markNeutral(disabilityPctEl);
 
 // Outputs
 markIncome(earningsOut);
@@ -1492,7 +1129,7 @@ markIncome(wealthOut);
 markIncome(actualSavingsOut);
 
 // Savings percent is good if > 0, otherwise red
-if (avgSavingsRate > 0) markIncome(savingsPercentOut);
+if (savingsRate > 0) markIncome(savingsPercentOut);
 else markExpense(savingsPercentOut);
 
 // Real growth: green if positive, red if negative
@@ -1585,14 +1222,8 @@ markNeutral(savingsTipsOut);
                     }
                 }
 
-                // Click to open modal
-                if (chartEl && !wfChartClickBound){
-                    chartEl.addEventListener("click", () => showWfModal());
-                    wfChartClickBound = true;
-                }
-
-                const sTips = avgSavingsRate < 0.2
-                    ? 'Savings potential is low; reduce lifestyle/fixed liabilities or raise replacement coverage.'
+                const sTips = savingsRate < 0.2
+                    ? 'Savings potential is low; reduce lifestyle/fixed liabilities.'
                     : 'Savings rate is strong; maximize to grow wealth.';
                 savingsTipsOut.textContent = sTips;
 
@@ -1610,11 +1241,7 @@ markNeutral(savingsTipsOut);
             const wfActionsHost = document.getElementById('wfActions');
 
             addClearButton(container, () => {
-                [startingBalEl, incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => el.value = '');
-                if (disruptStartEl) disruptStartEl.value = '1';
-                if (disruptYearsEl) disruptYearsEl.value = '0';
-                if (disruptMonthsEl) disruptMonthsEl.value = '0';
-                if (disabilityPctEl) disabilityPctEl.value = '0';
+                [incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => el.value = '');
                 earningsOut.textContent = '$0';
                 wealthOut.textContent = '$0';
                 realGrowthOut.textContent = '0%';
@@ -2812,34 +2439,11 @@ markNeutral(savingsTipsOut);
                 gid('wfd_guaranteedIncome').addEventListener('input', updateGap);
 
                 // Bucket dollar amounts + allocation bar visual
-                function updateBktAmounts(trigger = '') {
+                function updateBktAmounts() {
                     const base = pf(gid('wfd_base').value);
                     let inv = pf(gid('wfd_invAlloc').value);
                     let li  = pf(gid('wfd_liAlloc').value);
                     let ann = pf(gid('wfd_annAlloc').value);
-
-                    inv = Math.max(0, Math.min(100, inv));
-                    if (String(gid('wfd_invAlloc').value) !== String(inv)) {
-                        gid('wfd_invAlloc').value = String(inv);
-                    }
-
-                    // Auto-allocation rule (only when Investments changes):
-                    // - 100% Investments => Life/Annuity = 0/0
-                    // - <100% Investments => split remaining amount 50/50 between Life and Annuity
-                    // Users can then manually override Life/Annuity without being forced back,
-                    // until Investments is changed again.
-                    if (trigger === 'inv') {
-                        if (inv >= 100) {
-                            li = 0;
-                            ann = 0;
-                        } else {
-                            const remaining = Math.max(0, 100 - inv);
-                            li = remaining / 2;
-                            ann = remaining - li;
-                        }
-                        gid('wfd_liAlloc').value = String(li);
-                        gid('wfd_annAlloc').value = String(ann);
-                    }
 
                     // Convenience: if Investments set to 100%, zero other buckets automatically
                     if (inv >= 100) {
@@ -2877,9 +2481,9 @@ markNeutral(savingsTipsOut);
                     gid('wfd_liBar').style.height  = Math.max(li  / mx * 100, 3) + '%';
                     gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
                 }
-                gid('wfd_invAlloc').addEventListener('input', () => { updateBktAmounts('inv'); dpSaveDebounced(); });
-                gid('wfd_liAlloc').addEventListener('input', () => { updateBktAmounts('li'); dpSaveDebounced(); });
-                gid('wfd_annAlloc').addEventListener('input', () => { updateBktAmounts('ann'); dpSaveDebounced(); });
+                ['wfd_invAlloc','wfd_liAlloc','wfd_annAlloc'].forEach(id => {
+                    gid(id).addEventListener('input', () => { updateBktAmounts(); dpSaveDebounced(); });
+                });
                 ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
                     if (el) el.addEventListener('change', () => { updateDMState(); dpSaveDebounced(); });
@@ -4601,7 +4205,7 @@ markNeutral(savingsTipsOut);
                 calcWealthForecast();
             }
 
-            [startingBalEl, incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl, disruptStartEl, disruptYearsEl, disruptMonthsEl, disabilityPctEl].forEach(el => {
+            [incomeEl, yearsEl, inflEl, retEl, taxEl, liabEl, lifeEl].forEach(el => {
                 el.addEventListener("input", () => {
                     calcWealthForecast();
                     saveWfPlanDebounced();
