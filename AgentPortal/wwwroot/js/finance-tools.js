@@ -1960,9 +1960,8 @@ markNeutral(savingsTipsOut);
       <div id="dpClientResults" class="list-group" style="display:none;margin-top:8px;"></div>
       <div class="wfd-steps" id="wfd_stepsNav">
         <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
-        <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Buckets</div>
-      <div class="wfd-step-chip" data-step="3"><span class="step-num">3</span> Strategy</div>
-      <div class="wfd-step-chip" data-step="4"><span class="step-num">4</span> Results</div>
+                <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Strategy</div>
+            <div class="wfd-step-chip" data-step="3"><span class="step-num">3</span> Results</div>
     </div>
   </div>
 
@@ -2168,17 +2167,11 @@ markNeutral(savingsTipsOut);
           </div>
         </div>
 
-      </div>
-      </div><!-- end sec -->
-    </div><!-- end buckets -->
-
-    <!-- STEP 3: Strategy Controls -->
-    <div class="wfd-step-wrap" data-step="3">
-      <div class="wfd-sec">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <p class="wfd-sec-title" style="margin:0;">3 — Strategy Controls</p>
-        <button type="button" class="wfd-step-clear" id="wfd_clearStep3">Clear Step</button>
-      </div>
+            </div>
+            <div style="height:1px;margin:18px 0 16px;background:linear-gradient(90deg,rgba(176,141,47,0),rgba(176,141,47,.95),rgba(176,141,47,0));"></div>
+            <div style="display:flex;align-items:center;gap:10px;">
+                <p class="wfd-sec-title" style="margin:0;">3 — Strategy Controls</p>
+            </div>
       <div class="wfd-row" style="gap:10px;flex-wrap:wrap;">
         <button type="button" class="wfd-calc-btn" id="wfd_strat_prop" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Proportional</button>
         <button type="button" class="wfd-calc-btn" id="wfd_strat_pri" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Priority Order</button>
@@ -2262,16 +2255,15 @@ markNeutral(savingsTipsOut);
           <button id="wfd_genScenario" class="wfd-calc-btn" type="button" style="margin-top:0;">Generate Market Scenario</button>
         </div>
       </div>
-    </div><!-- end strat -->
-    </div>
+            </div><!-- end sec -->
+        </div><!-- end buckets + strategy -->
 
-    <!-- STEP 4: RESULTS -->
-    <div class="wfd-step-wrap" data-step="4" id="wfd_results">
+        <!-- STEP 3: RESULTS -->
+        <div class="wfd-step-wrap" data-step="3" id="wfd_results">
       <div class="wfd-sec" style="border-bottom:none;margin-bottom:12px;padding-bottom:0;">
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
           <button class="wfd-calc-btn" id="wfd_editFoundation" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Foundation</button>
-          <button class="wfd-calc-btn" id="wfd_editBuckets" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Buckets</button>
-          <button class="wfd-calc-btn" id="wfd_editStrategy" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Strategy</button>
+                    <button class="wfd-calc-btn" id="wfd_editBuckets" type="button" style="flex:1;min-width:140px;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Strategy</button>
           <button class="wfd-calc-btn" id="wfd_recalcBtn" type="button" style="flex:1;min-width:140px;max-width:200px;">Recalculate</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
@@ -2432,18 +2424,18 @@ markNeutral(savingsTipsOut);
                     document.body.style.overflow = 'hidden';
                     trapFocus(modal);
                     updateDMState();
-                    document.getElementById('wfd_invAlloc').dispatchEvent(new Event('input'));
                     document.getElementById('wfd_retAge').dispatchEvent(new Event('input'));
                     document.getElementById('wfd_desiredIncome').dispatchEvent(new Event('input'));
                     const reopenStep = stepToOpen || '1';
                     setStep(reopenStep);
-                    if (reopenStep === '4') hydrateResultsFromMeta();
+                    if (reopenStep === '3') hydrateResultsFromMeta();
                     distMeta.open = true; saveMeta();
                     saveDpUiSession({ modalOpen: true, lastStep: reopenStep });
                 };
                 // Step navigation + meta
-                const steps = ['1','2','3','4'];
+                const steps = ['1','2','3'];
                 let activeStep = '1';
+                let distAllocManual = false;
                 var distMeta = { hasValidResults:false, lastStep:'1', stale:false, result:null, open:false };
                 function syncStepVisibility() {
                     document.querySelectorAll('.wfd-step-wrap').forEach(w=>{
@@ -2463,6 +2455,7 @@ markNeutral(savingsTipsOut);
                     });
                 }
                 function setStep(step, { skipHydrate = false } = {}){
+                    if (step === '4') step = '3';
                     activeStep = step;
                     document.querySelectorAll('.wfd-step-chip').forEach(chip=>{
                         chip.classList.toggle('active', chip.dataset.step === step);
@@ -2473,23 +2466,23 @@ markNeutral(savingsTipsOut);
                     gid('wfd_prev').style.visibility = step === '1' ? 'hidden' : 'visible';
                     const next = gid('wfd_next');
                     const run  = gid('wfd_run');
-                    const nextLabels = { '1':'Next: Build Buckets', '2':'Next: Choose Strategy', '3':'View Results', '4':'View Results' };
+                    const nextLabels = { '1':'Next: Strategy', '2':'View Results', '3':'View Results' };
                     if (next) {
                         next.textContent = nextLabels[step] || 'Continue';
-                        next.style.display = step === '4' ? 'none' : 'inline-flex';
+                        next.style.display = step === '3' ? 'none' : 'inline-flex';
                     }
                     if (run) {
-                        if (step === '3' || step === '4') {
+                        if (step === '2' || step === '3') {
                             run.style.display = 'inline-flex';
-                            run.textContent = step === '4' ? 'Run Again' : 'Run Plan';
+                            run.textContent = step === '3' ? 'Run Again' : 'Run Plan';
                         } else {
                             run.style.display = 'none';
                         }
                     }
-                    if (step === '4') {
+                    if (step === '3') {
                         applyResultsAccordionDefaults();
                     }
-                    if (step === '4' && !skipHydrate) {
+                    if (step === '3' && !skipHydrate) {
                         hydrateResultsFromMeta();
                     }
                 }
@@ -2538,6 +2531,43 @@ markNeutral(savingsTipsOut);
                 const DIST_META_KEY = plannerScoped ? `DistributionPlannerMeta:user:${effectiveUserScope}` : null;
                 const DIST_META_LOCAL_KEY = plannerScopeKey('DistributionPlannerMetaLocal');
                 let dpPlanLoaded = false;
+
+                function captureDpEditableState(){
+                    const state = { inputs:{}, checks:{}, selects:{} };
+                    distPersistInputs.forEach(id => {
+                        const el = gid(id);
+                        if (el) state.inputs[id] = el.value;
+                    });
+                    if (gid('wfd_manualOverride')?.checked) {
+                        const baseEl = gid('wfd_base');
+                        if (baseEl) state.inputs.wfd_base = baseEl.value;
+                    }
+                    distCheckIds.forEach(id => {
+                        const el = gid(id);
+                        if (el) state.checks[id] = !!el.checked;
+                    });
+                    distSelectIds.forEach(id => {
+                        const el = gid(id);
+                        if (el) state.selects[id] = el.value;
+                    });
+                    return state;
+                }
+
+                function restoreDpEditableState(state){
+                    if (!state) return;
+                    Object.entries(state.inputs || {}).forEach(([id, value]) => {
+                        const el = gid(id);
+                        if (el) el.value = value ?? '';
+                    });
+                    Object.entries(state.checks || {}).forEach(([id, value]) => {
+                        const el = gid(id);
+                        if (el) el.checked = !!value;
+                    });
+                    Object.entries(state.selects || {}).forEach(([id, value]) => {
+                        const el = gid(id);
+                        if (el) el.value = value ?? '';
+                    });
+                }
 
                 function dpCollectInputs(){
                     const inputs = {};
@@ -2938,7 +2968,7 @@ markNeutral(savingsTipsOut);
                     // - <100% Investments => split remaining amount 50/50 between Life and Annuity
                     // Users can then manually override Life/Annuity without being forced back,
                     // until Investments is changed again.
-                    if (trigger === 'inv') {
+                    if (trigger === 'inv' && !distAllocManual) {
                         if (inv >= 100) {
                             li = 0;
                             ann = 0;
@@ -2959,6 +2989,7 @@ markNeutral(savingsTipsOut);
                             gid('wfd_liAlloc').value = '0';
                             gid('wfd_annAlloc').value = '0';
                         }
+                        distAllocManual = false;
                     }
                     const total = inv + li + ann;
 
@@ -2988,8 +3019,8 @@ markNeutral(savingsTipsOut);
                     gid('wfd_annBar').style.height = Math.max(ann / mx * 100, 3) + '%';
                 }
                 gid('wfd_invAlloc').addEventListener('input', () => { updateBktAmounts('inv'); dpSaveDebounced(); });
-                gid('wfd_liAlloc').addEventListener('input', () => { updateBktAmounts('li'); dpSaveDebounced(); });
-                gid('wfd_annAlloc').addEventListener('input', () => { updateBktAmounts('ann'); dpSaveDebounced(); });
+                gid('wfd_liAlloc').addEventListener('input', () => { distAllocManual = true; updateBktAmounts('li'); dpSaveDebounced(); });
+                gid('wfd_annAlloc').addEventListener('input', () => { distAllocManual = true; updateBktAmounts('ann'); dpSaveDebounced(); });
                 ['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id => {
                     const el = gid(id);
                     if (el) el.addEventListener('change', () => { updateDMState(); dpSaveDebounced(); });
@@ -3091,6 +3122,7 @@ markNeutral(savingsTipsOut);
                         if (fromCrm && legacyBlock.includes(id)) return; // CRM cannot override strategy/scenario
                         el.value = selects[id];
                     });
+                    distAllocManual = true;
                     // Refresh derived UI
                     updateBktAmounts();
                     updateGap();
@@ -3127,12 +3159,74 @@ markNeutral(savingsTipsOut);
                     if (typeof dist === 'string') {
                         try { dist = JSON.parse(dist); } catch { dist = {}; }
                     }
-                    // If already shaped with inputs/checks/selects, return as-is
-                    if (dist.inputs || dist.checks || dist.selects) return dist;
-
                     const built = { inputs:{}, checks:{}, selects:{}, meta: dist.meta || {} };
                     const checkSet = new Set(distCheckIds);
                     const selectSet = new Set(distSelectIds);
+
+                    if (dist.inputs && typeof dist.inputs === 'object') Object.assign(built.inputs, dist.inputs);
+                    if (dist.checks && typeof dist.checks === 'object') Object.assign(built.checks, dist.checks);
+                    if (dist.selects && typeof dist.selects === 'object') Object.assign(built.selects, dist.selects);
+
+                    const canonical = dist.canonicalInput && typeof dist.canonicalInput === 'object'
+                        ? dist.canonicalInput
+                        : null;
+
+                    if (canonical) {
+                        const mapInput = (field, id, transform = (v) => v) => {
+                            if (canonical[field] === undefined || canonical[field] === null) return;
+                            built.inputs[id] = transform(canonical[field]);
+                        };
+                        const mapCheck = (field, id) => {
+                            if (canonical[field] === undefined || canonical[field] === null) return;
+                            built.checks[id] = !!canonical[field];
+                        };
+                        const mapSelect = (field, id) => {
+                            if (canonical[field] === undefined || canonical[field] === null) return;
+                            built.selects[id] = canonical[field];
+                        };
+
+                        mapCheck('manualBaseOverride', 'wfd_manualOverride');
+                        if (canonical.manualBaseOverride) mapInput('retirementBase', 'wfd_base');
+                        mapInput('retireAge', 'wfd_retAge');
+                        mapInput('endAge', 'wfd_endAge');
+                        mapInput('emergencyReserve', 'wfd_emergency');
+                        mapInput('desiredIncome', 'wfd_desiredIncome');
+                        mapInput('guaranteedIncome', 'wfd_guaranteedIncome');
+
+                        mapInput('invAllocPct', 'wfd_invAlloc');
+                        mapInput('invReturnPct', 'wfd_invReturn');
+                        mapInput('invTaxPct', 'wfd_invTax');
+                        mapCheck('invDownMarket', 'wfd_invDownMkt');
+
+                        mapInput('liAllocPct', 'wfd_liAlloc');
+                        mapInput('liReturnPct', 'wfd_liGrowth');
+                        mapInput('liTaxPct', 'wfd_liTax');
+                        mapInput('liEfficiencyPct', 'wfd_liEfficiency');
+                        mapInput('liDeathBenefit', 'wfd_liDeath');
+                        mapCheck('liDownMarket', 'wfd_liDownMkt');
+                        mapSelect('liPolicyType', 'wfd_liType');
+                        mapSelect('liAccessMode', 'wfd_liAccess');
+
+                        mapInput('annAllocPct', 'wfd_annAlloc');
+                        mapInput('annReturnPct', 'wfd_annReturn');
+                        mapInput('annTaxPct', 'wfd_annTax');
+                        mapInput('annDeathBenefit', 'wfd_annDeath');
+                        mapInput('annRollupPct', 'wfd_annRollup');
+                        mapCheck('annDownMarket', 'wfd_annDownMkt');
+                        mapCheck('annIncomeRider', 'wfd_annIncomeRider');
+                        mapCheck('annDbRider', 'wfd_annDbRider');
+                        mapSelect('annDesign', 'wfd_annDesign');
+
+                        mapCheck('protectInvest', 'wfd_protectInvest');
+                        mapSelect('strategy', 'wfd_strategy');
+                        mapSelect('gapSource', 'wfd_gapSource');
+                        mapSelect('scenarioMode', 'wfd_scenarioMode');
+                        mapInput('downThreshold', 'wfd_downThreshold');
+                        if (Array.isArray(canonical.manualReturns)) {
+                            built.inputs.wfd_manualReturns = canonical.manualReturns.join(', ');
+                        }
+
+                    }
 
                     const absorbFlat = (flatObj) => {
                         Object.keys(flatObj || {}).forEach(k=>{
@@ -3333,6 +3427,7 @@ markNeutral(savingsTipsOut);
                     wfdScenarioCache = []; wfdScenarioMeta = { mode:'fixed', years:0 };
                     setPriorityOrder(defaultPriority);
                     gid('wfd_warnArea').innerHTML = '';
+                    distAllocManual = false;
                     syncBase();
                     updateDMState();
                     validateAndGate();
@@ -3346,8 +3441,7 @@ markNeutral(savingsTipsOut);
                 }
                 gid('wfd_clearBtn').addEventListener('click', clearDistribution);
                 gid('wfd_clearStep1')?.addEventListener('click', () => clearStep('step1'));
-                gid('wfd_clearStep2')?.addEventListener('click', () => clearStep('step2'));
-                gid('wfd_clearStep3')?.addEventListener('click', () => clearStep('step3'));
+                gid('wfd_clearStep2')?.addEventListener('click', () => { clearStep('step2'); clearStep('step3'); });
 
                 function clearStep(stepKey){
                     const sets = stepFieldSets[stepKey];
@@ -3357,6 +3451,7 @@ markNeutral(savingsTipsOut);
                     sets.selects.forEach(id => { const el = gid(id); if (el) el.value = ''; });
                     // Restore defaults for specific toggles when clearing step context
                     if (stepKey === 'step2') {
+                        distAllocManual = false;
                         const invDm = gid('wfd_invDownMkt'); if (invDm) invDm.checked = false;
                         const liDm  = gid('wfd_liDownMkt');  if (liDm) liDm.checked = true;
                         const annDm = gid('wfd_annDownMkt'); if (annDm) annDm.checked = true;
@@ -3436,8 +3531,10 @@ markNeutral(savingsTipsOut);
                         if (dpCrmReadEnabled) await loadDpPlan(restoreClientId);
                     }
 
-                    const startStep = dpSession.lastStep || distMeta.lastStep || '1';
-                    setStep(startStep); // internally calls hydrateResultsFromMeta if step === '4'
+                    let startStep = dpSession.lastStep || distMeta.lastStep || '1';
+                    if (startStep === '4') startStep = '3';
+                    else if (startStep === '3' && !distMeta.hasValidResults) startStep = '2';
+                    setStep(startStep); // internally calls hydrateResultsFromMeta if step === '3'
                     const shouldOpenDp = !!(dpSession.modalOpen || distMeta.open);
                     if (shouldOpenDp) {
                         showDistModal(startStep);
@@ -3472,7 +3569,7 @@ markNeutral(savingsTipsOut);
                     const el = gid(id); if (el) el.addEventListener('change', saveDistStateDebounced);
                 });
 
-                const goResults = () => setStep('4', { skipHydrate: true });
+                const goResults = () => setStep('3', { skipHydrate: true });
 
                 function renderEmptyResults(){
                     const ctaHtml = `
@@ -3500,7 +3597,7 @@ markNeutral(savingsTipsOut);
                     const runBtn = gid('wfd_emptyRun');
                     if (runBtn) runBtn.onclick = () => gid('wfd_calcBtn').click();
                     const stratBtn = gid('wfd_emptyStrategy');
-                    if (stratBtn) stratBtn.onclick = () => setStep('3');
+                    if (stratBtn) stratBtn.onclick = () => setStep('2');
                 }
 
                 function renderResults(result, isStale=false){
@@ -4122,10 +4219,10 @@ markNeutral(savingsTipsOut);
                     setStep(steps[idx]);
                 });
                 gid('wfd_next').addEventListener('click', () => {
-                    if (activeStep === '3') {
+                    if (activeStep === '2') {
                         // If we already have a valid run, jump straight to Results; otherwise trigger a run.
                         if (distMeta.hasValidResults && distMeta.result) {
-                            setStep('4');
+                            setStep('3');
                             hydrateResultsFromMeta();
                             return;
                         }
@@ -4137,7 +4234,6 @@ markNeutral(savingsTipsOut);
                 });
                 gid('wfd_editFoundation')?.addEventListener('click', ()=>setStep('1'));
                 gid('wfd_editBuckets')?.addEventListener('click', ()=>setStep('2'));
-                gid('wfd_editStrategy')?.addEventListener('click', ()=>setStep('3'));
                 gid('wfd_runBase')?.addEventListener('click', ()=>{
                     const scen = gid('wfd_scenarioMode'); if (scen) scen.value = 'fixed';
                     gid('wfd_manualReturns').value = '';
@@ -4156,24 +4252,26 @@ markNeutral(savingsTipsOut);
                 });
 
                 gid('wfd_calcBtn').addEventListener('click', async () => {
+                    const lockedInputs = captureDpEditableState();
                     const preErrs = validateDist();
                     showBlock(preErrs);
                     if (preErrs.length) return;
 
-                    try { await ensureChartJs(); } catch (_) { /* chart unavailable; renderResults handles gracefully */ }
+                    try {
+                        try { await ensureChartJs(); } catch (_) { /* chart unavailable; renderResults handles gracefully */ }
 
-                    const base          = pf(gid('wfd_base').value);
-                    const retAge        = pf(gid('wfd_retAge').value);
-                    const endAge        = pf(gid('wfd_endAge').value);
-                    const years         = Math.floor(endAge - retAge);
-                    const desiredInc    = pf(gid('wfd_desiredIncome').value);
-                    const guarInc       = pf(gid('wfd_guaranteedIncome').value);
-                    const incGap        = Math.max(desiredInc - guarInc, 0);
-                    let emergencyBal    = Math.max(0, pf(gid('wfd_emergency').value));
+                        const base          = pf(gid('wfd_base').value);
+                        const retAge        = pf(gid('wfd_retAge').value);
+                        const endAge        = pf(gid('wfd_endAge').value);
+                        const years         = Math.floor(endAge - retAge);
+                        const desiredInc    = pf(gid('wfd_desiredIncome').value);
+                        const guarInc       = pf(gid('wfd_guaranteedIncome').value);
+                        const incGap        = Math.max(desiredInc - guarInc, 0);
+                        let emergencyBal    = Math.max(0, pf(gid('wfd_emergency').value));
 
-                    const invAllocPct   = pf(gid('wfd_invAlloc').value);
-                    const liAllocPct    = pf(gid('wfd_liAlloc').value);
-                    const annAllocPct   = pf(gid('wfd_annAlloc').value);
+                        const invAllocPct   = pf(gid('wfd_invAlloc').value);
+                        const liAllocPct    = pf(gid('wfd_liAlloc').value);
+                        const annAllocPct   = pf(gid('wfd_annAlloc').value);
 
                     const invReturn     = pf(gid('wfd_invReturn').value)   / 100;
                     const invTax        = pf(gid('wfd_invTax').value)      / 100;
@@ -4762,7 +4860,7 @@ markNeutral(savingsTipsOut);
                     };
                     distMeta.hasValidResults = true;
                     distMeta.stale = false;
-                    distMeta.lastStep = '4';
+                    distMeta.lastStep = '3';
                     distMeta.result = result;
                     saveMeta();
                     renderResults(result, false);
@@ -4772,7 +4870,17 @@ markNeutral(savingsTipsOut);
                     saveDistState();
                     hydrating = false;
 
-                    goResults();
+                        goResults();
+                    } finally {
+                        restoreDpEditableState(lockedInputs);
+                        syncBase();
+                        updateYrs();
+                        updateGap();
+                        updateBktAmounts();
+                        updateDMState();
+                        togglePriorityRow();
+                        toggleAnnRollup();
+                    }
                 });
             } // end: if (!document.getElementById(DIST_OVR_ID))
 

@@ -177,6 +177,7 @@ async function openFinPlanModal(clientUserId){
 function resetFinPlanForm(){
   finPlanVersion = 0;
   window.__wfFinalBalance = null;
+  finPlanAllocManual = false;
   const form = document.getElementById("finPlanForm");
   if (!form) return;
   form.reset();
@@ -297,21 +298,29 @@ function runDpPreview(){
     if (status) status.textContent = "Ready";
     return;
   }
-  const canonical = finPlanPayload().distribution?.canonicalInput || {};
-  const errs = window.DP_VALIDATORS.validatePlanInput(canonical);
-  if (errs.length){
-    if (status) status.textContent = `Needs fix: ${errs[0].message}`;
-    return;
+  const lockedInputs = captureFinPlanEditableState();
+  try {
+    const canonical = finPlanPayload().distribution?.canonicalInput || {};
+    const errs = window.DP_VALIDATORS.validatePlanInput(canonical);
+    if (errs.length){
+      if (status) status.textContent = `Needs fix: ${errs[0].message}`;
+      return;
+    }
+    const res = window.runDistributionPlan(canonical);
+    if (res.errors?.length){
+      if (status) status.textContent = `Error: ${res.errors[0].message}`;
+      return;
+    }
+    const sum = res.summary || {};
+    const fmt = (v)=> (Number(v)||0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
+    const shortTxt = sum.totalShortfall > 0 ? ` | Shortfall ${fmt(sum.totalShortfall)}` : "";
+    if (status) status.textContent = `Preview: Avg Net ${fmt(sum.avgIncomeDeliveredNet||0)} | End ${fmt(sum.totalEndBalance||0)}${shortTxt}`;
+  } finally {
+    restoreFinPlanEditableState(lockedInputs);
+    recalcFinPlanWealthForecastBalance();
+    updateFinPlanAllocTotal();
+    updateFinPlanDownMarketState();
   }
-  const res = window.runDistributionPlan(canonical);
-  if (res.errors?.length){
-    if (status) status.textContent = `Error: ${res.errors[0].message}`;
-    return;
-  }
-  const sum = res.summary || {};
-  const fmt = (v)=> (Number(v)||0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
-  const shortTxt = sum.totalShortfall > 0 ? ` | Shortfall ${fmt(sum.totalShortfall)}` : "";
-  if (status) status.textContent = `Preview: Avg Net ${fmt(sum.avgIncomeDeliveredNet||0)} | End ${fmt(sum.totalEndBalance||0)}${shortTxt}`;
 }
 
 async function loadFinPlan(clientUserId){
@@ -399,6 +408,7 @@ function hydrateFinPlan(jsonData){
   if (manualReturnsEl && Array.isArray(canonical.manualReturns)) {
     manualReturnsEl.value = canonical.manualReturns.join(", ");
   }
+  finPlanAllocManual = true;
   recalcFinPlanWealthForecastBalance();
   updateFinPlanAllocTotal();
   updateFinPlanDownMarketState();
@@ -420,6 +430,42 @@ function updateFinPlanDownMarketState(){
       badge.classList.toggle('off', !on);
     }
     if (card) card.classList.toggle('wfd-dm-off', !on);
+  });
+}
+
+function captureFinPlanEditableState(){
+  const state = { inputs:{}, checks:{} };
+  [
+    'wbStartingBalance','wbIncome','wbYears','wbInflation','wbReturn','wbTax','wbLiabilities','wbLifestyle',
+    'wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+    'wfd_invAlloc','wfd_invReturn','wfd_invTax',
+    'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liType','wfd_liAccess',
+    'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annRollup','wfd_annDesign',
+    'wfd_strategy','wfd_gapSource','wfd_downThreshold','wfd_scenarioMode','wfd_manualReturns'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) state.inputs[id] = el.value;
+  });
+  if (document.getElementById('wfd_manualOverride')?.checked) {
+    const baseEl = document.getElementById('wfd_base');
+    if (baseEl) state.inputs.wfd_base = baseEl.value;
+  }
+  ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) state.checks[id] = !!el.checked;
+  });
+  return state;
+}
+
+function restoreFinPlanEditableState(state){
+  if (!state) return;
+  Object.entries(state.inputs || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  });
+  Object.entries(state.checks || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
   });
 }
 
@@ -532,6 +578,7 @@ function updateFinPlanAllocTotal(trigger = "generic"){
 }
 
 async function saveFinPlan(){
+  const lockedInputs = captureFinPlanEditableState();
   const payload = finPlanPayload();
   const canonical = payload.distribution?.canonicalInput;
   const errs = window.DP_VALIDATORS?.validatePlanInput ? window.DP_VALIDATORS.validatePlanInput(canonical) : [{message:"Validator unavailable"}];
@@ -553,32 +600,39 @@ async function saveFinPlan(){
   showFinPlanError("");
   $("#finPlanStatusLabel").textContent = "Saving…";
   const planUrl = `/clients/${encodeURIComponent(routeId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
-  const res = await fetch(planUrl, {
-    method:"POST",
-    credentials:"include",
-    headers:{
-      "Content-Type":"application/json",
-      "RequestVerificationToken": getAntiForgeryToken()
-    },
-    body: JSON.stringify({ clientProfileId, clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
-  });
-  if (!res.ok){
-    const errorText = (await res.text().catch(() => "")).trim();
-    if (res.status === 409){
-      showFinPlanError("Version conflict — reload the latest plan before saving.");
-    } else {
-      showFinPlanError(errorText || `Save failed (${res.status}).`);
+  try {
+    const res = await fetch(planUrl, {
+      method:"POST",
+      credentials:"include",
+      headers:{
+        "Content-Type":"application/json",
+        "RequestVerificationToken": getAntiForgeryToken()
+      },
+      body: JSON.stringify({ clientProfileId, clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
+    });
+    if (!res.ok){
+      const errorText = (await res.text().catch(() => "")).trim();
+      if (res.status === 409){
+        showFinPlanError("Version conflict — reload the latest plan before saving.");
+      } else {
+        showFinPlanError(errorText || `Save failed (${res.status}).`);
+      }
+      $("#finPlanStatusLabel").textContent = "Save failed";
+      return;
     }
-    $("#finPlanStatusLabel").textContent = "Save failed";
-    return;
+    const data = await res.json();
+    finPlanVersion = data.version || payload.version;
+    $("#finPlanVersion").value = finPlanVersion;
+    if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
+    if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
+    $("#finPlanStatusLabel").textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
+    toast("Plan saved.", { autoClose: 1800 });
+  } finally {
+    restoreFinPlanEditableState(lockedInputs);
+    recalcFinPlanWealthForecastBalance();
+    updateFinPlanAllocTotal();
+    updateFinPlanDownMarketState();
   }
-  const data = await res.json();
-  finPlanVersion = data.version || payload.version;
-  $("#finPlanVersion").value = finPlanVersion;
-  if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
-  if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
-  $("#finPlanStatusLabel").textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
-  toast("Plan saved.", { autoClose: 1800 });
 }
 
 document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { void saveFinPlan(); });
