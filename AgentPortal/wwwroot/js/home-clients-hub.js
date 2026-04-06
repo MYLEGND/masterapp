@@ -169,7 +169,7 @@
     if (recentSub) {
       recentSub.textContent = recentItems.length
         ? "The last client profiles you opened are pinned here for fast repeat access."
-        : "Start opening client profiles here. Until then, the latest portal-enabled clients are shown.";
+        : "";
     }
 
     if (!items.length) {
@@ -187,11 +187,12 @@
 
   async function fetchClients(query = "") {
     const token = ++activeFetchToken;
-    setResultsStatus(query ? "Searching clients…" : "Loading quick access…");
+    const hasQuery = !!norm(query);
+    setResultsStatus(hasQuery ? "Searching clients…" : "");
 
     try {
       const url = new URL(lookupUrl, window.location.origin);
-      if (norm(query)) url.searchParams.set("q", query);
+      if (hasQuery) url.searchParams.set("q", query);
       const response = await fetch(`${url.pathname}${url.search}`, {
         headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin"
@@ -205,10 +206,18 @@
       if (token !== activeFetchToken) return;
 
       const items = Array.isArray(data) ? data : [];
-      if (!norm(query)) defaultItems = items.slice();
-      renderResults(items);
+      if (!hasQuery) {
+        defaultItems = items.slice();
+        clearResults();
+      } else {
+        renderResults(items);
+      }
       renderRecent(defaultItems);
-      setResultsStatus(items.length ? "Select a client to open the live client profile." : "No portal-enabled clients found.", !items.length && !!norm(query));
+      if (hasQuery) {
+        setResultsStatus(items.length ? "Select a client to open the live client profile." : "No portal-enabled clients found.", !items.length);
+      } else {
+        setResultsStatus("");
+      }
     } catch (error) {
       if (token !== activeFetchToken) return;
       clearResults();
@@ -268,7 +277,7 @@
 
   searchInput?.addEventListener("input", debouncedFetch);
   searchInput?.addEventListener("focus", () => {
-    if (results?.hidden) fetchClients(searchInput.value || "");
+    if (norm(searchInput.value)) fetchClients(searchInput.value || "");
   });
 
   document.addEventListener("keydown", (event) => {
