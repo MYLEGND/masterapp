@@ -1709,6 +1709,18 @@ const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystro
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
 
+function calculateAgeFromDOB(dobString) {
+  if (!dobString) return "";
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = (today.getMonth() > dob.getMonth()) || 
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age--;
+  return age.toString();
+}
+
 function buildLeadQuickViewOverrides(){
   return {
     crmStatus: norm(dStatus.value) || "Lead",
@@ -1800,6 +1812,17 @@ function wireQuickViewAutosave(){
       if (activeClientId) queueQuickViewAutosave("Saving…");
     });
   });
+
+  // Auto-calculate age when DOB changes
+  if (dDob) {
+    dDob.addEventListener("change", () => {
+      const calculatedAge = calculateAgeFromDOB(dDob.value);
+      if (calculatedAge && dAge) {
+        dAge.value = calculatedAge;
+        queueQuickViewAutosave("Age updated…");
+      }
+    });
+  }
 }
 
 const clientSearchForm = $("#clientSearchForm");

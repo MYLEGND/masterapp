@@ -2179,20 +2179,8 @@ const dTags = $("#dTags");
 const dNotes = $("#dNotes");
 
 const dNextDate = $("#dNextDate");
-const dMeetingNextDate = $("#dMeetingNextDate");
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
-const dMeetingType = $("#dMeetingType");
-const dMeetingTime = $("#dMeetingTime");
-const dMeetingDuration = $("#dMeetingDuration");
-const dMeetingLocation = $("#dMeetingLocation");
-const dMeetingLocationSuggest = $("#dMeetingLocationSuggest");
-const dZoomWrap = $("#dZoomWrap");
-const dUsePersonalZoomLink = $("#dUsePersonalZoomLink");
-const dZoomJoinUrl = $("#dZoomJoinUrl");
-const dZoomStatus = $("#dZoomStatus");
-const btnZoomSavePersonal = $("#btnZoomSavePersonal");
-const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
 const dCalendarBusyNote = $("#dCalendarBusyNote");
 const dCalendarBusyList = $("#dCalendarBusyList");
@@ -2200,9 +2188,6 @@ const dCalendarWorkHours = $("#dCalendarWorkHours");
 const dCalendarFreeList = $("#dCalendarFreeList");
 
 const dPortalWrap = $("#dPortalWrap");
-const dResendInvitePanel = $("#dResendInvitePanel");
-const dResendInviteEmail = $("#dResendInviteEmail");
-const dResendInviteStatus = $("#dResendInviteStatus");
 const dSaved = $("#dSaved");
 const dWaitingOn = $("#dWaitingOn");
 const dPinnedBrief = $("#dPinnedBrief");
@@ -2256,6 +2241,18 @@ const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystro
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
 
+function calculateAgeFromDOB(dobString) {
+  if (!dobString) return "";
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = (today.getMonth() > dob.getMonth()) || 
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age--;
+  return age.toString();
+}
+
 function buildClientQuickViewOverrides(){
   return {
     crmStatus: norm(dStatus.value) || "Active",
@@ -2266,11 +2263,6 @@ function buildClientQuickViewOverrides(){
     crmTags: norm(dTags.value),
     agentNotes: norm(dNotes.value),
     pipelineStage: norm(dPipelineStage.value) || "NewLead",
-    meetingLocation: norm(dMeetingLocation.value),
-    zoomJoinUrl: norm(dZoomJoinUrl.value),
-    usePersonalZoomLink: !!dUsePersonalZoomLink.checked,
-    meetingTime: norm(dMeetingTime.value) || "09:00",
-    meetingDurationMinutes: parseInt(dMeetingDuration.value || "30", 10) || 30,
     waitingOn: norm(dWaitingOn.value) || "WaitingOnAgent",
     pinnedBrief: norm(dPinnedBrief.value),
     docIdReceived: !!dDocIdReceived.checked,
@@ -2344,6 +2336,17 @@ function wireQuickViewAutosave(){
       if (activeClientId) queueQuickViewAutosave("Saving…");
     });
   });
+
+  // Auto-calculate age when DOB changes
+  if (dDob) {
+    dDob.addEventListener("change", () => {
+      const calculatedAge = calculateAgeFromDOB(dDob.value);
+      if (calculatedAge && dAge) {
+        dAge.value = calculatedAge;
+        queueQuickViewAutosave("Age updated…");
+      }
+    });
+  }
 }
 
 const opportunityPlanningInputs = [
@@ -2394,7 +2397,6 @@ const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
 const btnMarkToday = $("#btnMarkToday");
 const btnSetNextToday = $("#btnSetNextToday");
-const btnMeetingNextToday = $("#btnMeetingNextToday");
 const btnCopyContact = $("#btnCopyContact");
 const btnMail = $("#btnMail");
 const btnCall = $("#btnCall");
@@ -2408,7 +2410,6 @@ const dActDate = $("#dActDate");
 const dActNote = $("#dActNote");
 const btnAddActivity = $("#btnAddActivity");
 const btnClearTimeline = $("#btnClearTimeline");
-const btnCreateCalendarEvent = $("#btnCreateCalendarEvent");
 const timeline = $("#timeline");
 const timelineFilters = $("#timelineFilters");
 
@@ -4542,34 +4543,6 @@ btnSetNextToday?.addEventListener("click", () => {
   refreshCalendarBusyPanel();
 });
 
-btnMeetingNextToday?.addEventListener("click", () => {
-  setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Meeting date set — saving…";
-  queueQuickViewAutosave();
-  refreshCalendarBusyPanel();
-});
-
-dMeetingType?.addEventListener("change", () => {
-  const row = rows.find(r => r.dataset.clientId === activeClientId);
-  applyMeetingType(dMeetingType.value, row);
-  refreshCalendarBusyPanel();
-  queueQuickViewAutosave();
-});
-
-dNextDate?.addEventListener("change", refreshCalendarBusyPanel);
-dNextDate?.addEventListener("change", () => {
-  if (dMeetingNextDate && dMeetingNextDate.value !== dNextDate.value) {
-    dMeetingNextDate.value = dNextDate.value;
-  }
-});
-dMeetingNextDate?.addEventListener("change", () => {
-  if (dNextDate && dNextDate.value !== dMeetingNextDate.value) {
-    dNextDate.value = dMeetingNextDate.value;
-  }
-  refreshCalendarBusyPanel();
-});
-dMeetingTime?.addEventListener("change", refreshCalendarBusyPanel);
-dMeetingDuration?.addEventListener("change", refreshCalendarBusyPanel);
 
 $$("[data-schedulepreset]").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -5188,11 +5161,6 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     crmTags: overrides?.crmTags ?? norm(row.dataset.crmTags),
     agentNotes: overrides?.agentNotes ?? norm(row.dataset.crmNotes),
     pipelineStage: (overrides?.pipelineStage ?? norm(row.dataset.crmPipeline)) || "NewLead",
-    meetingLocation: overrides?.meetingLocation ?? norm(row.dataset.sMeetingLocation),
-    zoomJoinUrl: overrides?.zoomJoinUrl ?? norm(row.dataset.sZoom),
-    usePersonalZoomLink: overrides?.usePersonalZoomLink ?? ((row.dataset.sUsezoom || "false") === "true"),
-    meetingTime: (overrides?.meetingTime ?? norm(row.dataset.sMeetingTime)) || "09:00",
-    meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? parseInt(row.dataset.sMeetingDuration || "30", 10)) || 30,
     waitingOn: overrides?.waitingOn ?? norm(row.dataset.crmWaitingOn),
     pinnedBrief: overrides?.pinnedBrief ?? norm(row.dataset.crmPinnedBrief),
     docIdReceived: overrides?.docIdReceived ?? !!dDocIdReceived?.checked,
@@ -5217,11 +5185,6 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sRecordtype = data.recordType || row.dataset.sRecordtype || "";
   row.dataset.advancedMarketsEligible = ((data.advancedMarketsEligible ?? isAdvancedMarketsEligible(data.recordType || row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible)) ? "true" : "false");
   row.dataset.sPipeline = data.pipelineStage || "NewLead";
-  row.dataset.sMeetingLocation = data.meetingLocation || "";
-  row.dataset.sZoom = data.zoomJoinUrl || "";
-  row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
-  row.dataset.sMeetingTime = data.meetingTime || "09:00";
-  row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || 30);
   row.dataset.sWaiting = data.waitingOn || "WaitingOnAgent";
   row.dataset.sPinnedbrief = data.pinnedBrief || "";
   row.dataset.sStageentered = (data.stageEnteredUtc || "").toString().slice(0, 10) || todayISO();
@@ -6350,8 +6313,6 @@ async function createCalendarEventFromDrawer(){
     toast(err?.message || "Calendar create failed.");
   }
 }
-
-btnCreateCalendarEvent?.addEventListener("click", createCalendarEventFromDrawer);
 
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
