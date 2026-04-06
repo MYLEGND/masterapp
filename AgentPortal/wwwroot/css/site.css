@@ -1117,6 +1117,18 @@ body .table tbody tr:hover {
     background: rgba(166,128,35,.06);
 }
 
+/* ── Dark production tables – cancel global white-table overrides ── */
+body .top-prod-table { background: transparent !important; border: none !important; box-shadow: none !important; }
+body .top-prod-table > :not(caption) > * > * { background: transparent; border-color: rgba(221,180,87,.1); }
+body .top-prod-table thead th { background: rgba(13,20,37,.96) !important; color: #cbd5e1 !important; border-bottom: 1px solid rgba(221,180,87,.25) !important; font-weight: 800 !important; }
+body .top-prod-table tbody td { background: rgba(13,24,43,.92) !important; color: #e5e7eb !important; border-color: rgba(221,180,87,.08) !important; font-weight: 700 !important; }
+body .top-prod-table tbody tr:nth-child(even) td { background: rgba(16,29,51,.96) !important; }
+body .top-prod-table tbody tr:hover td { background: rgba(29,45,73,.98) !important; }
+body .top-prod-table tbody td.text-warning { color: #f4cd67 !important; text-shadow: 0 0 14px rgba(244,205,103,.22) !important; }
+body .top-prod-table tbody td.text-info    { color: #7dc4ff !important; text-shadow: 0 0 14px rgba(125,196,255,.22) !important; }
+body .top-prod-table tbody td.text-success { color: #57d89c !important; text-shadow: 0 0 14px rgba(87,216,156,.22) !important; }
+body .top-prod-table tbody td.text-muted   { color: #94a3b8 !important; }
+
 body .alert {
     border-radius: 16px;
     border-width: 1.5px;
