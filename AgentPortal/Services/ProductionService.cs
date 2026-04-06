@@ -65,6 +65,20 @@ public class ProductionService
         => string.Equals(recordType, "Client", StringComparison.OrdinalIgnoreCase)
            || string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
 
+    private static string? ResolveClientRecordType(string? clientUserId, string? crmNotes, string? pipelineStage)
+    {
+        var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
+        var normalized = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
+        if (!string.IsNullOrWhiteSpace(normalized))
+            return normalized;
+
+        var fromStage = ClientCrmMetaSerializer.NormalizeRecordType(pipelineStage, defaultToLead: false);
+        if (!string.IsNullOrWhiteSpace(fromStage))
+            return fromStage;
+
+        return null;
+    }
+
     private static ResolvedProductionBucket ResolveBucket(
         string agentUserId,
         ProductionSide side,
@@ -73,9 +87,6 @@ public class ProductionService
         IReadOnlySet<string> validLeadOwnership,
         IReadOnlyDictionary<string, string> clientRecordTypes)
     {
-        if (side == ProductionSide.Lead)
-            return ResolvedProductionBucket.Lead;
-
         var clientKey = OwnershipKey(agentUserId, clientUserId);
         if (clientRecordTypes.TryGetValue(clientKey, out var recordType))
             return IsClientRecordType(recordType) ? ResolvedProductionBucket.Client : ResolvedProductionBucket.Lead;
@@ -103,16 +114,17 @@ public class ProductionService
                                 {
                                     ac.AgentUserId,
                                     cp.ClientUserId,
-                                    cp.CrmNotes
+                                    cp.CrmNotes,
+                                    cp.PipelineStage
                                 })
             .ToListAsync(ct);
 
         var clientRecordTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in clientRows)
         {
-            var meta = ClientCrmMetaSerializer.Deserialize(row.CrmNotes);
-            var recordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType);
-            clientRecordTypes[OwnershipKey(row.AgentUserId, row.ClientUserId)] = recordType;
+            var recordType = ResolveClientRecordType(row.ClientUserId, row.CrmNotes, row.PipelineStage);
+            if (!string.IsNullOrWhiteSpace(recordType))
+                clientRecordTypes[OwnershipKey(row.AgentUserId, row.ClientUserId)] = recordType;
         }
 
         return (leadOwnership, clientRecordTypes);
