@@ -14,7 +14,6 @@
 
 /* ------------------------------ Base font sizing -------------------------------- */
 html { font-size: 14px; }
-@media (min-width: 768px) { html { font-size: 16px; } }
 
 /* ------------------------------ Bootstrap focus styles -------------------------------- */
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, 
@@ -48,8 +47,8 @@ footer.footer {
     border: 2px solid var(--legend-gold); 
     z-index: 1050; 
     align-items: center; /* vertical centering for logo + tabs */
-    max-height: 180px;       
-    padding: 2rem 2rem;
+    max-height: 140px;       
+    padding: 0.85rem 1.5rem;
     border-radius: 16px;
     box-shadow: 0 18px 36px rgba(0,0,0,.32);
 }

@@ -433,6 +433,15 @@
             border-color: rgba(52,211,153,.34) !important;
         }
 
+        /* ── restore semantic column / row colors inside founder-tier-page ── */
+        .founder-tier-page .top-prod-table tbody td.text-warning { color: #f4cd67 !important; text-shadow: 0 0 14px rgba(244,205,103,.22) !important; }
+        .founder-tier-page .top-prod-table tbody td.text-info    { color: #7dc4ff !important; text-shadow: 0 0 14px rgba(125,196,255,.22) !important; }
+        .founder-tier-page .top-prod-table tbody td.text-success { color: #57d89c !important; text-shadow: 0 0 14px rgba(87,216,156,.22) !important; }
+        /* color-code split-value rows: 1 = Submitted gold, 2 = Issued blue, 3 = Paid green */
+        .split-values span:nth-child(1) { color: #f4cd67 !important; }
+        .split-values span:nth-child(2) { color: #7dc4ff !important; }
+        .split-values span:nth-child(3) { color: #57d89c !important; }
+
         .founder-tier-page .btn,
         .founder-tier-page button,
         .founder-tier-page input[type="submit"] {
