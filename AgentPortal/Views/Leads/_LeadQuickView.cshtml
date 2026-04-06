@@ -321,7 +321,7 @@
             <div class="modal-dialog modal-dialog-centered actions-hub-dialog">
                 <div class="modal-content actions-hub-content">
                     <div class="modal-header actions-hub-header">
-                        <h5 class="modal-title">Actions &amp; Commitments</h5>
+                        <h5 class="modal-title">Actions, Activity &amp; Commitments</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body actions-hub-body">
@@ -330,6 +330,48 @@
                             <div class="text-muted tiny" style="margin-bottom:6px;">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
                             <div id="leadActionsContainer">
                                 <div class="text-muted">Actions will load here.</div>
+                            </div>
+                        </div>
+                        <div class="qv-subsection">
+                            <h5 style="margin-bottom:8px;">Activity / Timeline</h5>
+                            <div class="text-muted tiny" style="margin-bottom:6px;">Log contact history here and keep the timeline visible in the same Actions hub.</div>
+
+                            <div class="preset-row" id="timelineFilters">
+                                <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
+                            </div>
+                            <div class="grid2">
+                                <div class="f">
+                                    <label>Type</label>
+                                    <select id="dActType">
+                                        <option value="Call">Call</option>
+                                        <option value="Email">Email</option>
+                                        <option value="Meeting">Meeting</option>
+                                        <option value="Text">Text</option>
+                                        <option value="Note">Note</option>
+                                    </select>
+                                </div>
+                                <div class="f">
+                                    <label>Date</label>
+                                    <input type="date" id="dActDate" />
+                                </div>
+                            </div>
+
+                            <div class="f" style="margin-top:10px;">
+                                <label>Outcome / Notes</label>
+                                <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
+                            </div>
+
+                            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
+                                <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
+                            </div>
+
+                            <div style="margin-top:12px;">
+                                <div class="timeline" id="timeline"></div>
                             </div>
                         </div>
                         <div class="qv-subsection">
@@ -343,88 +385,6 @@
                 </div>
             </div>
         </div>
-
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Meeting / Calendar</div>
-                    <div class="qv-section-copy">Scheduling helpers for the lead workflow and Outlook event creation.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="grid2">
-                    <div class="f">
-                        <label>Next Action Date</label>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <input type="date" id="dMeetingNextDate" style="flex:1 1 180px;" />
-                            <button type="button" class="btn btn-ghost" id="btnMeetingNextToday">Today</button>
-                        </div>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Type</label>
-                        <select id="dMeetingType">
-                            <option value="Phone">Phone Call</option>
-                            <option value="Zoom">Zoom Call</option>
-                            <option value="InPerson">In Person</option>
-                        </select>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Time</label>
-                        <input type="time" id="dMeetingTime" />
-                    </div>
-                    <div class="f">
-                        <label>Duration (minutes)</label>
-                        <select id="dMeetingDuration">
-                            <option value="15">15 minutes</option>
-                            <option value="30" selected>30 minutes</option>
-                            <option value="45">45 minutes</option>
-                            <option value="60">1 hour</option>
-                            <option value="90">1 hour 30 minutes</option>
-                            <option value="120">2 hours</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid2" style="margin-top:10px;">
-                    <div class="f">
-                        <label>Location</label>
-                        <input type="text" id="dMeetingLocation" placeholder="Office, Phone, Zoom, Client Home..." />
-                        <div class="meeting-address-suggest" id="dMeetingLocationSuggest"></div>
-                    </div>
-                    <div class="f zoom-panel" id="dZoomWrap">
-                        <label>Zoom</label>
-                        <div class="tiny zoom-status" id="dZoomStatus">No saved personal Zoom room link yet.</div>
-                        <div class="zoom-actions">
-                            <button type="button" class="btn btn-ghost" id="btnZoomSavePersonal">Save My Zoom Link</button>
-                            <button type="button" class="btn btn-ghost" id="btnZoomClearPersonal">Clear Saved Zoom Link</button>
-                        </div>
-                        <label class="zoom-toggle">
-                            <input type="checkbox" id="dUsePersonalZoomLink" />
-                            <span>Use my saved personal Zoom link automatically</span>
-                        </label>
-                        <label class="zoom-link-label">Manual Zoom Link Override (optional)</label>
-                        <input type="url" id="dZoomJoinUrl" placeholder="Leave blank to use your saved personal Zoom link" />
-                    </div>
-                </div>
-
-                <div class="tiny" style="margin-top:10px;">Create Outlook calendar events directly from this lead without leaving the workspace. If you save a personal Zoom room link, you can reuse it here instead of pasting it every time.</div>
-                <div class="calendar-busy-panel" id="dCalendarBusyPanel">
-                    <div class="calendar-busy-head">
-                        <span class="calendar-busy-title">My Day Availability</span>
-                        <span class="pill" id="dCalendarBusyDate">Select a date</span>
-                    </div>
-                    <div class="tiny calendar-busy-note" id="dCalendarBusyNote">Choose a Next Action Date to see your Outlook busy blocks for that day.</div>
-                    <div class="calendar-free-wrap">
-                        <div class="calendar-free-head">
-                            <span class="calendar-free-title">Available To Book</span>
-                            <span class="tiny" id="dCalendarWorkHours">Uses your Outlook work hours</span>
-                        </div>
-                        <div class="calendar-free-list" id="dCalendarFreeList"></div>
-                    </div>
-                    <div class="calendar-busy-list" id="dCalendarBusyList"></div>
-                </div>
-            </div>
-        </details>
 
         <details class="section section-green qv-disclosure">
             <summary>
@@ -470,57 +430,6 @@
             </div>
         </details>
 
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Activity / Timeline</div>
-                    <div class="qv-section-copy">Timeline controls remain available for compatibility; some lead-only actions stay intentionally limited.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="preset-row" id="timelineFilters">
-                    <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
-                </div>
-                <div class="grid2">
-                    <div class="f">
-                        <label>Type</label>
-                        <select id="dActType">
-                            <option value="Call">Call</option>
-                            <option value="Email">Email</option>
-                            <option value="Meeting">Meeting</option>
-                            <option value="Text">Text</option>
-                            <option value="Note">Note</option>
-                        </select>
-                    </div>
-                    <div class="f">
-                        <label>Date</label>
-                        <input type="date" id="dActDate" />
-                    </div>
-                </div>
-
-                <div class="f" style="margin-top:10px;">
-                    <label>Outcome / Notes</label>
-                    <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
-                    <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
-                    <button type="button" class="btn btn-ghost" id="btnCreateCalendarEvent" title="Create a calendar event from Next Action (requires Connect Calendar)">
-                        Create Calendar Event
-                    </button>
-                </div>
-
-                <div style="margin-top:12px;">
-                    <div class="timeline" id="timeline"></div>
-                </div>
-            </div>
-        </details>
-
         <details class="section section-red qv-disclosure" style="border-color:#dc2626;">
             <summary>
                 <div>
@@ -543,19 +452,28 @@
 </aside>
 
 <style>
-    .production-history{margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;background:#0f1629;}
-    .ph-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
-    .ph-title{font-weight:900;letter-spacing:.04em;}
-    .ph-sub{color:#94a3b8;font-weight:700;font-size:0.9rem;}
-    .ph-list{display:flex;flex-direction:column;gap:8px;}
-    .ph-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#0c1222;}
-    .ph-left{display:flex;flex-direction:column;gap:2px;}
-    .ph-status.submitted{color:#fbbf24;}
-    .ph-status.issued{color:#60a5fa;}
-    .ph-status.paid{color:#34d399;}
-    .ph-amt{font-weight:900;}
-    .ph-note{color:#cbd5e1;font-size:0.9rem;}
-    .ph-empty{color:#94a3b8;font-weight:700;}
+    .production-history{margin-bottom:14px;border:1px solid rgba(217,179,90,.20);border-radius:16px;padding:14px;background:linear-gradient(180deg,#121a2e,#0a1020);box-shadow:0 16px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);}
+    .ph-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;}
+    .ph-title{font-weight:950;letter-spacing:.04em;color:#f8fafc;}
+    .ph-sub{color:#8ea0bd;font-weight:700;font-size:0.9rem;}
+    .ph-list{display:flex;flex-direction:column;gap:10px;}
+    .ph-item{display:flex;justify-content:space-between;align-items:stretch;gap:14px;padding:14px 15px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(19,29,51,.96),rgba(10,17,34,.96));box-shadow:0 12px 28px rgba(0,0,0,.18);}
+    .ph-left{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 auto;}
+    .ph-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+    .ph-status{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;border:1px solid transparent;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
+    .ph-status.submitted{color:#fbbf24;background:rgba(251,191,36,.10);border-color:rgba(251,191,36,.30);}
+    .ph-status.issued{color:#fb923c;background:rgba(251,146,60,.10);border-color:rgba(251,146,60,.30);}
+    .ph-status.paid{color:#34d399;background:rgba(52,211,153,.10);border-color:rgba(52,211,153,.30);}
+    .ph-updated{color:#7f8da7;font-size:12px;font-weight:700;}
+    .ph-metrics{display:flex;gap:10px;flex-wrap:wrap;}
+    .ph-metric{min-width:140px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);}
+    .ph-metric-label{display:block;font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#8ea0bd;margin-bottom:4px;}
+    .ph-amt{font-weight:950;font-size:1.05rem;color:#f8fafc;}
+    .ph-amt.personal{color:#c4b5fd;}
+    .ph-note{color:#d7dfec;font-size:0.94rem;line-height:1.45;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);}
+    .ph-actions{display:flex;flex-direction:column;gap:8px;justify-content:center;}
+    .ph-actions .btn{min-width:110px;padding:9px 12px !important;border-radius:12px;font-size:12px !important;font-weight:900;letter-spacing:.02em;min-height:0;box-shadow:none;}
+    .ph-empty{color:#94a3b8;font-weight:800;padding:10px 2px;}
 </style>
 <div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
     <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">

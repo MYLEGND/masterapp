@@ -6488,11 +6488,24 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
       data.forEach(p=>{
         const div = document.createElement("div");
         div.className = "ph-item";
+        const safeStatus = norm(p.status) || "Submitted";
+        const updatedLabel = p.updated ? new Date(p.updated).toLocaleString() : "";
         div.innerHTML = `<div class="ph-left">
-            <div class="ph-amt">$${Number(p.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-amt personal">Personal: $${Number(p.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-status ${p.status.toLowerCase()}">${p.status}</div>
-            <div class="ph-note">${p.notes ?? ""}</div>
+            <div class="ph-top">
+              <div class="ph-status ${safeStatus.toLowerCase()}">${safeStatus}</div>
+              ${updatedLabel ? `<div class="ph-updated">${safeHtml(updatedLabel)}</div>` : ""}
+            </div>
+            <div class="ph-metrics">
+              <div class="ph-metric">
+                <span class="ph-metric-label">${safeHtml(safeStatus)} Amount</span>
+                <div class="ph-amt">$${Number(p.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+              </div>
+              ${Number(p.personalAmount || 0) > 0 ? `<div class="ph-metric">
+                <span class="ph-metric-label">Personal Revenue</span>
+                <div class="ph-amt personal">$${Number(p.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+              </div>` : ""}
+            </div>
+            ${norm(p.notes) ? `<div class="ph-note">${safeHtml(p.notes)}</div>` : ""}
           </div>
           <div class="ph-actions">
             <button class="btn btn-ghost ph-edit" data-id="${p.id}" data-amount="${p.amount}" data-personal="${p.personalAmount ?? ""}" data-status="${p.status}" data-notes="${p.notes ?? ""}">Edit</button>

@@ -1625,18 +1625,18 @@ const dTags = $("#dTags");
 const dNotes = $("#dNotes");
 
 const dNextDate = $("#dNextDate");
-const dMeetingNextDate = $("#dMeetingNextDate");
+const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
-const dMeetingType = $("#dMeetingType");
-const dMeetingTime = $("#dMeetingTime");
-const dMeetingDuration = $("#dMeetingDuration");
-const dMeetingLocation = $("#dMeetingLocation");
-const dMeetingLocationSuggest = $("#dMeetingLocationSuggest");
-const dZoomWrap = $("#dZoomWrap");
-const dUsePersonalZoomLink = $("#dUsePersonalZoomLink");
-const dZoomJoinUrl = $("#dZoomJoinUrl");
-const dZoomStatus = $("#dZoomStatus");
+const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
+const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
+const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
+const dZoomWrap = $("#dZoomWrap") || { style: {}, classList: { add(){}, remove(){} } };
+const dUsePersonalZoomLink = $("#dUsePersonalZoomLink") || { checked: false, addEventListener(){} };
+const dZoomJoinUrl = $("#dZoomJoinUrl") || { value: "", addEventListener(){} };
+const dZoomStatus = $("#dZoomStatus") || { textContent: "" };
 const btnZoomSavePersonal = $("#btnZoomSavePersonal");
 const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
@@ -3440,12 +3440,25 @@ async function loadProductionHistory(leadId){
     data.forEach(item => {
       const div = document.createElement("div");
       div.className = "ph-item";
+      const safeStatus = norm(item.status) || "Submitted";
+      const updatedLabel = item.updated ? new Date(item.updated).toLocaleString() : "";
       div.innerHTML = `
         <div class="ph-left">
+        <div class="ph-top">
+          <div class="ph-status ${safeStatus.toLowerCase()}">${safeStatus}</div>
+          ${updatedLabel ? `<div class="ph-updated">${safeHtml(updatedLabel)}</div>` : ""}
+        </div>
+        <div class="ph-metrics">
+          <div class="ph-metric">
+            <span class="ph-metric-label">${safeHtml(safeStatus)} Amount</span>
             <div class="ph-amt">$${Number(item.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-amt personal">Personal: $${Number(item.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-status ${item.status.toLowerCase()}">${item.status}</div>
-            <div class="ph-note">${item.notes ?? ""}</div>
+          </div>
+          ${Number(item.personalAmount || 0) > 0 ? `<div class="ph-metric">
+            <span class="ph-metric-label">Personal Revenue</span>
+            <div class="ph-amt personal">$${Number(item.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+          </div>` : ""}
+        </div>
+        ${norm(item.notes) ? `<div class="ph-note">${safeHtml(item.notes)}</div>` : ""}
         </div>
         <div class="ph-actions">
             <button class="btn btn-ghost ph-edit" data-id="${item.id}" data-amount="${item.amount}" data-personal="${item.personalAmount ?? ""}" data-status="${item.status}" data-notes="${item.notes ?? ""}">Edit</button>
@@ -3698,6 +3711,8 @@ function openLeadActionsHub(){
   if (modalEl && window.bootstrap){
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
+  if (dActDate && !norm(dActDate.value)) dActDate.value = todayISO();
+  renderTimeline(activeClientDetail?.activities || []);
   void loadLeadActionsPanel();
   void loadLeadCommitmentsPanel();
 }
