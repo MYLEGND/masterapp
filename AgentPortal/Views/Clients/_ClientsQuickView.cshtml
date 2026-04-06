@@ -901,6 +901,236 @@
 </style>
 
 <style>
+    /* Section polish: Production, Relationship/CRM, Planning/Docs, Protection, Team, Secondary */
+    .lead-qv-shell .section.section-gold,
+    .lead-qv-shell .section.section-relationship,
+    .lead-qv-shell .section.section-green,
+    .lead-qv-shell .section.section-violet,
+    .lead-qv-shell .section.section-red,
+    .lead-qv-shell #protectionSnapshotSection,
+    .client-qv-shell .section.section-gold,
+    .client-qv-shell .section.section-relationship,
+    .client-qv-shell .section.section-green,
+    .client-qv-shell .section.section-violet,
+    .client-qv-shell .section.section-red,
+    .client-qv-shell #protectionSnapshotSection{
+        border-width:1px !important;
+        border-style:solid !important;
+        border-color:rgba(123,92,26,.58) !important;
+        background:
+            radial-gradient(820px 220px at 100% -14%, rgba(230,194,110,.09), transparent 56%),
+            linear-gradient(180deg, rgba(16,24,38,.95), rgba(10,16,29,.95)) !important;
+        box-shadow: 0 14px 28px rgba(2,6,23,.24), inset 0 1px 0 rgba(255,255,255,.04) !important;
+    }
+
+    .lead-qv-shell .qv-section-title,
+    .client-qv-shell .qv-section-title{
+        color:#f8ecd0 !important;
+        font-weight:950;
+        letter-spacing:.06em;
+    }
+    .lead-qv-shell .qv-section-header,
+    .client-qv-shell .qv-section-header{position:relative;}
+    .lead-qv-shell .qv-section-header::after,
+    .client-qv-shell .qv-section-header::after{
+        content:"";
+        display:block;
+        width:88px;
+        height:2px;
+        margin-top:7px;
+        border-radius:999px;
+        background:linear-gradient(90deg, rgba(230,194,110,.9), rgba(230,194,110,0));
+    }
+    .lead-qv-shell .qv-section-copy,
+    .client-qv-shell .qv-section-copy{color:#b8c6db !important;}
+
+    .lead-qv-shell .qv-subsection,
+    .client-qv-shell .qv-subsection{
+        border:1px solid rgba(123,92,26,.34) !important;
+        background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)) !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 16px rgba(2,6,23,.16) !important;
+    }
+
+    /* Buttons inside the target sections */
+    .lead-qv-shell .section .btn,
+    .lead-qv-shell .section a.btn,
+    .client-qv-shell .section .btn,
+    .client-qv-shell .section a.btn{
+        border:1px solid #7b5c1a !important;
+        border-radius:12px !important;
+        box-shadow:0 9px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.08) !important;
+        font-weight:900 !important;
+        letter-spacing:.012em;
+    }
+    .lead-qv-shell .section .btn-gold,
+    .client-qv-shell .section .btn-gold{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+    }
+    .lead-qv-shell .section .btn-ghost,
+    .lead-qv-shell .section a.btn-ghost,
+    .client-qv-shell .section .btn-ghost,
+    .client-qv-shell .section a.btn-ghost{
+        background:linear-gradient(180deg,#2d3748,#1f2937) !important;
+        color:#edf2fb !important;
+    }
+    .lead-qv-shell .section #btnDeleteClient,
+    .client-qv-shell .section #btnDeleteClient{
+        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
+        color:#fff !important;
+        border-color:#7b5c1a !important;
+    }
+    .lead-qv-shell .section .btn:hover,
+    .lead-qv-shell .section a.btn:hover,
+    .client-qv-shell .section .btn:hover,
+    .client-qv-shell .section a.btn:hover{
+        transform:translateY(-1px);
+        border-color:#a68023 !important;
+        filter:brightness(1.05);
+    }
+
+    .lead-qv-shell .preset-chip,
+    .client-qv-shell .preset-chip{
+        border:1px solid #7b5c1a !important;
+        background:linear-gradient(180deg,#2f3b50,#222c3d) !important;
+        color:#e7eef9 !important;
+        box-shadow:0 8px 16px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.05) !important;
+    }
+    .lead-qv-shell .preset-chip.active,
+    .lead-qv-shell .preset-chip:hover,
+    .client-qv-shell .preset-chip.active,
+    .client-qv-shell .preset-chip:hover{
+        border-color:#a68023 !important;
+        background:linear-gradient(180deg,#3a4861,#29354a) !important;
+        color:#fff4cf !important;
+    }
+
+    .lead-qv-shell .outcome-btn,
+    .client-qv-shell .outcome-btn{
+        border:1px solid #7b5c1a !important;
+        border-radius:12px !important;
+    }
+
+    /* Explicit color coding for section-internal buttons */
+    .lead-qv-shell #phAddFromDrawer,
+    .lead-qv-shell #clientPhAdd,
+    .lead-qv-shell #btnSaveLocal,
+    .lead-qv-shell #btnOpenProtectionSnapshot,
+    .client-qv-shell #phAddFromDrawer,
+    .client-qv-shell #clientPhAdd,
+    .client-qv-shell #btnSaveLocal,
+    .client-qv-shell #btnOpenProtectionSnapshot{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+        border:1px solid #7b5c1a !important;
+    }
+
+    .lead-qv-shell #btnAddActivity,
+    .client-qv-shell #btnAddActivity{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+        border:1px solid #7b5c1a !important;
+    }
+    .lead-qv-shell #btnClearTimeline,
+    .lead-qv-shell #btnResetLocal,
+    .client-qv-shell #btnClearTimeline,
+    .client-qv-shell #btnResetLocal{
+        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
+        color:#e8edf5 !important;
+        border:1px solid #7b5c1a !important;
+    }
+    .lead-qv-shell #btnShareAgentAccess,
+    .client-qv-shell #btnShareAgentAccess{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+        border:1px solid #7b5c1a !important;
+    }
+    .lead-qv-shell #btnShareAgentAccess[disabled],
+    .client-qv-shell #btnShareAgentAccess[disabled]{
+        background:linear-gradient(180deg,#6b7280,#4b5563) !important;
+        color:#e5e7eb !important;
+        opacity:.7;
+        cursor:not-allowed;
+    }
+    .lead-qv-shell #btnDeleteClient,
+    .client-qv-shell #btnDeleteClient{
+        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
+        color:#fff !important;
+        border:1px solid #7b5c1a !important;
+    }
+
+    .lead-qv-shell .outcome-btn[data-outcome="Booked"],
+    .lead-qv-shell .outcome-btn[data-outcome="PolicyPlaced"],
+    .lead-qv-shell .outcome-btn[data-outcome="BusinessClient"],
+    .client-qv-shell .outcome-btn[data-outcome="Booked"],
+    .client-qv-shell .outcome-btn[data-outcome="PolicyPlaced"],
+    .client-qv-shell .outcome-btn[data-outcome="BusinessClient"]{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+    }
+    .lead-qv-shell .outcome-btn[data-outcome="Contacted"],
+    .lead-qv-shell .outcome-btn[data-outcome="Spoke"],
+    .lead-qv-shell .outcome-btn[data-outcome="NoAnswer"],
+    .lead-qv-shell .outcome-btn[data-outcome="LeftVM"],
+    .client-qv-shell .outcome-btn[data-outcome="Contacted"],
+    .client-qv-shell .outcome-btn[data-outcome="Spoke"],
+    .client-qv-shell .outcome-btn[data-outcome="NoAnswer"],
+    .client-qv-shell .outcome-btn[data-outcome="LeftVM"]{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+    }
+    .lead-qv-shell .outcome-btn[data-outcome="FollowUp"],
+    .lead-qv-shell .outcome-btn[data-outcome="Nurture"],
+    .lead-qv-shell .outcome-btn[data-outcome="NeedsDocs"],
+    .client-qv-shell .outcome-btn[data-outcome="FollowUp"],
+    .client-qv-shell .outcome-btn[data-outcome="Nurture"],
+    .client-qv-shell .outcome-btn[data-outcome="NeedsDocs"]{
+        background:linear-gradient(180deg,#8b6a1e,#5f4615) !important;
+        color:#fff4cf !important;
+    }
+    .lead-qv-shell .outcome-btn[data-outcome="NotInterested"],
+    .lead-qv-shell .outcome-btn[data-outcome="ClosedLost"],
+    .lead-qv-shell .outcome-btn[data-outcome="Lost"],
+    .client-qv-shell .outcome-btn[data-outcome="NotInterested"],
+    .client-qv-shell .outcome-btn[data-outcome="ClosedLost"],
+    .client-qv-shell .outcome-btn[data-outcome="Lost"]{
+        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
+        color:#fff !important;
+    }
+
+    .lead-qv-shell .doc-grid label,
+    .client-qv-shell .doc-grid label{
+        border:1px solid rgba(123,92,26,.58) !important;
+        border-radius:12px !important;
+        background:linear-gradient(180deg,#212d41,#172133) !important;
+        color:#edf2fb !important;
+        box-shadow:0 8px 16px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.04) !important;
+    }
+    .lead-qv-shell .doc-grid input[type="checkbox"],
+    .client-qv-shell .doc-grid input[type="checkbox"]{accent-color:#d6a84a;}
+
+    .lead-qv-shell .timeline,
+    .lead-qv-shell .mention-list,
+    .lead-qv-shell #leadActionsContainer,
+    .lead-qv-shell #leadCommitmentsContainer,
+    .client-qv-shell .timeline,
+    .client-qv-shell .mention-list,
+    .client-qv-shell #clientActionsContainer,
+    .client-qv-shell #clientCommitmentsContainer{
+        border:1px solid rgba(123,92,26,.34) !important;
+        background:linear-gradient(180deg,#1a2437,#131c2b) !important;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 10px 20px rgba(2,6,23,.18) !important;
+    }
+
+    .lead-qv-shell .pill,
+    .client-qv-shell .pill{
+        border:1px solid rgba(123,92,26,.58) !important;
+        background:linear-gradient(180deg,#2a3650,#1f2a40) !important;
+        color:#f0f5ff !important;
+    }
+</style>
+
+<style>
     /* Hard override: top action buttons (beats global quick-view ID rules) */
     .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMarkToday{
         background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
