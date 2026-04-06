@@ -6,6 +6,7 @@
 
     var viewMode = (string)(ViewBag.ViewMode ?? "client");
     viewMode = (viewMode ?? "client").Trim().ToLowerInvariant();
+    var viewingClientName = ((string?)(ViewBag.ViewingClientName) ?? $"{Model.FirstName} {Model.LastName}").Trim();
 
     var badge = viewMode == "agent" ? "Agent View" : "My Profile";
 
@@ -181,6 +182,50 @@
         gap:10px;
         flex-wrap:wrap;
     }
+
+    .legend-impersonation-banner{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+        padding:.85rem 1rem;
+        border-radius:12px;
+        border:1px solid rgba(166,128,35,.45);
+        background:#0f1d38;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    .legend-impersonation-text{
+        font-weight:800;
+        color:#f8fafc;
+        letter-spacing:.02em;
+    }
+
+    .legend-impersonation-text .muted{
+        color:#cbd5e1;
+        font-weight:700;
+    }
+
+    .legend-impersonation-stop{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:38px;
+        padding:0 .9rem;
+        border-radius:999px;
+        border:1px solid rgba(166,128,35,.66);
+        background:rgba(166,128,35,.14);
+        color:#f2d891;
+        font-weight:900;
+        text-decoration:none;
+    }
+
+    .legend-impersonation-stop:hover{
+        color:#f8fafc;
+        background:rgba(166,128,35,.24);
+        border-color:rgba(166,128,35,.88);
+    }
 </style>
 
 <div class="legend-wrap legend-profile-page">
@@ -199,6 +244,17 @@
         </div>
 
         <div class="legend-body legend-profile-body">
+            @if (viewMode == "agent")
+            {
+                <div class="legend-impersonation-banner" role="status" aria-live="polite">
+                    <div class="legend-impersonation-text">
+                        Agent impersonation is active.
+                        <span class="muted">You are viewing the live client experience for @viewingClientName.</span>
+                    </div>
+                    <a class="legend-impersonation-stop" href="/support/stop-view-as-client">End impersonation</a>
+                </div>
+            }
+
             <div class="legend-row legend-profile-grid legend-summary-grid">
                 <div class="legend-field legend-profile-field">
                     <div class="legend-label">Name</div>
