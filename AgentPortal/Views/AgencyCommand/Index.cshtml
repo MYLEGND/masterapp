@@ -260,10 +260,10 @@
         .order-label { font-size:0.85rem; font-weight:700; }
 
         /* Modal */
-        .rev-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;}
+        .rev-modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:9999;padding:2.5vh 0;}
         .rev-modal[aria-hidden="false"]{display:flex;}
         .rev-modal__backdrop{position:absolute;inset:0;background:rgba(0,0,0,.55);backdrop-filter:blur(4px);}        
-        .rev-modal__panel{position:relative;z-index:2;width:min(1200px,94vw);max-height:90vh;overflow-y:auto;background:#0b1529;border:2px solid rgba(221,180,87,.7);border-radius:18px;box-shadow:0 28px 64px rgba(0,0,0,.45);padding:18px;}
+        .rev-modal__panel{position:relative;z-index:2;width:min(1200px,94vw);max-height:90vh;overflow-y:auto;overflow-x:hidden;background:#0b1529;border:2px solid rgba(221,180,87,.7);border-radius:18px;box-shadow:0 28px 64px rgba(0,0,0,.45);padding:18px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable;}
         .rev-modal__header{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;color:#e5e7eb;margin-bottom:10px;}
         .rev-modal__header h2{margin:0;font-weight:900;letter-spacing:.01em;}
         .btn-close{background:transparent;border:1px solid rgba(221,180,87,.5);color:#e5e7eb;font-size:1.4rem;line-height:1;padding:6px 10px;border-radius:10px;}
@@ -323,7 +323,6 @@
         .founder-tier-page .command-hero__content,
         .founder-tier-page .agent-card,
         .founder-tier-page .kpi-card,
-        .founder-tier-page .rev-modal__panel,
         .founder-tier-page .agent-table,
         .founder-tier-page .rev-card,
         .founder-tier-page .accordion-item.soft-dark,
@@ -457,6 +456,24 @@
             color: #0f172a !important;
             border: 1px solid rgba(180,137,31,.44) !important;
             box-shadow: 0 10px 18px rgba(0,0,0,.14) !important;
+        }
+
+        .founder-tier-page .rev-modal__panel {
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+        }
+
+        @@media (max-width: 768px) {
+            .rev-modal {
+                align-items: flex-start;
+                padding: 12px 0;
+            }
+
+            .rev-modal__panel {
+                width: min(96vw, 1200px);
+                max-height: calc(100vh - 24px);
+                margin: 0 auto;
+            }
         }
     </style>
 }
