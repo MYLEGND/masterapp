@@ -28,20 +28,61 @@
     <section class="priority-card mb-4">
         <div class="priority-head">
             <div>
-                <div class="info-kicker">Top Priority</div>
-                <h2 class="info-title mb-1">Your E-policy library</h2>
-                <p class="info-copy mb-0">Upload, preview, download, and remove your insurance documents whenever you need to.</p>
+                <div class="info-kicker">Policy Vault</div>
+                <h2 class="info-title mb-1">Your policy document library</h2>
+                <p class="info-copy mb-0">Upload by policy type, keep files grouped by year, and filter the vault instantly by selected policy type.</p>
             </div>
         </div>
 
         <div class="policy-layout">
             <div class="policy-upload-panel">
+                <div class="policy-family-list">
+                    @foreach (var family in Model.PolicyTypeFamilies)
+                    {
+                        <details class="policy-family" open>
+                            <summary>@family.Family</summary>
+                            <div class="policy-type-lanes">
+                                @foreach (var policyType in family.Types)
+                                {
+                                    <button type="button" class="policy-type-lane" data-pick-policy-type="@policyType">@policyType</button>
+                                }
+                            </div>
+                        </details>
+                    }
+                </div>
+
                 <form asp-controller="Resources" asp-action="UploadPolicyDocuments" method="post" enctype="multipart/form-data" id="policyUploadForm">
                     @Html.AntiForgeryToken()
-                    <input id="policyFileInput" name="files" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple hidden />
 
-                    <div id="policyDropzone" class="policy-dropzone" tabindex="0" role="button" aria-label="Upload E-policy documents">
-                        <div class="policy-dropzone-title">Drop E-policy files here</div>
+                    <div class="policy-form-grid">
+                        <label>
+                            <span class="control-label">Policy year</span>
+                            <input type="number" class="form-control premium-field" name="policyYear" min="2000" max="2100" value="@DateTime.UtcNow.Year" required />
+                        </label>
+                        <label>
+                            <span class="control-label">Policy type</span>
+                            <select id="policyTypeSelect" class="form-select premium-field" name="policyType" required>
+                                @foreach (var family in Model.PolicyTypeFamilies)
+                                {
+                                    <optgroup label="@family.Family">
+                                        @foreach (var policyType in family.Types)
+                                        {
+                                            <option value="@policyType">@policyType</option>
+                                        }
+                                    </optgroup>
+                                }
+                            </select>
+                        </label>
+                        <label class="policy-display-name-wrap">
+                            <span class="control-label">Display name</span>
+                            <input id="policyDisplayName" class="form-control premium-field" type="text" name="displayName" maxlength="140" required value="@(Model.PolicyTypeFamilies.SelectMany(f => f.Types).FirstOrDefault() ?? "Policy Document")" />
+                        </label>
+                    </div>
+
+                    <input id="policyFileInput" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg" hidden required />
+
+                    <div id="policyDropzone" class="policy-dropzone" tabindex="0" role="button" aria-label="Upload policy documents">
+                        <div class="policy-dropzone-title">Drop policy file here</div>
                         <div class="policy-dropzone-copy">or click to browse your device</div>
                         <div id="policyUploadState" class="policy-dropzone-state">Accepted file types: PDF, PNG, JPG, JPEG</div>
                     </div>
@@ -49,50 +90,70 @@
                     <div id="policySelectedFiles" class="selected-files" hidden></div>
 
                     <div class="upload-actions">
-                        <button type="submit" id="policyUploadButton" class="preview-open upload-submit">Upload documents</button>
+                        <button type="submit" id="policyUploadButton" class="preview-open upload-submit">Upload policy</button>
                     </div>
                 </form>
             </div>
 
             <div class="policy-library-panel">
                 <div class="policy-library-head">
-                    <h3 class="policy-library-title m-0">Uploaded documents</h3>
+                    <h3 class="policy-library-title m-0">Yearly vault</h3>
                     <span class="policy-library-count">@Model.PolicyDocuments.Count file@(Model.PolicyDocuments.Count == 1 ? string.Empty : "s")</span>
                 </div>
 
                 @if (Model.PolicyDocuments.Count == 0)
                 {
-                    <div class="policy-empty-state">No E-policy documents have been uploaded yet.</div>
+                    <div class="policy-empty-state">No policy documents have been uploaded yet.</div>
                 }
                 else
                 {
-                    <div class="policy-list">
-                        @foreach (var document in Model.PolicyDocuments)
-                        {
-                            <div class="policy-item">
-                                <button type="button"
-                                        class="policy-preview-trigger"
-                                        data-name="@document.DisplayName"
-                                        data-extension="@document.Extension"
-                                        data-preview-url="@document.PreviewUrl"
-                                        data-download-url="@document.DownloadUrl"
-                                        data-meta="@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")">
-                                    <span class="policy-name">@document.DisplayName</span>
-                                    <span class="policy-meta">@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
-                                </button>
+                    var yearGroups = Model.PolicyDocuments
+                        .OrderByDescending(x => x.PolicyYear)
+                        .ThenByDescending(x => x.UploadedUtc)
+                        .GroupBy(x => x.PolicyYear)
+                        .ToList();
 
-                                <div class="policy-actions">
-                                    <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener">View</a>
-                                    <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
-                                    <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="fileName" value="@document.FileName" />
-                                        <button type="submit" class="policy-delete-button">Delete</button>
-                                    </form>
+                    <div class="policy-vault-year-groups">
+                        @foreach (var group in yearGroups)
+                        {
+                            <details class="policy-year-group" open="@(group.Key == yearGroups.First().Key)">
+                                <summary>
+                                    <span>@group.Key</span>
+                                    <small>@group.Count() file@(group.Count() == 1 ? string.Empty : "s")</small>
+                                </summary>
+
+                                <div class="policy-list">
+                                    @foreach (var document in group)
+                                    {
+                                        <div class="policy-item" data-policy-type="@document.PolicyType">
+                                            <button type="button"
+                                                    class="policy-preview-trigger"
+                                                    data-name="@document.DisplayName"
+                                                    data-extension="@document.Extension"
+                                                    data-preview-url="@document.PreviewUrl"
+                                                    data-download-url="@document.DownloadUrl"
+                                                    data-meta="@document.PolicyFamily • @document.PolicyType • @document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")">
+                                                <span class="policy-name">@document.DisplayName</span>
+                                                <span class="policy-meta">@document.PolicyFamily • @document.PolicyType • @document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                            </button>
+
+                                            <div class="policy-actions">
+                                                <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener">View</a>
+                                                <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
+                                                <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="fileName" value="@document.FileName" />
+                                                    <button type="submit" class="policy-delete-button">Delete</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
-                            </div>
+                            </details>
                         }
                     </div>
+
+                    <div id="policyNoMatch" class="policy-empty-state" hidden>No policy documents found for this policy type.</div>
                 }
             </div>
         </div>
@@ -153,7 +214,7 @@
     <div id="emptyState" class="empty-state mb-4">
         <div class="empty-chip">Preview</div>
         <div class="empty-title">Select a policy document or resource to view it here</div>
-        <div class="empty-text">Use the E-policy list above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
+        <div class="empty-text">Use the policy vault above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
     </div>
 
     <div class="resource-grid">
@@ -300,6 +361,101 @@
     display:grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 18px;
+}
+
+.policy-family-list{
+    display:grid;
+    gap:10px;
+    margin-bottom:14px;
+    max-height:300px;
+    overflow:auto;
+    padding-right:2px;
+}
+
+.policy-family{
+    border:1px solid rgba(92,63,8,.18);
+    border-radius:12px;
+    background:linear-gradient(180deg, rgba(255,255,255,.95), rgba(247,240,224,.90));
+}
+
+.policy-family > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:9px 10px;
+    font-weight:900;
+    color:var(--gold);
+}
+
+.policy-family > summary::-webkit-details-marker{display:none;}
+
+.policy-type-lanes{
+    padding: 0 8px 8px;
+    display:grid;
+    gap:7px;
+}
+
+.policy-type-lane{
+    text-align:left;
+    border:1px solid rgba(92,63,8,.32);
+    border-radius:10px;
+    background: linear-gradient(180deg,#fffefb,#f5ead0);
+    color:#4f3405;
+    font-weight:850;
+    font-size:.82rem;
+    padding:8px 10px;
+}
+
+.policy-type-lane:hover,
+.policy-type-lane.active{
+    border-color: rgba(92,63,8,.66);
+    background: linear-gradient(180deg,#fff4d6,#ecd195);
+    color:#3c2602;
+}
+
+.policy-form-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+    margin-bottom:12px;
+}
+
+.policy-display-name-wrap{grid-column:1/-1;}
+
+.policy-vault-year-groups{
+    display:grid;
+    gap:10px;
+}
+
+.policy-year-group{
+    border:1px solid rgba(92,63,8,.22);
+    border-radius:12px;
+    background:rgba(255,255,255,.76);
+    overflow:hidden;
+}
+
+.policy-year-group > summary{
+    list-style:none;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    cursor:pointer;
+    color:var(--gold);
+    font-weight:950;
+}
+
+.policy-year-group > summary::-webkit-details-marker{display:none;}
+
+.policy-year-group > summary small{
+    color:rgba(92,63,8,.78);
+    font-size:.76rem;
+    font-weight:800;
+}
+
+.policy-list{
+    padding:0 10px 10px;
+    display:grid;
+    gap:9px;
 }
 
 .policy-dropzone{
@@ -625,6 +781,8 @@
         grid-template-columns: 1fr;
     }
 
+    .policy-form-grid{grid-template-columns:1fr;}
+
     .topic-grid{
         grid-template-columns: 1fr;
     }
@@ -667,6 +825,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const uploadState = document.getElementById("policyUploadState");
     const uploadForm = document.getElementById("policyUploadForm");
     const uploadButton = document.getElementById("policyUploadButton");
+    const policyTypeSelect = document.getElementById("policyTypeSelect");
+    const policyDisplayName = document.getElementById("policyDisplayName");
+    const policyTypeLanes = Array.from(document.querySelectorAll("[data-pick-policy-type]"));
+    const policyItems = Array.from(document.querySelectorAll(".policy-item"));
+    const policyYearGroups = Array.from(document.querySelectorAll(".policy-year-group"));
+    const policyNoMatch = document.getElementById("policyNoMatch");
     const container = document.getElementById("resourceContainer");
     const emptyState = document.getElementById("emptyState");
     const title = document.getElementById("resourceTitle");
@@ -676,6 +840,50 @@ document.addEventListener("DOMContentLoaded", function () {
     const content = document.getElementById("resourceContent");
     const policyTriggers = document.querySelectorAll(".policy-preview-trigger");
     const allowedTypes = [".pdf", ".png", ".jpg", ".jpeg"];
+    let autoNameSeed = policyTypeSelect ? (policyTypeSelect.value || "") : "";
+
+    function setActivePolicyLane(type) {
+        policyTypeLanes.forEach(lane => lane.classList.toggle("active", lane.getAttribute("data-pick-policy-type") === type));
+    }
+
+    function applyPolicyTypeFilter(type) {
+        if (!policyItems.length) return;
+
+        let visibleItems = 0;
+        policyYearGroups.forEach(group => {
+            const items = Array.from(group.querySelectorAll(".policy-item"));
+            let yearVisible = 0;
+
+            items.forEach(item => {
+                const match = !type || item.getAttribute("data-policy-type") === type;
+                item.hidden = !match;
+                if (match) {
+                    yearVisible++;
+                    visibleItems++;
+                }
+            });
+
+            const countEl = group.querySelector("summary small");
+            if (countEl) {
+                countEl.textContent = `${yearVisible} file${yearVisible === 1 ? "" : "s"}`;
+            }
+            group.hidden = yearVisible === 0;
+        });
+
+        if (policyNoMatch) {
+            policyNoMatch.hidden = visibleItems > 0;
+        }
+    }
+
+    function applyDefaultDisplayNameFromPolicyType() {
+        if (!policyTypeSelect || !policyDisplayName) return;
+        const current = (policyDisplayName.value || "").trim();
+        const next = (policyTypeSelect.value || "").trim();
+        if (!current || current === autoNameSeed) {
+            policyDisplayName.value = next;
+        }
+        autoNameSeed = next;
+    }
 
     function extTag(ext) {
         if (!ext) return "FILE";
@@ -823,6 +1031,30 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    policyTypeLanes.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const type = btn.getAttribute("data-pick-policy-type") || "";
+            if (policyTypeSelect) {
+                policyTypeSelect.value = type;
+                applyDefaultDisplayNameFromPolicyType();
+            }
+            setActivePolicyLane(type);
+            applyPolicyTypeFilter(type);
+        });
+    });
+
+    if (policyTypeSelect) {
+        policyTypeSelect.addEventListener("change", () => {
+            applyDefaultDisplayNameFromPolicyType();
+            setActivePolicyLane(policyTypeSelect.value);
+            applyPolicyTypeFilter(policyTypeSelect.value);
+        });
+
+        applyDefaultDisplayNameFromPolicyType();
+        setActivePolicyLane(policyTypeSelect.value);
+        applyPolicyTypeFilter(policyTypeSelect.value);
+    }
+
     if (dropzone && fileInput) {
         dropzone.addEventListener("click", () => fileInput.click());
         dropzone.addEventListener("keydown", (e) => {
@@ -848,7 +1080,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         dropzone.addEventListener("drop", (e) => {
             if (!e.dataTransfer || !e.dataTransfer.files) return;
-            fileInput.files = e.dataTransfer.files;
+            const dt = new DataTransfer();
+            const first = e.dataTransfer.files[0];
+            if (first) dt.items.add(first);
+            fileInput.files = dt.files;
             renderSelectedFiles(fileInput.files);
         });
 
@@ -859,7 +1094,7 @@ document.addEventListener("DOMContentLoaded", function () {
         uploadForm.addEventListener("submit", (e) => {
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
                 e.preventDefault();
-                uploadState.textContent = "Choose at least one file before uploading.";
+                uploadState.textContent = "Choose one file before uploading.";
                 dropzone.classList.add("is-error");
                 return;
             }
