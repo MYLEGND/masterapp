@@ -27,6 +27,7 @@ public sealed class AgentDocumentsController : Controller
 
     private static readonly string[] DocumentCategories =
     {
+        "CE — Life & Health",
         "CE — Life & Health (AML)",
         "CE — Life & Health (Long Term Care)",
         "CE — Property & Casualty",
