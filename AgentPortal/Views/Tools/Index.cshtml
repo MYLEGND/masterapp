@@ -6,13 +6,23 @@
     bool showBookings = isAgent || isBusinessClient;
 }
 
-<div class="text-center mb-5">
-    <h1>Legend™ Core Tools</h1>
-    <p class="lead">Quick access to all your Microsoft 365 tools.</p>
-</div>
+<div class="tools-page container py-4">
+    <div class="tools-hero mb-4">
+        <div class="hero-kicker">Legend™ Tools</div>
+        <h1 class="hero-title m-0">Legend™ Core Tools</h1>
+        <p class="hero-sub m-0 mt-2">Quick access to all your Microsoft 365 tools.</p>
+    </div>
 
-<div class="container tools-container">
-    <div class="row g-4 justify-content-center tools-row">
+    <section class="tools-shell">
+        <div class="tools-shell-head">
+            <div>
+                <div class="info-kicker">Productivity Library</div>
+                <h2 class="info-title mb-1">Launch the tools you use most</h2>
+                <p class="info-copy mb-0">Open your core work apps from one premium workspace without leaving the portal flow.</p>
+            </div>
+        </div>
+
+        <div class="row g-4 justify-content-center tools-row">
 
         @* List of Microsoft 365 tools *@
         @{
@@ -40,48 +50,147 @@
         @foreach (var tool in tools)
         {
             <div class="col-6 col-md-3 text-center">
-                <a href="@tool.Url" target="_blank" class="dashboard-tool d-flex flex-column align-items-center justify-content-center">
+                <a href="@tool.Url" target="_blank" class="dashboard-tool tools-tile d-flex flex-column align-items-center justify-content-center">
                     <img src="@Url.Content($"~/images/tools-icons/{tool.Icon}")" alt="@tool.Name" class="mb-2" width="70" height="70" />
-                    <div class="fw-bold mt-2 text-center">@tool.Name</div>
+                    <div class="tool-name fw-bold mt-2 text-center">@tool.Name</div>
                 </a>
             </div>
         }
 
-    </div>
+        </div>
+    </section>
 </div>
 
 <style>
-    /* Page spacing so content never touches layout borders */
-    .tools-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
+    :root{
+        --gold:#b4891f;
+        --line:rgba(201,155,54,.44);
+        --ink:#e9f0ff;
+        --muted:rgba(226,236,255,.82);
+        --bg:#091427;
+        --shadow:0 24px 58px rgba(3,8,18,.45);
+        --shadowSoft:0 14px 34px rgba(3,8,18,.34);
+        --r18:18px;
     }
 
-    .tools-row {
-        margin-bottom: 2rem;
+    .tools-page{
+        background:
+            radial-gradient(1200px 420px at 0% 0%, rgba(201,155,54,.12), transparent 58%),
+            radial-gradient(900px 320px at 100% 0%, rgba(102,124,168,.12), transparent 56%),
+            var(--bg);
+        color:var(--ink);
+        border-radius:18px;
+        padding:12px;
     }
 
-    .dashboard-tool {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 1.25rem;
-        border: 1px solid #a68023;
-        border-radius: 12px;
-        transition: transform 0.2s, box-shadow 0.2s;
-        text-decoration: none;
-        color: #000;
-        font-weight: 600;
+    .tools-hero,
+    .tools-shell{
+        border:1px solid var(--line);
+        border-radius:var(--r18);
+        background:linear-gradient(180deg,#132747,#0d1f3c);
+        box-shadow:var(--shadow);
+        position:relative;
+        overflow:hidden;
     }
 
-    .dashboard-tool:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
-        color: #a68023;
+    .tools-hero::before,
+    .tools-shell::before{
+        content:"";
+        position:absolute;
+        left:0; right:0; top:0;
+        height:4px;
+        background:linear-gradient(90deg,#b4891f,#f0cf78,#b4891f);
     }
 
-    .dashboard-tool img {
-        margin-bottom: 0.5rem;
+    .tools-hero{ padding:22px 20px 20px; }
+    .tools-shell{ padding:20px 18px 18px; }
+    .tools-shell-head{ margin-bottom:16px; }
+    .tools-row{ margin-bottom:0; }
+
+    .hero-kicker,
+    .info-kicker{
+        display:inline-block;
+        font-weight:900;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        font-size:.74rem;
+        color:#b4891f;
+    }
+
+    .hero-title,
+    .info-title,
+    .tool-name{
+        color:#b4891f;
+        font-weight:900;
+    }
+
+    .hero-title{
+        margin-top:10px !important;
+        font-size:clamp(1.9rem,3vw,2.45rem);
+        line-height:1.08;
+        text-shadow:0 1px 0 rgba(34,23,5,.8);
+    }
+
+    .hero-sub,
+    .info-copy{
+        color:var(--muted);
+        line-height:1.75;
+    }
+
+    .tools-tile{
+        min-height:170px;
+        padding:1.3rem 1rem !important;
+        border:1px solid rgba(201,155,54,.42) !important;
+        border-radius:18px !important;
+        background:linear-gradient(180deg,#182f55,#102544) !important;
+        box-shadow:var(--shadowSoft) !important;
+        text-decoration:none;
+        color:#e9f0ff !important;
+        transition:transform .16s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
+    }
+
+    .tools-tile:hover{
+        transform:translateY(-4px);
+        box-shadow:0 18px 34px rgba(3,8,18,.40) !important;
+        border-color:rgba(240,207,120,.72) !important;
+        background:linear-gradient(180deg,#204171,#16335a) !important;
+        color:#e9f0ff !important;
+    }
+
+    .tools-tile img{
+        margin-bottom:.5rem;
+        filter:drop-shadow(0 10px 18px rgba(0,0,0,.28));
+    }
+
+    /* Hard lock against global site.css white-card overrides */
+    .tools-page.tools-container,
+    .tools-page .tools-hero,
+    .tools-page .tools-shell,
+    .tools-page .tools-tile{
+        background:linear-gradient(180deg,#132747,#0d1f3c) !important;
+        border:1px solid rgba(201,155,54,.44) !important;
+        box-shadow:0 24px 58px rgba(3,8,18,.45) !important;
+    }
+
+    .tools-page .tools-tile{
+        background:linear-gradient(180deg,#182f55,#102544) !important;
+        box-shadow:0 14px 34px rgba(3,8,18,.34) !important;
+    }
+
+    .tools-page .hero-kicker,
+    .tools-page .hero-title,
+    .tools-page .info-kicker,
+    .tools-page .info-title,
+    .tools-page .tool-name{
+        color:#b4891f !important;
+    }
+
+    .tools-page .hero-sub,
+    .tools-page .info-copy{
+        color:#d7e2f7 !important;
+    }
+
+    @@media (max-width: 767.98px){
+        .hero-title{ font-size:1.5rem; }
     }
 </style>
