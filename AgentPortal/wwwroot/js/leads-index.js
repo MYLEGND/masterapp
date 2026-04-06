@@ -3441,15 +3441,16 @@ async function loadProductionHistory(leadId){
       const div = document.createElement("div");
       div.className = "ph-item";
       const safeStatus = norm(item.status) || "Submitted";
+      const toneClass = safeStatus.toLowerCase();
       const updatedLabel = item.updated ? new Date(item.updated).toLocaleString() : "";
       div.innerHTML = `
         <div class="ph-left">
         <div class="ph-top">
-          <div class="ph-status ${safeStatus.toLowerCase()}">${safeStatus}</div>
+          <div class="ph-status ${toneClass}">${safeStatus}</div>
           ${updatedLabel ? `<div class="ph-updated">${safeHtml(updatedLabel)}</div>` : ""}
         </div>
         <div class="ph-metrics">
-          <div class="ph-metric">
+          <div class="ph-metric ${toneClass}">
             <span class="ph-metric-label">${safeHtml(safeStatus)} Amount</span>
             <div class="ph-amt">$${Number(item.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
           </div>
@@ -3457,8 +3458,8 @@ async function loadProductionHistory(leadId){
             <span class="ph-metric-label">Personal Revenue</span>
             <div class="ph-amt personal">$${Number(item.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
           </div>` : ""}
+          ${norm(item.notes) ? `<div class="ph-note"><span class="ph-note-label">Notes</span><span class="ph-note-text">${safeHtml(item.notes)}</span></div>` : ""}
         </div>
-        ${norm(item.notes) ? `<div class="ph-note">${safeHtml(item.notes)}</div>` : ""}
         </div>
         <div class="ph-actions">
             <button class="btn btn-ghost ph-edit" data-id="${item.id}" data-amount="${item.amount}" data-personal="${item.personalAmount ?? ""}" data-status="${item.status}" data-notes="${item.notes ?? ""}">Edit</button>
