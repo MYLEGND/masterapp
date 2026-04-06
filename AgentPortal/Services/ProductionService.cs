@@ -64,44 +64,33 @@ public class ProductionService
         if (amount < 0) throw new ArgumentException("Amount cannot be negative.", nameof(amount));
         if (personalAmount < 0) personalAmount = 0;
 
+        if (side == ProductionSide.Lead && string.IsNullOrWhiteSpace(leadId))
+            throw new ArgumentException("LeadId is required for lead production.", nameof(leadId));
+        if (side == ProductionSide.Client && string.IsNullOrWhiteSpace(clientUserId))
+            throw new ArgumentException("ClientUserId is required for client production.", nameof(clientUserId));
+
         var normAgent = Norm(targetAgentUserId);
-        var query = _db.ProductionRecords
-            .Where(p =>
-                p.AgentUserId == normAgent &&
-                p.Side == side &&
-                ((side == ProductionSide.Lead && p.LeadId == leadId) ||
-                 (side == ProductionSide.Client && p.ClientUserId == clientUserId)));
+        var now = DateTime.UtcNow;
 
-        var existing = await query
-            .OrderByDescending(p => p.UpdatedUtc)
-            .FirstOrDefaultAsync(ct);
-
-        if (existing == null)
+        // Add operation should always create a new production row.
+        // Editing/deleting specific rows is handled via UpdateAsync/DeleteAsync using record Id.
+        var record = new ProductionRecord
         {
-            existing = new ProductionRecord
-            {
-                AgentUserId = normAgent,
-                Side = side,
-                LeadId = leadId,
-                ClientUserId = clientUserId,
-                CreatedUtc = DateTime.UtcNow
-            };
-            _db.ProductionRecords.Add(existing);
-        }
+            AgentUserId = normAgent,
+            Side = side,
+            LeadId = side == ProductionSide.Lead ? leadId : null,
+            ClientUserId = side == ProductionSide.Client ? clientUserId : null,
+            Status = status,
+            Amount = amount,
+            PersonalAmount = personalAmount,
+            Notes = notes?.Trim(),
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
 
-        existing.Status = status;
-        existing.Amount = amount;
-        existing.PersonalAmount = personalAmount;
-        existing.Notes = notes?.Trim();
-        existing.UpdatedUtc = DateTime.UtcNow;
-
-        // ensure only one record per contact/side to avoid double counting
-        var extras = await query.Where(p => p.Id != existing.Id).ToListAsync(ct);
-        if (extras.Count > 0)
-            _db.ProductionRecords.RemoveRange(extras);
-
+        _db.ProductionRecords.Add(record);
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("Production upsert by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
+        _logger.LogInformation("Production add by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
     }
 
     public async Task<List<ProductionRecord>> GetForContactAsync(string agentUserId, ProductionSide side, string contactId, CancellationToken ct = default)

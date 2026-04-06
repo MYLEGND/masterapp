@@ -3793,16 +3793,21 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     right:8px;
     top:-4px;
     font-weight:800;
-    font-size:13px;
+    font-size:12px;
     color:#0f172a;
     text-align:right;
     background:rgba(255,255,255,0.86);
     border-radius:10px;
-    padding:4px 8px;
+    padding:6px 8px;
     box-shadow:0 6px 12px rgba(0,0,0,.12);
     pointer-events:none;
+    min-width:150px;
 }
 .lead-prod-badge .prod-amt{color:#16a34a;font-weight:900;}
+.lead-prod-badge .prod-line{display:flex;justify-content:space-between;gap:10px;line-height:1.25;white-space:nowrap;}
+.lead-prod-badge .prod-line + .prod-line{margin-top:2px;}
+.lead-prod-badge .prod-lbl{font-weight:900;color:#1f2937;}
+.lead-prod-badge .prod-val{font-weight:900;color:#0f172a;}
 .lead-prod-badge.hidden{display:none;}
 
     .meta-chip{

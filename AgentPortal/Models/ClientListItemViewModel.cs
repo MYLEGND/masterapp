@@ -56,4 +56,7 @@ public sealed class ClientListItemViewModel
     public string? WatchersCsv { get; set; }
     public string? ProductionStatus { get; set; }
     public decimal ProductionAmount { get; set; }
+    public decimal ProductionSubmittedAmount { get; set; }
+    public decimal ProductionIssuedAmount { get; set; }
+    public decimal ProductionPaidAmount { get; set; }
 }

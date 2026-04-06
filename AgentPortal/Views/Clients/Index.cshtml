@@ -572,8 +572,11 @@ else
                 var sLoanAmount = (c.LoanAmount ?? "").Trim();
                 var sLender = (c.MortgageLender ?? "").Trim();
                 var sDob = c.DOB.HasValue ? c.DOB.Value.ToString("yyyy-MM-dd") : "";
-                var prodStatus = (c.ProductionStatus ?? "").Trim();
-                var prodAmount = c.ProductionAmount;
+                var prodPaid = c.ProductionPaidAmount;
+                var prodIssued = c.ProductionIssuedAmount;
+                var prodSubmitted = c.ProductionSubmittedAmount;
+                var prodStatus = prodPaid > 0 ? "Paid" : "";
+                var prodAmount = prodPaid;
                 var resolvedRecordType = string.Equals(sRecordType, "BusinessClient", StringComparison.OrdinalIgnoreCase)
                     ? "BusinessClient"
                     : (string.Equals(sPipeline, "BusinessClient", StringComparison.OrdinalIgnoreCase)
@@ -639,6 +642,9 @@ else
                     data-mortgagelender="@sLender"
                     data-paid="@c.PaidAmount"
                     data-personal="@c.PersonalAmount"
+                    data-prod-paid="@prodPaid"
+                    data-prod-issued="@prodIssued"
+                    data-prod-submitted="@prodSubmitted"
                     data-prod-status="@prodStatus"
                     data-prod-amount="@prodAmount">
 
@@ -649,9 +655,9 @@ else
                     <td data-label="Client" data-col="name" data-open-row="true">
                         <div class="cell-stack cell-with-prod">
                             <div class="lead-prod-card" data-prod-card>
-                                @if (!string.IsNullOrWhiteSpace(prodStatus) && prodAmount > 0)
+                                @if (prodPaid > 0)
                                 {
-                                    <span class="prod-status">@prodStatus</span><span class="prod-amt"> @prodAmount.ToString("C0")</span>
+                                    <span class="prod-status">Paid</span><span class="prod-amt"> @prodPaid.ToString("C0")</span>
                                 }
                             </div>
                             <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>

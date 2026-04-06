@@ -1375,6 +1375,10 @@ namespace AgentPortal.Controllers;
             .Select(g => new
             {
                 ClientUserId = g.Key,
+                Submitted = g.Where(p => p.Status == ProductionStatus.Submitted)
+                             .Select(p => (decimal?)p.Amount).Sum() ?? 0,
+                Issued = g.Where(p => p.Status == ProductionStatus.Issued)
+                          .Select(p => (decimal?)p.Amount).Sum() ?? 0,
                 Paid = g.Where(p => p.Status == ProductionStatus.Paid)
                         .Select(p => (decimal?)p.Amount).Sum() ?? 0,
                 Personal = g.Select(p => (decimal?)p.PersonalAmount).Sum() ?? 0,
@@ -1394,6 +1398,8 @@ namespace AgentPortal.Controllers;
                 var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(x.CrmNotes));
                 var recordType = ResolveRecordType(x.ClientUserId, meta);
                 productionDict.TryGetValue(x.ClientUserId, out var prod);
+                var submitted = prod?.Submitted ?? 0;
+                var issued = prod?.Issued ?? 0;
                 var paid = prod?.Paid ?? 0;
                 var personal = prod?.Personal ?? 0;
                 var allByEmail = clients.Count(cp =>
@@ -1461,6 +1467,9 @@ namespace AgentPortal.Controllers;
                     WatchersCsv = string.Join(", ", meta.Collaboration.Watchers),
                     ProductionStatus = prod?.LatestStatus.ToString() ?? "",
                     ProductionAmount = prod?.LatestAmount ?? 0,
+                    ProductionSubmittedAmount = submitted,
+                    ProductionIssuedAmount = issued,
+                    ProductionPaidAmount = paid,
                     PaidAmount = paid,
                     PersonalAmount = personal
                 });
