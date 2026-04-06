@@ -8,7 +8,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Graph;
 using Microsoft.Graph.Models.ODataErrors;
+using Azure.Identity;
 using Microsoft.VisualBasic.FileIO;
 using Shared.Auth;
 using System.Security.Cryptography;
@@ -64,6 +66,199 @@ namespace AgentPortal.Controllers;
 
         private static string NormLower(string? v) => (v ?? "").Trim().ToLowerInvariant();
         private static string Norm(string? v) => (v ?? "").Trim();
+        private const string AgentTenantDomain = "@mylegnd.com";
+
+        private static bool IsAgentTenantEmail(string? email)
+            => !string.IsNullOrWhiteSpace(email)
+               && email.Trim().EndsWith(AgentTenantDomain, StringComparison.OrdinalIgnoreCase);
+
+        private static string DigitsOnly(string? input)
+            => new string((input ?? string.Empty).Where(char.IsDigit).ToArray());
+
+        private static string EscapeODataLiteral(string value)
+            => (value ?? string.Empty).Replace("'", "''");
+
+        private GraphServiceClient? BuildGraphClientForLookup()
+        {
+            var tenantId = (_config["GraphProvisioning:TenantId"]
+                            ?? _config["AzureAd:TenantId"]
+                            ?? _config["GraphProvisioning__TenantId"]
+                            ?? _config["AzureAd__TenantId"])?.Trim();
+            var clientId = (_config["GraphProvisioning:ClientId"]
+                            ?? _config["AzureAd:ClientId"]
+                            ?? _config["GraphProvisioning__ClientId"]
+                            ?? _config["AzureAd__ClientId"])?.Trim();
+            var clientSecret = (_config["GraphProvisioning:ClientSecret"]
+                                ?? _config["AzureAd:ClientSecret"]
+                                ?? _config["GraphProvisioning__ClientSecret"]
+                                ?? _config["AzureAd__ClientSecret"])?.Trim();
+
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                return null;
+
+            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+            return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
+        }
+
+        private sealed class TeamAgentLookupResult
+        {
+            public string AgentUserId { get; set; } = "";
+            public string AgentUpn { get; set; } = "";
+            public string FullName { get; set; } = "";
+            public string Phone { get; set; } = "";
+        }
+
+        private async Task<List<TeamAgentLookupResult>> SearchTenantAgentsAsync(string search, CancellationToken ct = default)
+        {
+            var query = NormLower(search);
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+                return new List<TeamAgentLookupResult>();
+
+            var queryDigits = DigitsOnly(query);
+            var merged = new Dictionary<string, TeamAgentLookupResult>(StringComparer.OrdinalIgnoreCase);
+
+            void Upsert(TeamAgentLookupResult item)
+            {
+                if (item == null) return;
+                if (string.IsNullOrWhiteSpace(item.AgentUserId) || !IsAgentTenantEmail(item.AgentUpn)) return;
+
+                var key = NormLower(item.AgentUserId);
+                if (!merged.TryGetValue(key, out var existing))
+                {
+                    merged[key] = item;
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(existing.FullName) && !string.IsNullOrWhiteSpace(item.FullName))
+                    existing.FullName = item.FullName;
+                if (string.IsNullOrWhiteSpace(existing.Phone) && !string.IsNullOrWhiteSpace(item.Phone))
+                    existing.Phone = item.Phone;
+                if (string.IsNullOrWhiteSpace(existing.AgentUpn) && !string.IsNullOrWhiteSpace(item.AgentUpn))
+                    existing.AgentUpn = item.AgentUpn;
+            }
+
+            var localProfiles = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => (x.AgentUpn ?? "").ToLower().EndsWith(AgentTenantDomain))
+                .ToListAsync(ct);
+
+            foreach (var profile in localProfiles)
+            {
+                var upn = Norm(profile.AgentUpn);
+                if (!IsAgentTenantEmail(upn)) continue;
+
+                var fullName = Norm(profile.FullName);
+                var phone = Norm(profile.Phone);
+                var haystack = string.Join(" ",
+                    fullName,
+                    upn,
+                    Norm(profile.NormalizedEmail),
+                    phone).ToLowerInvariant();
+
+                var phoneDigits = DigitsOnly(phone);
+                if (!haystack.Contains(query) && (string.IsNullOrWhiteSpace(queryDigits) || !phoneDigits.Contains(queryDigits)))
+                    continue;
+
+                Upsert(new TeamAgentLookupResult
+                {
+                    AgentUserId = Norm(profile.AgentUserId),
+                    AgentUpn = upn,
+                    FullName = fullName,
+                    Phone = phone
+                });
+            }
+
+            try
+            {
+                var graph = BuildGraphClientForLookup();
+                if (graph != null)
+                {
+                    var escaped = EscapeODataLiteral(query);
+                    var response = await graph.Users.GetAsync(req =>
+                    {
+                        req.QueryParameters.Top = 25;
+                        req.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName", "mail", "mobilePhone", "businessPhones" };
+                        req.QueryParameters.Filter = $"accountEnabled eq true and (startswith(displayName,'{escaped}') or startswith(userPrincipalName,'{escaped}') or startswith(mail,'{escaped}'))";
+                    }, ct);
+
+                    foreach (var user in response?.Value ?? Enumerable.Empty<Microsoft.Graph.Models.User>())
+                    {
+                        var upn = Norm(user.UserPrincipalName);
+                        if (!IsAgentTenantEmail(upn)) continue;
+
+                        var phone = Norm(user.MobilePhone);
+                        if (string.IsNullOrWhiteSpace(phone) && user.BusinessPhones != null && user.BusinessPhones.Count > 0)
+                            phone = Norm(user.BusinessPhones.FirstOrDefault());
+
+                        Upsert(new TeamAgentLookupResult
+                        {
+                            AgentUserId = Norm(user.Id),
+                            AgentUpn = upn,
+                            FullName = Norm(user.DisplayName),
+                            Phone = phone
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tenant agent lookup via Graph failed. Falling back to local agent profiles only.");
+            }
+
+            return merged.Values
+                .OrderBy(x => string.IsNullOrWhiteSpace(x.FullName) ? 1 : 0)
+                .ThenBy(x => x.FullName)
+                .ThenBy(x => x.AgentUpn)
+                .Take(25)
+                .ToList();
+        }
+
+        private async Task<List<object>> BuildClientSharedAccessListAsync(string clientUserIdNorm, CancellationToken ct = default)
+        {
+            var links = await _db.AgentClients
+                .AsNoTracking()
+                .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+                .OrderBy(x => x.CreatedUtc)
+                .ToListAsync(ct);
+
+            if (links.Count == 0)
+                return new List<object>();
+
+            var agentIds = links
+                .Select(x => NormLower(x.AgentUserId))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToArray();
+
+            var profiles = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => agentIds.Contains((x.AgentUserId ?? "").ToLower()))
+                .ToListAsync(ct);
+
+            var profileByAgent = profiles
+                .GroupBy(x => NormLower(x.AgentUserId))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedUtc).First(), StringComparer.OrdinalIgnoreCase);
+
+            var ownerAgentId = NormLower(links.First().AgentUserId);
+
+            return links.Select(link =>
+            {
+                var key = NormLower(link.AgentUserId);
+                profileByAgent.TryGetValue(key, out var profile);
+                var upn = string.IsNullOrWhiteSpace(profile?.AgentUpn) ? link.AgentUpn : profile!.AgentUpn;
+                var fullName = string.IsNullOrWhiteSpace(profile?.FullName) ? upn : profile!.FullName;
+
+                return (object)new
+                {
+                    agentUserId = link.AgentUserId,
+                    agentUpn = upn,
+                    fullName,
+                    phone = profile?.Phone ?? "",
+                    linkedUtc = link.CreatedUtc,
+                    isOwner = string.Equals(ownerAgentId, key, StringComparison.OrdinalIgnoreCase)
+                };
+            }).ToList();
+        }
         private static string? NormalizeEmail(string? email)
         {
             var v = (email ?? "").Trim().ToLowerInvariant();
@@ -2869,6 +3064,21 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public string? MentionNote { get; set; }
     }
 
+    public sealed class GrantClientAccessRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string AgentUserId { get; set; } = "";
+        public string? AgentUpn { get; set; }
+        public string? AgentName { get; set; }
+        public string? AgentPhone { get; set; }
+    }
+
+    public sealed class RevokeClientAccessRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string AgentUserId { get; set; } = "";
+    }
+
     public sealed class SaveAdvancedMarketsInputsRequest
     {
         public Guid? ClientProfileId { get; set; }
@@ -3339,6 +3549,186 @@ meta.Activities ??= new List<ClientCrmActivity>();
             _logger.LogError(ex, "PortalQuickAccessClients error agent={Agent} q={Search}", agentOid, q);
             return Json(Array.Empty<object>());
         }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> CollaboratorLookup(string clientUserId, string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(clientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var search = NormLower(q);
+        if (string.IsNullOrWhiteSpace(search) || search.Length < 2)
+            return Json(Array.Empty<object>());
+
+        var sharedAgentIds = await _db.AgentClients
+            .AsNoTracking()
+            .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+            .Select(x => (x.AgentUserId ?? "").ToLower())
+            .Distinct()
+            .ToListAsync(HttpContext.RequestAborted);
+
+        var sharedSet = new HashSet<string>(sharedAgentIds, StringComparer.OrdinalIgnoreCase);
+        var results = await SearchTenantAgentsAsync(search, HttpContext.RequestAborted);
+
+        return Json(results.Select(x => new
+        {
+            agentUserId = x.AgentUserId,
+            agentUpn = x.AgentUpn,
+            fullName = x.FullName,
+            phone = x.Phone,
+            isShared = sharedSet.Contains(NormLower(x.AgentUserId))
+        }));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ClientAccessCollaborators(string clientUserId)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(clientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(shared);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> GrantClientAccess([FromBody] GrantClientAccessRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        var targetAgentId = NormLower(request.AgentUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm) || string.IsNullOrWhiteSpace(targetAgentId))
+            return BadRequest("clientUserId and agentUserId are required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var targetUpn = NormLower(request.AgentUpn);
+        if (string.IsNullOrWhiteSpace(targetUpn))
+        {
+            targetUpn = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => (x.AgentUserId ?? "").ToLower() == targetAgentId)
+                .Select(x => (x.AgentUpn ?? "").ToLower())
+                .FirstOrDefaultAsync();
+        }
+
+        if (!IsAgentTenantEmail(targetUpn))
+            return BadRequest("Only @mylegnd.com tenant agents can be granted shared access.");
+
+        var exists = await _db.AgentClients.AnyAsync(x =>
+            (x.ClientUserId ?? "").ToLower() == clientUserIdNorm &&
+            (x.AgentUserId ?? "").ToLower() == targetAgentId);
+
+        if (!exists)
+        {
+            _db.AgentClients.Add(new AgentClient
+            {
+                AgentUserId = targetAgentId,
+                ClientUserId = clientUserIdNorm,
+                AgentUpn = targetUpn,
+                CreatedUtc = DateTime.UtcNow
+            });
+        }
+
+        var profile = await _db.AgentProfiles.FirstOrDefaultAsync(x => (x.AgentUserId ?? "").ToLower() == targetAgentId);
+        if (profile == null)
+        {
+            _db.AgentProfiles.Add(new AgentProfile
+            {
+                AgentUserId = targetAgentId,
+                AgentUpn = targetUpn,
+                NormalizedEmail = targetUpn,
+                FullName = Norm(request.AgentName),
+                Phone = Norm(request.AgentPhone),
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(profile.AgentUpn)) profile.AgentUpn = targetUpn;
+            if (string.IsNullOrWhiteSpace(profile.NormalizedEmail)) profile.NormalizedEmail = targetUpn;
+            if (string.IsNullOrWhiteSpace(profile.FullName) && !string.IsNullOrWhiteSpace(request.AgentName)) profile.FullName = Norm(request.AgentName);
+            if (string.IsNullOrWhiteSpace(profile.Phone) && !string.IsNullOrWhiteSpace(request.AgentPhone)) profile.Phone = Norm(request.AgentPhone);
+            profile.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "GrantClientAccess failed for client={ClientUserId} targetAgent={TargetAgent}", clientUserIdNorm, targetAgentId);
+            return Conflict("Client sharing could not be saved. If this environment still enforces single-owner links, apply the latest Infrastructure migration.");
+        }
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(new { ok = true, sharedAgents = shared });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevokeClientAccess([FromBody] RevokeClientAccessRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        var targetAgentId = NormLower(request.AgentUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm) || string.IsNullOrWhiteSpace(targetAgentId))
+            return BadRequest("clientUserId and agentUserId are required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var allLinks = await _db.AgentClients
+            .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+            .ToListAsync();
+
+        var targetLinks = allLinks
+            .Where(x => (x.AgentUserId ?? "").ToLower() == targetAgentId)
+            .ToList();
+
+        if (!targetLinks.Any())
+        {
+            var existing = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+            return Json(new { ok = true, sharedAgents = existing });
+        }
+
+        if (allLinks.Count <= targetLinks.Count)
+            return BadRequest("At least one permitted agent must remain on the client.");
+
+        if (string.Equals(targetAgentId, NormLower(agentOid), StringComparison.OrdinalIgnoreCase))
+            return BadRequest("You cannot revoke your own access from this panel.");
+
+        _db.AgentClients.RemoveRange(targetLinks);
+        await _db.SaveChangesAsync();
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(new { ok = true, sharedAgents = shared });
     }
 
     [HttpGet]

@@ -490,8 +490,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ClientUserId).HasMaxLength(450);
             e.Property(x => x.AgentUpn).HasMaxLength(320);
 
-            // HARD RULE: client belongs to one agent
-            e.HasIndex(x => x.ClientUserId).IsUnique();
+            // Collaboration rule: a client can be shared with multiple permitted agents.
+            e.HasIndex(x => x.ClientUserId);
 
             // no duplicate pairs
             e.HasIndex(x => new { x.AgentUserId, x.ClientUserId }).IsUnique();

@@ -137,7 +137,21 @@ namespace ClientApp.Controllers
                 }
             }
 
-            return NotFound();
+                        const string fallbackSvg = """
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>
+    <defs>
+        <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+            <stop offset='0%' stop-color='#0f1d38'/>
+            <stop offset='100%' stop-color='#1f355f'/>
+        </linearGradient>
+    </defs>
+    <rect width='120' height='120' rx='60' fill='url(#g)'/>
+    <circle cx='60' cy='47' r='24' fill='#f1f5f9'/>
+    <path d='M18 104c8-19 24-30 42-30s34 11 42 30' fill='#f1f5f9'/>
+</svg>
+""";
+
+                        return Content(fallbackSvg, "image/svg+xml");
         }
     }
 }

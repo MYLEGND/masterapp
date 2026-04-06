@@ -252,8 +252,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClientUserId")
-                        .IsUnique();
+                    b.HasIndex("ClientUserId");
 
                     b.HasIndex("AgentUserId", "ClientUserId")
                         .IsUnique();

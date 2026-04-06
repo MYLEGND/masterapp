@@ -2238,6 +2238,15 @@ const dAssignedOwner = $("#dAssignedOwner");
 const dWatchers = $("#dWatchers");
 const dMentionNote = $("#dMentionNote");
 const mentionList = $("#mentionList");
+const dShareAgentSearch = $("#dShareAgentSearch");
+const dShareSelectedAgent = $("#dShareSelectedAgent");
+const dShareAgentResults = $("#dShareAgentResults");
+const btnShareAgentAccess = $("#btnShareAgentAccess");
+const dShareAgentStatus = $("#dShareAgentStatus");
+const dSharedAgentList = $("#dSharedAgentList");
+
+let shareLookupTimer = null;
+let selectedShareAgent = null;
 
 // Quick View autosave (debounced)
 const AUTOSAVE_DELAY_MS = 900;
@@ -3517,6 +3526,7 @@ async function openDrawerForRow(row){
     refreshCalendarBusyPanel();
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
+    await loadSharedAgentAccess(activeClientId);
     setAdvancedMarketsActionState(
       detail.recordType || row.dataset.sRecordtype || "",
       detail.advancedMarketsEligible ?? row.dataset.advancedMarketsEligible
@@ -3558,6 +3568,210 @@ function renderMentionNotes(items){
   `).join("");
 }
 
+function clearShareSelection(){
+  selectedShareAgent = null;
+  if (dShareSelectedAgent){
+    dShareSelectedAgent.textContent = "No agent selected.";
+  }
+  if (btnShareAgentAccess){
+    btnShareAgentAccess.disabled = true;
+  }
+}
+
+function renderShareLookupResults(items){
+  if (!dShareAgentResults) return;
+  dShareAgentResults.innerHTML = "";
+
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length){
+    dShareAgentResults.innerHTML = `<div class="tiny">No tenant agents matched that search.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(item => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost";
+    btn.style.width = "100%";
+    btn.style.textAlign = "left";
+    btn.style.marginTop = "6px";
+
+    const name = norm(item.fullName) || norm(item.agentUpn) || "Agent";
+    const email = norm(item.agentUpn) || "No email";
+    const phone = norm(item.phone) || "No phone";
+    const already = item.isShared ? " • Shared" : "";
+    btn.textContent = `${name} — ${email}${phone ? ` — ${phone}` : ""}${already}`;
+
+    btn.addEventListener("click", () => {
+      selectedShareAgent = {
+        agentUserId: norm(item.agentUserId),
+        agentUpn: norm(item.agentUpn),
+        fullName: norm(item.fullName),
+        phone: norm(item.phone)
+      };
+
+      if (dShareSelectedAgent){
+        dShareSelectedAgent.textContent = `${name} (${email})${phone ? ` • ${phone}` : ""}`;
+      }
+      if (btnShareAgentAccess){
+        btnShareAgentAccess.disabled = !selectedShareAgent.agentUserId;
+      }
+      if (dShareAgentStatus){
+        dShareAgentStatus.textContent = item.isShared
+          ? "This agent already has access."
+          : "Ready to grant this agent access to the current client.";
+      }
+    });
+
+    frag.appendChild(btn);
+  });
+
+  dShareAgentResults.appendChild(frag);
+}
+
+function renderSharedAgentList(items){
+  if (!dSharedAgentList) return;
+  dSharedAgentList.innerHTML = "";
+
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length){
+    dSharedAgentList.innerHTML = `<div class="tiny">No shared agents yet. Access is currently restricted to the original owner only.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "event";
+
+    const top = document.createElement("div");
+    top.className = "top";
+
+    const type = document.createElement("div");
+    type.className = "type";
+    const name = norm(item.fullName) || norm(item.agentUpn) || "Agent";
+    type.textContent = `${name}${item.isOwner ? " (Owner)" : ""}`;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = norm(item.agentUpn) || "";
+
+    top.appendChild(type);
+    top.appendChild(meta);
+
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = norm(item.phone) || "No phone on file";
+
+    card.appendChild(top);
+    card.appendChild(note);
+
+    if (!item.isOwner && norm(item.agentUserId)){
+      const actions = document.createElement("div");
+      actions.style.marginTop = "8px";
+
+      const revokeBtn = document.createElement("button");
+      revokeBtn.type = "button";
+      revokeBtn.className = "btn btn-ghost";
+      revokeBtn.textContent = "Revoke Access";
+      revokeBtn.addEventListener("click", () => {
+        void revokeSharedAgentAccess(item.agentUserId);
+      });
+
+      actions.appendChild(revokeBtn);
+      card.appendChild(actions);
+    }
+
+    frag.appendChild(card);
+  });
+
+  dSharedAgentList.appendChild(frag);
+}
+
+async function loadSharedAgentAccess(clientId){
+  if (!clientId || !dSharedAgentList) return;
+  try{
+    const res = await fetch(`/Clients/ClientAccessCollaborators?clientUserId=${encodeURIComponent(clientId)}`, {
+      credentials: "include"
+    });
+    if (!res.ok){
+      throw new Error(`Shared access load failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderSharedAgentList(data);
+  }catch(err){
+    console.error("Shared access load failed", err);
+    dSharedAgentList.innerHTML = `<div class="tiny">Unable to load shared access right now.</div>`;
+  }
+}
+
+async function searchShareAgents(query){
+  const q = norm(query);
+  if (!activeClientId || !dShareAgentResults) return;
+
+  if (!q || q.length < 2){
+    dShareAgentResults.innerHTML = `<div class="tiny">Type at least 2 characters to search tenant agents.</div>`;
+    return;
+  }
+
+  try{
+    const res = await fetch(`/Clients/CollaboratorLookup?clientUserId=${encodeURIComponent(activeClientId)}&q=${encodeURIComponent(q)}`, {
+      credentials: "include"
+    });
+    if (!res.ok){
+      throw new Error(`Lookup failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderShareLookupResults(data);
+  }catch(err){
+    console.error("Collaborator lookup failed", err);
+    dShareAgentResults.innerHTML = `<div class="tiny">Unable to search agents right now.</div>`;
+  }
+}
+
+async function grantSelectedAgentAccess(){
+  if (!activeClientId || !selectedShareAgent?.agentUserId) return;
+
+  try{
+    const response = await postJson("/Clients/GrantClientAccess", {
+      clientUserId: activeClientId,
+      agentUserId: selectedShareAgent.agentUserId,
+      agentUpn: selectedShareAgent.agentUpn,
+      agentName: selectedShareAgent.fullName,
+      agentPhone: selectedShareAgent.phone
+    });
+
+    renderSharedAgentList(response.sharedAgents || []);
+    clearShareSelection();
+    if (dShareAgentSearch) dShareAgentSearch.value = "";
+    if (dShareAgentResults) dShareAgentResults.innerHTML = "";
+    if (dShareAgentStatus) dShareAgentStatus.textContent = "Access granted.";
+    toast("Client access granted.");
+  }catch(err){
+    console.error("GrantClientAccess failed", err);
+    toast(err?.message || "Unable to grant access.", { error: true, persistent: true });
+  }
+}
+
+async function revokeSharedAgentAccess(agentUserId){
+  if (!activeClientId || !agentUserId) return;
+  if (!confirm("Revoke this agent's access to the current client?")) return;
+
+  try{
+    const response = await postJson("/Clients/RevokeClientAccess", {
+      clientUserId: activeClientId,
+      agentUserId
+    });
+    renderSharedAgentList(response.sharedAgents || []);
+    if (dShareAgentStatus) dShareAgentStatus.textContent = "Access revoked.";
+    toast("Client access revoked.");
+  }catch(err){
+    console.error("RevokeClientAccess failed", err);
+    toast(err?.message || "Unable to revoke access.", { error: true, persistent: true });
+  }
+}
+
 function closeDrawer(){
   // Always capture Advanced Markets before leaving the drawer to avoid clearing on reopen.
   const draftPayload = buildAdvancedMarketsSavePayload();
@@ -3573,6 +3787,11 @@ function closeDrawer(){
   advancedMarketsCurrentSession = ++advancedMarketsModalSessionCounter;
   activeClientId = null;
   if (drawer) drawer.dataset.clientId = "";
+  clearShareSelection();
+  if (dShareAgentSearch) dShareAgentSearch.value = "";
+  if (dShareAgentResults) dShareAgentResults.innerHTML = "";
+  if (dSharedAgentList) dSharedAgentList.innerHTML = "";
+  if (dShareAgentStatus) dShareAgentStatus.textContent = "Client access remains blocked for non-permitted agents.";
   clientActionsLoadPromise = null;
   if (clientActionsHubModal && window.bootstrap){
     const inst = bootstrap.Modal.getInstance(clientActionsHubModal);
@@ -4340,6 +4559,17 @@ btnCopyContact?.addEventListener("click", () => {
 
 btnEditProfile?.addEventListener("click", () => {
   // noop; link handles navigation
+});
+
+dShareAgentSearch?.addEventListener("input", () => {
+  clearTimeout(shareLookupTimer);
+  shareLookupTimer = setTimeout(() => {
+    void searchShareAgents(dShareAgentSearch.value || "");
+  }, 220);
+});
+
+btnShareAgentAccess?.addEventListener("click", () => {
+  void grantSelectedAgentAccess();
 });
 
 btnDeleteClient?.addEventListener("click", () => {

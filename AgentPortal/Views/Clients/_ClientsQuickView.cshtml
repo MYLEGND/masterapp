@@ -545,7 +545,7 @@
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Team / Collaboration</div>
-                    <div class="qv-section-copy">Owner, watchers, and mention notes for internal coordination.</div>
+                    <div class="qv-section-copy">Owner, watchers, mention notes, and explicit client-sharing permissions.</div>
                 </div>
             </summary>
             <div class="qv-section-body">
@@ -564,6 +564,31 @@
                     <textarea id="dMentionNote" placeholder="Add a handoff or mention note with context for the team."></textarea>
                 </div>
                 <div class="timeline mention-list" id="mentionList" style="margin-top:10px;"></div>
+
+                <div class="qv-subsection" style="margin-top:14px;">
+                    <h5>Client Access Sharing</h5>
+                    <div class="tiny" style="margin-bottom:8px;">Search tenant agents (@@mylegnd.com) by name, email, or phone and grant access to this client only.</div>
+
+                    <div class="grid2">
+                        <div class="f">
+                            <label for="dShareAgentSearch">Find Agent</label>
+                            <input type="search" id="dShareAgentSearch" placeholder="Type agent name, email, or phone..." autocomplete="off" />
+                        </div>
+                        <div class="f">
+                            <label>Selected Agent</label>
+                            <div id="dShareSelectedAgent" class="tiny" style="min-height:42px; display:flex; align-items:center; padding:10px 12px; border:1px solid rgba(197,146,31,.35); border-radius:10px; background:rgba(11,21,41,.35);">No agent selected.</div>
+                        </div>
+                    </div>
+
+                    <div id="dShareAgentResults" class="timeline mention-list" style="margin-top:10px;"></div>
+
+                    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <button type="button" class="btn btn-gold" id="btnShareAgentAccess" disabled>Grant Access</button>
+                        <span class="tiny" id="dShareAgentStatus">Client access remains blocked for non-permitted agents.</span>
+                    </div>
+
+                    <div class="timeline mention-list" id="dSharedAgentList" style="margin-top:12px;"></div>
+                </div>
             </div>
         </details>
 
