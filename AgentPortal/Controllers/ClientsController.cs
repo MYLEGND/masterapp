@@ -3636,7 +3636,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 .AsNoTracking()
                 .Where(x => (x.AgentUserId ?? "").ToLower() == targetAgentId)
                 .Select(x => (x.AgentUpn ?? "").ToLower())
-                .FirstOrDefaultAsync();
+                .FirstOrDefaultAsync() ?? "";
         }
 
         if (!IsAgentTenantEmail(targetUpn))

@@ -2200,6 +2200,8 @@ const dCalendarWorkHours = $("#dCalendarWorkHours");
 const dCalendarFreeList = $("#dCalendarFreeList");
 
 const dPortalWrap = $("#dPortalWrap");
+const btnResendClientInvite = $("#btnResendClientInvite");
+const dResendInviteStatus = $("#dResendInviteStatus");
 const dSaved = $("#dSaved");
 const dWaitingOn = $("#dWaitingOn");
 const dPinnedBrief = $("#dPinnedBrief");
@@ -3763,8 +3765,8 @@ async function grantSelectedAgentAccess(){
 
 async function resendClientInvite(){
   if (!activeClientId) return;
-  const btn = $("#btnResendClientInvite");
-  const emailVal = (dResendInviteEmail?.value || "").trim();
+  const btn = btnResendClientInvite;
+  const emailVal = (dEmailInput?.value || "").trim();
   if (!emailVal) {
     if (dResendInviteStatus) dResendInviteStatus.textContent = "Enter an email address first.";
     return;
@@ -3833,8 +3835,7 @@ function closeDrawer(){
   if (dShareAgentResults) dShareAgentResults.innerHTML = "";
   if (dSharedAgentList) dSharedAgentList.innerHTML = "";
   if (dShareAgentStatus) dShareAgentStatus.textContent = "Client access remains blocked for non-permitted agents.";
-  if (dResendInvitePanel) dResendInvitePanel.style.display = "none";
-  if (dResendInviteEmail) dResendInviteEmail.value = "";
+  if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
   if (dResendInviteStatus) dResendInviteStatus.textContent = "";
   clientActionsLoadPromise = null;
   if (clientActionsHubModal && window.bootstrap){
@@ -4263,6 +4264,8 @@ function renderPortalActions(row, detail){
 
     btn?.addEventListener("click", () => runConvert("Client", btn));
     btnBiz?.addEventListener("click", () => runConvert("BusinessClient", btnBiz));
+    if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
+    if (dResendInviteStatus) dResendInviteStatus.textContent = "";
     return;
   }
 
@@ -4276,9 +4279,8 @@ function renderPortalActions(row, detail){
     dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${detail.lastCalendarEventWebLink}" target="_blank" rel="noopener">Last Calendar Event</a>`;
   }
 
-  // Show resend invite panel and pre-fill email
-  if (dResendInvitePanel) dResendInvitePanel.style.display = "block";
-  if (dResendInviteEmail && detail?.email) dResendInviteEmail.value = detail.email;
+  // Show resend button beside primary email field
+  if (btnResendClientInvite) btnResendClientInvite.style.display = "";
   if (dResendInviteStatus) dResendInviteStatus.textContent = "";
 }
 
@@ -4587,7 +4589,7 @@ btnShareAgentAccess?.addEventListener("click", () => {
   void grantSelectedAgentAccess();
 });
 
-($("#btnResendClientInvite"))?.addEventListener("click", () => {
+btnResendClientInvite?.addEventListener("click", () => {
   void resendClientInvite();
 });
 
