@@ -692,6 +692,16 @@
             padding: 8px 12px 16px 12px;
         }
 
+        .explore-group-label{
+            margin: 10px 8px 6px;
+            font-size: .68rem;
+            font-weight: 900;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            color: #f1d58a;
+            opacity: .9;
+        }
+
         .explore-item{
             display: flex;
             align-items: center;
@@ -1199,6 +1209,13 @@
         </div>
 
         <div id="exploreList" class="explore-list">
+            <div class="explore-group-label">Pages</div>
+            <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index">
+                <span>Agent Documents</span>
+                <small>Vault</small>
+            </a>
+
+            <div class="explore-group-label">CRM</div>
             <a class="explore-item" data-tone="crm" asp-controller="Clients" asp-action="Index">
                 <span>CLIENTS</span>
                 <small>CRM</small>
@@ -1208,6 +1225,7 @@
                 <small>Lead CRM</small>
             </a>
 
+            <div class="explore-group-label">Workstation</div>
             <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="Index">
                 <span>Workstation</span>
                 <small>Hustle</small>
@@ -1223,6 +1241,7 @@
                 <small>Tax strategies</small>
             </a>
 
+            <div class="explore-group-label">Operations</div>
          <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index">
                 <span>Website Analytics</span>
                 <small>Ops</small>
@@ -1241,6 +1260,7 @@
                 <small>Network</small>
             </a>
 
+            <div class="explore-group-label">Learning & Tools</div>
             <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index">
                 <span>Resources</span>
                 <small>Library</small>
