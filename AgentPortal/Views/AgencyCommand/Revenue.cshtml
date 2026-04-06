@@ -165,30 +165,37 @@
                                                     </div>
                                                     <div class="col-12 col-xl-6">
                                                         <div class="breakdown-card">
-                                                            <div class="breakdown-title">Daily Breakdown</div>
-                                                            @if (producer.Daily.Any())
-                                                            {
-                                                                <table class="table table-striped table-sm align-middle mb-0 top-prod-table">
-                                                                    <thead>
-                                                                        <tr><th>Date</th><th>Submitted</th><th>Issued</th><th>Paid</th></tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                    @foreach (var d in producer.Daily)
+                                                            <div class="breakdown-title">Monthly Total</div>
+                                                            <table class="table table-sm align-middle mb-0 top-prod-table">
+                                                                <thead>
+                                                                    <tr><th>Status</th><th>Amount</th><th># Deals</th></tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    <tr>
+                                                                        <td class="fw-bold" style="color:#f6e4b2">Submitted</td>
+                                                                        <td class="text-warning">@producer.Totals.Submitted.ToString("C0")</td>
+                                                                        <td class="text-muted">@producer.Totals.CountSubmitted</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold" style="color:#f6e4b2">Issued</td>
+                                                                        <td class="text-info">@producer.Totals.Issued.ToString("C0")</td>
+                                                                        <td class="text-muted">@producer.Totals.CountIssued</td>
+                                                                    </tr>
+                                                                    <tr>
+                                                                        <td class="fw-bold" style="color:#f6e4b2">Paid</td>
+                                                                        <td class="text-success">@producer.Totals.Paid.ToString("C0")</td>
+                                                                        <td class="text-muted">@producer.Totals.CountPaid</td>
+                                                                    </tr>
+                                                                    @if (producer.Totals.Personal > 0)
                                                                     {
                                                                         <tr>
-                                                                            <td>@d.Date.ToString("MMM dd")</td>
-                                                                            <td class="text-warning">@d.Totals.Submitted.ToString("C0")</td>
-                                                                            <td class="text-info">@d.Totals.Issued.ToString("C0")</td>
-                                                                            <td class="text-success">@d.Totals.Paid.ToString("C0")</td>
+                                                                            <td class="fw-bold" style="color:#f6e4b2">Personal</td>
+                                                                            <td style="color:#f59e0b">@producer.Totals.Personal.ToString("C0")</td>
+                                                                            <td class="text-muted">@producer.Totals.CountPersonal</td>
                                                                         </tr>
                                                                     }
-                                                                    </tbody>
-                                                                </table>
-                                                            }
-                                                            else
-                                                            {
-                                                                <div class="text-muted fw-semibold">No daily production.</div>
-                                                            }
+                                                                </tbody>
+                                                            </table>
                                                         </div>
                                                     </div>
                                                 </div>
