@@ -3924,6 +3924,8 @@ function openClientActionsHub(){
   if (modalEl && window.bootstrap){
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
+  if (dActDate && !norm(dActDate.value)) dActDate.value = todayISO();
+  renderTimeline(activeClientDetail?.activities || []);
   void loadClientActionsPanel();
   void loadClientCommitmentsPanel();
 }

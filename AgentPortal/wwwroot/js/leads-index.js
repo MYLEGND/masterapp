@@ -2087,9 +2087,15 @@ function setLeadProduction(row, status, amount, totals){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
-  const paid = Number(totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid ?? 0);
-  const issued = Number(totals?.issued ?? row.dataset.prodIssued ?? 0);
-  const submitted = Number(totals?.submitted ?? row.dataset.prodSubmitted ?? 0);
+  const resolved = resolveProductionTotals(cleanStatus, amt, {
+    paid: totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid,
+    issued: totals?.issued ?? row.dataset.prodIssued,
+    submitted: totals?.submitted ?? row.dataset.prodSubmitted
+  });
+  const paid = resolved.paid;
+  const issued = resolved.issued;
+  const submitted = resolved.submitted;
+  const hasAny = paid > 0 || issued > 0 || submitted > 0;
 
   row.dataset.prodPaid = Number.isFinite(paid) ? `${paid}` : "0";
   row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
@@ -2099,8 +2105,8 @@ function setLeadProduction(row, status, amount, totals){
   row.dataset.prodAmount = paid > 0 ? paid : amt;
 
   if (!badge) return;
-  if (paid > 0){
-    badge.innerHTML = `<span class="prod-status">Paid</span><span class="prod-amt"> ${formatCurrency(paid)}</span>`;
+  if (hasAny){
+    badge.innerHTML = renderPipelineProdBadge({ paid, issued, submitted });
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -3400,12 +3406,10 @@ async function loadProductionHistory(leadId){
     const totals = (data || []).reduce((acc, p) => {
       const amt = Number(p?.amount || 0);
       const raw = norm(p?.status);
-      const st = (raw === "2" || raw === "paid")
-        ? "paid"
-        : ((raw === "1" || raw === "issued") ? "issued" : "submitted");
+      const st = productionBucket(raw);
       if (st === "paid") acc.paid += amt;
       else if (st === "issued") acc.issued += amt;
-      else acc.submitted += amt;
+      else if (st === "submitted") acc.submitted += amt;
       return acc;
     }, { paid: 0, issued: 0, submitted: 0 });
     setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals);

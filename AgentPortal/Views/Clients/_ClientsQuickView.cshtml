@@ -332,7 +332,7 @@
             <div class="modal-dialog modal-dialog-centered actions-hub-dialog">
                 <div class="modal-content actions-hub-content">
                     <div class="modal-header actions-hub-header">
-                        <h5 class="modal-title">Actions &amp; Commitments</h5>
+                        <h5 class="modal-title">Actions, Activity &amp; Commitments</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body actions-hub-body">
@@ -341,6 +341,49 @@
                             <div class="text-muted tiny" style="margin-bottom:6px;">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
                             <div id="clientActionsContainer">
                                 <div class="text-muted">Actions will load here.</div>
+                            </div>
+                        </div>
+                        <div class="qv-subsection">
+                            <h5 style="margin-bottom:8px;">Activity / Timeline</h5>
+                            <div class="text-muted tiny" style="margin-bottom:6px;">Log contact history here, keep the timeline visible, and create follow-up actions from the same hub.</div>
+
+                            <div class="preset-row" id="timelineFilters">
+                                <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
+                            </div>
+
+                            <div class="grid2">
+                                <div class="f">
+                                    <label>Type</label>
+                                    <select id="dActType">
+                                        <option value="Call">Call</option>
+                                        <option value="Email">Email</option>
+                                        <option value="Meeting">Meeting</option>
+                                        <option value="Text">Text</option>
+                                        <option value="Note">Note</option>
+                                    </select>
+                                </div>
+                                <div class="f">
+                                    <label>Date</label>
+                                    <input type="date" id="dActDate" />
+                                </div>
+                            </div>
+
+                            <div class="f" style="margin-top:10px;">
+                                <label>Outcome / Notes</label>
+                                <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
+                            </div>
+
+                            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                                <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
+                                <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
+                            </div>
+
+                            <div style="margin-top:12px;">
+                                <div class="timeline" id="timeline"></div>
                             </div>
                         </div>
                         <div class="qv-subsection">
@@ -511,54 +554,6 @@
                     </div>
 
                     <div class="timeline mention-list" id="dSharedAgentList" style="margin-top:12px;"></div>
-                </div>
-            </div>
-        </details>
-
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Activity / Timeline</div>
-                    <div class="qv-section-copy">Log contact activity, filter history, and create calendar events.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="preset-row" id="timelineFilters">
-                    <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
-                </div>
-                <div class="grid2">
-                    <div class="f">
-                        <label>Type</label>
-                        <select id="dActType">
-                            <option value="Call">Call</option>
-                            <option value="Email">Email</option>
-                            <option value="Meeting">Meeting</option>
-                            <option value="Text">Text</option>
-                            <option value="Note">Note</option>
-                        </select>
-                    </div>
-                    <div class="f">
-                        <label>Date</label>
-                        <input type="date" id="dActDate" />
-                    </div>
-                </div>
-
-                <div class="f" style="margin-top:10px;">
-                    <label>Outcome / Notes</label>
-                    <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
-                    <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
-                </div>
-
-                <div style="margin-top:12px;">
-                    <div class="timeline" id="timeline"></div>
                 </div>
             </div>
         </details>
