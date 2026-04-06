@@ -38,6 +38,28 @@ public class AgencyCommandService
         return "Agent";
     }
 
+    private static string ResolveClientRecordType(string? clientUserId, string? crmNotes)
+    {
+        var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
+        var explicitRecordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
+        if (!string.IsNullOrWhiteSpace(explicitRecordType))
+            return explicitRecordType;
+
+        var stage = ClientCrmMetaSerializer.NormalizePipelineStage(meta.PipelineStage);
+        if (string.Equals(stage, "BusinessClient", StringComparison.OrdinalIgnoreCase))
+            return "BusinessClient";
+        if (string.Equals(stage, "Client", StringComparison.OrdinalIgnoreCase))
+            return "Client";
+        if (Guid.TryParse((clientUserId ?? string.Empty).Trim(), out _))
+            return "Client";
+
+        return "Lead";
+    }
+
+    private static bool IsClientRecordType(string? recordType)
+        => string.Equals(recordType, "Client", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
+
     private sealed class AgentDescriptor
     {
         public AgentDescriptor(string agentUserId) => AgentUserId = agentUserId;
@@ -241,6 +263,7 @@ public class AgencyCommandService
                                     cp.FirstName,
                                     cp.LastName,
                                     cp.Email,
+                                    cp.CrmNotes,
                                     cp.CrmStatus,
                                     cp.CrmPriority,
                                     cp.CrmNextDate,
@@ -248,15 +271,19 @@ public class AgencyCommandService
                                 })
             .ToListAsync();
 
+        var filteredClientRows = clientRows
+            .Where(row => IsClientRecordType(ResolveClientRecordType(row.ClientUserId, row.CrmNotes)))
+            .ToList();
+
         // Fill descriptor emails when we only had AgentUpn from AgentClients
-        foreach (var row in clientRows)
+        foreach (var row in filteredClientRows)
         {
             if (descriptors.TryGetValue(Norm(row.AgentUserId), out var desc) && string.IsNullOrWhiteSpace(desc.Email))
                 desc.Email = row.AgentUpn;
         }
 
         var leadGroups = leadRows.GroupBy(l => Norm(l.AgentUserId));
-        var clientGroups = clientRows.GroupBy(c => Norm(c.AgentUserId));
+        var clientGroups = filteredClientRows.GroupBy(c => Norm(c.AgentUserId));
 
         var pipelineByAgent = leadGroups.ToDictionary(
             g => g.Key,
@@ -417,12 +444,17 @@ public class AgencyCommandService
                                  cp.FirstName,
                                  cp.LastName,
                                  cp.Email,
+                                 cp.CrmNotes,
                                  cp.CrmStatus,
                                  cp.CrmPriority,
                                  cp.CrmNextDate,
                                  cp.CrmNextText
                              })
             .ToListAsync();
+
+        var typedClients = clients
+            .Where(c => IsClientRecordType(ResolveClientRecordType(c.ClientUserId, c.CrmNotes)))
+            .ToList();
 
         var pipelineDict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var stage in leads.Select(l => NormalizeStage(l.CrmStage, l.Bucket)))
@@ -431,7 +463,7 @@ public class AgencyCommandService
             pipelineDict[key] = pipelineDict.TryGetValue(key, out var val) ? val + 1 : 1;
         }
 
-        var followUps = clients
+        var followUps = typedClients
             .Where(c => c.CrmNextDate.HasValue && c.CrmNextDate.Value <= now)
             .Select(c => new FollowUpItemVm
             {
@@ -450,7 +482,7 @@ public class AgencyCommandService
             FullName = BuildDisplayName(desc.FullName, desc.Email),
             Title = desc.Title,
             LeadCount = leads.Count,
-            ClientCount = clients.Count,
+            ClientCount = typedClients.Count,
             CallsToday = leads.Where(l => l.CallsTodayDateUtc.HasValue && l.CallsTodayDateUtc.Value.Date == today).Sum(l => l.CallsToday),
             CallsWeek = leads.Where(l => l.CallsWeekStartUtc.HasValue && l.CallsWeekStartUtc.Value.Date == weekStart).Sum(l => l.CallsWeek),
             FollowUpsDue = followUps.Count,
@@ -474,7 +506,7 @@ public class AgencyCommandService
                     CallsWeek = l.CallsWeekStartUtc.HasValue && l.CallsWeekStartUtc.Value.Date == weekStart ? l.CallsWeek : 0
                 })
                 .ToList(),
-            Clients = clients
+            Clients = typedClients
                 .Select(c => new ClientSummaryVm
                 {
                     ClientUserId = c.ClientUserId,
@@ -493,7 +525,7 @@ public class AgencyCommandService
             Kpi = new CommandKpiVm
             {
                 TotalAgents = 1,
-                TotalClients = clients.Count,
+                TotalClients = typedClients.Count,
                 TotalLeads = leads.Count,
                 CallsToday = card.CallsToday,
                 CallsWeek = card.CallsWeek,
