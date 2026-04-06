@@ -718,6 +718,14 @@ namespace AgentPortal.Controllers;
             _ => "Lead"
         };
 
+    private IActionResult RedirectToReturnUrlOrIndex(string? returnUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+
+        return RedirectToAction(nameof(Index));
+    }
+
     private static string GenerateOneTimePassword(int length = 14)
     {
         const string lowers = "abcdefghijklmnopqrstuvwxyz";
@@ -1967,7 +1975,7 @@ namespace AgentPortal.Controllers;
     // GET: /Clients/Create
     // =====================================================================
     [HttpGet]
-    public IActionResult Create()
+    public IActionResult Create(string? returnUrl = null)
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
@@ -1984,6 +1992,10 @@ namespace AgentPortal.Controllers;
         if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.Phone))
             model.AgentPhone = agentProfile.Phone;
 
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+
         return View(model);
     }
 
@@ -1992,8 +2004,16 @@ namespace AgentPortal.Controllers;
     // =====================================================================
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(CreateClientViewModel model)
+    public async Task<IActionResult> Create(CreateClientViewModel model, string? returnUrl = null)
     {
+        returnUrl = string.IsNullOrWhiteSpace(returnUrl)
+            ? Request.Form["returnUrl"].ToString()
+            : returnUrl;
+
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+
         if (!ModelState.IsValid)
             return View(model);
 
@@ -2323,13 +2343,13 @@ await _provisioning.SendClientWelcomeEmailAsync(
 
                 TempData["Created"] =
                     $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}. ⚠ Email failed to send: {mailEx.Message}";
-                return RedirectToAction(nameof(Index));
+                return RedirectToReturnUrlOrIndex(returnUrl);
             }
 
             TempData["Created"] = isPortalClient
                 ? $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}"
                 : $"Lead added to pipeline in {StageLabel(pipelineStage)}.";
-            return RedirectToAction(nameof(Index));
+            return RedirectToReturnUrlOrIndex(returnUrl);
         }
         catch (ODataError ex)
         {
@@ -3232,6 +3252,91 @@ meta.Activities ??= new List<ClientCrmActivity>();
         {
             _logger.LogError(ex, "FinancialPlanClients error agent={Agent} q={Search}", agentOid, q);
             // Fail-soft for search: return empty array so UI does not break
+            return Json(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> PortalQuickAccessClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var search = NormLower(q);
+
+        try
+        {
+            var ownedProfiles = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+                where link.AgentUserId == agentOid
+                select new
+                {
+                    profile.Id,
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.CrmNotes,
+                    profile.UpdatedUtc
+                }
+            ).ToListAsync();
+
+            var results = ownedProfiles
+                .Select(profile =>
+                {
+                    var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+                    var portalEnabled = HasPortalAccess(profile.ClientUserId);
+                    if (!portalEnabled)
+                        return null;
+
+                    var recordType = RecordTypeLabel(ResolveRecordType(profile.ClientUserId, meta));
+                    var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName))
+                        displayName = recordType;
+
+                    var haystack = string.Join(" ",
+                        displayName,
+                        profile.Email ?? "",
+                        profile.Phone ?? "",
+                        recordType).ToLowerInvariant();
+
+                    return new
+                    {
+                        profile.ClientUserId,
+                        displayName,
+                        email = profile.Email ?? "",
+                        phone = profile.Phone ?? "",
+                        recordType,
+                        updatedUtc = profile.UpdatedUtc,
+                        haystack,
+                        profileUrl = Url.Action("Profile", "ClientWorkspace", new { clientUserId = profile.ClientUserId })
+                    };
+                })
+                .Where(x => x != null)
+                .Where(x => string.IsNullOrWhiteSpace(search) || x!.haystack.Contains(search))
+                .OrderByDescending(x => x!.updatedUtc)
+                .ThenBy(x => x!.displayName)
+                .Take(string.IsNullOrWhiteSpace(search) ? 8 : 16)
+                .Select(x => new
+                {
+                    clientUserId = x!.ClientUserId,
+                    displayName = x.displayName,
+                    email = x.email,
+                    phone = x.phone,
+                    recordType = x.recordType,
+                    updatedUtc = x.updatedUtc.ToString("o"),
+                    profileUrl = x.profileUrl ?? $"/ClientWorkspace/Profile?clientUserId={Uri.EscapeDataString(x.ClientUserId)}"
+                })
+                .ToList();
+
+            return Json(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PortalQuickAccessClients error agent={Agent} q={Search}", agentOid, q);
             return Json(Array.Empty<object>());
         }
     }
