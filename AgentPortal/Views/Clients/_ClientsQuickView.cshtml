@@ -368,88 +368,6 @@
             </div>
         </div>
 
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Meeting / Calendar</div>
-                    <div class="qv-section-copy">Scheduling details, Zoom helpers, and Outlook availability.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="grid2">
-                    <div class="f">
-                        <label>Next Action Date</label>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <input type="date" id="dMeetingNextDate" style="flex:1 1 180px;" />
-                            <button type="button" class="btn btn-ghost" id="btnMeetingNextToday">Today</button>
-                        </div>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Type</label>
-                        <select id="dMeetingType">
-                            <option value="Phone">Phone Call</option>
-                            <option value="Zoom">Zoom Call</option>
-                            <option value="InPerson">In Person</option>
-                        </select>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Time</label>
-                        <input type="time" id="dMeetingTime" />
-                    </div>
-                    <div class="f">
-                        <label>Duration (minutes)</label>
-                        <select id="dMeetingDuration">
-                            <option value="15">15 minutes</option>
-                            <option value="30" selected>30 minutes</option>
-                            <option value="45">45 minutes</option>
-                            <option value="60">1 hour</option>
-                            <option value="90">1 hour 30 minutes</option>
-                            <option value="120">2 hours</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid2" style="margin-top:10px;">
-                    <div class="f">
-                        <label>Location</label>
-                        <input type="text" id="dMeetingLocation" placeholder="Office, Phone, Zoom, Client Home..." />
-                        <div class="meeting-address-suggest" id="dMeetingLocationSuggest"></div>
-                    </div>
-                    <div class="f zoom-panel" id="dZoomWrap">
-                        <label>Zoom</label>
-                        <div class="tiny zoom-status" id="dZoomStatus">No saved personal Zoom room link yet.</div>
-                        <div class="zoom-actions">
-                            <button type="button" class="btn btn-ghost" id="btnZoomSavePersonal">Save My Zoom Link</button>
-                            <button type="button" class="btn btn-ghost" id="btnZoomClearPersonal">Clear Saved Zoom Link</button>
-                        </div>
-                        <label class="zoom-toggle">
-                            <input type="checkbox" id="dUsePersonalZoomLink" />
-                            <span>Use my saved personal Zoom link automatically</span>
-                        </label>
-                        <label class="zoom-link-label">Manual Zoom Link Override (optional)</label>
-                        <input type="url" id="dZoomJoinUrl" placeholder="Leave blank to use your saved personal Zoom link" />
-                    </div>
-                </div>
-
-                <div class="tiny" style="margin-top:10px;">Create Outlook calendar events directly from this client without leaving the workspace. If you save a personal Zoom room link, you can reuse it here instead of pasting it every time.</div>
-                <div class="calendar-busy-panel" id="dCalendarBusyPanel">
-                    <div class="calendar-busy-head">
-                        <span class="calendar-busy-title">My Day Availability</span>
-                        <span class="pill" id="dCalendarBusyDate">Select a date</span>
-                    </div>
-                    <div class="tiny calendar-busy-note" id="dCalendarBusyNote">Choose a Next Action Date to see your Outlook busy blocks for that day.</div>
-                    <div class="calendar-free-wrap">
-                        <div class="calendar-free-head">
-                            <span class="calendar-free-title">Available To Book</span>
-                            <span class="tiny" id="dCalendarWorkHours">Uses your Outlook work hours</span>
-                        </div>
-                        <div class="calendar-free-list" id="dCalendarFreeList"></div>
-                    </div>
-                    <div class="calendar-busy-list" id="dCalendarBusyList"></div>
-                </div>
-            </div>
-        </details>
-
         <details class="section section-green qv-disclosure">
             <summary>
                 <div class="qv-section-header">
@@ -650,9 +568,6 @@
                 <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
                     <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
                     <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
-                    <button type="button" class="btn btn-ghost" id="btnCreateCalendarEvent" title="Create a calendar event from Next Action (requires Connect Calendar)">
-                        Create Calendar Event
-                    </button>
                 </div>
 
                 <div style="margin-top:12px;">

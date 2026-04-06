@@ -2181,6 +2181,18 @@ const dNotes = $("#dNotes");
 const dNextDate = $("#dNextDate");
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
+const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
+const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
+const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
+const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
+const dZoomWrap = $("#dZoomWrap") || { style: {}, classList: { add(){}, remove(){} } };
+const dUsePersonalZoomLink = $("#dUsePersonalZoomLink") || { checked: false, addEventListener(){} };
+const dZoomJoinUrl = $("#dZoomJoinUrl") || { value: "", addEventListener(){} };
+const dZoomStatus = $("#dZoomStatus") || { textContent: "" };
+const btnZoomSavePersonal = $("#btnZoomSavePersonal");
+const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
 const dCalendarBusyNote = $("#dCalendarBusyNote");
 const dCalendarBusyList = $("#dCalendarBusyList");
@@ -2310,7 +2322,7 @@ function wireQuickViewAutosave(){
     // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
     // They will autosave on blur instead (see wireContactFieldBlur below).
     dDob,dAge,dGender,dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
-    dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,dUsePersonalZoomLink,
+    dPipelineStage,
     dWaitingOn,dPinnedBrief,dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
     dAssignedOwner,dWatchers,dMentionNote
   ];
@@ -2419,7 +2431,6 @@ let activeTimelineFilter = "all";
 function setDrawerNextActionDate(value){
   const safeValue = value || "";
   if (dNextDate) dNextDate.value = safeValue;
-  if (dMeetingNextDate) dMeetingNextDate.value = safeValue;
 }
 
 /* ========= Sticky header height (real, no guesswork) ========= */
@@ -3439,13 +3450,6 @@ async function openDrawerForRow(row){
   setDrawerNextActionDate(row.dataset.crmNextDate || "");
   dNextText.value = row.dataset.crmNextText || "";
   dPriority.value = row.dataset.crmPriority || "Normal";
-  dMeetingLocation.value = row.dataset.sMeetingLocation || "";
-  dZoomJoinUrl.value = row.dataset.sZoom || "";
-  dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
-  if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
-  applyMeetingType(inferMeetingType(null, row), row);
-  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
-  dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
   dWaitingOn.value = row.dataset.crmWaitingOn || "WaitingOnAgent";
   dPinnedBrief.value = row.dataset.crmPinnedBrief || "";
   dDocIdReceived.checked = false;
@@ -3468,7 +3472,6 @@ async function openDrawerForRow(row){
   dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
   dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
   dOutcomeSuggestion.textContent = "Use one-click outcomes to log activity, move the record forward, and queue the next move.";
-  refreshCalendarBusyPanel();
   setAdvancedMarketsActionState(row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible);
 
   renderPortalActions(row, null);
@@ -3484,8 +3487,6 @@ async function openDrawerForRow(row){
   drawerBackdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   lockPageScrollForQuickView();
-  updateZoomControls();
-
   closeAllMenus(null);
 
   try{
@@ -3517,13 +3518,6 @@ async function openDrawerForRow(row){
     if (dLoanAmount) dLoanAmount.value = detail.loanAmount || "";
     syncDrawerEmailDisplay(detail.email || email);
     dPhone.textContent = detail.phone || phone || "No phone";
-    dMeetingLocation.value = detail.meetingLocation || row.dataset.sMeetingLocation || "";
-    dZoomJoinUrl.value = detail.zoomJoinUrl || row.dataset.sZoom || "";
-    dUsePersonalZoomLink.checked = !!detail.usePersonalZoomLink;
-    if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
-    applyMeetingType(inferMeetingType(detail, row), row);
-    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "09:00";
-    dMeetingDuration.value = String(detail.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
     dWaitingOn.value = detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent";
     dPinnedBrief.value = detail.pinnedBrief || row.dataset.crmPinnedBrief || "";
     dAssignedOwner.value = detail.collaboration?.owner || row.dataset.crmOwner || "";
@@ -3537,7 +3531,6 @@ async function openDrawerForRow(row){
     dStageAge.textContent = `Stage Age: ${detail.stageAgeDays || stageAgeDays(row)}d`;
     dAttempts.textContent = `Attempts: ${detail.attemptsToday || 0} today • ${detail.attemptsThisWeek || 0} week • ${detail.attemptsLifetime || 0} total`;
     dWaitingOnPill.textContent = detail.waitingOnLabel || waitingLabel(detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent");
-    refreshCalendarBusyPanel();
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
     await loadSharedAgentAccess(activeClientId);
@@ -4540,7 +4533,6 @@ btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
   dSaved.textContent = "Next action set — saving…";
   queueQuickViewAutosave();
-  refreshCalendarBusyPanel();
 });
 
 
@@ -4550,31 +4542,26 @@ $$("[data-schedulepreset]").forEach(btn => {
     const now = new Date();
     if (preset === "today3"){
       setDrawerNextActionDate(todayISO());
-      dMeetingTime.value = "15:00";
       dNextText.value = dNextText.value || "Same-day follow-up";
     } else if (preset === "tomorrow10"){
       const d = new Date();
       d.setDate(d.getDate() + 1);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "10:00";
       dNextText.value = dNextText.value || "Tomorrow morning follow-up";
     } else if (preset === "nextbiz"){
       let d = new Date();
       d.setDate(d.getDate() + 1);
       while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
       dNextText.value = dNextText.value || "Next business day touch";
     } else if (preset === "week"){
       const d = new Date(now);
       d.setDate(d.getDate() + 7);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
       dNextText.value = dNextText.value || "1 week follow-up";
     }
     dSaved.textContent = "Next-step preset applied — saving…";
     queueQuickViewAutosave();
-    refreshCalendarBusyPanel();
   });
 });
 
