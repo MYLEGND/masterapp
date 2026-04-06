@@ -91,7 +91,7 @@
         body { background-color: #fff; color: #000; font-family: 'Inter', sans-serif; }
 
         .navbar {
-            background: #ffffff;
+            background: #0b1529;
             border: 1.5px solid rgba(166,128,35,.86);
             padding: 2rem 2rem;
             display: flex;
@@ -100,8 +100,8 @@
             max-height: none;
             position: relative;
             box-shadow:
-                0 18px 38px rgba(64,47,11,.10),
-                inset 0 0 0 1px rgba(255,255,255,.86);
+                0 18px 38px rgba(0,0,0,.28),
+                inset 0 0 0 1px rgba(255,255,255,.08);
             border-radius: 18px;
             overflow:hidden;
         }
@@ -149,27 +149,27 @@
 
         .navbar-left .nav-link {
             font-weight: 900;
-            color: #1a1a1a !important;
+            color: #f8fafc !important;
             white-space: nowrap;
             padding: 0.7rem 1.35rem;
             border-radius: 50px;
             transition: all 0.25s ease;
             letter-spacing: 0.55px;
             text-decoration: none;
-            border: 1.5px solid transparent;
-            background: #ffffff;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.86);
+            border: 1.5px solid rgba(166,128,35,.62);
+            background: transparent;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
         }
 
         .navbar-left .nav-link:hover,
         .navbar-left .nav-link.active {
-            color: #a68023 !important;
-            background: #fffdf8;
-            border-color: rgba(166,128,35,.54);
+            color: #ddb457 !important;
+            background: rgba(166,128,35,0.14);
+            border-color: rgba(166,128,35,.82);
             transform: translateY(-2px);
             box-shadow:
-                0 14px 24px rgba(64,47,11,.10),
-                inset 0 1px 0 rgba(255,255,255,.86);
+                0 14px 24px rgba(0,0,0,.22),
+                inset 0 1px 0 rgba(255,255,255,.12);
         }
 
         .dropdown { position: relative; }
@@ -178,7 +178,7 @@
             position: absolute;
             top: 100%;
             left: 0;
-            background: #ffffff;
+            background: #0b1529;
             border: 1.5px solid rgba(166,128,35,.74);
             border-radius: 16px;
             padding: 0.5rem 0;
@@ -186,13 +186,13 @@
             flex-direction: column;
             min-width: 220px;
             z-index: 999;
-            box-shadow: 0 20px 40px rgba(64,47,11,.12);
+            box-shadow: 0 20px 40px rgba(0,0,0,.35);
             backdrop-filter: blur(4px);
         }
 
         .dropdown-menu-centered .dropdown-item {
             padding: 0.65rem 1.25rem;
-            color: #1a1a1a;
+            color: #f8fafc;
             font-weight: 800;
             text-decoration: none;
             border-radius: 14px;
@@ -201,10 +201,10 @@
         }
 
         .dropdown-menu-centered .dropdown-item:hover {
-            color: #a68023;
-            background: #fffdf8;
+            color: #f8fafc;
+            background: rgba(197,146,31,0.18);
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(64,47,11,.10);
+            box-shadow: 0 10px 20px rgba(0,0,0,.22);
         }
 
         .dropdown:hover .dropdown-menu-centered { display: flex; }
@@ -214,10 +214,24 @@
             width: auto;
             min-width: 360px;
             justify-content: flex-end;
-            gap: 6px;
+            gap: 10px;
             align-items: center;
             position: relative;
             flex-wrap: wrap;
+        }
+
+        .workspace-actions-group{
+            display:flex;
+            align-items:center;
+            gap:8px;
+            flex-wrap:wrap;
+            justify-content:flex-end;
+        }
+
+        .workspace-account-group{
+            display:flex;
+            align-items:center;
+            justify-content:flex-end;
         }
 
         .agent-pill {
@@ -227,45 +241,47 @@
             padding: 0.55rem 0.9rem;
             border-radius: 12px;
             border: 1.5px solid rgba(166,128,35,.54);
-            background: #fffdf8;
-            color: #5f4710;
+            background: #0f1d38;
+            color: #f8fafc;
             font-weight: 850;
             letter-spacing: .02em;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.86);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
             white-space: nowrap;
         }
 
         .agent-pill .npn-chip {
             padding: 0.2rem 0.6rem;
-            border-left: 1px solid rgba(166,128,35,.34);
-            color: #7a5a10;
+            border-left: 1px solid rgba(166,128,35,.42);
+            color: #f2d891;
             font-weight: 900;
         }
 
         .navbar-right .nav-link,
         .navbar-right .btn-link {
-            color: #1a1a1a !important;
+            color: #f8fafc !important;
             font-weight: 900;
             transition: all 0.25s ease;
             white-space: nowrap;
             padding: .65rem 1.1rem;
             border-radius: 30px;
             text-decoration: none;
-            border: 1.5px solid transparent;
-            background: #ffffff;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
+            border: 1.5px solid rgba(166,128,35,.62);
+            background: transparent;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
         }
 
         .navbar-right .nav-link:hover,
         .navbar-right .btn-link:hover {
-            color: #a68023 !important;
-            background: #fffdf8;
-            border-color: rgba(166,128,35,.54);
+            color: #ddb457 !important;
+            background: rgba(166,128,35,0.14);
+            border-color: rgba(166,128,35,.82);
             transform: translateY(-2px);
             box-shadow:
-                0 14px 24px rgba(64,47,11,.10),
-                inset 0 1px 0 rgba(255,255,255,.86);
+                0 14px 24px rgba(0,0,0,.22),
+                inset 0 1px 0 rgba(255,255,255,.12);
         }
+
+        .nav-link-button{ margin:0; }
 
         .profile-chip {
             display: inline-flex;
@@ -273,11 +289,11 @@
             gap: 10px;
             padding: 0.4rem 0.75rem;
             border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.35);
-            background: #ffffff;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.86), 0 10px 20px rgba(64,47,11,.08);
+            border: 1.5px solid rgba(166,128,35,.55);
+            background: #0f1d38;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 20px rgba(0,0,0,.24);
             text-decoration: none;
-            color: #1a1a1a;
+            color: #f8fafc;
             font-weight: 900;
             min-width: 150px;
         }
@@ -309,8 +325,8 @@
             line-height: 1.2;
         }
 
-        .profile-name { color: #0f172a; font-weight: 900; }
-        .profile-note { color: #64748b; font-size: 0.8rem; font-weight: 800; }
+        .profile-name { color: #f8fafc; font-weight: 900; }
+        .profile-note { color: #cbd5e1; font-size: 0.8rem; font-weight: 800; }
 
         .header-psalms {
             position: absolute;
@@ -319,7 +335,7 @@
             transform: translateX(-50%);
             font-size: 1.16rem;
             font-weight: 900;
-            color: #a68023;
+            color: #f2d891;
             letter-spacing: 1.2px;
             text-align: center;
             font-family: 'Inter', sans-serif;
@@ -329,11 +345,11 @@
             text-overflow: ellipsis;
             padding: .55rem 1.15rem;
             border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.30);
-            background: #ffffff;
+            border: 1.5px solid rgba(166,128,35,.46);
+            background: rgba(15,29,56,.94);
             box-shadow:
-                0 10px 22px rgba(64,47,11,.08),
-                inset 0 1px 0 rgba(255,255,255,.84);
+                0 10px 22px rgba(0,0,0,.26),
+                inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .workspace-badge {
@@ -343,11 +359,11 @@
             padding: .55rem .95rem;
             border-radius: 999px;
             border: 1.5px solid rgba(166,128,35,.44);
-            background: #ffffff;
-            color: #a68023;
+            background: #0f1d38;
+            color: #f2d891;
             font-weight: 900;
             font-size: .95rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.84);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .explore-overlay{
@@ -830,35 +846,39 @@
                     }
                 }
 
-                <span class="workspace-badge">Managing: @clientDisplayName</span>
+                <div class="workspace-actions-group">
+                    <span class="workspace-badge">Managing: @clientDisplayName</span>
 
-                <a class="nav-link"
-                   asp-controller="Clients"
-                   asp-action="Index">
-                    Back to Clients
-                </a>
+                    <a class="nav-link"
+                       asp-controller="Clients"
+                       asp-action="Index">
+                        Back to Clients
+                    </a>
 
-                <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-link nav-link" style="padding:0;">Logout</button>
-                </form>
+                    <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline nav-link-button">
+                        @Html.AntiForgeryToken()
+                        <button type="submit" class="btn btn-link nav-link">Logout</button>
+                    </form>
+                </div>
 
-                <a class="profile-chip" title="@displayName" asp-controller="Avatar" asp-action="Edit">
-                    <div class="profile-avatar">
-                        @if (!string.IsNullOrWhiteSpace(avatarUrl))
-                        {
-                            <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
-                        }
-                        else
-                        {
-                            <span>@initials</span>
-                        }
-                    </div>
-                    <div class="profile-meta">
-                        <span class="profile-name">@displayName</span>
-                        <span class="visually-hidden">Edit picture</span>
-                    </div>
-                </a>
+                <div class="workspace-account-group">
+                    <a class="profile-chip" title="@displayName" asp-controller="Avatar" asp-action="Edit">
+                        <div class="profile-avatar">
+                            @if (!string.IsNullOrWhiteSpace(avatarUrl))
+                            {
+                                <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
+                            }
+                            else
+                            {
+                                <span>@initials</span>
+                            }
+                        </div>
+                        <div class="profile-meta">
+                            <span class="profile-name">@displayName</span>
+                            <span class="visually-hidden">Edit picture</span>
+                        </div>
+                    </a>
+                </div>
             </div>
 
         </div>

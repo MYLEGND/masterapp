@@ -16,6 +16,7 @@
 
   const lookupUrl = hub.dataset.lookupUrl || "/Clients/PortalQuickAccessClients";
   const createUrl = hub.dataset.createUrl || "/Clients/Create";
+  const editUrl = hub.dataset.editUrl || "/Clients/Edit";
   const crmUrl = hub.dataset.crmUrl || "/Clients";
   const homeReturnUrl = "/Home?clientHub=1";
   const recentKey = "legend.homeClientsHub.recent";
@@ -74,11 +75,25 @@
     return `${url.pathname}${url.search}`;
   }
 
+  function buildEditHref(clientUserId) {
+    if (!norm(clientUserId)) return editUrl;
+    const url = new URL(editUrl, window.location.origin);
+    url.searchParams.set("clientUserId", clientUserId);
+    url.searchParams.set("returnUrl", homeReturnUrl);
+    return `${url.pathname}${url.search}`;
+  }
+
   function openProfile(item) {
     if (!item || !item.clientUserId) return;
     rememberClient(item);
     const href = norm(item.profileUrl) || `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(item.clientUserId)}`;
     window.open(href, "_blank", "noopener,noreferrer");
+  }
+
+  function openEdit(item) {
+    if (!item || !item.clientUserId) return;
+    rememberClient(item);
+    window.location.href = buildEditHref(item.clientUserId);
   }
 
   function setResultsStatus(message, isError = false) {
@@ -94,10 +109,8 @@
   }
 
   function createClientCard(item, context = "recent") {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `home-clients-card${context === "result" ? " is-result" : ""}`;
-    button.addEventListener("click", () => openProfile(item));
+    const card = document.createElement("div");
+    card.className = `home-clients-card${context === "result" ? " is-result" : ""}`;
 
     const titleRow = document.createElement("div");
     titleRow.className = "home-clients-card-top";
@@ -122,13 +135,32 @@
 
     const cta = document.createElement("div");
     cta.className = "home-clients-card-cta";
-    cta.textContent = "Open Client Profile →";
+    cta.textContent = context === "result" ? "Open or edit from home" : "Client actions";
 
-    button.appendChild(titleRow);
-    button.appendChild(email);
-    button.appendChild(phone);
-    button.appendChild(cta);
-    return button;
+    const actions = document.createElement("div");
+    actions.className = "home-clients-card-actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "home-clients-card-action is-primary";
+    openButton.textContent = "Open Client Profile";
+    openButton.addEventListener("click", () => openProfile(item));
+
+    const editButton = document.createElement("button");
+    editButton.type = "button";
+    editButton.className = "home-clients-card-action";
+    editButton.textContent = "Edit Record";
+    editButton.addEventListener("click", () => openEdit(item));
+
+    actions.appendChild(openButton);
+    actions.appendChild(editButton);
+
+    card.appendChild(titleRow);
+    card.appendChild(email);
+    card.appendChild(phone);
+    card.appendChild(cta);
+    card.appendChild(actions);
+    return card;
   }
 
   function createResultItem(item) {

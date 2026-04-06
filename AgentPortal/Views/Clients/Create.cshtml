@@ -11,34 +11,35 @@
 
 <style>
     :root{
+        --navy-950:#050b16;
+        --navy-900:#081224;
+        --navy-850:#0b1529;
+        --navy-820:#0f1b30;
         --gold:#a68023;
         --gold-deep:#8f6b14;
         --gold-bright:#ddb85d;
-        --ink:#161616;
-        --muted:#666;
-        --line:rgba(143,107,20,.28);
-        --line-strong:rgba(143,107,20,.62);
-        --panel:#fff;
-        --soft:#f8f3e7;
-        --soft-gold:rgba(166,128,35,.10);
+        --ink:#f8fafc;
+        --muted:rgba(212,221,233,.82);
+        --line:rgba(166,128,35,.24);
+        --line-strong:rgba(166,128,35,.52);
+        --panel:rgba(11,21,41,.96);
+        --panel-soft:rgba(15,27,48,.94);
+        --soft-gold:rgba(166,128,35,.12);
         --danger:#b42318;
     }
 
     .page-wrap{
-        max-width: 760px;
+        max-width: 1040px;
         margin: 0 auto;
-        padding: 20px 16px 32px;
+        padding: 28px 18px 42px;
         color: var(--ink);
-        background:
-            linear-gradient(180deg, rgba(143,107,20,.06), rgba(143,107,20,0) 180px),
-            #fff;
     }
 
     .card{
-        background: var(--panel);
-        border: 2px solid var(--gold-deep);
-        border-radius: 20px;
-        box-shadow: 0 24px 52px rgba(92,67,10,.14);
+        background: #0b1529;
+        border: 1.5px solid rgba(166,128,35,.56);
+        border-radius: 28px;
+        box-shadow: 0 28px 62px rgba(0,0,0,.34);
         overflow: hidden;
         position: relative;
     }
@@ -55,24 +56,50 @@
 
     .card-header,
     .card-body{
-        padding: 18px;
+        padding: 24px;
     }
 
     .card-header{
         display:flex;
-        align-items:center;
+        align-items:flex-start;
         justify-content:space-between;
-        gap: 12px;
+        gap: 18px;
         border-bottom: 1px solid var(--line-strong);
-        background: linear-gradient(180deg, rgba(143,107,20,.14), rgba(255,255,255,.98));
+        background: #0f1b30;
+    }
+
+    .eyebrow{
+        display:inline-flex;
+        align-items:center;
+        gap:.45rem;
+        margin-bottom:.8rem;
+        padding:.38rem .72rem;
+        border-radius:999px;
+        border:1px solid rgba(166,128,35,.34);
+        background: rgba(166,128,35,.12);
+        color:#f2d891;
+        font-size:.76rem;
+        font-weight:900;
+        letter-spacing:.12em;
+        text-transform:uppercase;
     }
 
     .title{
         margin:0;
-        font-size: 1.35rem;
+        font-size: 2rem;
         font-weight: 900;
-        color: var(--gold-deep);
+        color: #f7e4ae;
         letter-spacing: .02em;
+        line-height:1.08;
+    }
+
+    .subtitle{
+        margin:.65rem 0 0;
+        max-width: 720px;
+        color: #d6e0ef;
+        font-size: 1rem;
+        font-weight: 650;
+        line-height: 1.6;
     }
 
     .label{
@@ -80,7 +107,7 @@
         margin-bottom: 6px;
         font-size: .92rem;
         font-weight: 800;
-        color: var(--ink);
+        color: #f8fafc;
     }
 
     .required-chip{
@@ -88,9 +115,9 @@
         margin-left: 8px;
         padding: 2px 8px;
         border-radius: 999px;
-        border: 1px solid var(--gold-deep);
-        background: #fff4d2;
-        color: var(--gold-deep);
+        border: 1px solid rgba(166,128,35,.5);
+        background: rgba(166,128,35,.12);
+        color: #f2d891;
         font-size: .72rem;
         font-weight: 900;
         letter-spacing: .04em;
@@ -105,39 +132,68 @@
 
     .input{
         width: 100%;
-        min-height: 42px;
-        border: 1px solid #c59a37;
-        border-radius: 14px;
-        padding: .7rem .8rem;
-        background: #fff;
+        min-height: 48px;
+        border: 1.5px solid rgba(166,128,35,.38);
+        border-radius: 16px;
+        padding: .8rem .95rem;
+        background: #0f1b30;
+        color: #f8fafc;
         outline: none;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
+        box-shadow: inset 0 1px 4px rgba(0,0,0,.35);
     }
 
     .input:focus{
-        border-color: var(--gold-deep);
-        box-shadow: 0 0 0 3px rgba(166,128,35,.14);
+        border-color: var(--gold-bright);
+        box-shadow: 0 0 0 3px rgba(166,128,35,.18);
     }
 
+    .input option{
+        background: #0f1b30;
+        color: #f8fafc;
+    }
+
+    .input::placeholder{
+        color: #9eb0ca;
+    }
     .grid{
         display:grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap: 14px;
     }
 
     .full{ grid-column: 1 / -1; }
 
     .section{
-        padding-top: 14px;
-        margin-top: 14px;
-        border-top: 1px solid rgba(143,107,20,.18);
+        padding-top: 18px;
+        margin-top: 18px;
+        border-top: 1px solid rgba(166,128,35,.18);
+    }
+
+    .section-shell{
+        padding: 1.35rem;
+        border-radius: 22px;
+        border: 1px solid rgba(166,128,35,.28);
+        background: linear-gradient(180deg, rgba(15,27,48,.95), rgba(11,21,41,.94));
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+
+    .section-head{
+        margin-bottom: 1rem;
+    }
+
+    .section-copy{
+        margin:.32rem 0 0;
+        color: var(--muted);
+        font-size: .95rem;
+        font-weight: 600;
+        line-height: 1.5;
     }
 
     .section-title{
         margin: 0 0 12px;
         font-size: 1rem;
         font-weight: 900;
-        color: var(--gold-deep);
+        color: #f2d891;
         letter-spacing: .03em;
         text-transform: uppercase;
     }
@@ -153,20 +209,21 @@
         display:flex;
         align-items:center;
         gap: 10px;
-        min-height: 48px;
+        min-height: 54px;
         padding: 0 14px;
-        border: 1px solid #c59a37;
-        border-radius: 14px;
-        background: linear-gradient(180deg, #fffdf8, #ffffff);
+        border: 1px solid rgba(166,128,35,.38);
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+        color: #f8fafc;
         font-weight: 800;
         cursor: pointer;
         transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
     }
 
     .record-option:has(input:checked){
-        border-color: var(--gold-deep);
+        border-color: var(--gold-bright);
         box-shadow: 0 0 0 2px rgba(166,128,35,.14);
-        background: linear-gradient(180deg, #fff3cf, #fffaf0);
+        background: linear-gradient(180deg, rgba(221,180,87,.20), rgba(255,255,255,.05));
     }
 
     .record-option input{
@@ -175,20 +232,22 @@
 
     .summary,
     .blocked{
-        border-radius: 12px;
-        padding: 10px 12px;
-        margin-bottom: 12px;
+        border-radius: 16px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
         font-weight: 600;
     }
 
     .summary{
-        border: 1px solid rgba(180,35,24,.2);
-        background: rgba(180,35,24,.06);
+        border: 1px solid rgba(220,53,69,.24);
+        background: rgba(220,53,69,.08);
+        color: #ffd5d0;
     }
 
     .blocked{
-        border: 1px solid rgba(180,35,24,.25);
-        background: rgba(180,35,24,.08);
+        border: 1px solid rgba(220,53,69,.3);
+        background: rgba(220,53,69,.1);
+        color: #ffd5d0;
     }
 
     .validation{
@@ -196,26 +255,26 @@
         margin-top: 4px;
         font-size: .84rem;
         font-weight: 600;
-        color: var(--danger);
+        color: #ffb4ab;
     }
 
     .actions{
         display:flex;
         gap: 10px;
         flex-wrap: wrap;
-        margin-top: 16px;
+        margin-top: 18px;
     }
 
     .btn{
         display:inline-flex;
         align-items:center;
         justify-content:center;
-        min-height: 42px;
-        padding: 0 14px;
-        border-radius: 14px;
-        border: 1px solid var(--gold-deep);
-        background: #fff;
-        color: var(--gold-deep);
+        min-height: 46px;
+        padding: 0 16px;
+        border-radius: 16px;
+        border: 1.5px solid rgba(166,128,35,.52);
+        background: rgba(255,255,255,.04);
+        color: #f6e6b4;
         font-weight: 800;
         text-decoration: none;
         cursor: pointer;
@@ -224,16 +283,31 @@
 
     .btn:hover{
         transform: translateY(-1px);
-        border-color: var(--gold-deep);
-        box-shadow: 0 12px 24px rgba(92,67,10,.12);
+        border-color: rgba(221,180,87,.9);
+        box-shadow: 0 14px 28px rgba(0,0,0,.24);
+    }
+
+    .btn-outline{
+        background: rgba(255,255,255,.03);
+        color: #f6e6b4;
     }
 
     .btn-solid{
         border-color: var(--gold-deep);
         background: linear-gradient(180deg, #f2d891, #ddb457);
-        color: #fff;
+        color: #081224;
         text-shadow: 0 1px 0 rgba(92,67,10,.2);
-        box-shadow: 0 14px 26px rgba(143,107,20,.18);
+        box-shadow: 0 18px 34px rgba(143,107,20,.28);
+    }
+
+    .btn-solid:hover{
+        border-color: #efcf81;
+        box-shadow: 0 22px 38px rgba(143,107,20,.34);
+    }
+
+    textarea.input{
+        min-height: 120px;
+        resize: vertical;
     }
 
     @@media (max-width: 720px){
@@ -245,14 +319,23 @@
         .card-header{
             align-items:flex-start;
         }
+
+        .card-header,
+        .card-body{
+            padding: 20px;
+        }
     }
 </style>
 
 <div class="page-wrap">
     <div class="card">
         <div class="card-header">
-            <h2 class="title">Create Lead, Client, or Business Client</h2>
-            <a href="@returnUrl" class="btn">Back</a>
+            <div>
+                <div class="eyebrow">Private client intake</div>
+                <h2 class="title">Create Lead, Client, or Business Client</h2>
+                <p class="subtitle">Open a new record from the home experience with the same client-ready look and a clean path back to the access hub.</p>
+            </div>
+            <a href="@returnUrl" class="btn btn-outline">Back</a>
         </div>
 
         <div class="card-body">
@@ -282,8 +365,11 @@
                     </div>
                 }
 
-                <div>
-                    <div class="section-title">Type</div>
+                <div class="section-shell">
+                    <div class="section-head">
+                        <div class="section-title">Record Type</div>
+                        <p class="section-copy">Choose the workspace type first so required fields and downstream portal behavior stay aligned.</p>
+                    </div>
                     <div class="record-types">
                         <label class="record-option">
                             <input asp-for="RecordType" type="radio" value="Lead" />
@@ -301,7 +387,11 @@
                     <span asp-validation-for="RecordType" class="text-danger validation"></span>
                 </div>
 
-                <div class="section">
+                <div class="section section-shell">
+                    <div class="section-head">
+                        <div class="section-title">Client Details</div>
+                        <p class="section-copy">Capture the primary contact information and household status used across the CRM and client workspace.</p>
+                    </div>
                     <div class="grid">
                     <div>
                         <label asp-for="FirstName" class="label"></label>
@@ -351,8 +441,11 @@
                 </div>
                 </div>
 
-                <div id="soCard" class="section" style="display:none;">
-                    <div class="section-title">Significant Other</div>
+                <div id="soCard" class="section section-shell" style="display:none;">
+                    <div class="section-head">
+                        <div class="section-title">Significant Other</div>
+                        <p class="section-copy">Required for married and domestic-partnership households so the client record opens with the right family context.</p>
+                    </div>
 
                     <div class="grid">
                         <div>
@@ -390,8 +483,11 @@
                     </div>
                 </div>
 
-                <div class="section" id="crmSeed">
-                    <div class="section-title">CRM</div>
+                <div class="section section-shell" id="crmSeed">
+                    <div class="section-head">
+                        <div class="section-title">CRM</div>
+                        <p class="section-copy">Seed relationship tracking details now if this record should land in a specific pipeline state the moment it is created.</p>
+                    </div>
 
                     <div class="grid">
                         <div>
@@ -467,7 +563,7 @@
 
                 <div class="actions">
                     <button type="submit" class="btn btn-solid" id="submitCreateBtn">Create Lead</button>
-                    <a asp-action="Index" class="btn">Cancel</a>
+                    <a href="@returnUrl" class="btn btn-outline">Cancel</a>
                 </div>
             </form>
         </div>
