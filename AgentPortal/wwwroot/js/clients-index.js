@@ -5127,6 +5127,7 @@ function renderLaneCards(rowsForStage){
         </div>
         <div class="client-card-actions actions" style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(0,0,0,.10); justify-content:flex-end; gap:8px;">
           ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
+          ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
           <button type="button"
                   class="btn btn-gold openCard"
                   data-open-card="${safeHtml(r.dataset.clientId)}"

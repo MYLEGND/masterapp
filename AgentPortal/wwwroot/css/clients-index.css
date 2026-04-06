@@ -4503,15 +4503,19 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 .pipeline-board .client-card{
     border-color: rgba(166,128,35,.82);
     box-shadow:
-        0 16px 30px rgba(15,23,42,.18),
-        inset 0 1px 0 rgba(255,255,255,.14);
+        0 18px 34px rgba(15,23,42,.2),
+        inset 0 1px 0 rgba(255,255,255,.22),
+        inset 0 -24px 38px rgba(15,23,42,.08);
     padding: 12px 12px 12px 15px;
+    border-radius: 16px;
+    backdrop-filter: saturate(108%);
 }
 
 .pipeline-board .client-card:hover{
     box-shadow:
-        0 18px 34px rgba(15,23,42,.24),
-        inset 0 1px 0 rgba(255,255,255,.18);
+        0 22px 38px rgba(15,23,42,.26),
+        inset 0 1px 0 rgba(255,255,255,.28),
+        inset 0 -24px 38px rgba(15,23,42,.1);
 }
 
 .pipeline-board .client-card.stage-newlead{ background: linear-gradient(180deg,#dcd3c0,#c9bea8); }
@@ -5720,13 +5724,13 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     font-size: 12px !important;
     font-weight: 900 !important;
     letter-spacing: .012em;
-    border-radius: 11px !important;
+    border-radius: 12px !important;
     border: 1px solid #7b5c1a !important;
-    box-shadow: 0 10px 18px rgba(15,23,42,.16), inset 0 1px 0 rgba(255,255,255,.15) !important;
+    box-shadow: 0 12px 20px rgba(15,23,42,.18), inset 0 1px 0 rgba(255,255,255,.2) !important;
     text-shadow: none !important;
 }
 
-/* Color-coded action buttons on bucket cards */
+/* Premium action buttons on bucket cards (no blue-heavy base) */
 .pipeline-board .client-card-actions .open-drawer,
 .pipeline-board .client-card-actions .btn-quickview,
 .pipeline-board .client-card-actions .btn.btn-gold{
@@ -5737,21 +5741,43 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 .pipeline-board .client-card-actions .btn-confirm,
 .pipeline-board .client-card-actions .add-production-btn,
 .pipeline-board .client-card-actions .add-client-production-btn{
-    background: linear-gradient(180deg,#2a7a55,#205e42) !important;
-    color:#ebfff5 !important;
+    background: linear-gradient(180deg,#2f6a4c,#214c37) !important;
+    color:#ecfff3 !important;
 }
 
 .pipeline-board .client-card-actions .btn.btn-ghost,
 .pipeline-board .client-card-actions a.btn.btn-ghost,
 .pipeline-board .client-card-actions .btn-outline-light{
-    background: linear-gradient(180deg,#2f6fa2,#24567d) !important;
-    color:#eaf5ff !important;
+    background: linear-gradient(180deg,#3d4655,#2a3340) !important;
+    color:#edf2fb !important;
+}
+
+/* Card Call/Text buttons: premium dark navy with clearly visible dark-gold border */
+.pipeline-board .client-card-actions a.btn[href^="tel:"],
+.pipeline-board .client-card-actions a.btn[href^="sms:"],
+.pipeline-board .client-card-actions button.btn[data-call-lead],
+.pipeline-board .client-card-actions button.btn[data-text-menu]{
+    background: linear-gradient(180deg,#162942 0%, #0f1f33 52%, #0a1828 100%) !important;
+    color:#f5f8ff !important;
+    border: 1px solid #9b741f !important;
+    box-shadow:
+        0 12px 20px rgba(6,16,28,.36),
+        inset 0 1px 0 rgba(255,255,255,.18),
+        inset 0 0 0 1px rgba(227,184,79,.28) !important;
+}
+
+.pipeline-board .client-card-actions a.btn[href^="tel:"]:hover,
+.pipeline-board .client-card-actions a.btn[href^="sms:"]:hover,
+.pipeline-board .client-card-actions button.btn[data-call-lead]:hover,
+.pipeline-board .client-card-actions button.btn[data-text-menu]:hover{
+    border-color:#b88a2b !important;
+    filter: brightness(1.1);
 }
 
 .pipeline-board .client-card-actions .btn:hover,
 .pipeline-board .client-card-actions a.btn:hover{
     border-color:#a68023 !important;
-    filter: brightness(1.06);
+    filter: brightness(1.07);
     transform: translateY(-1px);
 }
 
@@ -5763,38 +5789,38 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 /* Restore unique stage color coding (Clients + Leads bucket cards) */
 .pipeline-board .client-card.stage-newlead{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(230,194,110,.14), transparent 54%), linear-gradient(180deg,#efe4cc,#dfcfb2) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(230,194,110,.18), transparent 54%), linear-gradient(180deg,#f2e8d3,#ddceb0) !important;
 }
 .pipeline-board .client-card.stage-opportunities{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(245,158,11,.14), transparent 54%), linear-gradient(180deg,#efdfc3,#dec9a4) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(245,158,11,.18), transparent 54%), linear-gradient(180deg,#f2e1c4,#dcc59d) !important;
 }
 .pipeline-board .client-card.stage-contacted{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(59,130,246,.16), transparent 54%), linear-gradient(180deg,#dde6f4,#ccd9eb) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(59,130,246,.18), transparent 54%), linear-gradient(180deg,#e0e8f5,#cad7ea) !important;
 }
 .pipeline-board .client-card.stage-qualified{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(16,185,129,.14), transparent 54%), linear-gradient(180deg,#dcece3,#c9dece) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(16,185,129,.18), transparent 54%), linear-gradient(180deg,#dff0e5,#c7ddcd) !important;
 }
 .pipeline-board .client-card.stage-client{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(217,179,90,.14), transparent 54%), linear-gradient(180deg,#e9e4d8,#d9d1c1) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(217,179,90,.18), transparent 54%), linear-gradient(180deg,#ece7dc,#d8cfbe) !important;
 }
 .pipeline-board .client-card.stage-businessclient{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(20,184,166,.14), transparent 54%), linear-gradient(180deg,#dae9e6,#c7dbd6) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(20,184,166,.18), transparent 54%), linear-gradient(180deg,#dcebe8,#c4d8d3) !important;
 }
 .pipeline-board .client-card.stage-meetingscheduled{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(139,92,246,.16), transparent 54%), linear-gradient(180deg,#e3ddf2,#d2c9e7) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(139,92,246,.2), transparent 54%), linear-gradient(180deg,#e6e0f4,#d0c6e5) !important;
 }
 .pipeline-board .client-card.stage-proposalsent{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(249,115,22,.16), transparent 54%), linear-gradient(180deg,#eaded2,#dccbb8) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(249,115,22,.2), transparent 54%), linear-gradient(180deg,#eddece,#dbc8b2) !important;
 }
 .pipeline-board .client-card.stage-applicationstarted{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(6,182,212,.16), transparent 54%), linear-gradient(180deg,#d8e7ec,#c7dbe3) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(6,182,212,.2), transparent 54%), linear-gradient(180deg,#dbe9ee,#c5d8e1) !important;
 }
 .pipeline-board .client-card.stage-submitted{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(34,197,94,.16), transparent 54%), linear-gradient(180deg,#d7e7da,#c6d8c9) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(34,197,94,.2), transparent 54%), linear-gradient(180deg,#d9eadc,#c3d5c6) !important;
 }
 .pipeline-board .client-card.stage-closedlost{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(239,68,68,.16), transparent 54%), linear-gradient(180deg,#ead9dc,#dbc8cc) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(239,68,68,.2), transparent 54%), linear-gradient(180deg,#ecdadd,#d9c4c8) !important;
 }
 .pipeline-board .client-card.stage-nurture{
-    background: radial-gradient(760px 180px at 100% -24%, rgba(217,70,239,.16), transparent 54%), linear-gradient(180deg,#e6dced,#d6c9e1) !important;
+    background: radial-gradient(760px 180px at 100% -24%, rgba(217,70,239,.2), transparent 54%), linear-gradient(180deg,#e9deef,#d4c6de) !important;
 }
