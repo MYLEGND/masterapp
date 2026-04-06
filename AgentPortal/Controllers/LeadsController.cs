@@ -269,9 +269,11 @@ public class LeadsController : Controller
                             g =>
                             {
                                 var latest = g.First(); // already ordered desc
+                                var submittedSum = g.Where(x => x.Status == ProductionStatus.Submitted).Sum(x => x.Amount);
+                                var issuedSum = g.Where(x => x.Status == ProductionStatus.Issued).Sum(x => x.Amount);
                                 var paidSum = g.Where(x => x.Status == ProductionStatus.Paid).Sum(x => x.Amount);
                                 var personalSum = g.Sum(x => (decimal?)x.PersonalAmount ?? 0m);
-                                return new ProductionSnapshot(latest.Status, latest.Amount, paidSum, personalSum);
+                                return new ProductionSnapshot(latest.Status, latest.Amount, submittedSum, issuedSum, paidSum, personalSum);
                             },
                             StringComparer.OrdinalIgnoreCase);
                 }
@@ -343,7 +345,10 @@ public class LeadsController : Controller
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
-                    ProductionAmount = prod?.Amount ?? 0
+                    ProductionAmount = prod?.Amount ?? 0,
+                    ProductionSubmittedAmount = prod?.Submitted ?? 0,
+                    ProductionIssuedAmount = prod?.Issued ?? 0,
+                    ProductionPaidAmount = prod?.Paid ?? 0
                 };
             }).ToList();
 
@@ -368,7 +373,7 @@ public class LeadsController : Controller
     private static string NormalizeStateValue(string? state)
         => (state ?? "").Trim().ToUpperInvariant();
 
-    private sealed record ProductionSnapshot(ProductionStatus? Status, decimal Amount, decimal Paid, decimal Personal);
+    private sealed record ProductionSnapshot(ProductionStatus? Status, decimal Amount, decimal Submitted, decimal Issued, decimal Paid, decimal Personal);
 
     private static string ResolveLeadState(WorkstationLeadProfile lead, IReadOnlyDictionary<string, string>? fallbackStatesByPhone)
     {
@@ -762,9 +767,11 @@ public class LeadsController : Controller
                         g =>
                         {
                             var latest = g.First();
+                            var submittedSum = g.Where(x => x.Status == ProductionStatus.Submitted).Sum(x => x.Amount);
+                            var issuedSum = g.Where(x => x.Status == ProductionStatus.Issued).Sum(x => x.Amount);
                             var paidSum = g.Where(x => x.Status == ProductionStatus.Paid).Sum(x => x.Amount);
                             var personalSum = g.Sum(x => (decimal?)(x.PersonalAmount) ?? 0m);
-                            return new ProductionSnapshot(latest.Status, latest.Amount, paidSum, personalSum);
+                            return new ProductionSnapshot(latest.Status, latest.Amount, submittedSum, issuedSum, paidSum, personalSum);
                         },
                         StringComparer.OrdinalIgnoreCase);
             }
@@ -830,7 +837,10 @@ public class LeadsController : Controller
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
-                    ProductionAmount = prod?.Amount ?? 0
+                    ProductionAmount = prod?.Amount ?? 0,
+                    ProductionSubmittedAmount = prod?.Submitted ?? 0,
+                    ProductionIssuedAmount = prod?.Issued ?? 0,
+                    ProductionPaidAmount = prod?.Paid ?? 0
                 };
             })
             .OrderBy(x => x.LastName)

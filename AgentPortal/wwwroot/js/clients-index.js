@@ -2635,9 +2635,15 @@ function setClientProduction(row, status, amount, totals){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
-  const paid = Number(totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid ?? 0);
-  const issued = Number(totals?.issued ?? row.dataset.prodIssued ?? 0);
-  const submitted = Number(totals?.submitted ?? row.dataset.prodSubmitted ?? 0);
+  const resolved = resolveProductionTotals(cleanStatus, amt, {
+    paid: totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid,
+    issued: totals?.issued ?? row.dataset.prodIssued,
+    submitted: totals?.submitted ?? row.dataset.prodSubmitted
+  });
+  const paid = resolved.paid;
+  const issued = resolved.issued;
+  const submitted = resolved.submitted;
+  const hasAny = paid > 0 || issued > 0 || submitted > 0;
 
   row.dataset.prodPaid = Number.isFinite(paid) ? `${paid}` : "0";
   row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
@@ -2647,8 +2653,8 @@ function setClientProduction(row, status, amount, totals){
   row.dataset.prodAmount = paid > 0 ? paid : amt;
 
   if (!badge) return;
-  if (paid > 0){
-    badge.innerHTML = `<span class="prod-status">Paid</span><span class="prod-amt"> ${formatCurrency(paid)}</span>`;
+  if (hasAny){
+    badge.innerHTML = renderPipelineProdBadge({ paid, issued, submitted });
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2662,6 +2668,36 @@ function setClientProductionById(clientId, status, amount, totals){
   updatePipelineCardProduction(clientId);
 }
 
+function productionBucket(rawStatus){
+  const s = norm(rawStatus).toLowerCase();
+  if (!s) return "";
+  if (s === "2" || s.includes("paid")) return "paid";
+  if (s === "1" || s.includes("issued")) return "issued";
+  if (s === "0" || s.includes("submitted")) return "submitted";
+  return "";
+}
+
+function resolveProductionTotals(status, amount, seed = {}){
+  let paid = Number(seed.paid ?? 0);
+  let issued = Number(seed.issued ?? 0);
+  let submitted = Number(seed.submitted ?? 0);
+  if (!Number.isFinite(paid)) paid = 0;
+  if (!Number.isFinite(issued)) issued = 0;
+  if (!Number.isFinite(submitted)) submitted = 0;
+
+  if (paid <= 0 && issued <= 0 && submitted <= 0){
+    const amt = Number(amount || 0);
+    if (amt > 0){
+      const bucket = productionBucket(status);
+      if (bucket === "paid") paid = amt;
+      else if (bucket === "issued") issued = amt;
+      else if (bucket === "submitted") submitted = amt;
+    }
+  }
+
+  return { paid, issued, submitted };
+}
+
 function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
   const paidAmt = Number(paid || 0);
   const issuedAmt = Number(issued || 0);
@@ -2669,9 +2705,9 @@ function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
   if (paidAmt <= 0 && issuedAmt <= 0 && submittedAmt <= 0) return "";
 
   return `
-    <div class="prod-line"><span class="prod-lbl">Paid</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
-    <div class="prod-line"><span class="prod-lbl">Issued</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
-    <div class="prod-line"><span class="prod-lbl">Submitted</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
+    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
+    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
+    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
   `;
 }
 
@@ -6429,10 +6465,11 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
     const item = (data && data.length) ? data[0] : null;
     const totals = (data || []).reduce((acc, p) => {
       const amt = Number(p?.amount || 0);
-      const st = norm(p?.status);
+      const raw = norm(p?.status);
+      const st = productionBucket(raw);
       if (st === "paid") acc.paid += amt;
       else if (st === "issued") acc.issued += amt;
-      else acc.submitted += amt;
+      else if (st === "submitted") acc.submitted += amt;
       return acc;
     }, { paid: 0, issued: 0, submitted: 0 });
 

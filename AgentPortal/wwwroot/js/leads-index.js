@@ -2083,18 +2083,24 @@ function hydrateRow(row){
   setLeadProduction(row, prodStatus, prodAmount);
 }
 
-function setLeadProduction(row, status, amount){
+function setLeadProduction(row, status, amount, totals){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
-  row.dataset.prodStatus = cleanStatus;
-  row.dataset.prodAmount = amt;
+  const paid = Number(totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid ?? 0);
+  const issued = Number(totals?.issued ?? row.dataset.prodIssued ?? 0);
+  const submitted = Number(totals?.submitted ?? row.dataset.prodSubmitted ?? 0);
 
-  console.log("PROD DATA:", row?.dataset?.clientId, cleanStatus, amt);
+  row.dataset.prodPaid = Number.isFinite(paid) ? `${paid}` : "0";
+  row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
+  row.dataset.prodSubmitted = Number.isFinite(submitted) ? `${submitted}` : "0";
+  row.dataset.paid = row.dataset.prodPaid;
+  row.dataset.prodStatus = (paid > 0 ? "Paid" : cleanStatus);
+  row.dataset.prodAmount = paid > 0 ? paid : amt;
 
   if (!badge) return;
-  if (cleanStatus && amt > 0){
-    badge.innerHTML = `<span class="prod-status">${escapeHtml(cleanStatus)}</span><span class="prod-amt"> ${formatCurrency(amt)}</span>`;
+  if (paid > 0){
+    badge.innerHTML = `<span class="prod-status">Paid</span><span class="prod-amt"> ${formatCurrency(paid)}</span>`;
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2102,10 +2108,53 @@ function setLeadProduction(row, status, amount){
   }
 }
 
-function setLeadProductionById(leadId, status, amount){
+function setLeadProductionById(leadId, status, amount, totals){
   const row = rows.find(r => r.dataset.clientId === leadId);
-  if (row) setLeadProduction(row, status, amount);
+  if (row) setLeadProduction(row, status, amount, totals);
   updatePipelineCardProduction(leadId);
+}
+
+function productionBucket(rawStatus){
+  const s = norm(rawStatus).toLowerCase();
+  if (!s) return "";
+  if (s === "2" || s.includes("paid")) return "paid";
+  if (s === "1" || s.includes("issued")) return "issued";
+  if (s === "0" || s.includes("submitted")) return "submitted";
+  return "";
+}
+
+function resolveProductionTotals(status, amount, seed = {}){
+  let paid = Number(seed.paid ?? 0);
+  let issued = Number(seed.issued ?? 0);
+  let submitted = Number(seed.submitted ?? 0);
+  if (!Number.isFinite(paid)) paid = 0;
+  if (!Number.isFinite(issued)) issued = 0;
+  if (!Number.isFinite(submitted)) submitted = 0;
+
+  if (paid <= 0 && issued <= 0 && submitted <= 0){
+    const amt = Number(amount || 0);
+    if (amt > 0){
+      const bucket = productionBucket(status);
+      if (bucket === "paid") paid = amt;
+      else if (bucket === "issued") issued = amt;
+      else if (bucket === "submitted") submitted = amt;
+    }
+  }
+
+  return { paid, issued, submitted };
+}
+
+function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
+  const paidAmt = Number(paid || 0);
+  const issuedAmt = Number(issued || 0);
+  const submittedAmt = Number(submitted || 0);
+  if (paidAmt <= 0 && issuedAmt <= 0 && submittedAmt <= 0) return "";
+
+  return `
+    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
+    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
+    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
+  `;
 }
 
 function updatePipelineCardProduction(leadId){
@@ -2115,10 +2164,13 @@ function updatePipelineCardProduction(leadId){
   if (!card || !row) return;
   const badge = card.querySelector("[data-prod-card]");
   if (!badge) return;
-  const status = (row.dataset.prodStatus || "").trim();
-  const amount = Number(row.dataset.prodAmount || 0);
-  if (status && amount > 0){
-    badge.innerHTML = `${escapeHtml(status)} <span class="prod-amt">${formatCurrency(amount)}</span>`;
+
+  const paid = Number(row.dataset.prodPaid || row.dataset.paid || 0);
+  const issued = Number(row.dataset.prodIssued || 0);
+  const submitted = Number(row.dataset.prodSubmitted || 0);
+  const html = renderPipelineProdBadge({ paid, issued, submitted });
+  if (html){
+    badge.innerHTML = html;
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -3345,7 +3397,18 @@ async function loadProductionHistory(leadId){
       if (!res.ok) throw new Error("load fail");
       const data = await res.json();
     const latest = (data && data.length) ? data[0] : null;
-    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0);
+    const totals = (data || []).reduce((acc, p) => {
+      const amt = Number(p?.amount || 0);
+      const raw = norm(p?.status);
+      const st = (raw === "2" || raw === "paid")
+        ? "paid"
+        : ((raw === "1" || raw === "issued") ? "issued" : "submitted");
+      if (st === "paid") acc.paid += amt;
+      else if (st === "issued") acc.issued += amt;
+      else acc.submitted += amt;
+      return acc;
+    }, { paid: 0, issued: 0, submitted: 0 });
+    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals);
     // --- Production summary logic ---
     if (summary) {
       if (!data || !data.length) {
@@ -4612,9 +4675,15 @@ function renderLaneCards(rowsForStage){
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
     const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
     const callCount = norm(r.dataset.sAttemptslife || r.dataset.crmAttemptsLife || "0");
-    const prodStatus = (r.dataset.prodStatus || "").trim();
-    const prodAmount = Number(r.dataset.prodAmount || 0);
-    const prodBadge = `<div class="lead-prod-badge ${prodStatus && prodAmount > 0 ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodStatus && prodAmount > 0 ? `${safeHtml(prodStatus)} <span class="prod-amt">${formatCurrency(prodAmount)}</span>` : ""}</div>`;
+    const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
+    const issuedAmount = Number(r.dataset.prodIssued || 0);
+    const submittedAmount = Number(r.dataset.prodSubmitted || 0);
+    const prodBadgeHtml = renderPipelineProdBadge({
+      paid: paidAmount,
+      issued: issuedAmount,
+      submitted: submittedAmount
+    });
+    const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"

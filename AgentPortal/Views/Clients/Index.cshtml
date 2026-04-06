@@ -655,9 +655,11 @@ else
                     <td data-label="Client" data-col="name" data-open-row="true">
                         <div class="cell-stack cell-with-prod">
                             <div class="lead-prod-card" data-prod-card>
-                                @if (prodPaid > 0)
+                                @if (prodPaid > 0 || prodIssued > 0 || prodSubmitted > 0)
                                 {
-                                    <span class="prod-status">Paid</span><span class="prod-amt"> @prodPaid.ToString("C0")</span>
+                                    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">@prodPaid.ToString("C0")</span></div>
+                                    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">@prodIssued.ToString("C0")</span></div>
+                                    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">@prodSubmitted.ToString("C0")</span></div>
                                 }
                             </div>
                             <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>

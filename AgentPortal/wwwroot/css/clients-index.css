@@ -3782,7 +3782,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 
 /* Lead production badge on card */
 .cell-with-prod{position:relative;padding-right:160px;}
-.lead-prod-card{position:absolute;right:0;top:0;font-weight:800;font-size:13px;color:#0f172a;text-align:right;min-width:140px;}
+.lead-prod-card{position:absolute;right:0;top:0;font-weight:800;font-size:12px;color:#0f172a;text-align:right;min-width:150px;}
 .lead-prod-card .prod-status{color:#0f172a;}
 .lead-prod-card .prod-amt{color:#16a34a;}
 .lead-prod-card.hidden{display:none;}
@@ -3804,10 +3804,20 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     min-width:150px;
 }
 .lead-prod-badge .prod-amt{color:#16a34a;font-weight:900;}
-.lead-prod-badge .prod-line{display:flex;justify-content:space-between;gap:10px;line-height:1.25;white-space:nowrap;}
-.lead-prod-badge .prod-line + .prod-line{margin-top:2px;}
-.lead-prod-badge .prod-lbl{font-weight:900;color:#1f2937;}
-.lead-prod-badge .prod-val{font-weight:900;color:#0f172a;}
+.lead-prod-badge .prod-line,
+.lead-prod-card .prod-line{display:flex;justify-content:space-between;gap:10px;line-height:1.25;white-space:nowrap;}
+.lead-prod-badge .prod-line + .prod-line,
+.lead-prod-card .prod-line + .prod-line{margin-top:2px;}
+.lead-prod-badge .prod-lbl,
+.lead-prod-card .prod-lbl{font-weight:900;color:#1f2937;}
+.lead-prod-badge .prod-val,
+.lead-prod-card .prod-val{font-weight:900;color:#0f172a;}
+.lead-prod-badge .prod-line-paid .prod-val,
+.lead-prod-card .prod-line-paid .prod-val{color:#15803d;}      /* green */
+.lead-prod-badge .prod-line-issued .prod-val,
+.lead-prod-card .prod-line-issued .prod-val{color:#c2410c;}    /* orange */
+.lead-prod-badge .prod-line-submitted .prod-val,
+.lead-prod-card .prod-line-submitted .prod-val{color:#2563eb;} /* blue */
 .lead-prod-badge.hidden{display:none;}
 
     .meta-chip{
