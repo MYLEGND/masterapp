@@ -56,7 +56,7 @@
             </div>
             <div style="margin-top:6px;"><span class="tiny" id="dResendInviteStatus"></span></div>
 
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>Phone #2</label>
                     <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
@@ -65,12 +65,12 @@
                     <label>BTC</label>
                     <input type="text" id="dBtc" placeholder="BTC" />
                 </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
                 <div class="f">
                     <label>DOB</label>
                     <input type="date" id="dDob" />
                 </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>M / F</label>
                     <select id="dGender">
@@ -80,12 +80,20 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
+                <div class="f">
+                    <label>Age</label>
+                    <input type="text" id="dAge" placeholder="Age" />
+                </div>
+                <div class="f">
+                    <label>Zip Code</label>
+                    <input type="text" id="dZip" placeholder="Zip" />
+                </div>
             </div>
             <div class="f" style="margin-top:10px;">
                 <label>Street Address</label>
                 <input type="text" id="dAddress" placeholder="123 Main St" />
             </div>
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>City</label>
                     <input type="text" id="dCity" placeholder="City" />
@@ -94,19 +102,9 @@
                     <label>State</label>
                     <input type="text" id="dState" placeholder="State" />
                 </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
                 <div class="f">
                     <label>County</label>
                     <input type="text" id="dCounty" placeholder="County / Parish" />
-                </div>
-                <div class="f">
-                    <label>Zip Code</label>
-                    <input type="text" id="dZip" placeholder="Zip" />
-                </div>
-                <div class="f">
-                    <label>Age</label>
-                    <input type="text" id="dAge" placeholder="Age" />
                 </div>
             </div>
             <div class="grid2" style="margin-top:10px;">
@@ -900,6 +898,171 @@
     #clientFinPlanModal .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
     #clientFinPlanModal .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
     #clientFinPlanModal .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
+</style>
+
+<style>
+    /* Hard override: top action buttons (beats global quick-view ID rules) */
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMarkToday{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(184,133,42,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnSetNextToday{
+        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
+        color:#eaf5ff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(33,72,106,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCopyContact{
+        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
+        color:#e8edf5 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(42,51,66,.26) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenEdit{
+        background:linear-gradient(180deg,#4c3d74,#372a56) !important;
+        color:#efe9ff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(55,42,86,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenProfile{
+        background:linear-gradient(180deg,#1f6648,#184d37) !important;
+        color:#e8fff4 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(24,77,55,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMail{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(36,86,125,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCall{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(32,94,66,.24) !important;
+    }
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenQueue{
+        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
+        color:#f2eeff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(67,53,106,.24) !important;
+    }
+
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMarkToday:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnSetNextToday:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCopyContact:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenEdit:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenProfile:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMail:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCall:hover,
+    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenQueue:hover{
+        filter:brightness(1.06) !important;
+        border-color:#a68023 !important;
+        transform:translateY(-1px);
+    }
+</style>
+
+<style>
+    /* Premium button system + Contact/Profile title chip */
+    .lead-qv-shell .qv-contact-card h4,
+    .client-qv-shell .qv-contact-card h4{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:8px 14px;
+        border-radius:999px;
+        border:1px solid rgba(123,92,26,.95);
+        background:linear-gradient(180deg, rgba(24,34,53,.96), rgba(14,22,38,.96));
+        color:#f8e9bf !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 18px rgba(2,6,23,.24);
+    }
+
+    .lead-qv-shell .drawer-top-actions .btn,
+    .lead-qv-shell .qv-contact-card .btn,
+    .lead-qv-shell .qv-contact-card a.btn,
+    .client-qv-shell .drawer-top-actions .btn,
+    .client-qv-shell .qv-contact-card .btn,
+    .client-qv-shell .qv-contact-card a.btn{
+        border:1px solid #7b5c1a !important;
+        border-radius:13px !important;
+        font-weight:900 !important;
+        letter-spacing:.015em;
+        box-shadow: 0 9px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.09);
+        transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, border-color .14s ease;
+    }
+    .lead-qv-shell .drawer-top-actions .btn:hover,
+    .lead-qv-shell .qv-contact-card .btn:hover,
+    .lead-qv-shell .qv-contact-card a.btn:hover,
+    .client-qv-shell .drawer-top-actions .btn:hover,
+    .client-qv-shell .qv-contact-card .btn:hover,
+    .client-qv-shell .qv-contact-card a.btn:hover{
+        transform:translateY(-1px);
+        box-shadow: 0 12px 24px rgba(2,6,23,.26), inset 0 1px 0 rgba(255,255,255,.12);
+        border-color:#a68023 !important;
+    }
+
+    /* Contact & Profile local actions */
+    .lead-qv-shell #leadQuickActionsShortcut,
+    .client-qv-shell #clientQuickActionsShortcut{
+        background:linear-gradient(180deg,#2a3850,#1e2a3f) !important;
+        color:#e9f0fa !important;
+    }
+    .client-qv-shell #btnClientFinPlan{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+    }
+    .lead-qv-shell #noteSelfOpen,
+    .client-qv-shell #noteSelfOpen{
+        background:linear-gradient(180deg,#3a2a59,#2a1f42) !important;
+        color:#f1e9ff !important;
+    }
+    .client-qv-shell #btnResendClientInvite{
+        background:linear-gradient(180deg,#26507a,#1e3f61) !important;
+        color:#e8f4ff !important;
+    }
+
+    /* Top action ribbon color coding with unified premium borders */
+    .lead-qv-shell .drawer-top-actions #btnMarkToday,
+    .client-qv-shell .drawer-top-actions #btnMarkToday{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnSetNextToday,
+    .client-qv-shell .drawer-top-actions #btnSetNextToday{
+        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
+        color:#eaf5ff !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnCopyContact,
+    .client-qv-shell .drawer-top-actions #btnCopyContact{
+        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
+        color:#e8edf5 !important;
+    }
+    .client-qv-shell .drawer-top-actions #btnOpenEdit{
+        background:linear-gradient(180deg,#4c3d74,#372a56) !important;
+        color:#efe9ff !important;
+    }
+    .client-qv-shell .drawer-top-actions #btnOpenProfile{
+        background:linear-gradient(180deg,#1f6648,#184d37) !important;
+        color:#e8fff4 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnMail,
+    .client-qv-shell .drawer-top-actions #btnMail{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnCall,
+    .client-qv-shell .drawer-top-actions #btnCall{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnOpenQueue,
+    .client-qv-shell .drawer-top-actions #btnOpenQueue{
+        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
+        color:#f2eeff !important;
+    }
 </style>
 
 <style>

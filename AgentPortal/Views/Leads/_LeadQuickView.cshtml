@@ -38,7 +38,7 @@
                     </button>
                 </div>
             </div>
-            <div class="grid2">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;">
                 <div class="f">
                     <label>First Name</label>
                     <input type="text" id="dFirst" placeholder="First name" />
@@ -47,8 +47,12 @@
                     <label>Last Name</label>
                     <input type="text" id="dLast" placeholder="Last name" />
                 </div>
+                <div class="f">
+                    <label>BTC</label>
+                    <input type="text" id="dBtc" placeholder="BTC" />
+                </div>
             </div>
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>Phone</label>
                     <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
@@ -57,18 +61,12 @@
                     <label>Email</label>
                     <input type="email" id="dEmailInput" placeholder="Primary email" />
                 </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
                 <div class="f">
                     <label>Phone #2</label>
                     <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
                 </div>
-                <div class="f">
-                    <label>BTC</label>
-                    <input type="text" id="dBtc" placeholder="BTC" />
-                </div>
             </div>
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>DOB</label>
                     <input type="date" id="dDob" />
@@ -82,12 +80,16 @@
                         <option value="Other">Other</option>
                     </select>
                 </div>
+                <div class="f">
+                    <label>Age</label>
+                    <input type="text" id="dAge" placeholder="Age" />
+                </div>
             </div>
             <div class="f" style="margin-top:10px;">
                 <label>Street Address</label>
                 <input type="text" id="dAddress" placeholder="123 Main St" />
             </div>
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
                 <div class="f">
                     <label>City</label>
                     <input type="text" id="dCity" placeholder="City" />
@@ -96,22 +98,16 @@
                     <label>State</label>
                     <input type="text" id="dState" placeholder="State" />
                 </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>County</label>
-                    <input type="text" id="dCounty" placeholder="County / Parish" />
-                </div>
                 <div class="f">
                     <label>Zip Code</label>
                     <input type="text" id="dZip" placeholder="Zip" />
                 </div>
-                <div class="f">
-                    <label>Age</label>
-                    <input type="text" id="dAge" placeholder="Age" />
-                </div>
             </div>
-            <div class="grid2" style="margin-top:10px;">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
+                <div class="f">
+                    <label>County</label>
+                    <input type="text" id="dCounty" placeholder="County / Parish" />
+                </div>
                 <div class="f" id="dLenderField">
                     <label id="dLenderLabel">Mortgage Lender</label>
                     <input type="text" id="dLender" placeholder="Current lender" />
@@ -929,6 +925,388 @@
         background: linear-gradient(180deg, rgba(12,18,32,.98), rgba(9,14,26,.98));
         border:1px solid rgba(230,194,110,.22);
         box-shadow: 0 24px 52px rgba(2,6,23,.54), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+</style>
+<style>
+    /* Unified luxe + compact Quick View theme (Leads + Clients parity) */
+    .lead-qv-shell,
+    .client-qv-shell{
+        background: linear-gradient(180deg,#0b1220 0%, #0c1424 100%);
+        border: 1px solid rgba(230,194,110,.34);
+        box-shadow: 0 26px 56px rgba(2,6,23,.58), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell .dhead,
+    .client-qv-shell .dhead{
+        padding: 12px 13px 11px;
+        background: linear-gradient(180deg, rgba(9,14,25,.95), rgba(11,18,32,.88));
+        border-bottom: 1px solid rgba(230,194,110,.14);
+        box-shadow: 0 10px 24px rgba(2,6,23,.26);
+    }
+    .lead-qv-shell .dtitle,
+    .client-qv-shell .dtitle{font-size:1.08rem;letter-spacing:.012em;}
+    .lead-qv-shell .dsub,
+    .client-qv-shell .dsub{margin-top:6px;font-size:.84rem;font-weight:760;color:#d9e4f3;}
+    .lead-qv-shell .drawer-statbar,
+    .client-qv-shell .drawer-statbar{gap:7px;margin-top:9px;}
+    .lead-qv-shell .pill,
+    .lead-qv-shell #dPortalWrap,
+    .client-qv-shell .pill,
+    .client-qv-shell #dPortalWrap{
+        min-height:28px;
+        padding:5px 9px;
+        font-size:.74rem;
+        font-weight:800;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.1);
+        background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+        color:#d9e4f4;
+    }
+    .lead-qv-shell .drawer-top-actions,
+    .client-qv-shell .drawer-top-actions{gap:8px;margin-top:10px;}
+    .lead-qv-shell .btn,
+    .lead-qv-shell a.btn,
+    .client-qv-shell .btn,
+    .client-qv-shell a.btn{
+        min-height:36px;
+        padding:8px 11px;
+        font-size:.82rem;
+        border-radius:12px;
+        letter-spacing:.01em;
+    }
+    .lead-qv-shell .btn-gold,
+    .client-qv-shell .btn-gold{
+        background: linear-gradient(135deg,#f9edc1 0%, #e8cb82 54%, #b8852a 100%) !important;
+        color:#2a1a08 !important;
+        border: 1px solid rgba(230,194,110,.85) !important;
+        box-shadow: 0 8px 16px rgba(184,133,42,.22), inset 0 1px 0 rgba(255,255,255,.45);
+    }
+    .lead-qv-shell .btn-ghost,
+    .lead-qv-shell a.btn-ghost,
+    .lead-qv-shell .lb-btn,
+    .client-qv-shell .btn-ghost,
+    .client-qv-shell a.btn-ghost,
+    .client-qv-shell .lb-btn{
+        background: linear-gradient(180deg, rgba(21,31,52,.92), rgba(14,22,38,.92)) !important;
+        border: 1px solid rgba(148,163,184,.2) !important;
+        color:#edf2fb !important;
+        box-shadow: 0 7px 14px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .lead-qv-shell .dbody,
+    .client-qv-shell .dbody{
+        padding:12px 13px 17px;
+        background: linear-gradient(180deg,#0d1627 0%, #0b1423 100%);
+    }
+    .lead-qv-shell .section,
+    .client-qv-shell .section{
+        padding:11px;
+        margin-bottom:10px;
+        border-radius:16px;
+        border:1px solid rgba(148,163,184,.14);
+        background: linear-gradient(180deg, rgba(15,23,38,.92), rgba(10,16,29,.92));
+        box-shadow: 0 8px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell .section.qv-contact-card,
+    .client-qv-shell .section.qv-contact-card{border-color:rgba(56,189,248,.2) !important;}
+    .lead-qv-shell .section.section-gold,
+    .client-qv-shell .section.section-gold{border-color: rgba(230,194,110,.24) !important;}
+    .lead-qv-shell .section.section-relationship,
+    .client-qv-shell .section.section-relationship{border-color: rgba(167,139,250,.22) !important;}
+    .lead-qv-shell .section.section-green,
+    .client-qv-shell .section.section-green{border-color: rgba(74,222,128,.2) !important;}
+    .lead-qv-shell .section.section-violet,
+    .client-qv-shell .section.section-violet{border-color: rgba(192,132,252,.2) !important;}
+    .lead-qv-shell .section.section-red,
+    .client-qv-shell .section.section-red{border-color: rgba(248,113,113,.2) !important;}
+
+    .lead-qv-shell .qv-contact-card > div:first-child,
+    .client-qv-shell .qv-contact-card > div:first-child{margin-bottom:8px;}
+    .lead-qv-shell .qv-contact-card h4,
+    .client-qv-shell .qv-contact-card h4{font-size:.86rem;letter-spacing:.06em;}
+
+    .lead-qv-shell .qv-disclosure > summary,
+    .client-qv-shell .qv-disclosure > summary{padding:0 0 8px;gap:10px;}
+    .lead-qv-shell .qv-disclosure > summary::after,
+    .client-qv-shell .qv-disclosure > summary::after{width:27px;height:27px;}
+    .lead-qv-shell .qv-disclosure[open] > .qv-section-body,
+    .client-qv-shell .qv-disclosure[open] > .qv-section-body{padding-top:9px;}
+    .lead-qv-shell .qv-section-title,
+    .client-qv-shell .qv-section-title{font-size:.8rem;letter-spacing:.05em;}
+    .lead-qv-shell .qv-section-copy,
+    .client-qv-shell .qv-section-copy{font-size:.72rem;line-height:1.3;color:#9fb0c8;}
+
+    .lead-qv-shell .qv-subsection,
+    .client-qv-shell .qv-subsection{
+        padding:9px 9px 8px;
+        border-radius:12px;
+        background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.012));
+        border:1px solid rgba(255,255,255,.06);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell .qv-subsection h5,
+    .client-qv-shell .qv-subsection h5{font-size:.76rem;letter-spacing:.045em;margin-bottom:1px;}
+
+    .lead-qv-shell .f label,
+    .client-qv-shell .f label{
+        font-size:.64rem !important;
+        letter-spacing:.09em !important;
+        margin-bottom:5px;
+    }
+    .lead-qv-shell input,
+    .lead-qv-shell select,
+    .lead-qv-shell textarea,
+    .client-qv-shell input,
+    .client-qv-shell select,
+    .client-qv-shell textarea{
+        border-radius:11px !important;
+        border:1px solid #cdd6e1 !important;
+        background: linear-gradient(180deg, #f8fafc, #eef2f8) !important;
+        box-shadow: 0 3px 8px rgba(2,6,23,.07), inset 0 1px 0 rgba(255,255,255,.78) !important;
+        font-size:.86rem !important;
+        padding:8px 10px !important;
+    }
+    .lead-qv-shell textarea,
+    .client-qv-shell textarea{min-height:88px !important;}
+    .lead-qv-shell input:focus,
+    .lead-qv-shell select:focus,
+    .lead-qv-shell textarea:focus,
+    .client-qv-shell input:focus,
+    .client-qv-shell select:focus,
+    .client-qv-shell textarea:focus{
+        border-color: rgba(230,194,110,.62) !important;
+        box-shadow: 0 0 0 2px rgba(230,194,110,.14), 0 6px 12px rgba(2,6,23,.12) !important;
+    }
+
+    .lead-qv-shell .preset-chip,
+    .client-qv-shell .preset-chip{
+        padding:7px 10px;
+        font-size:.72rem;
+        border-radius:999px;
+        box-shadow: 0 6px 12px rgba(2,6,23,.14), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .lead-qv-shell .outcome-grid,
+    .client-qv-shell .outcome-grid{gap:8px;}
+    .lead-qv-shell .outcome-grid .btn,
+    .client-qv-shell .outcome-grid .btn{min-height:36px;padding:7px 10px;font-size:.78rem;border-radius:11px;}
+
+    .lead-qv-shell .doc-grid,
+    .client-qv-shell .doc-grid{gap:8px;}
+    .lead-qv-shell .doc-grid label,
+    .client-qv-shell .doc-grid label{
+        border-radius:11px;
+        padding:8px 10px;
+        font-size:.82rem;
+        box-shadow: 0 6px 12px rgba(2,6,23,.14), inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .lead-qv-shell .production-history,
+    .client-qv-shell .production-history{
+        padding:11px;
+        border-radius:15px;
+        margin-bottom:10px;
+        box-shadow: 0 8px 18px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell .ph-sub,
+    .client-qv-shell .ph-sub{font-size:.78rem;}
+    .lead-qv-shell .ph-item,
+    .client-qv-shell .ph-item{padding:9px 10px;gap:10px;border-radius:13px;box-shadow:0 7px 14px rgba(0,0,0,.14);}
+    .lead-qv-shell .ph-metric,
+    .client-qv-shell .ph-metric{padding:7px 9px;min-width:118px;border-radius:10px;}
+    .lead-qv-shell .ph-amt,
+    .client-qv-shell .ph-amt{font-size:.88rem;}
+    .lead-qv-shell .ph-note,
+    .client-qv-shell .ph-note{padding:7px 9px;border-radius:10px;font-size:.8rem;min-width:145px;}
+    .lead-qv-shell .ph-actions .btn,
+    .client-qv-shell .ph-actions .btn{min-width:84px;padding:6px 8px !important;font-size:10.5px !important;border-radius:10px;}
+
+    .lead-qv-shell #leadActionsContainer,
+    .lead-qv-shell #leadCommitmentsContainer,
+    .lead-qv-shell .timeline,
+    .lead-qv-shell .mention-list,
+    .client-qv-shell #clientActionsContainer,
+    .client-qv-shell #clientCommitmentsContainer,
+    .client-qv-shell .timeline,
+    .client-qv-shell .mention-list{
+        border-radius:12px !important;
+        box-shadow: 0 8px 16px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell #leadActionsContainer,
+    .lead-qv-shell #leadCommitmentsContainer,
+    .client-qv-shell #clientActionsContainer,
+    .client-qv-shell #clientCommitmentsContainer{padding:9px 10px !important;}
+
+    .lead-qv-shell .note-self-overlay,
+    .client-qv-shell .note-self-overlay{padding:14px;}
+    .lead-qv-shell .note-self-modal,
+    .client-qv-shell .note-self-modal{
+        border-radius:16px;
+        padding:12px;
+        box-shadow: 0 18px 36px rgba(2,6,23,.44), inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .lead-qv-shell .note-self-col,
+    .client-qv-shell .note-self-col{padding:10px;border-radius:12px;}
+
+    #leadActionsHubModal .qv-subsection,
+    #clientActionsHubModal .qv-subsection{padding:10px 10px 9px;border-radius:12px;}
+
+    @@media (max-width: 920px){
+        .lead-qv-shell .drawer-top-actions .btn,
+        .client-qv-shell .drawer-top-actions .btn{flex:1 1 calc(50% - 8px);}
+    }
+    @@media (max-width: 640px){
+        .lead-qv-shell .drawer-top-actions .btn,
+        .client-qv-shell .drawer-top-actions .btn{flex:1 1 100%;width:100%;}
+        .lead-qv-shell .grid2,
+        .client-qv-shell .grid2{grid-template-columns:1fr;}
+    }
+</style>
+<style>
+    /* Premium button system + Contact/Profile title chip */
+    .lead-qv-shell .qv-contact-card h4,
+    .client-qv-shell .qv-contact-card h4{
+        display:inline-flex;
+        align-items:center;
+        gap:8px;
+        padding:8px 14px;
+        border-radius:999px;
+        border:1px solid rgba(123,92,26,.95);
+        background:linear-gradient(180deg, rgba(24,34,53,.96), rgba(14,22,38,.96));
+        color:#f8e9bf !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 18px rgba(2,6,23,.24);
+    }
+
+    .lead-qv-shell .drawer-top-actions .btn,
+    .lead-qv-shell .qv-contact-card .btn,
+    .lead-qv-shell .qv-contact-card a.btn,
+    .client-qv-shell .drawer-top-actions .btn,
+    .client-qv-shell .qv-contact-card .btn,
+    .client-qv-shell .qv-contact-card a.btn{
+        border:1px solid #7b5c1a !important;
+        border-radius:13px !important;
+        font-weight:900 !important;
+        letter-spacing:.015em;
+        box-shadow: 0 9px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.09);
+        transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, border-color .14s ease;
+    }
+    .lead-qv-shell .drawer-top-actions .btn:hover,
+    .lead-qv-shell .qv-contact-card .btn:hover,
+    .lead-qv-shell .qv-contact-card a.btn:hover,
+    .client-qv-shell .drawer-top-actions .btn:hover,
+    .client-qv-shell .qv-contact-card .btn:hover,
+    .client-qv-shell .qv-contact-card a.btn:hover{
+        transform:translateY(-1px);
+        box-shadow: 0 12px 24px rgba(2,6,23,.26), inset 0 1px 0 rgba(255,255,255,.12);
+        border-color:#a68023 !important;
+    }
+
+    /* Contact & Profile local actions */
+    .lead-qv-shell #leadQuickActionsShortcut,
+    .client-qv-shell #clientQuickActionsShortcut{
+        background:linear-gradient(180deg,#2a3850,#1e2a3f) !important;
+        color:#e9f0fa !important;
+    }
+    .client-qv-shell #btnClientFinPlan{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+    }
+    .lead-qv-shell #noteSelfOpen,
+    .client-qv-shell #noteSelfOpen{
+        background:linear-gradient(180deg,#3a2a59,#2a1f42) !important;
+        color:#f1e9ff !important;
+    }
+    .client-qv-shell #btnResendClientInvite{
+        background:linear-gradient(180deg,#26507a,#1e3f61) !important;
+        color:#e8f4ff !important;
+    }
+
+    /* Top action ribbon color coding with unified premium borders */
+    .lead-qv-shell .drawer-top-actions #btnMarkToday,
+    .client-qv-shell .drawer-top-actions #btnMarkToday{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnSetNextToday,
+    .client-qv-shell .drawer-top-actions #btnSetNextToday{
+        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
+        color:#eaf5ff !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnCopyContact,
+    .client-qv-shell .drawer-top-actions #btnCopyContact{
+        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
+        color:#e8edf5 !important;
+    }
+    .client-qv-shell .drawer-top-actions #btnOpenEdit{
+        background:linear-gradient(180deg,#4c3d74,#372a56) !important;
+        color:#efe9ff !important;
+    }
+    .client-qv-shell .drawer-top-actions #btnOpenProfile{
+        background:linear-gradient(180deg,#1f6648,#184d37) !important;
+        color:#e8fff4 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnMail,
+    .client-qv-shell .drawer-top-actions #btnMail{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnCall,
+    .client-qv-shell .drawer-top-actions #btnCall{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+    }
+    .lead-qv-shell .drawer-top-actions #btnOpenQueue,
+    .client-qv-shell .drawer-top-actions #btnOpenQueue{
+        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
+        color:#f2eeff !important;
+    }
+</style>
+<style>
+    /* Hard override: top action buttons (beats global quick-view ID rules) */
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnMarkToday{
+        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
+        color:#2a1a08 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(184,133,42,.24) !important;
+    }
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnSetNextToday{
+        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
+        color:#eaf5ff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(33,72,106,.24) !important;
+    }
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnCopyContact{
+        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
+        color:#e8edf5 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(42,51,66,.26) !important;
+    }
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnMail{
+        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
+        color:#eaf5ff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(36,86,125,.24) !important;
+    }
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnCall{
+        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
+        color:#ebfff5 !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(32,94,66,.24) !important;
+    }
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnOpenQueue{
+        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
+        color:#f2eeff !important;
+        border:1px solid #7b5c1a !important;
+        box-shadow:0 10px 22px rgba(67,53,106,.24) !important;
+    }
+
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnMarkToday:hover,
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnSetNextToday:hover,
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnCopyContact:hover,
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnMail:hover,
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnCall:hover,
+    .drawer.qv-theme-shell.lead-qv-shell .drawer-top-actions #btnOpenQueue:hover{
+        filter:brightness(1.06) !important;
+        border-color:#a68023 !important;
+        transform:translateY(-1px);
     }
 </style>
 <div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
