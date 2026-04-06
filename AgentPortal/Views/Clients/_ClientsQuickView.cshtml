@@ -51,6 +51,24 @@
                     <input type="email" id="dEmailInput" placeholder="Primary email" />
                 </div>
             </div>
+
+            <!-- Resend Client Portal Access (shown only for portal-enabled clients) -->
+            <div id="dResendInvitePanel" style="display:none; margin-top:12px; padding:12px 14px; border:1px solid rgba(197,146,31,.38); border-radius:12px; background:rgba(11,21,41,.45);">
+                <div style="font-size:12px; font-weight:700; color:#ddb457; margin-bottom:8px;">📧 Resend Client Portal Access</div>
+                <div class="grid2">
+                    <div class="f">
+                        <label>Send Link To</label>
+                        <input type="email" id="dResendInviteEmail" placeholder="client@email.com" autocomplete="off" />
+                    </div>
+                    <div class="f" style="display:flex; align-items:flex-end;">
+                        <button type="button" class="btn btn-gold" id="btnResendClientInvite" style="width:100%;">Send Access Link</button>
+                    </div>
+                </div>
+                <div style="margin-top:8px;">
+                    <span class="tiny" id="dResendInviteStatus"></span>
+                </div>
+            </div>
+
             <div class="grid2" style="margin-top:10px;">
                 <div class="f">
                     <label>Phone #2</label>

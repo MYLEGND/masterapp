@@ -2200,6 +2200,9 @@ const dCalendarWorkHours = $("#dCalendarWorkHours");
 const dCalendarFreeList = $("#dCalendarFreeList");
 
 const dPortalWrap = $("#dPortalWrap");
+const dResendInvitePanel = $("#dResendInvitePanel");
+const dResendInviteEmail = $("#dResendInviteEmail");
+const dResendInviteStatus = $("#dResendInviteStatus");
 const dSaved = $("#dSaved");
 const dWaitingOn = $("#dWaitingOn");
 const dPinnedBrief = $("#dPinnedBrief");
@@ -2249,7 +2252,7 @@ let shareLookupTimer = null;
 let selectedShareAgent = null;
 
 // Quick View autosave (debounced)
-const AUTOSAVE_DELAY_MS = 900;
+const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystroke autosaves
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
 
@@ -2312,8 +2315,9 @@ function queueQuickViewAutosave(reason){
 
 function wireQuickViewAutosave(){
   const autosaveFields = [
-    dEmailInput,dPhoneInput,dPhone2Input,dDob,dAge,dGender,dAddress,dCity,dState,dCounty,dZip,
-    dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
+    // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
+    // They will autosave on blur instead (see wireContactFieldBlur below).
+    dDob,dAge,dGender,dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
     dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,dUsePersonalZoomLink,
     dWaitingOn,dPinnedBrief,dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
     dAssignedOwner,dWatchers,dMentionNote
@@ -2330,6 +2334,15 @@ function wireQuickViewAutosave(){
   opportunityPlanningInputs.forEach(([, input]) => {
     if (!input) return;
     input.addEventListener("change", () => queueQuickViewAutosave());
+  });
+
+  // Contact fields (email, phone, address) save on blur for clean editing without lag
+  const contactFields = [dEmailInput, dPhoneInput, dPhone2Input, dAddress, dCity, dState, dCounty, dZip];
+  contactFields.forEach(el => {
+    if (!el) return;
+    el.addEventListener("blur", () => {
+      if (activeClientId) queueQuickViewAutosave("Saving…");
+    });
   });
 }
 
@@ -3754,6 +3767,40 @@ async function grantSelectedAgentAccess(){
   }
 }
 
+async function resendClientInvite(){
+  if (!activeClientId) return;
+  const btn = $("#btnResendClientInvite");
+  const emailVal = (dResendInviteEmail?.value || "").trim();
+  if (!emailVal) {
+    if (dResendInviteStatus) dResendInviteStatus.textContent = "Enter an email address first.";
+    return;
+  }
+
+  // Determine if email changed from what's on record
+  const currentEmail = (activeClientDetail?.email || "").trim().toLowerCase();
+  const newEmail = emailVal.toLowerCase() === currentEmail ? null : emailVal;
+
+  if (btn) btn.disabled = true;
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "Sending…";
+
+  try {
+    const response = await postJson("/Clients/ResendClientInvite", {
+      clientUserId: activeClientId,
+      newEmail: newEmail
+    });
+
+    if (dResendInviteStatus) dResendInviteStatus.textContent = `✔ Sent to ${response.sentTo}`;
+    if (newEmail && activeClientDetail) activeClientDetail.email = emailVal;
+    toast(`Access link resent to ${response.sentTo}`);
+  } catch(err) {
+    console.error("ResendClientInvite failed", err);
+    if (dResendInviteStatus) dResendInviteStatus.textContent = `⚠ ${err?.message || "Send failed"}`;
+    toast(err?.message || "Failed to resend invite.", { error: true, persistent: true });
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function revokeSharedAgentAccess(agentUserId){
   if (!activeClientId || !agentUserId) return;
   if (!confirm("Revoke this agent's access to the current client?")) return;
@@ -3792,6 +3839,9 @@ function closeDrawer(){
   if (dShareAgentResults) dShareAgentResults.innerHTML = "";
   if (dSharedAgentList) dSharedAgentList.innerHTML = "";
   if (dShareAgentStatus) dShareAgentStatus.textContent = "Client access remains blocked for non-permitted agents.";
+  if (dResendInvitePanel) dResendInvitePanel.style.display = "none";
+  if (dResendInviteEmail) dResendInviteEmail.value = "";
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "";
   clientActionsLoadPromise = null;
   if (clientActionsHubModal && window.bootstrap){
     const inst = bootstrap.Modal.getInstance(clientActionsHubModal);
@@ -4231,6 +4281,11 @@ function renderPortalActions(row, detail){
   if (detail?.lastCalendarEventWebLink){
     dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${detail.lastCalendarEventWebLink}" target="_blank" rel="noopener">Last Calendar Event</a>`;
   }
+
+  // Show resend invite panel and pre-fill email
+  if (dResendInvitePanel) dResendInvitePanel.style.display = "block";
+  if (dResendInviteEmail && detail?.email) dResendInviteEmail.value = detail.email;
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "";
 }
 
 function formatAdvancedMarketsSavedAt(value){
@@ -4570,6 +4625,10 @@ dShareAgentSearch?.addEventListener("input", () => {
 
 btnShareAgentAccess?.addEventListener("click", () => {
   void grantSelectedAgentAccess();
+});
+
+($("#btnResendClientInvite"))?.addEventListener("click", () => {
+  void resendClientInvite();
 });
 
 btnDeleteClient?.addEventListener("click", () => {

@@ -1705,7 +1705,7 @@ function refreshLeadOverviewSummary(){
 }
 
 // Quick View autosave (debounced)
-const AUTOSAVE_DELAY_MS = 900;
+const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystroke autosaves
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
 
@@ -1767,8 +1767,9 @@ function queueQuickViewAutosave(reason){
 
 function wireQuickViewAutosave(){
   const autosaveFields = [
-    dFirst,dLast,dEmailInput,dPhoneInput,dPhone2Input,dDob,dAge,dGender,
-    dAddress,dCity,dState,dCounty,dZip,dBtc,dLender,dLoanAmount,
+    // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
+    // They will autosave on blur instead (see wireContactFieldBlur below).
+    dFirst,dLast,dDob,dAge,dGender,dBtc,dLender,dLoanAmount,
     dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
     dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,
     dUsePersonalZoomLink,dWaitingOn,dPinnedBrief,
@@ -1789,6 +1790,15 @@ function wireQuickViewAutosave(){
         queueQuickViewAutosave();
       });
     }
+  });
+
+  // Contact fields (email, phone, address) save on blur for clean editing without lag
+  const contactFields = [dFirst, dLast, dEmailInput, dPhoneInput, dPhone2Input, dAddress, dCity, dState, dCounty, dZip];
+  contactFields.forEach(el => {
+    if (!el) return;
+    el.addEventListener("blur", () => {
+      if (activeClientId) queueQuickViewAutosave("Saving…");
+    });
   });
 }
 

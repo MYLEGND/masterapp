@@ -3079,6 +3079,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public string AgentUserId { get; set; } = "";
     }
 
+    public sealed class ResendClientInviteRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string? NewEmail { get; set; }  // optional: update email before resending
+    }
+
     public sealed class SaveAdvancedMarketsInputsRequest
     {
         public Guid? ClientProfileId { get; set; }
@@ -3686,6 +3692,72 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
         return Json(new { ok = true, sharedAgents = shared });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResendClientInvite([FromBody] ResendClientInviteRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var profile = await _db.ClientProfiles
+            .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm,
+                HttpContext.RequestAborted);
+
+        if (profile == null)
+            return NotFound("Client profile not found.");
+
+        // Optionally update email if a new one was provided
+        if (!string.IsNullOrWhiteSpace(request.NewEmail))
+        {
+            var newEmailNorm = request.NewEmail.Trim().ToLowerInvariant();
+            profile.Email = request.NewEmail.Trim();
+            profile.NormalizedEmail = newEmailNorm;
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+        }
+
+        var emailTo = (profile.Email ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(emailTo))
+            return BadRequest("Client has no email address on file. Add an email first.");
+
+        var firstName = (profile.FirstName ?? "").Trim();
+        var loginUpn = emailTo;  // guest accounts use email as UPN
+        var clientPortalUrl = GetClientPortalBaseUrl();
+
+        try
+        {
+            await _provisioning.SendClientWelcomeEmailAsync(
+                emailTo,
+                firstName,
+                loginUpn,
+                "",   // no temp password on resend
+                clientPortalUrl,
+                clientUserIdNorm,
+                forceIdLink: true
+            );
+
+            _logger.LogInformation(
+                "ResendClientInvite OK agent={AgentOid} clientUserId={ClientUserId} email={Email}",
+                agentOid, clientUserIdNorm, emailTo);
+
+            return Json(new { ok = true, sentTo = emailTo });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "ResendClientInvite FAILED agent={AgentOid} clientUserId={ClientUserId} email={Email}",
+                agentOid, clientUserIdNorm, emailTo);
+            return StatusCode(500, $"Email failed to send: {ex.Message}");
+        }
     }
 
     [HttpPost]
