@@ -794,12 +794,95 @@ var sCity = (c.City ?? "").Trim();
 @await Html.PartialAsync("_LeadQuickView")
 @await Html.PartialAsync("_LeadQuickViewUtilities")
 
+<style>
+    .production-modal-dialog { max-width: 640px; }
+    .production-modal-shell {
+        background: linear-gradient(180deg, rgba(15,23,42,.98) 0%, rgba(15,23,42,.94) 100%);
+        color: #e2e8f0;
+        border: 1px solid rgba(148,163,184,.22);
+        border-radius: 24px;
+        box-shadow: 0 28px 70px rgba(2,6,23,.55);
+        overflow: hidden;
+    }
+    .production-modal-shell .modal-header,
+    .production-modal-shell .modal-footer {
+        border-color: rgba(148,163,184,.14);
+        padding: 1rem 1.25rem;
+    }
+    .production-modal-shell .modal-body { padding: 1.1rem 1.25rem 1.25rem; }
+    .production-modal-title { display: flex; flex-direction: column; gap: .18rem; }
+    .production-modal-title h5 { margin: 0; font-size: 1.05rem; font-weight: 700; letter-spacing: .01em; }
+    .production-modal-title span { font-size: .78rem; color: #94a3b8; }
+    .production-modal-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: .95rem 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(96,165,250,.2);
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(30,41,59,.96), rgba(15,23,42,.9));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .production-modal-hero-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .12em; color: #93c5fd; }
+    .production-modal-hero-name { font-size: 1rem; font-weight: 700; color: #f8fafc; }
+    .production-modal-badge {
+        padding: .45rem .75rem;
+        border-radius: 999px;
+        font-size: .73rem;
+        font-weight: 700;
+        color: #dbeafe;
+        background: rgba(59,130,246,.18);
+        border: 1px solid rgba(96,165,250,.26);
+        white-space: nowrap;
+    }
+    .production-field-grid { display: grid; gap: .9rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .production-field-grid .production-field-full { grid-column: 1 / -1; }
+    .production-field label { display: block; margin-bottom: .38rem; font-size: .78rem; font-weight: 700; color: #cbd5e1; }
+    .production-field .form-control,
+    .production-field .form-select {
+        min-height: 46px;
+        border-radius: 14px;
+        border: 1px solid rgba(148,163,184,.2);
+        background: rgba(15,23,42,.76);
+        color: #f8fafc;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+    .production-field textarea.form-control { min-height: 92px; padding-top: .8rem; }
+    .production-field .form-control:focus,
+    .production-field .form-select:focus {
+        border-color: rgba(96,165,250,.65);
+        box-shadow: 0 0 0 .2rem rgba(59,130,246,.15);
+        background: rgba(15,23,42,.92);
+        color: #fff;
+    }
+    .production-field .form-text { color: #94a3b8 !important; font-size: .75rem; margin-top: .35rem; }
+    .production-modal-shell .btn { border-radius: 12px; font-weight: 700; padding: .72rem 1rem; }
+    .production-modal-shell .btn-secondary {
+        background: rgba(51,65,85,.72);
+        border-color: rgba(148,163,184,.18);
+        color: #e2e8f0;
+    }
+    .production-modal-shell .btn-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+        border-color: transparent;
+        box-shadow: 0 12px 28px rgba(16,185,129,.24);
+    }
+    @@media (max-width: 640px) {
+        .production-field-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
 
 <div class="modal fade" id="productionModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="background:#0f172a;color:#e2e8f0;border:1px solid rgba(255,255,255,.08);">
+    <div class="modal-dialog modal-dialog-centered production-modal-dialog">
+        <div class="modal-content production-modal-shell">
             <div class="modal-header">
-                <h5 class="modal-title">Add Lead Production</h5>
+                <div class="production-modal-title">
+                    <h5 class="modal-title">Add Lead Production</h5>
+                    <span>Capture one production event with a cleaner, focused workflow.</span>
+                </div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <form asp-controller="Production" asp-action="AddLead" method="post">
@@ -808,30 +891,35 @@ var sCity = (c.City ?? "").Trim();
                 <input type="hidden" name="returnUrl" value="@Url.Action("Index","Leads")" />
                 <div class="modal-body">
                     <input type="hidden" name="id" />
-                    <div class="mb-2">
-                        <label class="form-label">Lead</label>
-                        <div id="prodLeadName" class="fw-bold"></div>
+                    <div class="production-modal-hero">
+                        <div>
+                            <div class="production-modal-hero-label">Lead</div>
+                            <div id="prodLeadName" class="production-modal-hero-name"></div>
+                        </div>
+                        <div class="production-modal-badge">New Production</div>
                     </div>
-                    <div class="mb-2">
-                        <label class="form-label">Amount</label>
-                        <input type="number" step="0.01" min="0" class="form-control" name="amount" required />
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Personal Revenue</label>
-                        <input type="number" step="0.01" min="0" class="form-control" name="personalAmount" />
-                        <div class="form-text text-muted">Optional; leave blank if not set.</div>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Status</label>
-                        <select class="form-select" name="status">
-                            <option value="0">Submitted</option>
-                            <option value="1">Issued</option>
-                            <option value="2">Paid</option>
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label">Notes</label>
-                        <textarea class="form-control" name="notes" rows="2"></textarea>
+                    <div class="production-field-grid">
+                        <div class="production-field">
+                            <label class="form-label">Amount</label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="amount" placeholder="0.00" required />
+                        </div>
+                        <div class="production-field">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="status">
+                                <option value="0">Submitted</option>
+                                <option value="1">Issued</option>
+                                <option value="2">Paid</option>
+                            </select>
+                        </div>
+                        <div class="production-field production-field-full">
+                            <label class="form-label">Personal Revenue</label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="personalAmount" placeholder="Optional" />
+                            <div class="form-text text-muted">Only add personal revenue when it applies to this production event.</div>
+                        </div>
+                        <div class="production-field production-field-full">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" name="notes" rows="2" placeholder="Optional notes"></textarea>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">

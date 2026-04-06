@@ -3550,34 +3550,14 @@ function openProductionModalAdd(leadId, name){
   form.querySelector("input[name='id']")?.remove();
   document.getElementById('prodLeadId').value = leadId;
   document.getElementById('prodLeadName').textContent = name;
-
-  // hydrate from draft
-  const draftAll = loadJSON(LS_PROD_DRAFT_LEAD, {});
-  const draft = draftAll[leadId] || {};
   const amtEl = form.querySelector("input[name='amount']");
   const personalEl = form.querySelector("input[name='personalAmount']");
   const statusEl = form.querySelector("select[name='status']");
   const notesEl = form.querySelector("textarea[name='notes']");
-  if (amtEl && draft.amount != null) amtEl.value = draft.amount;
-  if (personalEl && draft.personalAmount != null) personalEl.value = draft.personalAmount;
-  if (statusEl && draft.status != null) statusEl.value = draft.status;
-  if (notesEl && draft.notes != null) notesEl.value = draft.notes;
-
-  const persistDraft = () => {
-    draftAll[leadId] = {
-      amount: amtEl?.value || "",
-      personalAmount: personalEl?.value || "",
-      status: statusEl?.value || "0",
-      notes: notesEl?.value || ""
-    };
-    saveJSON(LS_PROD_DRAFT_LEAD, draftAll);
-  };
-  [amtEl, personalEl, statusEl, notesEl].forEach(el => el?.addEventListener("input", persistDraft, { once: false }));
-
-  form.addEventListener("submit", () => {
-    delete draftAll[leadId];
-    saveJSON(LS_PROD_DRAFT_LEAD, draftAll);
-  }, { once: true });
+  if (amtEl) amtEl.value = "";
+  if (personalEl) personalEl.value = "";
+  if (statusEl) statusEl.value = "0";
+  if (notesEl) notesEl.value = "";
 
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
