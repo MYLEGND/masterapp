@@ -104,6 +104,128 @@
     .legend-form ::placeholder {
         color: #475569 !important;
     }
+
+    /* Hard lock premium navy/gold theme */
+    .legend-shell.legend-form{
+        background:
+            radial-gradient(1200px 420px at 0% 0%, rgba(201,155,54,.12), transparent 58%),
+            radial-gradient(900px 320px at 100% 0%, rgba(102,124,168,.12), transparent 56%),
+            #091427 !important;
+        color:#e9f0ff !important;
+        border-radius:18px;
+        padding:12px;
+    }
+
+    .legend-shell.legend-form .legend-hero,
+    .legend-shell.legend-form .legend-card,
+    .legend-shell.legend-form .onb-panel-btn,
+    .legend-shell.legend-form .onb-modal-content,
+    .legend-shell.legend-form .onb-person-card,
+    .legend-shell.legend-form .onb-empty-state{
+        background:linear-gradient(180deg,#132747,#0d1f3c) !important;
+        border:1px solid rgba(201,155,54,.44) !important;
+        box-shadow:0 24px 58px rgba(3,8,18,.45) !important;
+        color:#e9f0ff !important;
+    }
+
+    .legend-shell.legend-form .legend-hero,
+    .legend-shell.legend-form .legend-card,
+    .legend-shell.legend-form .onb-modal-content{
+        position:relative;
+        overflow:hidden;
+    }
+
+    .legend-shell.legend-form .legend-hero::before,
+    .legend-shell.legend-form .legend-card::before,
+    .legend-shell.legend-form .onb-modal-content::before{
+        content:"";
+        position:absolute;
+        left:0; right:0; top:0;
+        height:4px;
+        background:linear-gradient(90deg,#b4891f,#f0cf78,#b4891f);
+    }
+
+    .legend-shell.legend-form .legend-kicker,
+    .legend-shell.legend-form .legend-title,
+    .legend-shell.legend-form h2,
+    .legend-shell.legend-form .card-header h5,
+    .legend-shell.legend-form .onb-panel-title,
+    .legend-shell.legend-form .onb-empty-title,
+    .legend-shell.legend-form .modal-title,
+    .legend-shell.legend-form .onb-person-name,
+    .legend-shell.legend-form .onb-date-value{
+        color:#b4891f !important;
+    }
+
+    .legend-shell.legend-form .legend-sub,
+    .legend-shell.legend-form .text-muted,
+    .legend-shell.legend-form .onb-panel-sub,
+    .legend-shell.legend-form .onb-empty-sub,
+    .legend-shell.legend-form .onb-person-email,
+    .legend-shell.legend-form .onb-date-label,
+    .legend-shell.legend-form .modal-header div[style],
+    .legend-shell.legend-form .alert .text-muted{
+        color:#d7e2f7 !important;
+    }
+
+    .legend-shell.legend-form .card-header,
+    .legend-shell.legend-form .onb-modal-header,
+    .legend-shell.legend-form .onb-modal-body,
+    .legend-shell.legend-form .card-body{
+        background:transparent !important;
+        border-color:rgba(201,155,54,.34) !important;
+        color:#e9f0ff !important;
+    }
+
+    .legend-shell.legend-form .onb-panel-icon,
+    .legend-shell.legend-form .onb-avatar,
+    .legend-shell.legend-form .onb-panel-badge,
+    .legend-shell.legend-form .onb-meta-pill,
+    .legend-shell.legend-form .onb-status-badge{
+        border:1px solid rgba(201,155,54,.32);
+        background:rgba(18,37,67,.95) !important;
+        color:#b4891f !important;
+    }
+
+    .legend-shell.legend-form input.form-control,
+    .legend-shell.legend-form select.form-control,
+    .legend-shell.legend-form textarea.form-control,
+    .legend-shell.legend-form input,
+    .legend-shell.legend-form select,
+    .legend-shell.legend-form textarea{
+        background:#f8fbff !important;
+        color:#0f1d38 !important;
+        border:1px solid rgba(201,155,54,.58) !important;
+        box-shadow:none !important;
+    }
+
+    .legend-shell.legend-form .legend-btn-primary,
+    .legend-shell.legend-form .onb-action-view,
+    .legend-shell.legend-form .onb-action-resend{
+        background:linear-gradient(180deg,#f8e2a8,#c89a35) !important;
+        color:#1e1305 !important;
+        border:1px solid rgba(201,155,54,.58) !important;
+    }
+
+    .legend-shell.legend-form .onb-action-delete{
+        background:linear-gradient(180deg,#5a1a1a,#3c1111) !important;
+        color:#fee2e2 !important;
+        border:1px solid #8b2020 !important;
+    }
+
+    .legend-shell.legend-form .alert-success,
+    .legend-shell.legend-form .alert-info,
+    .legend-shell.legend-form .alert-danger{
+        border-width:1px !important;
+        box-shadow:0 14px 34px rgba(3,8,18,.24) !important;
+    }
+
+    .legend-shell.legend-form code{
+        color:#f5d57f;
+        background:rgba(8,21,41,.45);
+        padding:.15rem .35rem;
+        border-radius:6px;
+    }
 </style>
 
 <div class="legend-shell legend-form">
