@@ -65,14 +65,14 @@ public class ProductionService
         => string.Equals(recordType, "Client", StringComparison.OrdinalIgnoreCase)
            || string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
 
-    private static string? ResolveClientRecordType(string? clientUserId, string? crmNotes, string? pipelineStage)
+    private static string? ResolveClientRecordType(string? clientUserId, string? crmNotes)
     {
         var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
         var normalized = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
         if (!string.IsNullOrWhiteSpace(normalized))
             return normalized;
 
-        var fromStage = ClientCrmMetaSerializer.NormalizeRecordType(pipelineStage, defaultToLead: false);
+        var fromStage = ClientCrmMetaSerializer.NormalizeRecordType(meta.PipelineStage, defaultToLead: false);
         if (!string.IsNullOrWhiteSpace(fromStage))
             return fromStage;
 
@@ -114,15 +114,14 @@ public class ProductionService
                                 {
                                     ac.AgentUserId,
                                     cp.ClientUserId,
-                                    cp.CrmNotes,
-                                    cp.PipelineStage
+                                    cp.CrmNotes
                                 })
             .ToListAsync(ct);
 
         var clientRecordTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var row in clientRows)
         {
-            var recordType = ResolveClientRecordType(row.ClientUserId, row.CrmNotes, row.PipelineStage);
+            var recordType = ResolveClientRecordType(row.ClientUserId, row.CrmNotes);
             if (!string.IsNullOrWhiteSpace(recordType))
                 clientRecordTypes[OwnershipKey(row.AgentUserId, row.ClientUserId)] = recordType;
         }
