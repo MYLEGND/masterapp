@@ -290,9 +290,9 @@ public sealed class AgentDocumentsController : Controller
             }
 
             var download = await blobClient.DownloadContentAsync();
-            var json = download.Value.Content.ToString();
-            var records = JsonSerializer.Deserialize<List<AgentDocumentRecord>>(json, JsonOptions);
-            return records ?? new List<AgentDocumentRecord>();
+            var blobJson = download.Value.Content.ToString();
+            var blobRecords = JsonSerializer.Deserialize<List<AgentDocumentRecord>>(blobJson, JsonOptions);
+            return blobRecords ?? new List<AgentDocumentRecord>();
         }
 
         var indexPath = GetIndexPath(userId);
@@ -312,8 +312,8 @@ public sealed class AgentDocumentsController : Controller
         {
             await EnsureContainerExistsAsync();
             var blobClient = _blobContainer!.GetBlobClient(GetIndexBlobName(userId));
-            var json = JsonSerializer.Serialize(records, JsonOptions);
-            await using var ms = new MemoryStream(Encoding.UTF8.GetBytes(json));
+            var blobJson = JsonSerializer.Serialize(records, JsonOptions);
+            await using var ms = new MemoryStream(Encoding.UTF8.GetBytes(blobJson));
             await blobClient.UploadAsync(ms, overwrite: true);
             return;
         }
