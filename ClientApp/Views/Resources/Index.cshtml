@@ -61,17 +61,20 @@
                         </label>
                         <label>
                             <span class="control-label">Policy type</span>
-                            <select id="policyTypeSelect" class="form-select premium-field" name="policyType" required>
-                                @foreach (var family in Model.PolicyTypeFamilies)
-                                {
-                                    <optgroup label="@family.Family">
-                                        @foreach (var policyType in family.Types)
-                                        {
-                                            <option value="@policyType">@policyType</option>
-                                        }
-                                    </optgroup>
-                                }
-                            </select>
+                            <div class="policy-select-wrap">
+                                <select id="policyTypeSelect" class="form-select premium-field" name="policyType" required>
+                                    @foreach (var family in Model.PolicyTypeFamilies)
+                                    {
+                                        <optgroup label="@family.Family">
+                                            @foreach (var policyType in family.Types)
+                                            {
+                                                <option value="@policyType">@policyType</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <span class="policy-select-arrow" aria-hidden="true">▾</span>
+                            </div>
                         </label>
                         <label class="policy-display-name-wrap">
                             <span class="control-label">Display name</span>
@@ -138,7 +141,7 @@
                                             </button>
 
                                             <div class="policy-actions">
-                                                <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener">View</a>
+                                                <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener" download="false">View</a>
                                                 <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
                                                 <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
                                                     @Html.AntiForgeryToken()
@@ -541,6 +544,22 @@
 }
 
 /* Make policy type dropdown unmistakably a dropdown */
+.policy-select-wrap{
+    position:relative;
+}
+
+.policy-select-arrow{
+    position:absolute;
+    right:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#7a5a16;
+    font-weight:900;
+    font-size:1rem;
+    pointer-events:none;
+    text-shadow:0 1px 0 rgba(255,255,255,.7);
+}
+
 #policyTypeSelect{
     appearance:none;
     -webkit-appearance:none;
@@ -560,6 +579,11 @@
 #policyTypeSelect:focus{
     border-color:rgba(240,207,120,.92) !important;
     box-shadow:0 0 0 .22rem rgba(201,155,54,.22), inset -36px 0 0 rgba(201,155,54,.24) !important;
+}
+
+#policyTypeSelect:focus + .policy-select-arrow,
+#policyTypeSelect:hover + .policy-select-arrow{
+    color:#5f4310;
 }
 
 .premium-input{ padding-left:36px !important; }
@@ -662,6 +686,33 @@
     background:rgba(127,29,29,.36);
     border-color:rgba(248,113,113,.42);
     color:#fecaca;
+}
+
+/* Ensure Browse educational resources panel fully matches premium navy/gold */
+.controls-card .info-title,
+.controls-card .control-label,
+.controls-card .result-name,
+.controls-card .result-tag{
+    color:#f0cf78 !important;
+}
+
+.controls-card .info-copy,
+.controls-card .control-help{
+    color:rgba(226,236,255,.82) !important;
+}
+
+.controls-card .premium-field,
+.controls-card .premium-input,
+.controls-card .form-select,
+.controls-card .form-control{
+    border-color:rgba(201,155,54,.58) !important;
+    background:#f8fbff !important;
+    color:#0f1d38 !important;
+}
+
+.controls-card .search-results{
+    border-color:rgba(201,155,54,.42) !important;
+    background:rgba(9,21,39,.96) !important;
 }
 
 @@media (max-width: 991.98px){

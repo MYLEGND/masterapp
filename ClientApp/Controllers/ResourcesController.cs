@@ -318,6 +318,8 @@ namespace ClientApp.Controllers
                 _ => "application/octet-stream"
             };
 
+            Response.Headers["Content-Disposition"] = "inline";
+
             return PhysicalFile(fullPath, contentType, enableRangeProcessing: true);
         }
 
