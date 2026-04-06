@@ -41,20 +41,20 @@
                     </button>
                 </div>
             </div>
-            <div class="grid2">
-                <div class="f">
+            <div style="display:grid; grid-template-columns:minmax(180px,1fr) minmax(220px,1fr) auto; gap:10px; align-items:end;">
+                <div class="f" style="margin:0;">
                     <label>Phone</label>
                     <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
                 </div>
-                <div class="f">
-                    <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-                        <label style="margin:0;">Email</label>
-                        <button type="button" class="btn btn-gold" id="btnResendClientInvite" style="display:none; white-space:nowrap;">Send Access Link</button>
-                    </div>
+                <div class="f" style="margin:0;">
+                    <label>Email</label>
                     <input type="email" id="dEmailInput" placeholder="Primary email" />
-                    <div style="margin-top:6px;"><span class="tiny" id="dResendInviteStatus"></span></div>
+                </div>
+                <div class="f" style="margin:0; display:flex; align-items:flex-end;">
+                    <button type="button" class="btn btn-gold" id="btnResendClientInvite" style="display:none; white-space:nowrap;">Send Access Link</button>
                 </div>
             </div>
+            <div style="margin-top:6px;"><span class="tiny" id="dResendInviteStatus"></span></div>
 
             <div class="grid2" style="margin-top:10px;">
                 <div class="f">

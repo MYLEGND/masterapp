@@ -5055,17 +5055,17 @@ function renderLaneCards(rowsForStage){
             <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" href=\"tel:${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
             <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
           </div>
-          <div class="client-card-actions actions">
-            ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
-            <button type="button"
-                    class="btn btn-gold openCard"
-                    data-open-card="${safeHtml(r.dataset.clientId)}"
-                    title="Open Quick View"
-                    style="min-width:110px;">
-              Quick View
-            </button>
-          </div>
           ${prodBadge}
+        </div>
+        <div class="client-card-actions actions" style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(0,0,0,.10); justify-content:flex-end; gap:8px;">
+          ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
+          <button type="button"
+                  class="btn btn-gold openCard"
+                  data-open-card="${safeHtml(r.dataset.clientId)}"
+                  title="Open Quick View"
+                  style="min-width:110px;">
+            Quick View
+          </button>
         </div>
       </article>
     `;
