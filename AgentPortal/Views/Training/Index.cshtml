@@ -209,6 +209,78 @@
         font-weight:900;
     }
 
+    /* Hard lock against global site.css white-card overrides */
+    .training-page.training-container,
+    .training-page .training-hero,
+    .training-page .controls-card,
+    .training-page .preview-shell,
+    .training-page .empty-state {
+        background: linear-gradient(180deg,#132747,#0d1f3c) !important;
+        border: 1px solid rgba(201,155,54,.44) !important;
+        box-shadow: 0 24px 58px rgba(3,8,18,.45) !important;
+    }
+
+    .training-page.training-container {
+        color: #e9f0ff !important;
+    }
+
+    .training-page .hero-kicker,
+    .training-page .hero-title,
+    .training-page .info-kicker,
+    .training-page .info-title,
+    .training-page .control-label,
+    .training-page .preview-title,
+    .training-page .empty-chip,
+    .training-page .empty-title {
+        color: #b4891f !important;
+    }
+
+    .training-page .hero-sub,
+    .training-page .info-copy,
+    .training-page .control-help,
+    .training-page .empty-text,
+    .training-page .search-results li {
+        color: #d7e2f7 !important;
+    }
+
+    .training-page .form-select,
+    .training-page .form-control,
+    .training-page .premium-field,
+    .training-page .premium-input {
+        background: #f8fbff !important;
+        color: #0f1d38 !important;
+        border: 1px solid rgba(201,155,54,.58) !important;
+    }
+
+    .training-page .form-select option {
+        background: #ffffff;
+        color: #0f1d38;
+    }
+
+    .training-page .search-results {
+        background: rgba(9,21,39,.96) !important;
+        border: 1px solid rgba(201,155,54,.44) !important;
+        box-shadow: 0 14px 34px rgba(3,8,18,.34) !important;
+    }
+
+    .training-page .search-results li:hover {
+        background: rgba(201,155,54,.16) !important;
+    }
+
+    .training-page .preview-head {
+        background: linear-gradient(180deg, rgba(201,155,54,.18), rgba(18,40,73,.16) 62%, transparent 100%) !important;
+        border-bottom: 1px solid rgba(201,155,54,.44) !important;
+    }
+
+    .training-page .preview-frame {
+        background: rgba(8,19,37,.45) !important;
+    }
+
+    .training-page .training-frame {
+        border: 1px solid rgba(201,155,54,.50) !important;
+        background: #ffffff !important;
+    }
+
     @@media (max-width: 767.98px) {
         .hero-title { font-size: 1.5rem; }
     }

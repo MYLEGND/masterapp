@@ -400,6 +400,63 @@
     max-width:900px;
 }
 
+/* Hard lock against global site.css white-card overrides */
+.resources-page .resources-hero,
+.resources-page .controls-card,
+.resources-page .preview-shell,
+.resources-page .empty-state{
+    background:linear-gradient(180deg,#132747,#0d1f3c) !important;
+    border:1px solid rgba(201,155,54,.44) !important;
+    box-shadow:0 24px 58px rgba(3,8,18,.45) !important;
+}
+
+.resources-page .resources-hero .hero-kicker,
+.resources-page .resources-hero .hero-title,
+.resources-page .controls-card .info-kicker,
+.resources-page .controls-card .info-title,
+.resources-page .controls-card .control-label,
+.resources-page .preview-shell .preview-title,
+.resources-page .empty-state .empty-chip,
+.resources-page .empty-state .empty-title,
+.resources-page .search-results .result-tag{
+    color:#b4891f !important;
+}
+
+.resources-page .resources-hero .hero-sub,
+.resources-page .controls-card .info-copy,
+.resources-page .controls-card .control-help,
+.resources-page .preview-shell .preview-meta,
+.resources-page .empty-state .empty-text,
+.resources-page .search-results .result-name,
+.resources-page .search-results li{
+    color:#d7e2f7 !important;
+}
+
+.resources-page .controls-card .form-select,
+.resources-page .controls-card .form-control,
+.resources-page .controls-card .premium-field,
+.resources-page .controls-card .premium-input{
+    background:#f8fbff !important;
+    color:#0f1d38 !important;
+    border:1px solid rgba(201,155,54,.58) !important;
+}
+
+.resources-page .controls-card .search-results{
+    background:rgba(9,21,39,.96) !important;
+    border:1px solid rgba(201,155,54,.44) !important;
+}
+
+.resources-page .preview-shell .preview-head{
+    background:linear-gradient(180deg, rgba(201,155,54,.18), rgba(18,40,73,.16) 62%, transparent 100%) !important;
+    border-bottom:1px solid rgba(201,155,54,.44) !important;
+}
+
+.resources-page .preview-shell .preview-open{
+    color:#1e1305 !important;
+    background:linear-gradient(180deg,#f8e2a8,#c89a35) !important;
+    border:1px solid rgba(201,155,54,.52) !important;
+}
+
 @@media (max-width: 767.98px){
     .hero-title{ font-size:1.5rem; }
 }
