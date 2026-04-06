@@ -120,13 +120,21 @@ static void EnsureSqliteDirectoryExists(string sqliteConnString)
 // Pull the connection string Azure injects (or secrets/local)
 var configuredDb = builder.Configuration.GetConnectionString("MasterAppDb");
 
-// In local development, prefer SQLite unless explicitly opting into Azure SQL.
-var useSqlServerInDev = string.Equals(
-    Environment.GetEnvironmentVariable("USE_SQLSERVER_IN_DEV"),
+// Development provider selection:
+// - If Azure SQL connection string exists, use it by default for parity with live data.
+// - Set USE_SQLITE_IN_DEV=true to force local SQLite.
+// - Legacy toggle USE_SQLSERVER_IN_DEV=false also forces SQLite.
+var forceSqliteInDev = string.Equals(
+    Environment.GetEnvironmentVariable("USE_SQLITE_IN_DEV"),
     "true",
     StringComparison.OrdinalIgnoreCase);
 
-if (builder.Environment.IsDevelopment() && !useSqlServerInDev && IsSqlServerConn(configuredDb))
+var disableSqlServerInDev = string.Equals(
+    Environment.GetEnvironmentVariable("USE_SQLSERVER_IN_DEV"),
+    "false",
+    StringComparison.OrdinalIgnoreCase);
+
+if (builder.Environment.IsDevelopment() && (forceSqliteInDev || disableSqlServerInDev) && IsSqlServerConn(configuredDb))
     configuredDb = null;
 
 // Decide provider
