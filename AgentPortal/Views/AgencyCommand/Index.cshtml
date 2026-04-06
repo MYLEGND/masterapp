@@ -3,6 +3,7 @@
     ViewData["Title"] = "Agency Command";
 }
 
+<div class="agency-command-page founder-tier-page">
 <section class="command-hero">
     <div class="command-hero__content">
         <div>
@@ -94,6 +95,7 @@
         }
     </div>
 </section>
+</div>
 
 @section Styles {
     <style>
@@ -305,6 +307,157 @@
         .split-values{display:flex;flex-direction:column;gap:4px;color:#cbd5e1;font-weight:700;font-size:0.9rem;}
         .breakdown-card{background:#141f33;border:1px solid rgba(221,180,87,.18);border-radius:12px;padding:14px;box-shadow:0 12px 22px rgba(0,0,0,.2);}        
         .breakdown-title{font-weight:800;color:#e5e7eb;margin-bottom:10px;}
+
+        .founder-tier-page {
+            background:
+                radial-gradient(140% 140% at 0% 0%, rgba(180,137,31,.20) 0%, rgba(180,137,31,0) 38%),
+                linear-gradient(180deg, #07101f 0%, #0c1830 100%) !important;
+            border: 1px solid rgba(180,137,31,.34) !important;
+            border-radius: 30px !important;
+            box-shadow: 0 28px 64px rgba(0,0,0,.34) !important;
+            padding: clamp(1rem, 2vw, 1.7rem) !important;
+            margin-bottom: 2rem;
+        }
+
+        .founder-tier-page .command-hero,
+        .founder-tier-page .command-hero__content,
+        .founder-tier-page .agent-card,
+        .founder-tier-page .kpi-card,
+        .founder-tier-page .rev-modal__panel,
+        .founder-tier-page .agent-table,
+        .founder-tier-page .rev-card,
+        .founder-tier-page .accordion-item.soft-dark,
+        .founder-tier-page .producer-card,
+        .founder-tier-page .breakdown-card,
+        .founder-tier-page .metric {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .founder-tier-page .command-hero__content,
+        .founder-tier-page .agent-card,
+        .founder-tier-page .rev-modal__panel,
+        .founder-tier-page .agent-table,
+        .founder-tier-page .producer-card,
+        .founder-tier-page .breakdown-card {
+            background: linear-gradient(180deg, rgba(9,18,36,.97), rgba(12,25,48,.94)) !important;
+            border-color: rgba(180,137,31,.28) !important;
+            box-shadow: 0 24px 48px rgba(0,0,0,.32) !important;
+        }
+
+        .founder-tier-page .command-hero__content::before,
+        .founder-tier-page .rev-modal__panel::before,
+        .founder-tier-page .agent-table::before,
+        .founder-tier-page .producer-card::before,
+        .founder-tier-page .breakdown-card::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 3px;
+            background: linear-gradient(90deg, rgba(180,137,31,.72), #b4891f, rgba(96,165,250,.68), rgba(52,211,153,.55));
+        }
+
+        .founder-tier-page .eyebrow,
+        .founder-tier-page h1,
+        .founder-tier-page .rev-modal__header h2,
+        .founder-tier-page .agent-card h3,
+        .founder-tier-page .kpi-value,
+        .founder-tier-page .count-value,
+        .founder-tier-page .breakdown-title,
+        .founder-tier-page .producer-name,
+        .founder-tier-page .heading-text .title,
+        .founder-tier-page .text-gold {
+            color: #b4891f !important;
+        }
+
+        .founder-tier-page .lede,
+        .founder-tier-page .agent-email,
+        .founder-tier-page .kpi-label,
+        .founder-tier-page .kpi-sub,
+        .founder-tier-page .metric-label,
+        .founder-tier-page .security-note,
+        .founder-tier-page .rev-card .label,
+        .founder-tier-page .rev-card .note,
+        .founder-tier-page .heading-text .subtitle,
+        .founder-tier-page .producer-sub,
+        .founder-tier-page .split-values,
+        .founder-tier-page .text-muted,
+        .founder-tier-page .muted,
+        .founder-tier-page .top-prod-table thead th,
+        .founder-tier-page .top-prod-table tbody td,
+        .founder-tier-page .rev-modal__header,
+        .founder-tier-page .text-ink,
+        .founder-tier-page .order-label {
+            color: #d7e2f7 !important;
+        }
+
+        .founder-tier-page .kpi-card,
+        .founder-tier-page .metric,
+        .founder-tier-page .rev-card,
+        .founder-tier-page .producer-header,
+        .founder-tier-page .producer-body,
+        .founder-tier-page .split-card,
+        .founder-tier-page .accordion-button.soft-dark,
+        .founder-tier-page .accordion-item.soft-dark,
+        .founder-tier-page .agent-table .card-header {
+            background: linear-gradient(180deg, rgba(10,20,40,.96), rgba(14,28,53,.92)) !important;
+            border-color: rgba(180,137,31,.24) !important;
+            color: #d7e2f7 !important;
+        }
+
+        .founder-tier-page .kpi-card.blue,
+        .founder-tier-page .split-card.leads {
+            border-color: rgba(96,165,250,.38) !important;
+        }
+
+        .founder-tier-page .kpi-card.green,
+        .founder-tier-page .split-card.clients {
+            border-color: rgba(52,211,153,.34) !important;
+        }
+
+        .founder-tier-page .btn,
+        .founder-tier-page button,
+        .founder-tier-page input[type="submit"] {
+            border-radius: 14px !important;
+            font-weight: 800 !important;
+            transition: transform .12s ease, box-shadow .16s ease, background .16s ease, color .16s ease !important;
+        }
+
+        .founder-tier-page .btn-gold {
+            background: linear-gradient(180deg, #f3d58e 0%, #b4891f 100%) !important;
+            color: #1b1508 !important;
+            border: 1px solid #b4891f !important;
+            box-shadow: 0 18px 32px rgba(180,137,31,.26) !important;
+        }
+
+        .founder-tier-page .btn-gold:hover {
+            background: linear-gradient(180deg, #f7dfaa 0%, #c69629 100%) !important;
+            color: #141007 !important;
+        }
+
+        .founder-tier-page .btn-outline-light,
+        .founder-tier-page .btn-close {
+            background: rgba(8,16,32,.76) !important;
+            color: #d7e2f7 !important;
+            border: 1px solid rgba(180,137,31,.32) !important;
+            box-shadow: none !important;
+        }
+
+        .founder-tier-page .btn-outline-light:hover,
+        .founder-tier-page .btn-close:hover {
+            background: rgba(180,137,31,.14) !important;
+            color: #b4891f !important;
+            border-color: rgba(180,137,31,.5) !important;
+        }
+
+        .founder-tier-page .order-input {
+            background: rgba(255,255,255,.96) !important;
+            color: #0f172a !important;
+            border: 1px solid rgba(180,137,31,.44) !important;
+            box-shadow: 0 10px 18px rgba(0,0,0,.14) !important;
+        }
     </style>
 }
 

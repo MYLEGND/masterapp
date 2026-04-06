@@ -3,6 +3,7 @@
     ViewData["Title"] = Model.Agent.FullName + " | Agency Command";
 }
 
+<div class="agency-command-detail founder-tier-page">
 <section class="command-hero">
     <div class="command-hero__content">
         <div>
@@ -183,6 +184,7 @@
         </div>
     </div>
 </section>
+</div>
 
 @section Styles {
     <style>
@@ -228,5 +230,104 @@
         .table-dark th, .table-dark td { color: #e2e8f0; border-color: rgba(221,180,87,.16); }
         .row-title { font-weight: 900; }
         .row-sub { color: var(--muted); font-weight: 700; }
+
+        .founder-tier-page {
+            background:
+                radial-gradient(140% 140% at 0% 0%, rgba(180,137,31,.20) 0%, rgba(180,137,31,0) 38%),
+                linear-gradient(180deg, #07101f 0%, #0c1830 100%) !important;
+            border: 1px solid rgba(180,137,31,.34) !important;
+            border-radius: 30px !important;
+            box-shadow: 0 28px 64px rgba(0,0,0,.34) !important;
+            padding: clamp(1rem, 2vw, 1.7rem) !important;
+            margin-bottom: 2rem;
+        }
+
+        .founder-tier-page .command-hero__content,
+        .founder-tier-page .panel,
+        .founder-tier-page .kpi-card,
+        .founder-tier-page .followup,
+        .founder-tier-page .table,
+        .founder-tier-page .pill {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .founder-tier-page .command-hero__content,
+        .founder-tier-page .panel {
+            background: linear-gradient(180deg, rgba(9,18,36,.97), rgba(12,25,48,.94)) !important;
+            border-color: rgba(180,137,31,.26) !important;
+            box-shadow: 0 24px 48px rgba(0,0,0,.32) !important;
+        }
+
+        .founder-tier-page .command-hero__content::before,
+        .founder-tier-page .panel::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 0;
+            height: 3px;
+            background: linear-gradient(90deg, rgba(180,137,31,.72), #b4891f, rgba(96,165,250,.68), rgba(52,211,153,.55));
+        }
+
+        .founder-tier-page .eyebrow,
+        .founder-tier-page h1,
+        .founder-tier-page .kpi-value,
+        .founder-tier-page .panel-head h3,
+        .founder-tier-page .panel-head h4,
+        .founder-tier-page .followup-date,
+        .founder-tier-page .row-title {
+            color: #b4891f !important;
+        }
+
+        .founder-tier-page .lede,
+        .founder-tier-page .kpi-label,
+        .founder-tier-page .kpi-sub,
+        .founder-tier-page .muted,
+        .founder-tier-page .row-sub,
+        .founder-tier-page .followup-note,
+        .founder-tier-page .table-dark th,
+        .founder-tier-page .table-dark td,
+        .founder-tier-page .followup-name {
+            color: #d7e2f7 !important;
+        }
+
+        .founder-tier-page .kpi-card,
+        .founder-tier-page .followup,
+        .founder-tier-page .panel.alert,
+        .founder-tier-page .table-dark,
+        .founder-tier-page .table-dark thead,
+        .founder-tier-page .table-dark tbody tr,
+        .founder-tier-page .pill,
+        .founder-tier-page .pill.subtle {
+            background: linear-gradient(180deg, rgba(10,20,40,.96), rgba(14,28,53,.92)) !important;
+            border-color: rgba(180,137,31,.24) !important;
+        }
+
+        .founder-tier-page .table-dark {
+            --bs-table-bg: transparent !important;
+            --bs-table-striped-bg: rgba(255,255,255,.02) !important;
+            --bs-table-border-color: rgba(180,137,31,.14) !important;
+            border-radius: 18px;
+            overflow: hidden;
+        }
+
+        .founder-tier-page .btn,
+        .founder-tier-page button {
+            border-radius: 14px !important;
+            font-weight: 800 !important;
+        }
+
+        .founder-tier-page .btn-gold {
+            background: linear-gradient(180deg, #f3d58e 0%, #b4891f 100%) !important;
+            color: #1b1508 !important;
+            border: 1px solid #b4891f !important;
+            box-shadow: 0 18px 32px rgba(180,137,31,.26) !important;
+        }
+
+        .founder-tier-page .btn-gold:hover {
+            background: linear-gradient(180deg, #f7dfaa 0%, #c69629 100%) !important;
+            color: #141007 !important;
+        }
     </style>
 }

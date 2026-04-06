@@ -45,6 +45,33 @@ document.addEventListener("DOMContentLoaded", async function () {
         return keys.length > 0 ? keys[0] : key;
     }
 
+    function normalizePersistedState(key, value) {
+        if (key !== "ActionTracker") return value ?? {};
+
+        if (Array.isArray(value)) {
+            return value.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        if (Array.isArray(value?.goals)) {
+            return value.goals.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        if (Array.isArray(value?.items)) {
+            return value.items.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        return [];
+    }
+
     const buildQuery = (key) => {
         const params = new URLSearchParams({ toolId: key });
         if (clientUserId) params.set("clientUserId", clientUserId);
@@ -79,23 +106,23 @@ document.addEventListener("DOMContentLoaded", async function () {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload?.found) {
-                            return JSON.parse(payload?.jsonState || "{}");
+                            return normalizePersistedState(candidateKey, JSON.parse(payload?.jsonState || "{}"));
                         }
                     }
                 } catch (_) { }
             }
         }
 
-        if (canUseServerState) return {};
+        if (canUseServerState) return normalizePersistedState(key, {});
 
         for (const candidateKey of keys) {
             const raw = storageGet(candidateKey);
             if (raw) {
-                return JSON.parse(raw || "{}");
+                return normalizePersistedState(candidateKey, JSON.parse(raw || "{}"));
             }
         }
 
-        return {};
+        return normalizePersistedState(key, {});
     }
 
     const getAntiForgeryToken = () =>
@@ -104,7 +131,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         || "";
 
     function savePersistedState(key, state) {
-        const jsonState = JSON.stringify(state || {});
+        const normalizedState = normalizePersistedState(key, state);
+        const jsonState = JSON.stringify(normalizedState ?? {});
         const primaryKey = getPrimaryStateKey(key);
         if (!canUseServerState) {
             storageSet(primaryKey, jsonState);
