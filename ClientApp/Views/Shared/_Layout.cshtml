@@ -231,18 +231,44 @@
             cursor: pointer;
         }
 
+        .agent-pill-chip .agent-name {
+            font-weight: 900;
+            letter-spacing: .01em;
+        }
+
+        .agent-pill-chip .npn-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            margin-left: .1rem;
+            padding: 0.18rem 0.55rem;
+            border-radius: 999px;
+            border: 1px solid rgba(197,146,31,.55);
+            background: rgba(197,146,31,.14);
+            color: #f8f9fb;
+            font-weight: 800;
+            line-height: 1;
+        }
+
+        .agent-pill-chip .npn-chip .npn-label {
+            font-size: .72rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            opacity: .86;
+        }
+
+        .agent-pill-chip .npn-chip .npn-value {
+            font-size: .78rem;
+            font-weight: 900;
+            letter-spacing: .02em;
+        }
+
         .navbar-right .nav-link,
         .navbar-right .btn-link,
         .navbar-right .profile-chip {
             order: 1;
         }
 
-        .agent-pill .npn-chip {
-            padding: 0.2rem 0.6rem;
-            border-left: 1px solid #8f6b14;
-            color: #f8f9fb;
-            font-weight: 900;
-        }
         .agent-pill-menu a { font-weight: 800; }
         .agent-pill-menu .disabled { opacity: .6; }
         .agent-pill-menu {
@@ -1045,10 +1071,6 @@
 
                         <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
-                        @if (isBusinessClient)
-                        {
-                            <li class="nav-item"><a class="nav-link @Active("BookKeeping")" asp-controller="BookKeeping" asp-action="Index">Financial Command Center</a></li>
-                        }
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
                     @if (ctx?.IsAgentView == true)
@@ -1155,7 +1177,7 @@
                             <span class="agent-name">@agentPillName</span>
                             @if (!string.IsNullOrWhiteSpace(agentPillNpn))
                             {
-                                <span class="npn-chip">NPN - @agentPillNpn</span>
+                                <span class="npn-chip"><span class="npn-label">NPN</span><span class="npn-value">@agentPillNpn</span></span>
                             }
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end agent-pill-menu">

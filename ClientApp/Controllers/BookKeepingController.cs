@@ -56,6 +56,8 @@ public class BookKeepingController : Controller
     private static bool IsBusinessClient(EffectiveClientContext ctx)
         => string.Equals(ResolveRecordType(ctx.Profile), "BusinessClient", StringComparison.OrdinalIgnoreCase);
 
+    private static bool BookKeepingEnabled() => false;
+
     private async Task<EffectiveClientContext?> RequireBusinessClientAsync()
     {
         var context = await GetClientContextAsync();
@@ -67,6 +69,8 @@ public class BookKeepingController : Controller
     [HttpGet]
     public async Task<IActionResult> Index(bool forceRefresh = false, CancellationToken ct = default)
     {
+        if (!BookKeepingEnabled()) return NotFound();
+
         var context = await RequireBusinessClientAsync();
         if (context == null) return Forbid();
 
@@ -109,6 +113,8 @@ public class BookKeepingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ConnectQuickBooks()
     {
+        if (!BookKeepingEnabled()) return NotFound();
+
         var context = await RequireBusinessClientAsync();
         if (context == null) return Forbid();
 
@@ -137,6 +143,8 @@ public class BookKeepingController : Controller
         string? error_description,
         CancellationToken ct = default)
     {
+        if (!BookKeepingEnabled()) return NotFound();
+
         var context = await RequireBusinessClientAsync();
         if (context == null) return Forbid();
 
@@ -167,6 +175,8 @@ public class BookKeepingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DisconnectQuickBooks(CancellationToken ct = default)
     {
+        if (!BookKeepingEnabled()) return NotFound();
+
         var context = await RequireBusinessClientAsync();
         if (context == null) return Forbid();
 
@@ -179,6 +189,8 @@ public class BookKeepingController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> RefreshQuickBooks(CancellationToken ct = default)
     {
+        if (!BookKeepingEnabled()) return NotFound();
+
         var context = await RequireBusinessClientAsync();
         if (context == null) return Forbid();
 
@@ -189,5 +201,5 @@ public class BookKeepingController : Controller
 
     [HttpGet]
     public IActionResult Reports()
-        => RedirectToAction(nameof(Index));
+        => !BookKeepingEnabled() ? NotFound() : RedirectToAction(nameof(Index));
 }
