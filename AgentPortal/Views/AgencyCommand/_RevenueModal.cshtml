@@ -1,6 +1,10 @@
 @model AgencyRevenueVm
 @{
     string NameFor(string oid) => Model.AgentNames.TryGetValue(oid, out var n) ? n : oid;
+    var totalPaidAmount = Model.Leads.Paid + Model.Clients.Paid;
+    var totalPaidDeals = Model.Leads.CountPaid + Model.Clients.CountPaid;
+    var inProgressAmount = Model.Leads.Submitted + Model.Leads.Issued + Model.Clients.Submitted + Model.Clients.Issued;
+    var inProgressDeals = Model.Leads.CountSubmitted + Model.Leads.CountIssued + Model.Clients.CountSubmitted + Model.Clients.CountIssued;
 }
 
 <div class="rev-modal" id="revModal" aria-hidden="true">
@@ -15,37 +19,54 @@
             <button class="btn-close" type="button" data-close-rev aria-label="Close">×</button>
         </div>
 
-        <div class="revenue-grid">
-            <div class="rev-card submitted">
-                <div class="label">Submitted (Leads)</div>
-                <div class="value">@Model.Leads.Submitted.ToString("C0")</div>
-                <div class="note">@Model.Leads.CountSubmitted deals</div>
+        <div class="revenue-kpi-layout">
+            <div class="revenue-pill-grid">
+                <div class="revenue-pill-row">
+                    <div class="rev-card submitted">
+                        <div class="label">Submitted (Clients)</div>
+                        <div class="value">@Model.Clients.Submitted.ToString("C0")</div>
+                        <div class="note">@Model.Clients.CountSubmitted deals</div>
+                    </div>
+                    <div class="rev-card issued">
+                        <div class="label">Issued (Clients)</div>
+                        <div class="value">@Model.Clients.Issued.ToString("C0")</div>
+                        <div class="note">@Model.Clients.CountIssued deals</div>
+                    </div>
+                    <div class="rev-card paid">
+                        <div class="label">Paid (Clients)</div>
+                        <div class="value">@Model.Clients.Paid.ToString("C0")</div>
+                        <div class="note">@Model.Clients.CountPaid deals</div>
+                    </div>
+                </div>
+                <div class="revenue-pill-row">
+                    <div class="rev-card submitted">
+                        <div class="label">Submitted (Leads)</div>
+                        <div class="value">@Model.Leads.Submitted.ToString("C0")</div>
+                        <div class="note">@Model.Leads.CountSubmitted deals</div>
+                    </div>
+                    <div class="rev-card issued">
+                        <div class="label">Issued (Leads)</div>
+                        <div class="value">@Model.Leads.Issued.ToString("C0")</div>
+                        <div class="note">@Model.Leads.CountIssued deals</div>
+                    </div>
+                    <div class="rev-card paid">
+                        <div class="label">Paid (Leads)</div>
+                        <div class="value">@Model.Leads.Paid.ToString("C0")</div>
+                        <div class="note">@Model.Leads.CountPaid deals</div>
+                    </div>
+                </div>
             </div>
-            <div class="rev-card issued">
-                <div class="label">Issued (Leads)</div>
-                <div class="value">@Model.Leads.Issued.ToString("C0")</div>
-                <div class="note">@Model.Leads.CountIssued deals</div>
-            </div>
-            <div class="rev-card paid">
-                <div class="label">Paid (Leads)</div>
-                <div class="value">@Model.Leads.Paid.ToString("C0")</div>
-                <div class="note">@Model.Leads.CountPaid deals</div>
-            </div>
-
-            <div class="rev-card submitted">
-                <div class="label">Submitted (Clients)</div>
-                <div class="value">@Model.Clients.Submitted.ToString("C0")</div>
-                <div class="note">@Model.Clients.CountSubmitted deals</div>
-            </div>
-            <div class="rev-card issued">
-                <div class="label">Issued (Clients)</div>
-                <div class="value">@Model.Clients.Issued.ToString("C0")</div>
-                <div class="note">@Model.Clients.CountIssued deals</div>
-            </div>
-            <div class="rev-card paid">
-                <div class="label">Paid (Clients)</div>
-                <div class="value">@Model.Clients.Paid.ToString("C0")</div>
-                <div class="note">@Model.Clients.CountPaid deals</div>
+            <div class="revenue-major-stack">
+                <div class="major-card paid-total">
+                    <div class="label">Total Paid (Leads + Clients)</div>
+                    <div class="value">@totalPaidAmount.ToString("C0")</div>
+                    <div class="note">@totalPaidDeals deals closed paid</div>
+                </div>
+                <div class="major-card progress-total">
+                    <div class="label">In Progress (Submitted + Issued)</div>
+                    <div class="value">@inProgressAmount.ToString("C0")</div>
+                    <div class="note">@inProgressDeals deals in pipeline</div>
+                </div>
             </div>
         </div>
 

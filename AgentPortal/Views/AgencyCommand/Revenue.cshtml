@@ -5,6 +5,10 @@
 @{
     ViewData["Title"] = "Agency Production";
     string NameFor(string oid) => Model.AgentNames.TryGetValue(oid, out var n) ? n : oid;
+    var totalPaidAmount = Model.Leads.Paid + Model.Clients.Paid;
+    var totalPaidDeals = Model.Leads.CountPaid + Model.Clients.CountPaid;
+    var inProgressAmount = Model.Leads.Submitted + Model.Leads.Issued + Model.Clients.Submitted + Model.Clients.Issued;
+    var inProgressDeals = Model.Leads.CountSubmitted + Model.Leads.CountIssued + Model.Clients.CountSubmitted + Model.Clients.CountIssued;
 }
 
 <div class="agency-command-revenue founder-tier-page">
@@ -19,37 +23,54 @@
     </div>
 </div>
 
-<div class="revenue-grid">
-    <div class="rev-card submitted">
-        <div class="label">Submitted (Leads)</div>
-        <div class="value">@Model.Leads.Submitted.ToString("C0")</div>
-        <div class="note">@Model.Leads.CountSubmitted deals</div>
+<div class="revenue-kpi-layout">
+    <div class="revenue-pill-grid">
+        <div class="revenue-pill-row">
+            <div class="rev-card submitted">
+                <div class="label">Submitted (Clients)</div>
+                <div class="value">@Model.Clients.Submitted.ToString("C0")</div>
+                <div class="note">@Model.Clients.CountSubmitted deals</div>
+            </div>
+            <div class="rev-card issued">
+                <div class="label">Issued (Clients)</div>
+                <div class="value">@Model.Clients.Issued.ToString("C0")</div>
+                <div class="note">@Model.Clients.CountIssued deals</div>
+            </div>
+            <div class="rev-card paid">
+                <div class="label">Paid (Clients)</div>
+                <div class="value">@Model.Clients.Paid.ToString("C0")</div>
+                <div class="note">@Model.Clients.CountPaid deals</div>
+            </div>
+        </div>
+        <div class="revenue-pill-row">
+            <div class="rev-card submitted">
+                <div class="label">Submitted (Leads)</div>
+                <div class="value">@Model.Leads.Submitted.ToString("C0")</div>
+                <div class="note">@Model.Leads.CountSubmitted deals</div>
+            </div>
+            <div class="rev-card issued">
+                <div class="label">Issued (Leads)</div>
+                <div class="value">@Model.Leads.Issued.ToString("C0")</div>
+                <div class="note">@Model.Leads.CountIssued deals</div>
+            </div>
+            <div class="rev-card paid">
+                <div class="label">Paid (Leads)</div>
+                <div class="value">@Model.Leads.Paid.ToString("C0")</div>
+                <div class="note">@Model.Leads.CountPaid deals</div>
+            </div>
+        </div>
     </div>
-    <div class="rev-card issued">
-        <div class="label">Issued (Leads)</div>
-        <div class="value">@Model.Leads.Issued.ToString("C0")</div>
-        <div class="note">@Model.Leads.CountIssued deals</div>
-    </div>
-    <div class="rev-card paid">
-        <div class="label">Paid (Leads)</div>
-        <div class="value">@Model.Leads.Paid.ToString("C0")</div>
-        <div class="note">@Model.Leads.CountPaid deals</div>
-    </div>
-
-    <div class="rev-card submitted">
-        <div class="label">Submitted (Clients)</div>
-        <div class="value">@Model.Clients.Submitted.ToString("C0")</div>
-        <div class="note">@Model.Clients.CountSubmitted deals</div>
-    </div>
-    <div class="rev-card issued">
-        <div class="label">Issued (Clients)</div>
-        <div class="value">@Model.Clients.Issued.ToString("C0")</div>
-        <div class="note">@Model.Clients.CountIssued deals</div>
-    </div>
-    <div class="rev-card paid">
-        <div class="label">Paid (Clients)</div>
-        <div class="value">@Model.Clients.Paid.ToString("C0")</div>
-        <div class="note">@Model.Clients.CountPaid deals</div>
+    <div class="revenue-major-stack">
+        <div class="major-card paid-total">
+            <div class="label">Total Paid (Leads + Clients)</div>
+            <div class="value">@totalPaidAmount.ToString("C0")</div>
+            <div class="note">@totalPaidDeals deals closed paid</div>
+        </div>
+        <div class="major-card progress-total">
+            <div class="label">In Progress (Submitted + Issued)</div>
+            <div class="value">@inProgressAmount.ToString("C0")</div>
+            <div class="note">@inProgressDeals deals in pipeline</div>
+        </div>
     </div>
 </div>
 
@@ -233,8 +254,19 @@
     .eyebrow{letter-spacing:0.2em;text-transform:uppercase;color:#d8b04c;font-weight:900;margin-bottom:6px;}
     h1{font-weight:900;letter-spacing:0.02em;color:#0b1529;}
     .lede{color:#1f2937;font-weight:700;}
-    .revenue-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:12px;}
-    .rev-card{padding:14px;border-radius:14px;background:#0b1224;border:1.6px solid rgba(221,180,87,.45);box-shadow:0 14px 34px rgba(0,0,0,.24);}
+    .revenue-kpi-layout{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(270px,1fr);gap:12px;padding:12px;align-items:stretch;}
+    .revenue-pill-grid{display:flex;flex-direction:column;gap:12px;min-width:0;}
+    .revenue-pill-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+    .revenue-major-stack{display:grid;grid-template-rows:1fr 1fr;gap:12px;}
+    .major-card{padding:16px;border-radius:16px;border:1.6px solid rgba(221,180,87,.45);background:linear-gradient(180deg,#101d35,#0b162b);box-shadow:0 16px 34px rgba(0,0,0,.24);display:flex;flex-direction:column;justify-content:center;min-height:126px;}
+    .major-card .label{font-weight:900;color:#cbd5e1;text-transform:uppercase;font-size:.8rem;letter-spacing:.05em;}
+    .major-card .value{font-weight:900;font-size:2rem;line-height:1.05;}
+    .major-card .note{font-weight:700;color:#9fb0ca;}
+    .major-card.paid-total{border-color:rgba(34,197,94,.62);background:linear-gradient(180deg,#113122,#0b251a);}
+    .major-card.paid-total .value{color:#34d399;}
+    .major-card.progress-total{border-color:rgba(96,165,250,.6);background:linear-gradient(180deg,#11233f,#0b1a31);}
+    .major-card.progress-total .value{color:#7dc4ff;}
+    .rev-card{padding:14px;border-radius:14px;background:#0b1224;border:1.6px solid rgba(221,180,87,.45);box-shadow:0 14px 34px rgba(0,0,0,.24);min-height:126px;display:flex;flex-direction:column;justify-content:center;}
     .rev-card .label{font-weight:800;color:#cbd5e1;text-transform:uppercase;font-size:.85rem;letter-spacing:.04em;}
     .rev-card .value{font-weight:900;font-size:1.7rem;color:#ffffff;}
     .rev-card .note{color:#94a3b8;font-weight:700;}
@@ -244,6 +276,15 @@
     .rev-card.issued .value{color:#60a5fa;}
     .rev-card.paid{border-color:rgba(34,197,94,.65);background:#0f2b1f;}
     .rev-card.paid .value{color:#34d399;}
+    @@media (max-width:1100px){
+        .revenue-kpi-layout{grid-template-columns:1fr;}
+        .revenue-major-stack{grid-template-columns:1fr 1fr;grid-template-rows:none;}
+    }
+    @@media (max-width:768px){
+        .revenue-pill-row{grid-template-columns:1fr;}
+        .revenue-major-stack{grid-template-columns:1fr;}
+        .major-card .value{font-size:1.7rem;}
+    }
     .agent-table{margin:18px 14px;background:#0f1629;border:1.6px solid rgba(221,180,87,.5);border-radius:16px;overflow:hidden;box-shadow:0 16px 38px rgba(0,0,0,.24);}
     .agent-table .card-header{font-weight:900;padding:14px 18px;border-bottom:1px solid rgba(221,180,87,.35);background:#0b1529;color:#e2e8f0;}
     #topProducersAccordion{display:flex;flex-direction:column;gap:14px;padding:12px;}
