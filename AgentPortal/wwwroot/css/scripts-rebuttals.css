@@ -2979,7 +2979,8 @@ details.section{
 .proposal-overlay{
     position: fixed;
     inset: 0;
-    background: rgba(15,23,42,.32);
+    background: rgba(7,14,28,.72);
+    backdrop-filter: blur(8px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -2993,12 +2994,55 @@ details.section{
     width: min(1400px, 98vw);
     max-height: 92vh;
     overflow: auto;
-    background: #ffffff;
-    border: 1.5px solid #e5e7eb;
-    border-radius: 18px;
-    box-shadow: 0 28px 70px rgba(0,0,0,.18);
-    padding: 18px;
-    color: #0f172a;
+    border: 1.8px solid rgba(166,128,35,.48);
+    border-radius: 22px;
+    background:
+        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),
+        linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    box-shadow: 0 40px 100px rgba(0,0,0,.52);
+    padding: 1rem 1.1rem;
+    color: #f8fafc;
+}
+
+.proposal-dialog .uw-head{
+    border-bottom: 1px solid rgba(166,128,35,.22);
+    padding-bottom: .7rem;
+    margin-bottom: .8rem;
+}
+
+.proposal-dialog .uw-logo{
+    display: none;
+}
+
+.proposal-dialog .uw-name{
+    color:#f4d890;
+    font-weight:950;
+    font-size:1.55rem;
+    line-height:1.15;
+    letter-spacing: 0;
+}
+
+.proposal-dialog .uw-sub{
+    color:#b9c5d8;
+    font-weight:600;
+    margin-top:.25rem;
+}
+
+.proposal-dialog .uw-close{
+    width:44px;
+    height:44px;
+    border-radius:12px;
+    border:1.5px solid rgba(166,128,35,.44);
+    background:rgba(255,255,255,.05);
+    color:#f8fafc;
+    font-size:1.7rem;
+    line-height:1;
+    box-shadow:none;
+}
+
+.proposal-dialog .uw-close:hover{
+    background:rgba(221,180,87,.16);
+    border-color:#ddb457;
 }
 
 /* Bootstrap decision capture modal stabilization */
@@ -3084,92 +3128,175 @@ details.section{
 .proposal-form{
     display:flex;
     flex-direction:column;
-    gap:12px;
+    gap:.55rem;
 }
 
 .proposal-meta{
     display:flex;
     flex-wrap:wrap;
-    gap:10px;
+    gap:.6rem;
     align-items:flex-end;
+    padding:.65rem .75rem;
+    border-radius:14px;
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(166,128,35,.2);
 }
 
 .proposal-meta .uw-field{
-    flex: 1 1 340px;
+    flex: 1 1 220px;
+    color:#f4d890;
+    font-size:.72rem;
+    font-weight:900;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+}
+
+.proposal-form .uw-field{
+    gap:.26rem;
+}
+
+.proposal-form .uw-field input,
+.proposal-form .uw-field select{
+    min-height:40px;
+    border-radius:10px;
+    border:1.5px solid rgba(166,128,35,.38);
+    background:rgba(255,255,255,.07);
+    color:#f8fafc;
+    padding:0 .75rem;
+    font-size:.9rem;
+    font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.proposal-form .uw-field input::placeholder{
+    color:#64748b;
+    text-transform:none;
+}
+
+.proposal-form .uw-field input:focus,
+.proposal-form .uw-field select:focus{
+    outline:none;
+    border-color:#ddb457;
+    box-shadow:0 0 0 3px rgba(221,180,87,.16);
+}
+
+.proposal-form .uw-field select option{
+    background:#0f1d38;
+    color:#f8fafc;
 }
 
 .proposal-actions-inline{
     display:flex;
-    gap:8px;
+    gap:.6rem;
     flex-wrap:wrap;
+}
+
+.proposal-dialog .proposal-actions-inline .btn{
+    min-height:40px;
+    border-radius:14px;
+    font-weight:900;
+    letter-spacing:.01em;
+}
+
+.proposal-dialog .proposal-actions-inline .btn.gold{
+    background:linear-gradient(180deg,#f4dc98,#ddb457) !important;
+    color:#0b1529 !important;
+    border:1.6px solid #ddb457 !important;
+    box-shadow:0 10px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.55);
+}
+
+.proposal-dialog .proposal-actions-inline .btn.btn-ghost{
+    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)) !important;
+    color:#f8fafc !important;
+    border:1.5px solid rgba(166,128,35,.44) !important;
+    box-shadow:0 8px 18px rgba(0,0,0,.16);
+}
+
+.proposal-dialog .proposal-actions-inline .btn.btn-ghost:hover{
+    border-color:rgba(221,180,87,.72) !important;
+    background:rgba(221,180,87,.14) !important;
 }
 
 .proposal-buckets{
     display:grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap:16px;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap:.65rem;
 }
 
 .proposal-bucket{
-    border:1px solid #e5e7eb;
+    border:1.5px solid rgba(166,128,35,.28);
     border-radius:16px;
-    padding:14px;
-    background: #f8fafc;
-    box-shadow: 0 14px 30px rgba(0,0,0,.08);
+    padding:.75rem;
+    background: linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
+    box-shadow: 0 10px 24px rgba(0,0,0,.16);
     display:flex;
     flex-direction:column;
-    gap:10px;
+    gap:.3rem;
 }
 
+.proposal-bucket > .uw-field{ flex:0 0 auto; }
+.proposal-bucket > .pb-row{ margin-top:.25rem; }
+
 .pb-head{
-    font-weight:800;
-    letter-spacing:.3px;
-    color:#0f172a;
-    border-bottom:1px solid #e5e7eb;
-    padding-bottom:4px;
+    font-weight:900;
+    letter-spacing:.04em;
+    color:#f4d890;
+    text-transform:uppercase;
+    border-bottom:1px solid rgba(166,128,35,.22);
+    padding-bottom:.3rem;
+    margin-bottom:.1rem;
 }
 
 .pb-row{
     display:grid;
-    grid-template-columns: 1fr 1fr;
-    gap:10px;
+    grid-template-columns: 3fr 2fr;
+    gap:.4rem;
+    align-items:end;
 }
+
+.pb-row > .uw-field{ min-width:0; flex:unset; }
 
 .currency-wrap{
     display:flex;
     align-items:center;
-    gap:4px;
-    padding: 9px 11px;
-    border:1.6px solid #e2e8f0;
-    border-radius:10px;
-    background: linear-gradient(180deg, #d9b45a 0%, #a68023 72%);
+    gap:.4rem;
+    min-height:40px;
+    padding:0 .65rem;
+    border:1.5px solid rgba(166,128,35,.5);
+    border-radius:12px;
+    background: linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18));
     box-shadow:
-        inset 0 2px 4px rgba(255,255,255,.35),
-        inset 0 -2px 6px rgba(0,0,0,.16),
-        0 10px 20px rgba(0,0,0,.12);
+        inset 0 2px 4px rgba(255,255,255,.08),
+        inset 0 -2px 4px rgba(0,0,0,.18),
+        0 8px 16px rgba(0,0,0,.14);
+    width:100%;
+    min-width:0;
+    box-sizing:border-box;
+    overflow:hidden;
 }
 
 .currency-wrap span{
     font-weight: 900;
-    color:#1b1204;
+    color:#f4d890;
 }
 
 .currency-wrap .suffix{
     font-weight: 800;
-    color:#0f172a;
+    color:#f4d890;
     letter-spacing:.4px;
 }
 
 .currency-input{
-    width: 100%;
-    border: none;
-    background: transparent;
-    font-weight: 850;
-    color:#0f172a;
+    width:100%;
+    min-width:0;
+    border:none;
+    background:transparent;
+    font-weight:700;
+    color:#f8fafc;
     outline:none;
 }
 
-.currency-input::placeholder{ color: rgba(15,23,42,.55); }
+.currency-input::placeholder{ color: #64748b; }
 
     #rbShell .hero-underwrite{
         padding: 11px 18px;

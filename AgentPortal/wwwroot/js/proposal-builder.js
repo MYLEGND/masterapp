@@ -37,6 +37,7 @@
     if (!bucketEl) return null;
     if (!rowNumber) {
       if (kind === "carrier") return bucketEl.querySelector(".prop-carrier");
+      if (kind === "term") return bucketEl.querySelector(".prop-term");
       if (kind === "type") return bucketEl.querySelector(".prop-type");
       return null;
     }
@@ -133,6 +134,7 @@
     return (sourceBuckets || []).map(b => ({
       type: b?.type || "",
       carrier: b?.carrier || "",
+      term: b?.term || "",
       rows: (b?.rows || []).map(r => ({
         benefit: r?.benefit || "",
         premium: r?.premium || ""
@@ -146,6 +148,7 @@
       buckets: Array.from({ length: bCount }, () => ({
         type: "",
         carrier: "",
+        term: "",
         rows: Array.from({ length: rCount }, () => ({ benefit: "", premium: "" }))
       }))
     };
@@ -158,11 +161,13 @@
     const proposal = state || buildBlankProposalState(bucketCount, rowCount);
     nameInput.value = proposal.name || "";
     for (let b = 1; b <= bucketCount; b++) {
-      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", rows: [] };
+      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", term: "", rows: [] };
       const typeEl = getBucketInput(b, null, "type") || pick(`propType${b}`);
       if (typeEl) typeEl.value = bucket.type || "";
       const carrierEl = getBucketInput(b, null, "carrier") || pick(`propCarrier${b}`);
       if (carrierEl) carrierEl.value = bucket.carrier || "";
+      const termEl = getBucketInput(b, null, "term") || pick(`propTerm${b}`);
+      if (termEl) termEl.value = bucket.term || "";
       for (let r = 1; r <= rowCount; r++) {
         const row = bucket.rows?.[r - 1] || { benefit: "", premium: "" };
         const benEl = getBucketInput(b, r, "benefit") || pick(`propBenefit${b}${r}`);
@@ -306,6 +311,7 @@
     for (let b = 1; b <= bucketCount; b++) {
       const type = (getBucketInput(b, null, "type") || pick(`propType${b}`))?.value?.trim() || "";
       const carrier = (getBucketInput(b, null, "carrier") || pick(`propCarrier${b}`))?.value?.trim() || "";
+      const term = (getBucketInput(b, null, "term") || pick(`propTerm${b}`))?.value?.trim() || "";
       const rows = [];
       for (let r = 1; r <= rowCount; r++) {
         rows.push({
@@ -313,7 +319,7 @@
           premium: (getBucketInput(b, r, "premium") || pick(`propPremium${b}${r}`))?.value?.trim() || ""
         });
       }
-      buckets.push({ type, carrier, rows });
+      buckets.push({ type, carrier, term, rows });
     }
     return buckets;
   }

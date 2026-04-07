@@ -128,6 +128,7 @@
     const bucketEl = getBucketEl(bucketNumber);
     if (!bucketEl) return null;
     if (!rowNumber) {
+      if (kind === "term") return bucketEl.querySelector(".prop-term");
       if (kind === "type") return bucketEl.querySelector(".prop-type");
       if (kind === "carrier") return bucketEl.querySelector(".prop-carrier");
       return null;
@@ -143,6 +144,7 @@
     return (sourceBuckets || []).map((bucket) => ({
       type: bucket?.type || "",
       carrier: bucket?.carrier || "",
+      term: bucket?.term || "",
       rows: (bucket?.rows || []).map((row) => ({
         benefit: row?.benefit || "",
         premium: row?.premium || ""
@@ -156,6 +158,7 @@
       buckets: Array.from({ length: bucketCount }, () => ({
         type: "",
         carrier: "",
+        term: "",
         rows: Array.from({ length: rowCount }, () => ({ benefit: "", premium: "" }))
       }))
     };
@@ -168,11 +171,13 @@
     const proposal = state || buildBlankState();
     nameInput.value = proposal.name || "";
     for (let b = 1; b <= bucketCount; b++) {
-      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", rows: [] };
+      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", term: "", rows: [] };
       const typeEl = getBucketInput(b, null, "type");
       if (typeEl) typeEl.value = bucket.type || "";
       const carrierEl = getBucketInput(b, null, "carrier");
       if (carrierEl) carrierEl.value = bucket.carrier || "";
+      const termEl = getBucketInput(b, null, "term");
+      if (termEl) termEl.value = bucket.term || "";
       for (let r = 1; r <= rowCount; r++) {
         const row = bucket.rows?.[r - 1] || { benefit: "", premium: "" };
         const benefitEl = getBucketInput(b, r, "benefit");
@@ -188,6 +193,7 @@
     for (let b = 1; b <= bucketCount; b++) {
       const type = getBucketInput(b, null, "type")?.value?.trim() || "";
       const carrier = getBucketInput(b, null, "carrier")?.value?.trim() || "";
+      const term = getBucketInput(b, null, "term")?.value?.trim() || "";
       const rows = [];
       for (let r = 1; r <= rowCount; r++) {
         rows.push({
@@ -195,7 +201,7 @@
           premium: getBucketInput(b, r, "premium")?.value?.trim() || ""
         });
       }
-      buckets.push({ type, carrier, rows });
+      buckets.push({ type, carrier, term, rows });
     }
     return buckets;
   }
