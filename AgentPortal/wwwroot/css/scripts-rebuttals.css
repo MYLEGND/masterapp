@@ -494,7 +494,7 @@ body.note-self-open{
 .proposal-actions-inline .btn.gold,
 .proposal-actions-inline .btn.btn-ghost,
 .uw-actions .btn.btn-ghost{
-    color:#000;
+    color:inherit;
 }
 /* =========================
    Mobile polish (≤ 720px)
@@ -2797,12 +2797,12 @@ details.section{
 
 .hero-proposal{
     padding: 11px 18px;
-    font-weight: 850;
+    font-weight: 900;
     letter-spacing:.12px;
-    border: 1.5px solid #0f172a;
-    background: #0f172a;
-    color: #f8fafc;
-    box-shadow: 0 10px 24px rgba(0,0,0,.16);
+    border: 1.6px solid #ddb457;
+    background: linear-gradient(180deg,#f4dc98,#ddb457);
+    color: #0b1529 !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.55);
     border-radius: 14px;
     white-space: nowrap;
 }
@@ -2812,10 +2812,10 @@ details.section{
     top: 110%;
     right: 0;
     min-width: 320px;
-    border:1.5px solid #e5e7eb;
+    border:1.5px solid rgba(166,128,35,.44);
     border-radius:14px;
-    background:#fff;
-    box-shadow: 0 18px 46px rgba(15,23,42,.18);
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    box-shadow: 0 18px 46px rgba(0,0,0,.34);
     padding:14px;
     z-index:999;
     overflow: visible;
@@ -2827,7 +2827,7 @@ details.section{
     justify-content:space-between;
     font-weight:800;
     margin-bottom:10px;
-    color:#0f172a;
+    color:#f4d890;
 }
 
 .proposal-menu-list{
@@ -2844,17 +2844,17 @@ details.section{
     justify-content:space-between;
     gap:4px;
     padding:9px 11px;
-    border:1.5px solid #e5e7eb;
+    border:1.5px solid rgba(166,128,35,.34);
     border-radius:12px;
-    background: #ffffff;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
     position: relative;
     overflow: visible;
 }
 
 .proposal-item:hover{
-    border-color:#0f172a;
-    background: #f8fafc;
-    box-shadow: 0 10px 22px rgba(0,0,0,.10);
+    border-color:#ddb457;
+    background:rgba(221,180,87,.10);
+    box-shadow: 0 10px 22px rgba(0,0,0,.24);
 }
 
 .proposal-item.is-current{
@@ -2910,7 +2910,7 @@ details.section{
 .proposal-name{
     font-weight: 800;
     cursor:pointer;
-    color:#0f172a;
+    color:#f8fafc;
     max-width: 70%;
     white-space: nowrap;
     overflow: hidden;
@@ -2919,7 +2919,7 @@ details.section{
 
 .proposal-meta-line{
     font-size: 12px;
-    color: rgba(15,23,42,.66);
+    color: #b9c5d8;
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
@@ -2936,9 +2936,9 @@ details.section{
 }
 
 .ellipsis-btn{
-    background:#f8fafc;
-    color:#0f172a;
-    border:1px solid #e5e7eb;
+    background:rgba(255,255,255,.07);
+    color:#f8fafc;
+    border:1px solid rgba(166,128,35,.34);
     border-radius:8px;
     font-weight:800;
 }
@@ -2947,10 +2947,10 @@ details.section{
     position:absolute;
     top:110%;
     right:0;
-    background:#ffffff;
-    border:1px solid #e5e7eb;
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    border:1px solid rgba(166,128,35,.44);
     border-radius:10px;
-    box-shadow: 0 12px 26px rgba(0,0,0,.14);
+    box-shadow: 0 12px 26px rgba(0,0,0,.34);
     padding:6px;
     display:flex;
     flex-direction:column;
@@ -2972,7 +2972,7 @@ details.section{
 
 .proposal-empty{
     font-weight:800;
-    color: #e5e7eb;
+    color: #b9c5d8;
     padding:8px 4px;
 }
 
@@ -3152,16 +3152,23 @@ details.section{
 }
 
 .proposal-form .uw-field{
+    display:flex;
+    flex-direction:column;
     gap:.26rem;
+    color:#f4d890;
+    font-size:.72rem;
+    font-weight:900;
+    letter-spacing:.06em;
+    text-transform:uppercase;
 }
 
 .proposal-form .uw-field input,
 .proposal-form .uw-field select{
     min-height:40px;
     border-radius:10px;
-    border:1.5px solid rgba(166,128,35,.38);
-    background:rgba(255,255,255,.07);
-    color:#f8fafc;
+    border:1.5px solid rgba(166,128,35,.38) !important;
+    background:rgba(255,255,255,.07) !important;
+    color:#f8fafc !important;
     padding:0 .75rem;
     font-size:.9rem;
     font-weight:600;
@@ -3176,8 +3183,8 @@ details.section{
 .proposal-form .uw-field input:focus,
 .proposal-form .uw-field select:focus{
     outline:none;
-    border-color:#ddb457;
-    box-shadow:0 0 0 3px rgba(221,180,87,.16);
+    border-color:#ddb457 !important;
+    box-shadow:0 0 0 3px rgba(221,180,87,.16) !important;
 }
 
 .proposal-form .uw-field select option{
@@ -3292,7 +3299,7 @@ details.section{
     border:none;
     background:transparent;
     font-weight:700;
-    color:#f8fafc;
+    color:#f8fafc !important;
     outline:none;
 }
 
@@ -13428,4 +13435,135 @@ details.section{
     color: #7f1d1d !important;
     background: #fee2e2 !important;
     border-color: rgba(127, 29, 29, .22) !important;
+}
+
+/* ========================================================================
+   FINAL PROPOSAL THEME LOCK (matches Home hp-* palette exactly)
+   ======================================================================== */
+#rbShell .hero-proposal,
+#rbShell.theme-fe .hero-proposal,
+#rbShell.theme-med .hero-proposal,
+#rbShell.theme-life .hero-proposal,
+#rbShell.theme-di .hero-proposal,
+#rbShell.theme-prosper .hero-proposal{
+    background: linear-gradient(180deg,#f4dc98,#ddb457) !important;
+    color: #0b1529 !important;
+    border: 1.6px solid #ddb457 !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.55) !important;
+    font-weight: 900 !important;
+}
+
+#rbShell .proposal-menu{
+    border:1.5px solid rgba(166,128,35,.44) !important;
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99)) !important;
+    box-shadow: 0 18px 46px rgba(0,0,0,.34) !important;
+}
+
+#rbShell .proposal-menu-head{ color:#f4d890 !important; }
+#rbShell .proposal-empty{ color:#b9c5d8 !important; }
+
+#rbShell .proposal-item{
+    border:1.5px solid rgba(166,128,35,.34) !important;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03)) !important;
+}
+#rbShell .proposal-item:hover{
+    border-color:#ddb457 !important;
+    background:rgba(221,180,87,.10) !important;
+    box-shadow: 0 10px 22px rgba(0,0,0,.24) !important;
+}
+#rbShell .proposal-name{ color:#f8fafc !important; }
+#rbShell .proposal-meta-line{ color:#b9c5d8 !important; }
+
+#rbShell .ellipsis-btn{
+    background:rgba(255,255,255,.07) !important;
+    color:#f8fafc !important;
+    border:1px solid rgba(166,128,35,.34) !important;
+}
+
+#rbShell .ellipsis-menu{
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99)) !important;
+    border:1px solid rgba(166,128,35,.44) !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,.34) !important;
+}
+
+#rbShell .proposal-dialog{
+    border: 1.8px solid rgba(166,128,35,.48) !important;
+    border-radius: 22px !important;
+    background:
+        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),
+        linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99)) !important;
+    box-shadow: 0 40px 100px rgba(0,0,0,.52) !important;
+    color: #f8fafc !important;
+    padding: 1rem 1.1rem !important;
+}
+
+#rbShell .proposal-dialog .uw-head{
+    border-bottom: 1px solid rgba(166,128,35,.22) !important;
+    padding-bottom: .7rem !important;
+    margin-bottom: .8rem !important;
+}
+#rbShell .proposal-dialog .uw-name{ color:#f4d890 !important; }
+#rbShell .proposal-dialog .uw-sub{ color:#b9c5d8 !important; }
+
+#rbShell .proposal-meta{
+    background:rgba(255,255,255,.04) !important;
+    border:1px solid rgba(166,128,35,.2) !important;
+}
+
+#rbShell .proposal-form .uw-field,
+#rbShell .proposal-form .uw-field > span,
+#rbShell .proposal-form .uw-field > label{
+    color:#f4d890 !important;
+}
+
+#rbShell .proposal-form .uw-field input,
+#rbShell .proposal-form .uw-field select{
+    border:1.5px solid rgba(166,128,35,.38) !important;
+    background:rgba(255,255,255,.07) !important;
+    color:#f8fafc !important;
+}
+
+#rbShell .proposal-form .uw-field input::placeholder{ color:#64748b !important; }
+
+#rbShell .proposal-form .uw-field input:focus,
+#rbShell .proposal-form .uw-field select:focus{
+    border-color:#ddb457 !important;
+    box-shadow:0 0 0 3px rgba(221,180,87,.16) !important;
+}
+
+#rbShell .proposal-bucket{
+    border:1.5px solid rgba(166,128,35,.28) !important;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03)) !important;
+}
+
+#rbShell .pb-head{
+    color:#f4d890 !important;
+    border-bottom:1px solid rgba(166,128,35,.22) !important;
+}
+
+#rbShell .pb-row{
+    grid-template-columns:3fr 2fr !important;
+    gap:.4rem !important;
+}
+
+#rbShell .currency-wrap{
+    border:1.5px solid rgba(166,128,35,.5) !important;
+    background:linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18)) !important;
+}
+
+#rbShell .currency-wrap span,
+#rbShell .currency-wrap .suffix{ color:#f4d890 !important; }
+
+#rbShell .currency-input{ color:#f8fafc !important; }
+
+#rbShell .proposal-actions-inline .btn.gold{
+    background:linear-gradient(180deg,#f4dc98,#ddb457) !important;
+    color:#0b1529 !important;
+    border:1.6px solid #ddb457 !important;
+}
+
+#rbShell .proposal-actions-inline .btn.btn-ghost{
+    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)) !important;
+    color:#f8fafc !important;
+    border:1.5px solid rgba(166,128,35,.44) !important;
 }
