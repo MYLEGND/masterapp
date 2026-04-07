@@ -31,6 +31,7 @@
     if (!bucket) return null;
     if (!r) {
       if (kind === "carrier") return bucket.querySelector(".prop-carrier");
+      if (kind === "term")    return bucket.querySelector(".prop-term");
       if (kind === "type")    return bucket.querySelector(".prop-type");
       return null;
     }
@@ -147,6 +148,7 @@
     for (let b = 1; b <= bucketCount; b++) {
       const type    = getBucketInput(b, null, "type")?.value?.trim()    || "";
       const carrier = getBucketInput(b, null, "carrier")?.value?.trim() || "";
+      const term    = getBucketInput(b, null, "term")?.value?.trim()    || "";
       const rows    = [];
       for (let r = 1; r <= rowCount; r++) {
         rows.push({
@@ -154,7 +156,7 @@
           premium: getBucketInput(b, r, "premium")?.value?.trim() || "",
         });
       }
-      buckets.push({ type, carrier, rows });
+      buckets.push({ type, carrier, term, rows });
     }
     return buckets;
   }
@@ -167,8 +169,10 @@
       const bucket = buckets[b - 1] || { type: "", carrier: "", rows: [] };
       const typeEl    = getBucketInput(b, null, "type");
       const carrierEl = getBucketInput(b, null, "carrier");
+      const termEl    = getBucketInput(b, null, "term");
       if (typeEl)    typeEl.value    = bucket.type    || "";
       if (carrierEl) carrierEl.value = bucket.carrier || "";
+      if (termEl)    termEl.value    = bucket.term    || "";
       for (let r = 1; r <= rowCount; r++) {
         const row    = bucket.rows?.[r - 1] || {};
         const benEl  = getBucketInput(b, r, "benefit");
