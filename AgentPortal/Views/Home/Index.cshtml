@@ -234,7 +234,142 @@
                 </div>
             </div>
             <div class="home-clients-recent-grid" id="homeClientsRecentGrid"></div>
+
+            <!-- ── GLOBAL PROPOSALS ───────────────────────────────────── -->
+            <div class="hp-proposals-section">
+                <div class="hp-proposals-head">
+                    <div>
+                        <div class="hp-proposals-title">Proposals</div>
+                        <div class="hp-proposals-sub">All saved proposals across every client — create, edit, and review from one place.</div>
+                    </div>
+                    <button type="button" class="home-clients-action home-clients-action-gold" id="hpBtnNew">+ New Proposal</button>
+                </div>
+                <div class="hp-proposals-list" id="hpProposalList">
+                    <div class="home-clients-empty home-clients-empty-block">Loading proposals…</div>
+                </div>
+            </div>
         </div>
+    </div>
+</div>
+
+<!-- ══ GLOBAL PROPOSAL BUILDER ══════════════════════════════════════════ -->
+<div class="hp-overlay" id="hpProposalOverlay" hidden>
+    <div class="hp-dialog" id="hpProposalDialog" role="dialog" aria-modal="true" aria-labelledby="hpProposalTitle">
+        <div class="hp-dialog-head">
+            <div class="hp-dialog-brand">
+                <div class="hp-dialog-icon">📋</div>
+                <div>
+                    <div class="hp-dialog-title" id="hpProposalTitle">Proposal Builder</div>
+                    <div class="hp-dialog-sub">Compare side-by-side options for any client</div>
+                </div>
+            </div>
+            <button type="button" class="hp-dialog-close" data-hp-close aria-label="Close proposal builder">×</button>
+        </div>
+
+        <form id="hpProposalForm" class="hp-form">
+            <div class="hp-form-meta">
+                <label class="hp-field">
+                    <span>Proposal Name</span>
+                    <input id="hpPropName" name="hpPropName" placeholder="e.g. Smith Family — Final Expense" autocomplete="off" />
+                </label>
+                <label class="hp-field">
+                    <span>Client Name</span>
+                    <input id="hpLeadName" name="hpLeadName" placeholder="Client or lead full name" autocomplete="off" />
+                </label>
+                <div class="hp-form-actions">
+                    <button type="submit" class="hp-btn hp-btn-gold" id="hpBtnSave">Save Proposal</button>
+                    <button type="button" class="hp-btn hp-btn-ghost" data-hp-close>Cancel</button>
+                </div>
+            </div>
+
+            <div class="hp-buckets">
+                @for (var bi = 1; bi <= 3; bi++)
+                {
+                    <div class="hp-bucket" data-bucket="@bi">
+                        <div class="hp-bucket-head">Option @bi</div>
+                        <label class="hp-field">
+                            <span>Carrier</span>
+                            <select class="prop-carrier" id="hpCarrier@bi">
+                                <option value="">Select carrier</option>
+                                <optgroup label="Final Expense">
+                                    <option>Mutual of Omaha (Living Promise)</option>
+                                    <option>Royal Neighbors of America</option>
+                                    <option>Americo Eagle</option>
+                                    <option>Prosperity Life</option>
+                                    <option>Aetna CVS / Accendo</option>
+                                    <option>Liberty Bankers Life</option>
+                                    <option>Kansas City Life</option>
+                                    <option>Foresters PlanRight</option>
+                                    <option>American Amicable</option>
+                                    <option>Great Western (GI)</option>
+                                    <option>Guarantee Trust Life (GI)</option>
+                                </optgroup>
+                                <optgroup label="Life Insurance">
+                                    <option>Transamerica</option>
+                                    <option>Banner Life</option>
+                                    <option>Pacific Life</option>
+                                    <option>North American</option>
+                                    <option>Protective Life</option>
+                                    <option>American National</option>
+                                    <option>Nationwide</option>
+                                    <option>Securian</option>
+                                </optgroup>
+                                <optgroup label="Disability">
+                                    <option>Assurity</option>
+                                    <option>Principal</option>
+                                    <option>Guardian</option>
+                                    <option>Ohio National</option>
+                                </optgroup>
+                                <optgroup label="Medicare">
+                                    <option>Humana</option>
+                                    <option>UnitedHealthcare</option>
+                                    <option>Aetna</option>
+                                    <option>Cigna</option>
+                                    <option>Devoted Health</option>
+                                </optgroup>
+                                <option>Other</option>
+                            </select>
+                        </label>
+                        <label class="hp-field">
+                            <span>Type</span>
+                            <select class="prop-type" id="hpType@bi">
+                                <option value="">Select</option>
+                                <option>Level</option>
+                                <option>Graded</option>
+                                <option>Guaranteed Issue</option>
+                                <option>Term</option>
+                                <option>Whole Life</option>
+                                <option>IUL</option>
+                                <option>Short-Term Disability</option>
+                                <option>Long-Term Disability</option>
+                                <option>Medicare Advantage</option>
+                                <option>Medicare Supplement</option>
+                            </select>
+                        </label>
+                        @for (var ri = 1; ri <= 3; ri++)
+                        {
+                            <div class="pb-row">
+                                <label class="hp-field">
+                                    <span>Death Benefit / Coverage @ri</span>
+                                    <div class="hp-currency-wrap">
+                                        <span class="hp-currency-sym">$</span>
+                                        <input class="prop-benefit currency-input hp-currency-input" id="hpBenefit@bi@ri" inputmode="decimal" autocomplete="off" />
+                                    </div>
+                                </label>
+                                <label class="hp-field">
+                                    <span>Premium @ri</span>
+                                    <div class="hp-currency-wrap">
+                                        <span class="hp-currency-sym">$</span>
+                                        <input class="prop-premium currency-input hp-currency-input" id="hpPremium@bi@ri" inputmode="decimal" autocomplete="off" />
+                                        <span class="hp-currency-sfx">/mo</span>
+                                    </div>
+                                </label>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </form>
     </div>
 </div>
 
@@ -262,6 +397,327 @@
     border-width: 2px;
     max-width: 800px;
     margin: 1rem auto 0;
+}
+
+/* ══ GLOBAL PROPOSALS — hub section ══════════════════════════════════════ */
+.hp-proposals-section{
+    margin-top: 2rem;
+    padding-top: 1.6rem;
+    border-top: 1px solid rgba(166,128,35,.22);
+}
+.hp-proposals-head{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1.25rem;
+    margin-bottom:1.1rem;
+    flex-wrap:wrap;
+}
+.hp-proposals-title{
+    font-size:1.06rem;
+    font-weight:900;
+    color:#f8fafc;
+    margin-bottom:.2rem;
+}
+.hp-proposals-sub{
+    color:#b9c5d8;
+    font-weight:600;
+    font-size:.92rem;
+}
+.hp-proposals-list{ min-height:3rem; }
+
+/* ── proposal card grid ── */
+.hp-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:.9rem;
+}
+.hp-card{
+    border:1.5px solid rgba(166,128,35,.34);
+    border-radius:18px;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
+    padding:1rem 1.05rem;
+    box-shadow:0 14px 28px rgba(0,0,0,.20);
+    display:flex;
+    flex-direction:column;
+    gap:.55rem;
+    transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease;
+}
+.hp-card:hover{
+    transform:translateY(-2px);
+    border-color:rgba(221,180,87,.72);
+    box-shadow:0 20px 36px rgba(0,0,0,.28);
+}
+.hp-card-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:.6rem;
+}
+.hp-card-name{
+    font-weight:900;
+    font-size:.97rem;
+    color:#f8fafc;
+    line-height:1.25;
+    flex:1 1 auto;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+}
+.hp-card-badge{
+    flex-shrink:0;
+    display:inline-flex;
+    align-items:center;
+    padding:.28rem .6rem;
+    border-radius:999px;
+    border:1px solid rgba(166,128,35,.4);
+    background:rgba(166,128,35,.14);
+    color:#f6e6b4;
+    font-size:.72rem;
+    font-weight:900;
+    text-transform:uppercase;
+    white-space:nowrap;
+    max-width:130px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.hp-card-date{
+    color:#94a3b8;
+    font-weight:600;
+    font-size:.82rem;
+}
+.hp-card-actions{
+    display:flex;
+    gap:.6rem;
+    margin-top:.25rem;
+}
+
+/* ══ PROPOSAL BUILDER OVERLAY ════════════════════════════════════════════ */
+.hp-overlay{
+    position:fixed;
+    inset:0;
+    z-index:3000;
+    background:rgba(7,14,28,.72);
+    backdrop-filter:blur(8px);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:1.5rem 1rem;
+}
+.hp-overlay[hidden]{ display:none !important; }
+
+body.hp-modal-open{ overflow:hidden; }
+
+.hp-dialog{
+    width:min(1380px,97vw);
+    max-height:92vh;
+    overflow:auto;
+    border-radius:22px;
+    border:1.8px solid rgba(166,128,35,.48);
+    background:
+        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),
+        linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    color:#f8fafc;
+    box-shadow:0 40px 100px rgba(0,0,0,.52);
+    padding:1.6rem;
+}
+
+.hp-dialog-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:1rem;
+    padding-bottom:1.2rem;
+    border-bottom:1px solid rgba(166,128,35,.22);
+    margin-bottom:1.35rem;
+}
+.hp-dialog-brand{
+    display:flex;
+    align-items:center;
+    gap:.9rem;
+}
+.hp-dialog-icon{
+    font-size:1.8rem;
+    line-height:1;
+    flex-shrink:0;
+}
+.hp-dialog-title{
+    font-weight:950;
+    font-size:1.55rem;
+    color:#f4d890;
+    line-height:1.15;
+}
+.hp-dialog-sub{
+    color:#b9c5d8;
+    font-weight:600;
+    margin-top:.25rem;
+}
+.hp-dialog-close{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:44px;
+    height:44px;
+    border-radius:12px;
+    border:1.5px solid rgba(166,128,35,.44);
+    background:rgba(255,255,255,.05);
+    color:#f8fafc;
+    font-size:1.7rem;
+    line-height:1;
+    flex-shrink:0;
+    transition:background .14s ease,border-color .14s ease;
+}
+.hp-dialog-close:hover{
+    background:rgba(221,180,87,.16);
+    border-color:#ddb457;
+}
+
+/* ── form ── */
+.hp-form{
+    display:flex;
+    flex-direction:column;
+    gap:1rem;
+}
+.hp-form-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.9rem;
+    align-items:flex-end;
+    padding:.9rem;
+    border-radius:16px;
+    background:rgba(255,255,255,.04);
+    border:1px solid rgba(166,128,35,.2);
+}
+.hp-form-actions{
+    display:flex;
+    gap:.75rem;
+    flex-wrap:wrap;
+    align-self:flex-end;
+}
+.hp-field{
+    display:flex;
+    flex-direction:column;
+    gap:.45rem;
+    flex:1 1 260px;
+}
+.hp-field span{
+    font-size:.78rem;
+    font-weight:900;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:#f4d890;
+}
+.hp-field input,
+.hp-field select{
+    min-height:46px;
+    border-radius:12px;
+    border:1.5px solid rgba(166,128,35,.38);
+    background:rgba(255,255,255,.07);
+    color:#f8fafc;
+    padding:0 .9rem;
+    font-size:.95rem;
+    font-weight:600;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    transition:border-color .14s ease,box-shadow .14s ease;
+}
+.hp-field input::placeholder{ color:#64748b; }
+.hp-field input:focus,
+.hp-field select:focus{
+    outline:none;
+    border-color:#ddb457;
+    box-shadow:0 0 0 3px rgba(221,180,87,.16);
+}
+.hp-field select option{ background:#0f1d38; color:#f8fafc; }
+
+.hp-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:46px;
+    padding:0 1.1rem;
+    border-radius:14px;
+    font-weight:900;
+    font-size:.95rem;
+    letter-spacing:.01em;
+    transition:transform .12s ease,box-shadow .12s ease,filter .12s ease;
+}
+.hp-btn-gold{
+    background:linear-gradient(180deg,#f4dc98,#ddb457);
+    color:#0b1529;
+    border:1.6px solid #ddb457;
+    box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);
+}
+.hp-btn-gold:hover{ filter:brightness(1.04); transform:translateY(-1px); }
+.hp-btn-ghost{
+    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+    color:#f8fafc;
+    border:1.5px solid rgba(166,128,35,.44);
+    box-shadow:0 8px 18px rgba(0,0,0,.16);
+}
+.hp-btn-ghost:hover{ border-color:rgba(221,180,87,.72); background:rgba(221,180,87,.14); }
+
+/* ── buckets grid ── */
+.hp-buckets{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(320px,1fr));
+    gap:1rem;
+}
+.hp-bucket{
+    border:1.5px solid rgba(166,128,35,.28);
+    border-radius:18px;
+    padding:1.1rem;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
+    box-shadow:0 14px 32px rgba(0,0,0,.18);
+    display:flex;
+    flex-direction:column;
+    gap:.75rem;
+}
+.hp-bucket-head{
+    font-weight:900;
+    font-size:1rem;
+    color:#f4d890;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    border-bottom:1px solid rgba(166,128,35,.22);
+    padding-bottom:.55rem;
+}
+
+/* ── currency inputs ── */
+.hp-currency-wrap{
+    display:flex;
+    align-items:center;
+    gap:.4rem;
+    min-height:46px;
+    padding:0 .75rem;
+    border-radius:12px;
+    border:1.5px solid rgba(166,128,35,.5);
+    background:linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18));
+    box-shadow:inset 0 2px 4px rgba(255,255,255,.08),inset 0 -2px 4px rgba(0,0,0,.18),0 8px 16px rgba(0,0,0,.14);
+}
+.hp-currency-sym{ font-weight:900; color:#f4d890; font-size:.95rem; flex-shrink:0; }
+.hp-currency-sfx{ font-weight:800; color:#f4d890; font-size:.85rem; flex-shrink:0; }
+.hp-currency-input{
+    flex:1 1 auto;
+    background:transparent !important;
+    border:none !important;
+    box-shadow:none !important;
+    color:#f8fafc;
+    font-weight:700;
+    font-size:.95rem;
+    min-width:0;
+    padding:0;
+}
+.hp-currency-input:focus{ outline:none; }
+
+@@media(max-width:900px){
+    .hp-buckets{ grid-template-columns:1fr; }
+    .hp-dialog{ padding:1.1rem; }
+}
+@@media(max-width:576px){
+    .hp-grid{ grid-template-columns:1fr; }
+    .hp-proposals-head{ flex-direction:column; align-items:flex-start; }
+    .hp-proposals-head .home-clients-action{ width:100%; }
 }
 
 .home-flash{
@@ -1206,4 +1662,5 @@
 
 @section Scripts {
     <script src="~/js/home-clients-hub.js" asp-append-version="true"></script>
+    <script src="~/js/home-proposals-hub.js" asp-append-version="true"></script>
 }
