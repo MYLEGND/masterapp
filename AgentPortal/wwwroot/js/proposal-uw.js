@@ -121,7 +121,7 @@
   }
 
   function getBucketEl(bucketNumber) {
-    return pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
+    return pickInForm(`.hp-bucket[data-bucket="${bucketNumber}"]`) || pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
   }
 
   function getBucketInput(bucketNumber, rowNumber, kind) {
@@ -133,7 +133,7 @@
       if (kind === "carrier") return bucketEl.querySelector(".prop-carrier");
       return null;
     }
-    const rowEl = bucketEl.querySelectorAll(".pb-row")?.[rowNumber - 1];
+    const rowEl = bucketEl.querySelectorAll(".hp-row, .pb-row")?.[rowNumber - 1];
     if (!rowEl) return null;
     if (kind === "benefit") return rowEl.querySelector(".prop-benefit");
     if (kind === "premium") return rowEl.querySelector(".prop-premium");
@@ -494,19 +494,19 @@
     const store = sortStore(cache.filter((record) => !record.isDraft));
 
     if (!store.length) {
-      menuList.innerHTML = `<div class="proposal-empty">No proposals saved</div>`;
+      menuList.innerHTML = `<div class="hp-proposal-empty">No proposals saved</div>`;
       return;
     }
 
     menuList.innerHTML = store.map((record) => `
-      <div class="proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
-        <div class="proposal-name-wrap" data-prop-open>
-          <div class="proposal-name">${escapeHtml(record.name || "Proposal")}</div>
-          <div class="proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>
+      <div class="hp-proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
+        <div class="hp-proposal-name-wrap" data-prop-open>
+          <div class="hp-proposal-name">${escapeHtml(record.name || "Proposal")}</div>
+          <div class="hp-proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>
         </div>
-        <div class="proposal-actions ellipsis-wrap">
-          <button type="button" class="btn-mini ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
-          <div class="ellipsis-menu" hidden>
+        <div class="hp-proposal-actions hp-ellipsis-wrap">
+          <button type="button" class="btn-mini hp-ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
+          <div class="hp-ellipsis-menu" hidden>
             <button type="button" class="btn-mini" data-prop-edit>Edit</button>
             <button type="button" class="btn-mini danger" data-prop-delete>Delete</button>
           </div>
@@ -514,7 +514,7 @@
       </div>
     `).join("");
 
-    document.querySelectorAll(".ellipsis-menu").forEach((dropdown) => { dropdown.hidden = true; });
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((dropdown) => { dropdown.hidden = true; });
   }
 
   function openModal(record = null) {
@@ -702,17 +702,17 @@
   });
 
   menuList?.addEventListener("click", async (event) => {
-    const item = event.target.closest(".proposal-item");
+    const item = event.target.closest(".hp-proposal-item, .proposal-item");
     if (!item) return;
     const id = item.getAttribute("data-id");
     const record = cache.find((entry) => entry.id === id);
 
-    if (event.target.matches(".ellipsis-btn")) {
+    if (event.target.matches(".hp-ellipsis-btn, .ellipsis-btn")) {
       event.stopPropagation();
-      const wrap = event.target.closest(".ellipsis-wrap");
-      const dropdown = wrap?.querySelector(".ellipsis-menu");
+      const wrap = event.target.closest(".hp-ellipsis-wrap, .ellipsis-wrap");
+      const dropdown = wrap?.querySelector(".hp-ellipsis-menu, .ellipsis-menu");
       if (dropdown) dropdown.hidden = !dropdown.hidden;
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { if (menuEl !== dropdown) menuEl.hidden = true; });
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { if (menuEl !== dropdown) menuEl.hidden = true; });
       return;
     }
 
@@ -725,7 +725,7 @@
     if (event.target.matches("[data-prop-edit]") || event.target.closest("[data-prop-open]")) {
       if (!record) return;
       await focusRecordLead(record);
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
       closeMenu();
       openModal(record);
     }
@@ -767,7 +767,7 @@
   document.addEventListener("click", (event) => {
     if (menu && (menu.contains(event.target) || event.target === openBtn)) return;
     closeMenu();
-    document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
   });
 
   overlay.addEventListener("click", () => { /* no-op */ });
@@ -775,7 +775,7 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       closeMenu();
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
     }
   });
 

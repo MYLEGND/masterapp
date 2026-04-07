@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
 }
 
 
@@ -19,13 +20,13 @@
                 </div>
                 <div class="hero-actions">
                     <div class="hero-action-group">
-                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
-                        <div class="proposal-menu" id="proposalMenu" hidden>
-                            <div class="proposal-menu-head">
+                        <button type="button" class="btn hp-proposal-trigger" id="btnProposal">Proposal ▾</button>
+                        <div class="hp-proposal-menu" id="proposalMenu" hidden>
+                            <div class="hp-proposal-menu-head">
                                 <span>Saved Proposals</span>
                                 <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
                             </div>
-                            <div class="proposal-menu-list" id="proposalMenuList"></div>
+                            <div class="hp-proposal-menu-list" id="proposalMenuList"></div>
                         </div>
                     </div>
                     <div class="hero-action-group">
@@ -111,28 +112,28 @@
 
 @await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Mortgage Protection" } })
 
-<div class="proposal-overlay" id="proposalOverlay" hidden>
-    <div class="proposal-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
-        <div class="uw-head">
-            <div class="uw-brand">
-                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
+<div class="hp-overlay" id="proposalOverlay" hidden>
+    <div class="hp-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
+        <div class="hp-dialog-head">
+            <div class="hp-dialog-brand">
+                <div class="hp-dialog-icon">📋</div>
                 <div>
-                    <div class="uw-name" id="proposalTitle">Proposal Builder</div>
-                    <div class="uw-sub">Compare side-by-side options</div>
+                    <div class="hp-dialog-title" id="proposalTitle">Proposal Builder</div>
+                    <div class="hp-dialog-sub">Compare side-by-side options for any client</div>
                 </div>
             </div>
-            <button type="button" class="uw-close" data-proposal-close aria-label="Close proposal builder">×</button>
+            <button type="button" class="hp-dialog-close" data-proposal-close aria-label="Close proposal builder">×</button>
         </div>
 
-        <form id="proposalForm" class="proposal-form">
-            <div class="proposal-meta">
-                <label class="uw-field uw-span-2">Proposal Name
+        <form id="proposalForm" class="hp-form">
+            <div class="hp-form-meta">
+                <label class="hp-field">Proposal Name
                     <input id="propName" name="propName" placeholder="Client name or label" />
                 </label>
-                <div class="proposal-actions-inline">
-                    <button type="submit" class="btn gold" id="btnSaveProposal">Save Proposal</button>
-                    <button type="button" class="btn btn-ghost" id="btnCaptureDecision" data-bs-toggle="modal" data-bs-target="#captureDecisionModal">Capture Decision</button>
-                    <button type="button" class="btn btn-ghost" data-proposal-close>Cancel</button>
+                <div class="hp-form-actions">
+                    <button type="submit" class="hp-btn hp-btn-gold" id="btnSaveProposal">Save Proposal</button>
+                    <button type="button" class="hp-btn hp-btn-ghost" id="btnCaptureDecision" data-bs-toggle="modal" data-bs-target="#captureDecisionModal">Capture Decision</button>
+                    <button type="button" class="hp-btn hp-btn-ghost" data-proposal-close>Cancel</button>
                 </div>
             </div>
 
@@ -144,12 +145,12 @@
                 <div class="tiny text-muted" data-decision-time></div>
             </div>
 
-            <div class="proposal-buckets">
+            <div class="hp-buckets">
                 @for (var i = 1; i <= 3; i++)
                 {
-                    <div class="proposal-bucket" data-bucket="@i">
-                        <div class="pb-head">Option @i</div>
-                        <label class="uw-field">Insurance Carrier
+                    <div class="hp-bucket" data-bucket="@i">
+                        <div class="hp-bucket-head">Option @i</div>
+                        <label class="hp-field">Insurance Carrier
                             <select class="prop-carrier" id="propCarrier@i">
                                 <option value="">Select carrier</option>
                                 <option>Banner Life</option>
@@ -168,7 +169,7 @@
                                 <option>Other</option>
                             </select>
                         </label>
-                        <label class="uw-field">Term
+                        <label class="hp-field">Term
                             <select class="prop-term" id="propTerm@i">
                                 <option value="">N/A</option>
                                 <option>10 Year</option>
@@ -178,7 +179,7 @@
                                 <option>40 Year</option>
                             </select>
                         </label>
-                        <label class="uw-field">Type
+                        <label class="hp-field">Type
                             <select class="prop-type" id="propType@i">
                                 <option value="">Select</option>
                                 <option value="Term">Term</option>
@@ -190,18 +191,18 @@
                         </label>
                         @for (var r = 1; r <= 3; r++)
                         {
-                            <div class="pb-row">
-                                <label class="uw-field">Death Benefit @r
-                                    <div class="currency-wrap">
-                                        <span>$</span>
-                                        <input class="prop-benefit currency-input" id="propBenefit@i@r" inputmode="decimal" />
+                            <div class="hp-row">
+                                <label class="hp-field">Death Benefit @r
+                                    <div class="hp-currency-wrap">
+                                        <span class="hp-currency-sym">$</span>
+                                        <input class="prop-benefit currency-input hp-currency-input" id="propBenefit@i@r" inputmode="decimal" />
                                     </div>
                                 </label>
-                                <label class="uw-field">Premium @r
-                                    <div class="currency-wrap">
-                                        <span>$</span>
-                                        <input class="prop-premium currency-input" id="propPremium@i@r" inputmode="decimal" />
-                                        <span class="suffix">/mo</span>
+                                <label class="hp-field">Premium @r
+                                    <div class="hp-currency-wrap">
+                                        <span class="hp-currency-sym">$</span>
+                                        <input class="prop-premium currency-input hp-currency-input" id="propPremium@i@r" inputmode="decimal" />
+                                        <span class="hp-currency-sfx">/mo</span>
                                     </div>
                                 </label>
                             </div>

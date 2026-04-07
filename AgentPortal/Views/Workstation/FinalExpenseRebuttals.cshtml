@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
 }
 
 
@@ -19,13 +20,13 @@
                 </div>
                 <div class="hero-actions">
                     <div class="hero-action-group">
-                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
-                        <div class="proposal-menu" id="proposalMenu" hidden>
-                            <div class="proposal-menu-head">
+                        <button type="button" class="btn hp-proposal-trigger" id="btnProposal">Proposal ▾</button>
+                        <div class="hp-proposal-menu" id="proposalMenu" hidden>
+                            <div class="hp-proposal-menu-head">
                                 <span>Saved Proposals</span>
                                 <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
                             </div>
-                            <div class="proposal-menu-list" id="proposalMenuList"></div>
+                            <div class="hp-proposal-menu-list" id="proposalMenuList"></div>
                         </div>
                     </div>
                     <div class="hero-action-group">
@@ -225,7 +226,7 @@
                         </label>
                         @for (var r = 1; r <= 3; r++)
                         {
-                            <div class="pb-row">
+                            <div class="hp-row">
                                 <label class="hp-field">
                                     <span>Death Benefit @r</span>
                                     <div class="hp-currency-wrap">
@@ -250,169 +251,7 @@
     </div>
 </div>
 
-<style>
-/* ══ PROPOSAL BUILDER — hp-* theme (workstation) ═════════════════════════ */
-.hp-overlay{
-    position:fixed;
-    inset:0;
-    z-index:3000;
-    background:rgba(7,14,28,.72);
-    backdrop-filter:blur(8px);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:1.5rem 1rem;
-}
-.hp-overlay[hidden]{ display:none !important; }
-body.hp-modal-open{ overflow:hidden; }
-.hp-dialog{
-    width:min(1380px,97vw);
-    max-height:92vh;
-    overflow:auto;
-    border-radius:22px;
-    border:1.8px solid rgba(166,128,35,.48);
-    background:
-        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),
-        linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
-    color:#f8fafc;
-    box-shadow:0 40px 100px rgba(0,0,0,.52);
-    padding:1rem 1.1rem;
-}
-.hp-dialog-head{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:1rem;
-    padding-bottom:.7rem;
-    border-bottom:1px solid rgba(166,128,35,.22);
-    margin-bottom:.8rem;
-}
-.hp-dialog-brand{ display:flex; align-items:center; gap:.9rem; }
-.hp-dialog-icon{ font-size:1.8rem; line-height:1; flex-shrink:0; }
-.hp-dialog-title{ font-weight:950; font-size:1.55rem; color:#f4d890; line-height:1.15; }
-.hp-dialog-sub{ color:#b9c5d8; font-weight:600; margin-top:.25rem; }
-.hp-dialog-close{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:44px; height:44px;
-    border-radius:12px;
-    border:1.5px solid rgba(166,128,35,.44);
-    background:rgba(255,255,255,.05);
-    color:#f8fafc;
-    font-size:1.7rem; line-height:1;
-    flex-shrink:0;
-    transition:background .14s ease,border-color .14s ease;
-}
-.hp-dialog-close:hover{ background:rgba(221,180,87,.16); border-color:#ddb457; }
-/* Scope everything under .hp-overlay so we beat scripts-rebuttals.css */
-.hp-overlay .hp-form{ display:flex; flex-direction:column; gap:.55rem; }
-.hp-overlay .hp-form-meta{
-    display:flex; flex-wrap:wrap; gap:.6rem; align-items:flex-end;
-    padding:.65rem .75rem; border-radius:14px;
-    background:rgba(255,255,255,.04);
-    border:1px solid rgba(166,128,35,.2);
-}
-.hp-overlay .hp-form-actions{ display:flex; gap:.6rem; flex-wrap:wrap; align-self:flex-end; }
-.hp-overlay .hp-field{ display:flex; flex-direction:column; gap:.26rem; flex:1 1 220px; }
-.hp-overlay .hp-field span{
-    font-size:.72rem; font-weight:900; letter-spacing:.06em;
-    text-transform:uppercase; color:#f4d890;
-}
-.hp-overlay .hp-field input,
-.hp-overlay .hp-field select{
-    min-height:40px; border-radius:10px;
-    border:1.5px solid rgba(166,128,35,.38) !important;
-    background:rgba(255,255,255,.07) !important;
-    color:#f8fafc !important; padding:0 .75rem;
-    font-size:.9rem; font-weight:600;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
-    transition:border-color .14s ease,box-shadow .14s ease;
-}
-.hp-overlay .hp-field input::placeholder{ color:#64748b; }
-.hp-overlay .hp-field input:focus,
-.hp-overlay .hp-field select:focus{
-    outline:none; border-color:#ddb457 !important;
-    box-shadow:0 0 0 3px rgba(221,180,87,.16) !important;
-}
-.hp-overlay .hp-field select option{ background:#0f1d38; color:#f8fafc; }
-.hp-overlay .hp-btn{
-    display:inline-flex; align-items:center; justify-content:center;
-    min-height:40px; padding:0 1.1rem; border-radius:14px;
-    font-weight:900; font-size:.9rem; letter-spacing:.01em;
-    transition:transform .12s ease,box-shadow .12s ease,filter .12s ease;
-}
-.hp-overlay .hp-btn-gold{
-    background:linear-gradient(180deg,#f4dc98,#ddb457) !important;
-    color:#0b1529 !important; border:1.6px solid #ddb457 !important;
-    box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);
-}
-.hp-overlay .hp-btn-gold:hover{ filter:brightness(1.04); transform:translateY(-1px); }
-.hp-overlay .hp-btn-ghost{
-    background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03)) !important;
-    color:#f8fafc !important; border:1.5px solid rgba(166,128,35,.44) !important;
-    box-shadow:0 8px 18px rgba(0,0,0,.16);
-}
-.hp-overlay .hp-btn-ghost:hover{ border-color:rgba(221,180,87,.72) !important; background:rgba(221,180,87,.14) !important; }
-/* buckets — defeat .proposal-bucket white bg from scripts-rebuttals.css */
-.hp-overlay .hp-buckets{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-    gap:.65rem;
-}
-.hp-overlay .proposal-bucket,
-.hp-overlay .hp-bucket{
-    border:1.5px solid rgba(166,128,35,.28) !important;
-    border-radius:16px !important;
-    padding:.75rem !important;
-    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03)) !important;
-    box-shadow:0 10px 24px rgba(0,0,0,.16) !important;
-    display:flex; flex-direction:column; gap:.3rem !important;
-}
-.hp-overlay .hp-bucket > .hp-field,
-.hp-overlay .proposal-bucket > .hp-field{ flex:0 0 auto; }
-.hp-overlay .hp-bucket > .pb-row,
-.hp-overlay .proposal-bucket > .pb-row{ margin-top:.25rem; }
-.hp-overlay .hp-bucket > .pb-row > .hp-field,
-.hp-overlay .proposal-bucket > .pb-row > .hp-field{ flex:0 0 auto; }
-.hp-overlay .hp-bucket-head{
-    font-weight:900; font-size:.9rem; color:#f4d890 !important;
-    letter-spacing:.04em; text-transform:uppercase;
-    border-bottom:1px solid rgba(166,128,35,.22) !important;
-    padding-bottom:.3rem; margin-bottom:.1rem;
-}
-/* pb-row — defeat scripts-rebuttals.css 1fr 1fr */
-.hp-overlay .pb-row{
-    display:grid !important;
-    grid-template-columns:3fr 2fr !important;
-    gap:.4rem !important;
-    align-items:end;
-}
-.hp-overlay .pb-row > .hp-field{ min-width:0; flex:unset; }
-/* currency */
-.hp-overlay .hp-currency-wrap{
-    display:flex; align-items:center; gap:.4rem;
-    min-height:40px; padding:0 .65rem; border-radius:12px;
-    border:1.5px solid rgba(166,128,35,.5) !important;
-    background:linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18)) !important;
-    box-shadow:inset 0 2px 4px rgba(255,255,255,.08),inset 0 -2px 4px rgba(0,0,0,.18),0 8px 16px rgba(0,0,0,.14);
-    width:100%; min-width:0; box-sizing:border-box; overflow:hidden;
-}
-.hp-overlay .hp-currency-sym{ font-weight:900; color:#f4d890; font-size:.95rem; flex-shrink:0; }
-.hp-overlay .hp-currency-sfx{ font-weight:800; color:#f4d890; font-size:.85rem; flex-shrink:0; }
-.hp-overlay .hp-currency-input{
-    flex:1 1 auto; min-width:0; padding:0;
-    background:transparent !important;
-    border:none !important;
-    box-shadow:none !important;
-    color:#f8fafc !important; font-weight:700; font-size:.9rem;
-}
-.hp-overlay .hp-currency-input:focus{ outline:none; }
-@@media(max-width:900px){
-    .hp-overlay .hp-buckets{ grid-template-columns:1fr; }
-    .hp-overlay .hp-dialog{ padding:.9rem; }
-}
-</style>
+
 
 
 <script>

@@ -29,7 +29,7 @@
   const pickInForm = (selector) => form?.querySelector(selector);
 
   function getBucketEl(bucketNumber) {
-    return pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
+    return pickInForm(`.hp-bucket[data-bucket="${bucketNumber}"]`) || pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
   }
 
   function getBucketInput(bucketNumber, rowNumber, kind) {
@@ -41,7 +41,7 @@
       if (kind === "type") return bucketEl.querySelector(".prop-type");
       return null;
     }
-    const rowEl = bucketEl.querySelectorAll(".pb-row")?.[rowNumber - 1];
+    const rowEl = bucketEl.querySelectorAll(".hp-row, .pb-row")?.[rowNumber - 1];
     if (!rowEl) return null;
     if (kind === "benefit") return rowEl.querySelector(".prop-benefit");
     if (kind === "premium") return rowEl.querySelector(".prop-premium");
@@ -353,25 +353,25 @@
     const currentLeadId = readLead("leadId");
     if (!menuList) return;
     if (!cache.length) {
-      menuList.innerHTML = `<div class="proposal-empty">No proposals saved</div>`;
+      menuList.innerHTML = `<div class="hp-proposal-empty">No proposals saved</div>`;
       return;
     }
     menuList.innerHTML = cache.map(p => `
-      <div class="proposal-item${currentLeadId && normalize(p.leadId) === normalize(currentLeadId) ? " is-current" : ""}" data-id="${escapeHtml(p.id)}">
-        <div class="proposal-name-wrap" data-prop-open>
-          <div class="proposal-name">${escapeHtml(p.name || "Proposal")}</div>
-          <div class="proposal-meta-line">${escapeHtml(p.leadName || p.leadId || "Unassigned lead")}</div>
+      <div class="hp-proposal-item${currentLeadId && normalize(p.leadId) === normalize(currentLeadId) ? " is-current" : ""}" data-id="${escapeHtml(p.id)}">
+        <div class="hp-proposal-name-wrap" data-prop-open>
+          <div class="hp-proposal-name">${escapeHtml(p.name || "Proposal")}</div>
+          <div class="hp-proposal-meta-line">${escapeHtml(p.leadName || p.leadId || "Unassigned lead")}</div>
         </div>
-        <div class="proposal-actions ellipsis-wrap">
-            <button type="button" class="btn-mini ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
-            <div class="ellipsis-menu" hidden>
+        <div class="hp-proposal-actions hp-ellipsis-wrap">
+            <button type="button" class="btn-mini hp-ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
+            <div class="hp-ellipsis-menu" hidden>
                 <button type="button" class="btn-mini" data-prop-edit>Edit</button>
                 <button type="button" class="btn-mini danger" data-prop-delete>Delete</button>
             </div>
         </div>
       </div>
     `).join("");
-    document.querySelectorAll(".ellipsis-menu").forEach(m => m.hidden = true);
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach(m => m.hidden = true);
   }
 
   function closeMenu() { menu.hidden = true; }
@@ -517,17 +517,17 @@
   }
 
   menuList?.addEventListener("click", async (e) => {
-    const item = e.target.closest(".proposal-item");
+    const item = e.target.closest(".hp-proposal-item, .proposal-item");
     if (!item) return;
     const id = item.getAttribute("data-id");
     const record = cache.find(p => p.id === id);
 
-    if (e.target.matches(".ellipsis-btn")) {
+    if (e.target.matches(".hp-ellipsis-btn, .ellipsis-btn")) {
       e.stopPropagation();
-      const wrap = e.target.closest(".ellipsis-wrap");
-      const drop = wrap?.querySelector(".ellipsis-menu");
+      const wrap = e.target.closest(".hp-ellipsis-wrap, .ellipsis-wrap");
+      const drop = wrap?.querySelector(".hp-ellipsis-menu, .ellipsis-menu");
       if (drop) drop.hidden = !drop.hidden;
-      document.querySelectorAll(".ellipsis-menu").forEach(m => { if (m !== drop) m.hidden = true; });
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach(m => { if (m !== drop) m.hidden = true; });
       return;
     }
 
@@ -538,7 +538,7 @@
 
     if (e.target.matches("[data-prop-edit]") || e.target.closest("[data-prop-open]")) {
       if (!record) return;
-      document.querySelectorAll(".ellipsis-menu").forEach(m => m.hidden = true);
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach(m => m.hidden = true);
       closeMenu();
       await focusRecordLead(record);
       await openModal(id);
