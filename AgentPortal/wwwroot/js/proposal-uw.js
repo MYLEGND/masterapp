@@ -722,13 +722,11 @@
       return;
     }
 
-    if (event.target.matches("[data-prop-edit]") || event.target.closest("[data-prop-open]")) {
-      if (!record) return;
-      await focusRecordLead(record);
-      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
-      closeMenu();
-      openModal(record);
-    }
+    if (!record) return;
+    await focusRecordLead(record);
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    closeMenu();
+    openModal(record);
   });
 
   function toggleMenu() {

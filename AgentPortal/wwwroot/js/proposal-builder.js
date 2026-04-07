@@ -536,13 +536,11 @@
       return;
     }
 
-    if (e.target.matches("[data-prop-edit]") || e.target.closest("[data-prop-open]")) {
-      if (!record) return;
-      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach(m => m.hidden = true);
-      closeMenu();
-      await focusRecordLead(record);
-      await openModal(id);
-    }
+    if (!record) return;
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach(m => m.hidden = true);
+    closeMenu();
+    await focusRecordLead(record);
+    await openModal(id);
   });
 
   openBtn.addEventListener("click", async (e) => {

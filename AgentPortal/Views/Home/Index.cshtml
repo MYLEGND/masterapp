@@ -220,6 +220,16 @@
                     <div class="home-clients-results" id="homeClientsResults" hidden></div>
                 </div>
                 <div class="home-clients-toolbar-actions">
+                    <div class="hp-proposal-group">
+                        <button type="button" class="home-clients-action home-clients-action-gold" id="hpBtnProposal">Proposals ▾</button>
+                        <div class="hp-proposal-menu" id="hpProposalMenu" hidden>
+                            <div class="hp-proposal-menu-head">
+                                <span>Saved Proposals</span>
+                                <button type="button" class="btn-mini" id="hpBtnNew">+ New</button>
+                            </div>
+                            <div class="hp-proposal-menu-list" id="hpProposalList"></div>
+                        </div>
+                    </div>
                     <button type="button" class="home-clients-action home-clients-action-gold" id="homeClientsAdd">Add Lead / Client / Business Client</button>
                     <button type="button" class="home-clients-action home-clients-action-ghost" id="homeClientsOpenCrm">Open CRM</button>
                 </div>
@@ -234,20 +244,6 @@
                 </div>
             </div>
             <div class="home-clients-recent-grid" id="homeClientsRecentGrid"></div>
-
-            <!-- ── GLOBAL PROPOSALS ───────────────────────────────────── -->
-            <div class="hp-proposals-section">
-                <div class="hp-proposals-head">
-                    <div>
-                        <div class="hp-proposals-title">Proposals</div>
-                        <div class="hp-proposals-sub">All saved proposals across every client — create, edit, and review from one place.</div>
-                    </div>
-                    <button type="button" class="home-clients-action home-clients-action-gold" id="hpBtnNew">+ New Proposal</button>
-                </div>
-                <div class="hp-proposals-list" id="hpProposalList">
-                    <div class="home-clients-empty home-clients-empty-block">Loading proposals…</div>
-                </div>
-            </div>
         </div>
     </div>
 </div>
@@ -410,99 +406,58 @@
     margin: 1rem auto 0;
 }
 
-/* ══ GLOBAL PROPOSALS — hub section ══════════════════════════════════════ */
-.hp-proposals-section{
-    margin-top: 2rem;
-    padding-top: 1.6rem;
-    border-top: 1px solid rgba(166,128,35,.22);
+/* ══ GLOBAL PROPOSALS — toolbar dropdown ═════════════════════════════════ */
+.hp-proposal-group{ position:relative; }
+.hp-proposal-menu{
+    position:absolute;
+    top:110%;
+    right:0;
+    min-width:340px;
+    border:1.5px solid rgba(166,128,35,.44);
+    border-radius:14px;
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    box-shadow:0 18px 46px rgba(0,0,0,.34);
+    padding:14px;
+    z-index:120;
 }
-.hp-proposals-head{
+.hp-proposal-menu-head{
     display:flex;
     align-items:center;
     justify-content:space-between;
-    gap:1.25rem;
-    margin-bottom:1.1rem;
-    flex-wrap:wrap;
-}
-.hp-proposals-title{
-    font-size:1.06rem;
     font-weight:900;
-    color:#f8fafc;
-    margin-bottom:.2rem;
+    margin-bottom:10px;
+    color:#f4d890;
 }
-.hp-proposals-sub{
-    color:#b9c5d8;
-    font-weight:600;
-    font-size:.92rem;
-}
-.hp-proposals-list{ min-height:3rem; }
-
-/* ── proposal card grid ── */
-.hp-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
-    gap:.9rem;
-}
-.hp-card{
-    border:1.5px solid rgba(166,128,35,.34);
-    border-radius:18px;
-    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
-    padding:1rem 1.05rem;
-    box-shadow:0 14px 28px rgba(0,0,0,.20);
+.hp-proposal-menu-list{
     display:flex;
     flex-direction:column;
-    gap:.55rem;
-    transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease;
+    gap:6px;
+    max-height:320px;
+    overflow:auto;
 }
-.hp-card:hover{
-    transform:translateY(-2px);
-    border-color:rgba(221,180,87,.72);
-    box-shadow:0 20px 36px rgba(0,0,0,.28);
-}
-.hp-card-top{
+.hp-proposal-item{
     display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:.6rem;
-}
-.hp-card-name{
-    font-weight:900;
-    font-size:.97rem;
-    color:#f8fafc;
-    line-height:1.25;
-    flex:1 1 auto;
-    min-width:0;
-    overflow:hidden;
-    text-overflow:ellipsis;
-    white-space:nowrap;
-}
-.hp-card-badge{
-    flex-shrink:0;
-    display:inline-flex;
     align-items:center;
-    padding:.28rem .6rem;
-    border-radius:999px;
-    border:1px solid rgba(166,128,35,.4);
-    background:rgba(166,128,35,.14);
-    color:#f6e6b4;
-    font-size:.72rem;
-    font-weight:900;
-    text-transform:uppercase;
-    white-space:nowrap;
-    max-width:130px;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    justify-content:space-between;
+    gap:8px;
+    padding:9px 11px;
+    border:1.5px solid rgba(166,128,35,.34);
+    border-radius:12px;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));
 }
-.hp-card-date{
-    color:#94a3b8;
-    font-weight:600;
-    font-size:.82rem;
+.hp-proposal-item:hover{
+    border-color:#ddb457;
+    background:rgba(221,180,87,.10);
+    box-shadow:0 10px 22px rgba(0,0,0,.24);
 }
-.hp-card-actions{
-    display:flex;
-    gap:.6rem;
-    margin-top:.25rem;
-}
+.hp-proposal-name-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;cursor:pointer;}
+.hp-proposal-name{font-weight:800;color:#f8fafc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hp-proposal-meta-line{font-size:12px;color:#b9c5d8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hp-proposal-actions{display:flex;gap:4px;}
+.hp-ellipsis-wrap{position:relative;}
+.hp-ellipsis-btn{background:rgba(255,255,255,.07);color:#f8fafc;border:1px solid rgba(166,128,35,.34);border-radius:8px;font-weight:800;}
+.hp-ellipsis-menu{position:absolute;top:110%;right:0;background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));border:1px solid rgba(166,128,35,.44);border-radius:10px;box-shadow:0 12px 26px rgba(0,0,0,.34);padding:6px;display:flex;flex-direction:column;gap:4px;min-width:140px;z-index:5000;}
+.hp-proposal-empty{font-weight:800;color:#b9c5d8;padding:8px 4px;}
 
 /* ══ PROPOSAL BUILDER OVERLAY ════════════════════════════════════════════ */
 .hp-overlay{
@@ -746,9 +701,9 @@ body.hp-modal-open{ overflow:hidden; }
     .hp-dialog{ padding:1.1rem; }
 }
 @@media(max-width:576px){
-    .hp-grid{ grid-template-columns:1fr; }
-    .hp-proposals-head{ flex-direction:column; align-items:flex-start; }
-    .hp-proposals-head .home-clients-action{ width:100%; }
+    .hp-proposal-group{ width:100%; }
+    .hp-proposal-group > .home-clients-action{ width:100%; }
+    .hp-proposal-menu{ left:0; right:0; min-width:0; }
 }
 
 .home-flash{
@@ -1693,5 +1648,5 @@ body.hp-modal-open{ overflow:hidden; }
 
 @section Scripts {
     <script src="~/js/home-clients-hub.js" asp-append-version="true"></script>
-    <script src="~/js/home-proposals-hub.js" asp-append-version="true"></script>
+    <script src="~/js/home-proposals-dropdown.js" asp-append-version="true"></script>
 }
