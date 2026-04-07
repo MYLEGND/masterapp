@@ -90,7 +90,7 @@
                                     <span class="dot text-gold">●</span>
                                     <div class="heading-text">
                                         <div class="title">@monthName @Model.Year</div>
-                                        <div class="subtitle">@monthTotals.Paid.ToString("C0") paid • @monthTotals.Issued.ToString("C0") issued • @monthTotals.Submitted.ToString("C0") submitted</div>
+                                        <div class="subtitle"><span class="prod-paid">@monthTotals.Paid.ToString("C0") paid</span><span class="sep"> • </span><span class="prod-issued">@monthTotals.Issued.ToString("C0") issued</span><span class="sep"> • </span><span class="prod-submitted">@monthTotals.Submitted.ToString("C0") submitted</span></div>
                                     </div>
                                 </div>
                                 @if (!hasData)

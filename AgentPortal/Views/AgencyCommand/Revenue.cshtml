@@ -94,7 +94,7 @@
                             <span class="dot text-gold">●</span>
                             <div class="heading-text">
                                 <div class="title">@monthName @Model.Year</div>
-                                <div class="subtitle">@monthTotals.Paid.ToString("C0") paid • @monthTotals.Issued.ToString("C0") issued • @monthTotals.Submitted.ToString("C0") submitted</div>
+                                <div class="subtitle"><span class="prod-paid">@monthTotals.Paid.ToString("C0") paid</span><span class="sep"> • </span><span class="prod-issued">@monthTotals.Issued.ToString("C0") issued</span><span class="sep"> • </span><span class="prod-submitted">@monthTotals.Submitted.ToString("C0") submitted</span></div>
                             </div>
                         </div>
                         @if (!hasData)
@@ -429,9 +429,18 @@
     .founder-tier-page .top-prod-table tbody td.text-info    { color: #7dc4ff !important; text-shadow: 0 0 14px rgba(125,196,255,.22) !important; }
     .founder-tier-page .top-prod-table tbody td.text-success { color: #57d89c !important; text-shadow: 0 0 14px rgba(87,216,156,.22) !important; }
     /* color-code split-value rows: 1 = Submitted gold, 2 = Issued blue, 3 = Paid green */
-    .split-values span:nth-child(1) { color: #f4cd67 !important; }
-    .split-values span:nth-child(2) { color: #7dc4ff !important; }
-    .split-values span:nth-child(3) { color: #57d89c !important; }
+    .founder-tier-page .split-values span:nth-child(1) { color: #f4cd67 !important; }
+    .founder-tier-page .split-values span:nth-child(2) { color: #7dc4ff !important; }
+    .founder-tier-page .split-values span:nth-child(3) { color: #57d89c !important; }
+    /* restore chip colors — producer-header !important rule would otherwise bleed in */
+    .founder-tier-page .chip.success { color: #34d399 !important; }
+    .founder-tier-page .chip.info    { color: #60a5fa !important; }
+    .founder-tier-page .chip.warn    { color: #fbbf24 !important; }
+    /* month card subtitle: color-coded per status */
+    .prod-paid      { color: #57d89c !important; }
+    .prod-issued    { color: #7dc4ff !important; }
+    .prod-submitted { color: #f4cd67 !important; }
+    .sep            { color: #475569 !important; }
 
     .founder-tier-page .btn,
     .founder-tier-page button {
