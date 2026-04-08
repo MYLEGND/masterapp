@@ -126,7 +126,23 @@
 
     @@media (max-width: 768px) {
         .section-card { padding: 18px; }
-        .btn-gold { width: 100%; }
+        .btn-gold { width: 100%; min-height: 48px; }
+
+        .wizard-steps {
+            flex-wrap: nowrap;
+            overflow-x: auto;
+            justify-content: flex-start;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+            padding-bottom: 6px;
+        }
+
+        .wizard-steps::-webkit-scrollbar { display: none; }
+
+        .wizard-pill {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
     }
 </style>
 
