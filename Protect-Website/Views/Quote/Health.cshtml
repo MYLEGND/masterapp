@@ -277,17 +277,9 @@
                 <div class="lead-row two">
                     <div class="field">
                         <label>Household Size<span class="text-danger">*</span></label>
-                        <select asp-for="HouseholdSize" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>1</option>
-                            <option>2–3</option>
-                            <option>4–5</option>
-                            <option>6+</option>
-                        </select>
+                        <input asp-for="HouseholdSize" class="form-control" placeholder="e.g. 4" required />
                     </div>
-                </div>
 
-                <div class="lead-row two">
                     <div class="field">
                         <label>Primary Concern<span class="text-danger">*</span></label>
                         <select asp-for="PrimaryConcern" class="form-select" required>
