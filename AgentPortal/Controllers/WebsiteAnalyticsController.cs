@@ -17,6 +17,8 @@ namespace AgentPortal.Controllers;
     {
         private readonly IAnalyticsQueryService _analytics;
         private readonly IMetaAdsService _metaAds;
+        private readonly IMetaAdsOAuthService _metaAdsOAuth;
+        private readonly IMetaAdsConnectionStore _metaAdsConnectionStore;
         private readonly Services.Tracking.IAgentTrackingService _tracking;
         private readonly ILogger<WebsiteAnalyticsController> _logger;
         private readonly Infrastructure.Data.MasterAppDbContext _db;
@@ -24,10 +26,12 @@ namespace AgentPortal.Controllers;
         private readonly IConfiguration _config;
         private readonly EffectiveAgentContext _effectiveContext;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, Services.Tracking.IAgentTrackingService tracking, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
         {
             _analytics = analytics;
             _metaAds = metaAds;
+            _metaAdsOAuth = metaAdsOAuth;
+            _metaAdsConnectionStore = metaAdsConnectionStore;
             _tracking = tracking;
             _logger = logger;
             _db = db;
@@ -183,6 +187,99 @@ namespace AgentPortal.Controllers;
         }
     }
 
+    [HttpGet("meta-connect")]
+    [HttpGet("/website-analytics/meta-connect")]
+    public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null)
+    {
+        try
+        {
+            var agentId = await ResolveMetaConnectionAgentIdAsync();
+            if (!agentId.HasValue || agentId.Value == Guid.Empty)
+                return BadRequest(new { message = "Unable to resolve agent context for Meta Ads connection." });
+
+            var connectUrl = _metaAdsOAuth.BuildConnectUrl(agentId.Value, returnUrl);
+            return Redirect(connectUrl);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Meta connect request failed.");
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [AllowAnonymous]
+    [HttpGet("meta-callback")]
+    [HttpGet("/website-analytics/meta-callback")]
+    public async Task<IActionResult> MetaCallback([FromQuery] string? code = null, [FromQuery] string? state = null, [FromQuery] string? error = null, [FromQuery(Name = "error_description")] string? errorDescription = null)
+    {
+        var target = "/WebsiteAnalytics/Index";
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            var msg = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+            return Redirect($"{target}?meta=error&message={Uri.EscapeDataString(msg)}");
+        }
+
+        try
+        {
+            await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            return Redirect($"{target}?meta=connected");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Meta callback failed.");
+            return Redirect($"{target}?meta=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+    }
+
+    [HttpGet("meta-connection-status")]
+    [HttpGet("/website-analytics/meta-connection-status")]
+    public async Task<IActionResult> MetaConnectionStatus()
+    {
+        var agentId = await ResolveMetaConnectionAgentIdAsync();
+        if (!agentId.HasValue || agentId.Value == Guid.Empty)
+        {
+            return Json(new MetaAdsConnectionStatusDto
+            {
+                Connected = false,
+                AgentTrackingProfileId = null
+            });
+        }
+
+        var record = await _metaAdsConnectionStore.GetAsync(agentId.Value, HttpContext.RequestAborted);
+        if (record == null)
+        {
+            return Json(new MetaAdsConnectionStatusDto
+            {
+                Connected = false,
+                AgentTrackingProfileId = agentId
+            });
+        }
+
+        return Json(new MetaAdsConnectionStatusDto
+        {
+            Connected = true,
+            AgentTrackingProfileId = agentId,
+            AccountId = record.AccountId,
+            AccountName = record.AccountName,
+            MetaUserName = record.MetaUserName,
+            ConnectedUtc = record.ConnectedUtc,
+            AccessTokenExpiresUtc = record.AccessTokenExpiresUtc
+        });
+    }
+
+    [HttpPost("meta-disconnect")]
+    [ValidateAntiForgeryToken]
+    [HttpPost("/website-analytics/meta-disconnect")]
+    public async Task<IActionResult> MetaDisconnect()
+    {
+        var agentId = await ResolveMetaConnectionAgentIdAsync();
+        if (!agentId.HasValue || agentId.Value == Guid.Empty)
+            return BadRequest(new { message = "Unable to resolve agent context for Meta Ads disconnect." });
+
+        await _metaAdsConnectionStore.DeleteAsync(agentId.Value, HttpContext.RequestAborted);
+        return Json(new { ok = true });
+    }
+
     private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
     {
         var isFounder = FounderGuard.IsFounder(User);
@@ -274,5 +371,15 @@ namespace AgentPortal.Controllers;
             return await _tracking.GetByUpnAsync(upn);
         }
         return null;
+    }
+
+    private async Task<Guid?> ResolveMetaConnectionAgentIdAsync()
+    {
+        var scope = await ResolveScopeAsync(null, team: false);
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
+            return scope.AgentTrackingProfileId.Value;
+
+        var caller = await GetCallerProfileAsync();
+        return caller?.Id;
     }
 }

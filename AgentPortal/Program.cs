@@ -89,6 +89,8 @@ else
     builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
+builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
+builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
 builder.Services.AddScoped<AgentTrackingResolver>();

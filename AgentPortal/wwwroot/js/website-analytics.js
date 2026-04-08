@@ -60,7 +60,9 @@
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
     agentPerf: '/WebsiteAnalytics/agent-performance',
-    metaCampaigns: '/WebsiteAnalytics/meta-campaigns'
+    metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
+    metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
+    metaDisconnect: '/WebsiteAnalytics/meta-disconnect'
   };
 
   function abort(key) {
@@ -100,6 +102,43 @@
       }
       throw err;
     }
+  }
+
+  async function fetchPostJson(key, url, body = null) {
+    const ctrl = abort(key);
+    const token = getRequestVerificationToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['RequestVerificationToken'] = token;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers,
+      body: body == null ? null : JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const payload = await res.json();
+        detail = payload?.message || payload?.error || '';
+      } catch {
+        detail = '';
+      }
+      throw new Error(detail ? `${key} failed: ${detail}` : `${key} failed`);
+    }
+
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  function getRequestVerificationToken() {
+    return document.querySelector('#meta-disconnect-form input[name="__RequestVerificationToken"]')?.value
+      || document.querySelector('input[name="__RequestVerificationToken"]')?.value
+      || '';
   }
 
   function parseInitialSummary(str) {
@@ -454,6 +493,7 @@
     setText('meta-campaigns-range-label', data.rangeLabel || '');
     setText('meta-campaigns-account', data.accountId || '—');
     setText('meta-campaigns-synced', data.syncedUtc ? formatDisplayDate(data.syncedUtc) : '—');
+    setMetaAccountChip(data.accountName || data.accountId || 'Connected');
 
     renderTable('meta-campaigns-body', data.rows || [], [
       { render: r => `${r.campaignName || '—'}<div class="fa-muted small">${r.campaignId || ''}</div>` },
@@ -470,6 +510,22 @@
     ]);
   }
 
+  function setMetaCampaignsEnabled(enabled) {
+    const btn = document.getElementById('meta-campaigns-open');
+    if (!btn) return;
+    btn.disabled = !enabled;
+    btn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    btn.title = enabled ? 'View Meta campaigns' : 'Connect Meta Ads to view campaigns';
+  }
+
+  function setMetaAccountChip(text, connected = true) {
+    const chip = document.getElementById('meta-campaigns-account-chip');
+    if (!chip) return;
+    chip.classList.remove('d-none');
+    chip.textContent = text || (connected ? 'Connected' : 'Not connected');
+    chip.style.opacity = connected ? '1' : '.75';
+  }
+
   async function loadMetaCampaigns() {
     try {
       const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
@@ -483,6 +539,95 @@
       }
       console.error(err);
     }
+  }
+
+  function formatShortDate(iso) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+      return '—';
+    }
+  }
+
+  async function loadMetaConnectionStatus() {
+    const statusEl = document.getElementById('meta-connection-status');
+    const connectBtn = document.getElementById('meta-connect-btn');
+    const disconnectBtn = document.getElementById('meta-disconnect-btn');
+    if (!statusEl) return;
+
+    try {
+      const data = await fetchJson('meta-connection-status', endpoints.metaConnectionStatus, {});
+      if (!data || !data.connected) {
+        statusEl.className = 'small mt-2 text-warning';
+        statusEl.textContent = 'Meta Ads not connected for this agent.';
+        if (connectBtn) connectBtn.textContent = 'Connect Meta Ads';
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+        setMetaCampaignsEnabled(false);
+        setMetaAccountChip('Not connected', false);
+        return;
+      }
+
+      const acct = data.accountName || data.accountId || 'Meta account connected';
+      const user = data.metaUserName ? ` as ${data.metaUserName}` : '';
+      const exp = data.accessTokenExpiresUtc ? ` · expires ${formatShortDate(data.accessTokenExpiresUtc)}` : '';
+      statusEl.className = 'small mt-2 text-success';
+      statusEl.textContent = `Connected: ${acct}${user}${exp}`;
+      if (connectBtn) connectBtn.textContent = 'Reconnect Meta Ads';
+      if (disconnectBtn) disconnectBtn.style.display = '';
+      setMetaCampaignsEnabled(true);
+      setMetaAccountChip(acct || 'Connected', true);
+    } catch (err) {
+      statusEl.className = 'small mt-2 text-danger';
+      statusEl.textContent = 'Unable to read Meta Ads connection status.';
+      if (disconnectBtn) disconnectBtn.style.display = 'none';
+      setMetaCampaignsEnabled(false);
+      setMetaAccountChip('Status unavailable', false);
+      console.error(err);
+    }
+  }
+
+  async function handleMetaDisconnect() {
+    try {
+      await fetchPostJson('meta-disconnect', endpoints.metaDisconnect);
+      await loadMetaConnectionStatus();
+      const body = document.getElementById('meta-campaigns-body');
+      if (body) body.innerHTML = '<tr><td colspan="11" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
+    } catch (err) {
+      const statusEl = document.getElementById('meta-connection-status');
+      if (statusEl) {
+        statusEl.className = 'small mt-2 text-danger';
+        statusEl.textContent = (err && err.message) ? err.message : 'Failed to disconnect Meta Ads.';
+      }
+      console.error(err);
+    }
+  }
+
+  function showMetaCallbackBanner() {
+    let url;
+    try {
+      url = new URL(window.location.href);
+    } catch {
+      return;
+    }
+    const meta = url.searchParams.get('meta');
+    if (!meta) return;
+
+    const statusEl = document.getElementById('meta-connection-status');
+    if (statusEl) {
+      if (meta === 'connected') {
+        statusEl.className = 'small mt-2 text-success';
+        statusEl.textContent = 'Meta Ads connected successfully.';
+      } else if (meta === 'error') {
+        const msg = url.searchParams.get('message') || 'Meta Ads connection failed.';
+        statusEl.className = 'small mt-2 text-danger';
+        statusEl.textContent = msg;
+      }
+    }
+
+    url.searchParams.delete('meta');
+    url.searchParams.delete('message');
+    window.history.replaceState({}, '', url.toString());
   }
 
   // Team rollup (founder-only)
@@ -684,6 +829,7 @@
   }
 
   async function init() {
+    showMetaCallbackBanner();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
     const initial = shell?.dataset.initialSummary;
@@ -761,6 +907,13 @@
       });
     }
     wireGrowthCopyButtons();
+
+    const metaDisconnectBtn = document.getElementById('meta-disconnect-btn');
+    if (metaDisconnectBtn) {
+      metaDisconnectBtn.addEventListener('click', handleMetaDisconnect);
+    }
+    await loadMetaConnectionStatus();
+
     initPolling();
   }
 

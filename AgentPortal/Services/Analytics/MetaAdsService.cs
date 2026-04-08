@@ -19,13 +19,15 @@ public sealed class MetaAdsService : IMetaAdsService
     private readonly IConfiguration _config;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IMetaAdsConnectionStore _connectionStore;
     private readonly ILogger<MetaAdsService> _logger;
 
-    public MetaAdsService(IConfiguration config, MasterAppDbContext db, IHttpClientFactory httpClientFactory, ILogger<MetaAdsService> logger)
+    public MetaAdsService(IConfiguration config, MasterAppDbContext db, IHttpClientFactory httpClientFactory, IMetaAdsConnectionStore connectionStore, ILogger<MetaAdsService> logger)
     {
         _config = config;
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _connectionStore = connectionStore;
         _logger = logger;
     }
 
@@ -35,13 +37,11 @@ public sealed class MetaAdsService : IMetaAdsService
         if (!enabled)
             throw new InvalidOperationException("Meta Ads integration is disabled. Set MetaAds:Enabled=true.");
 
-        var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
+        var (token, accountId) = await ResolveCredentialsAsync(scope, ct);
         if (string.IsNullOrWhiteSpace(token))
-            throw new InvalidOperationException("Meta Ads access token missing. Set MetaAds:AccessToken.");
-
-        var accountId = await ResolveAccountIdAsync(scope, ct);
+            throw new InvalidOperationException("Meta Ads access token missing. Connect Meta Ads or set MetaAds:AccessToken.");
         if (string.IsNullOrWhiteSpace(accountId))
-            throw new InvalidOperationException("No Meta Ads account mapping found for this agent.");
+            throw new InvalidOperationException("No Meta Ads account mapping found for this agent. Connect Meta Ads to bind an account.");
 
         var version = (_config["MetaAds:ApiVersion"] ?? "v21.0").Trim();
         if (string.IsNullOrWhiteSpace(version)) version = "v21.0";
@@ -87,6 +87,23 @@ public sealed class MetaAdsService : IMetaAdsService
             SyncedUtc = DateTime.UtcNow,
             Rows = rows
         };
+    }
+
+    private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
+    {
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
+        {
+            var connection = await _connectionStore.GetAsync(scope.AgentTrackingProfileId.Value, ct);
+            if (connection != null && !string.IsNullOrWhiteSpace(connection.AccessToken))
+            {
+                var account = NormalizeAccountId(connection.AccountId);
+                return (connection.AccessToken.Trim(), account ?? string.Empty);
+            }
+        }
+
+        var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
+        var accountId = await ResolveAccountIdAsync(scope, ct);
+        return (token, accountId);
     }
 
     private async Task<string> ResolveAccountIdAsync(ScopeContext scope, CancellationToken ct)
