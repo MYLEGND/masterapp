@@ -18,18 +18,33 @@
 
 <div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
     <div class="hero-link mb-4 p-4 p-md-5">
-        <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
+    <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
             <div>
-                <h4 class="mb-1 fw-bold text-gold">Your Website Link</h4>
-                <div class="text-silver">This is your personal link. Share it to track your traffic and leads.</div>
+        <h4 class="mb-1 fw-bold text-gold">Marketing Links</h4>
+        <div class="text-silver">Use this shared command area for your website traffic link and Meta Ads management.</div>
             </div>
-            <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2">
-                <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
-                    <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
+    </div>
+
+    <div class="hero-link-grid">
+      <div class="hero-link-panel">
+        <div class="hero-link-label">Website Link</div>
+        <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+        <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Website link actions">
+          <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
+          <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
                 </div>
             </div>
+
+      <div class="hero-link-panel hero-link-panel-meta">
+        <div class="hero-link-label">Meta Ads</div>
+        <div class="text-silver hero-link-help">Open Ads Manager to review campaigns, spend, and performance.</div>
+        <a class="btn btn-gold mt-2 hero-link-meta-btn"
+           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns"
+           target="_blank"
+           rel="noopener">
+          Open Meta Ads Manager
+        </a>
+      </div>
         </div>
     </div>
 

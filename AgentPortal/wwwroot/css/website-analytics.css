@@ -29,6 +29,35 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 }
 .hero-link .text-silver { color: var(--legend-silver); }
 .hero-link .text-gold { color: var(--legend-gold); }
+.hero-link-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+.hero-link-panel {
+    border: 1px solid rgba(199,153,49,.42);
+    border-radius: 14px;
+    padding: 12px;
+    background: rgba(255,255,255,.03);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+.hero-link-label {
+    color: var(--legend-gold);
+    font-size: .8rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+.hero-link-help {
+    line-height: 1.45;
+    font-weight: 600;
+}
+.hero-link-meta-btn {
+    min-height: 38px;
+    font-weight: 900;
+    letter-spacing: .01em;
+}
 .hero-link-url {
     font-size: 1rem;
     color: #f8fafc;
@@ -49,6 +78,11 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     border: 1px solid var(--legend-silver);
     color: var(--legend-silver);
     background: transparent;
+}
+@@media (max-width: 768px) {
+    .hero-link-grid {
+        grid-template-columns: 1fr;
+    }
 }
 .control-bar {
     background: linear-gradient(145deg, #0b1530 0%, #0f1d3c 100%);
