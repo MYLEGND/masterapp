@@ -6,7 +6,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;publish-*/**;publish-macos/**;publish-azure/**;**/*.zip;</DefaultItemExcludes>
     <!-- Temporarily suppress MimeKit advisory until we can pull patched package -->
     <NoWarn>$(NoWarn);NU1902</NoWarn>
   </PropertyGroup>
