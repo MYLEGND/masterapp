@@ -133,6 +133,15 @@
         gap: 12px 14px;
     }
 
+    @@media (min-width: 768px){
+        .lead-row.three{
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .lead-row.two{
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
     .field{
         margin-bottom: 0;
     }
