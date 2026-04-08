@@ -169,6 +169,35 @@
         color: #64748b;
     }
 
+    .quote-step-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 14px;
+        padding: 10px 12px;
+        border: 1px solid rgba(199,153,49,.45);
+        border-radius: 10px;
+        background: #111c32;
+    }
+
+    .quote-step-label {
+        color: #f8fafc;
+        font-weight: 800;
+        font-size: .95rem;
+    }
+
+    .btn-step {
+        border: 1.4px solid #c79931;
+        background: transparent;
+        color: #f8fafc;
+        border-radius: 8px;
+        font-weight: 800;
+        padding: 8px 12px;
+    }
+
+    .qs-hidden { display: none !important; }
+
 .disclaimer-wrap{
     margin-top: 6px;
 }
@@ -207,6 +236,14 @@
 
     <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
     <div class="section-card lead-card">
+
+        <div class="quote-step-nav">
+            <div class="quote-step-label" id="life-step-label">Step 1 of 2 · Quick Quote</div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn-step qs-hidden" id="life-step-back">Back</button>
+                <button type="button" class="btn-step" id="life-step-next">Continue</button>
+            </div>
+        </div>
 
         <div class="lead-grid">
 
@@ -388,15 +425,79 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
-    const form = document.querySelector("form");
+    const form = document.getElementById('lifeQuoteForm');
+    const nextBtn = document.getElementById('life-step-next');
+    const backBtn = document.getElementById('life-step-back');
+    const stepLabel = document.getElementById('life-step-label');
+    const disclaimerWrap = form?.querySelector('.disclaimer-wrap');
 
-    if (!form) return;
+    if (form && nextBtn && backBtn && stepLabel) {
+        const step2Names = new Set([
+            'MaritalStatus',
+            'ContactMethod',
+            'BestTimeToContact',
+            'CurrentCoverage',
+            'PolicyTypeInterest',
+            'Timeline',
+            'AcknowledgedDisclaimer'
+        ]);
 
-    form.addEventListener("submit", function (event) {
-        if (!form.checkValidity()) {
+        const step1RequiredNames = [
+            'FirstName', 'LastName', 'Age', 'Email', 'Phone', 'PrimaryReason', 'CoverageAmount'
+        ];
+
+        const step2Fields = [];
+        step2Names.forEach((name) => {
+            const input = form.querySelector(`[name="${name}"]`);
+            if (!input) return;
+            const wrapper = input.closest('.field') || input.closest('.form-check') || input;
+            if (wrapper) step2Fields.push(wrapper);
+        });
+
+        const setStep = (step) => {
+            const showStep2 = step === 2;
+            step2Fields.forEach(el => el.classList.toggle('qs-hidden', !showStep2));
+            if (disclaimerWrap) disclaimerWrap.classList.toggle('qs-hidden', !showStep2);
+            nextBtn.classList.toggle('qs-hidden', showStep2);
+            backBtn.classList.toggle('qs-hidden', !showStep2);
+            stepLabel.textContent = showStep2 ? 'Step 2 of 2 · Final Details' : 'Step 1 of 2 · Quick Quote';
+        };
+
+        const validateStep1 = () => {
+            for (const name of step1RequiredNames) {
+                const input = form.querySelector(`[name="${name}"]`);
+                if (input && !input.checkValidity()) {
+                    input.reportValidity();
+                    input.focus();
+                    return false;
+                }
+            }
+            return true;
+        };
+
+        nextBtn.addEventListener('click', () => {
+            if (!validateStep1()) return;
+            setStep(2);
+            form.querySelector('[name="MaritalStatus"]')?.focus();
+        });
+
+        backBtn.addEventListener('click', () => {
+            setStep(1);
+            form.querySelector('[name="FirstName"]')?.focus();
+        });
+
+        setStep(1);
+    }
+
+    const validationForm = document.querySelector("form");
+
+    if (!validationForm) return;
+
+    validationForm.addEventListener("submit", function (event) {
+        if (!validationForm.checkValidity()) {
             event.preventDefault();
 
-            const firstInvalid = form.querySelector(":invalid");
+            const firstInvalid = validationForm.querySelector(":invalid");
             if (firstInvalid) {
                 firstInvalid.scrollIntoView({
                     behavior: "smooth",
