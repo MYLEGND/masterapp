@@ -336,3 +336,55 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     color: #ffffff;
     border-color: var(--legend-gold);
 }
+
+/* Meta Campaigns tracker sizing + color coding */
+.meta-campaigns-dialog {
+    max-width: min(96vw, 1700px);
+}
+
+.meta-campaigns-table th,
+.meta-campaigns-table td {
+    font-size: .93rem;
+}
+
+.meta-campaigns-table td {
+    white-space: nowrap;
+}
+
+.meta-campaigns-table td:first-child {
+    min-width: 280px;
+    white-space: normal;
+}
+
+.meta-pill {
+    display: inline-block;
+    border-radius: 999px;
+    padding: .2rem .6rem;
+    font-weight: 800;
+    letter-spacing: .01em;
+    border: 1px solid transparent;
+}
+
+.meta-good {
+    color: #dcfce7;
+    background: rgba(34, 197, 94, .2);
+    border-color: rgba(34, 197, 94, .55);
+}
+
+.meta-warn {
+    color: #ffedd5;
+    background: rgba(249, 115, 22, .2);
+    border-color: rgba(249, 115, 22, .55);
+}
+
+.meta-bad {
+    color: #fee2e2;
+    background: rgba(239, 68, 68, .2);
+    border-color: rgba(239, 68, 68, .55);
+}
+
+.meta-neutral {
+    color: #e2e8f0;
+    background: rgba(148, 163, 184, .18);
+    border-color: rgba(148, 163, 184, .45);
+}

@@ -1,4 +1,6 @@
 (() => {
+  const OPEN_MODAL_STORAGE_KEY = 'websiteAnalytics.openModal';
+
   const shell = document.querySelector('.fa-shell');
   const state = {
     preset: shell?.dataset.initialPreset || '30d',
@@ -229,7 +231,12 @@
       return;
     }
     body.innerHTML = rows.map(r => {
-      return `<tr>${cols.map(c => `<td class="${c.align || ''}">${c.render ? c.render(r) : (r[c.key] ?? '')}</td>`).join('')}</tr>`;
+      return `<tr>${cols.map(c => {
+        const alignClass = c.align || '';
+        const extraClass = typeof c.className === 'function' ? (c.className(r) || '') : (c.className || '');
+        const cellClass = `${alignClass} ${extraClass}`.trim();
+        return `<td class="${cellClass}">${c.render ? c.render(r) : (r[c.key] ?? '')}</td>`;
+      }).join('')}</tr>`;
     }).join('');
   }
 
@@ -488,6 +495,60 @@
     return Number.isFinite(num) ? `${num.toFixed(2)}%` : '0.00%';
   }
 
+  function toNumber(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function pill(text, cls) {
+    return `<span class="meta-pill ${cls || 'meta-neutral'}">${text ?? '—'}</span>`;
+  }
+
+  function metaStatusClass(status) {
+    const s = String(status || '').toUpperCase();
+    if (s === 'ACTIVE') return 'meta-good';
+    if (s === 'PAUSED' || s === 'LIMITED') return 'meta-warn';
+    if (s === 'ARCHIVED' || s === 'DELETED' || s === 'DISAPPROVED') return 'meta-bad';
+    return 'meta-neutral';
+  }
+
+  function metaObjectiveClass(objective) {
+    const o = String(objective || '').toUpperCase();
+    if (o.includes('LEAD') || o.includes('CONVERSION') || o.includes('OUTCOME')) return 'meta-good';
+    if (o.includes('TRAFFIC') || o.includes('AWARENESS') || o.includes('ENGAGEMENT')) return 'meta-warn';
+    return 'meta-neutral';
+  }
+
+  function metaVolumeClass(v) {
+    const n = toNumber(v);
+    if (n < 0) return 'meta-bad';
+    if (n === 0) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaCtrClass(v) {
+    const n = toNumber(v);
+    if (n < 1) return 'meta-bad';
+    if (n < 2.5) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaCpcClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-warn';
+    if (n <= 2) return 'meta-good';
+    if (n <= 5) return 'meta-warn';
+    return 'meta-bad';
+  }
+
+  function metaCpmClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-warn';
+    if (n <= 15) return 'meta-good';
+    if (n <= 30) return 'meta-warn';
+    return 'meta-bad';
+  }
+
   function renderMetaCampaigns(data) {
     state.cache.metaCampaigns = data;
     setText('meta-campaigns-range-label', data.rangeLabel || '');
@@ -497,16 +558,16 @@
 
     renderTable('meta-campaigns-body', data.rows || [], [
       { render: r => `${r.campaignName || '—'}<div class="fa-muted small">${r.campaignId || ''}</div>` },
-      { key: 'status' },
-      { key: 'objective' },
-      { render: r => formatMoney(r.spend), align: 'text-end' },
-      { render: r => formatInt(r.impressions), align: 'text-end' },
-      { render: r => formatInt(r.reach), align: 'text-end' },
-      { render: r => formatInt(r.clicks), align: 'text-end' },
-      { render: r => formatPct(r.ctr), align: 'text-end' },
-      { render: r => formatMoney(r.cpc), align: 'text-end' },
-      { render: r => formatMoney(r.cpm), align: 'text-end' },
-      { render: r => formatInt(r.leads), align: 'text-end' }
+      { render: r => pill(r.status || '—', metaStatusClass(r.status)) },
+      { render: r => pill(r.objective || '—', metaObjectiveClass(r.objective)) },
+      { render: r => pill(formatMoney(r.spend), metaVolumeClass(r.spend)), align: 'text-end' },
+      { render: r => pill(formatInt(r.impressions), metaVolumeClass(r.impressions)), align: 'text-end' },
+      { render: r => pill(formatInt(r.reach), metaVolumeClass(r.reach)), align: 'text-end' },
+      { render: r => pill(formatInt(r.clicks), metaVolumeClass(r.clicks)), align: 'text-end' },
+      { render: r => pill(formatPct(r.ctr), metaCtrClass(r.ctr)), align: 'text-end' },
+      { render: r => pill(formatMoney(r.cpc), metaCpcClass(r.cpc)), align: 'text-end' },
+      { render: r => pill(formatMoney(r.cpm), metaCpmClass(r.cpm)), align: 'text-end' },
+      { render: r => pill(formatInt(r.leads), metaVolumeClass(r.leads)), align: 'text-end' }
     ]);
   }
 
@@ -705,11 +766,41 @@
     if (!el) return;
     el.addEventListener('show.bs.modal', () => {
       state.openModal = id;
+      try {
+        window.sessionStorage.setItem(OPEN_MODAL_STORAGE_KEY, id);
+      } catch {
+        // ignore storage issues
+      }
       loader();
     });
     el.addEventListener('hidden.bs.modal', () => {
       state.openModal = null;
+      try {
+        const current = window.sessionStorage.getItem(OPEN_MODAL_STORAGE_KEY);
+        if (current === id) {
+          window.sessionStorage.removeItem(OPEN_MODAL_STORAGE_KEY);
+        }
+      } catch {
+        // ignore storage issues
+      }
     });
+  }
+
+  function restoreOpenModalFromSession() {
+    let modalId = null;
+    try {
+      modalId = window.sessionStorage.getItem(OPEN_MODAL_STORAGE_KEY);
+    } catch {
+      modalId = null;
+    }
+
+    if (!modalId) return;
+
+    const modalEl = document.getElementById(modalId);
+    if (!modalEl || typeof bootstrap === 'undefined' || !bootstrap?.Modal) return;
+
+    const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    bsModal.show();
   }
 
   function initRangeControls() {
@@ -855,6 +946,8 @@
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
     }
+    restoreOpenModalFromSession();
+
     const teamBtn = document.getElementById('team-rollup-btn');
     const teamModal = document.getElementById('teamRollupModal');
     if (teamBtn && teamModal) {
