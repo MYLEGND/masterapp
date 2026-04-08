@@ -1,5 +1,6 @@
 @{
     ViewData["Title"] = "Thank You";
+    var bookingLink = "https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true";
 
     // Pull quote type from TempData safely
     var quoteKey = TempData["QuoteType"]?.ToString()?.Trim() ?? "";
@@ -29,18 +30,23 @@
     else
     {
         submissionMessage = $"Your {quoteDisplayName} Quote has been received";
-        detailMessage = "Your information has been securely recorded. A licensed agent will review your submission and contact you shortly to discuss coverage options aligned with your needs.";
+        detailMessage = "A licensed advisor will review your information and reach out soon with options tailored to your needs.";
     }
 }
 
 <div class="thankyou-container">
     <div class="thankyou-card">
         <div class="thankyou-header text-center mb-4">
-            <h2 class="text-gold mb-2">Submission Complete</h2>
+            <h2 class="text-gold mb-2">Your request has been received.</h2>
             <h4 class="fw-normal">@submissionMessage</h4>
         </div>
 
         <p class="text-center lead mb-4">@detailMessage</p>
+
+        <div class="next-step-box text-center mb-4">
+            <h5 class="mb-2">Want to speed things up?</h5>
+            <p class="mb-0">Book a time that works for you. If you prefer, you can simply wait for us to contact you.</p>
+        </div>
 
         <blockquote class="verse text-center mb-5">
             “Trust in the Lord with all your heart and lean not on your own understanding;
@@ -50,11 +56,11 @@
 
         <div class="text-center mb-5">
             <!-- PRIMARY CTA -->
-            <a href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true"
+            <a href="@bookingLink"
                target="_blank"
                rel="noopener noreferrer"
                class="btn btn-gold btn-lg d-block mb-3">
-                Schedule a Strategy Call
+                Schedule Your Call
             </a>
 
             <!-- SECONDARY CTA -->
@@ -157,6 +163,14 @@
 .divider {
     border-top: 1px solid #eee;
     margin: 35px 0;
+}
+
+.next-step-box {
+    background: #fff9ee;
+    border: 1px solid #efd9a5;
+    border-radius: 10px;
+    padding: 14px 16px;
+    color: #5b4a1d;
 }
 
 /* ===================== ANIMATION ===================== */

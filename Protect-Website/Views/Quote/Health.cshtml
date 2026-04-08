@@ -30,7 +30,7 @@
     .section-card {
         background-color: #0f172a;
         border: 1.6px solid #c79931;
-        padding: 24px;
+        padding: 18px;
         border-radius: 12px;
         margin-bottom: 24px;
         box-shadow: 0 18px 40px rgba(0,0,0,0.18);
@@ -154,14 +154,27 @@
     .field label{
         display:block;
         margin-bottom: 6px;
-        font-weight: 700;
-        color: #111;
+        font-weight: 800;
+        color: #f8fafc;
         font-size: .95rem;
     }
 
     .field .form-control,
     .field .form-select{
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+    }
+
+    .field .form-select{
+        cursor: pointer;
+        appearance: auto;
+    }
+
+    .field .form-select:invalid{
+        color: #64748b;
+    }
+
+    .field .form-select option[value=""]{
+        color: #64748b;
     }
 
 .disclaimer-wrap{
@@ -212,26 +225,26 @@
                 <div class="lead-row three">
                     <div class="field">
                         <label>First Name<span class="text-danger">*</span></label>
-                        <input asp-for="FirstName" class="form-control" placeholder="First Name*" />
+                        <input asp-for="FirstName" class="form-control" placeholder="First Name" />
                     </div>
                     <div class="field">
                         <label>Last Name<span class="text-danger">*</span></label>
-                        <input asp-for="LastName" class="form-control" placeholder="Last Name*" />
+                        <input asp-for="LastName" class="form-control" placeholder="Last Name" />
                     </div>
                     <div class="field">
                         <label>Age<span class="text-danger">*</span></label>
-                        <input asp-for="Age" class="form-control" placeholder="Age*" />
+                        <input asp-for="Age" class="form-control" placeholder="Age" />
                     </div>
                 </div>
 
                 <div class="lead-row two">
                     <div class="field">
                         <label>Email<span class="text-danger">*</span></label>
-                        <input asp-for="Email" class="form-control" placeholder="Email*" />
+                        <input asp-for="Email" class="form-control" placeholder="Email" />
                     </div>
                     <div class="field">
                         <label>Phone<span class="text-danger">*</span></label>
-                        <input asp-for="Phone" class="form-control" placeholder="Phone*" />
+                        <input asp-for="Phone" class="form-control" placeholder="Phone" />
                     </div>
                 </div>
 
@@ -241,7 +254,7 @@
                     <div class="field">
                         <label>Preferred Contact Method<span class="text-danger">*</span></label>
                         <select asp-for="ContactMethod" class="form-select" required>
-                            <option value="">Preferred contact method*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Phone</option>
                             <option>Email</option>
                             <option>Text</option>
@@ -250,8 +263,8 @@
 
                     <div class="field">
                         <label>Best Time<span class="text-danger">*</span></label>
-                        <select asp-for="BestTimeToContact" class="form-select">
-                            <option value="">Best Time*</option>
+                        <select asp-for="BestTimeToContact" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>Morning</option>
                             <option>Afternoon</option>
                             <option>Evening</option>
@@ -269,8 +282,8 @@
                 <div class="lead-row three">
                     <div class="field">
                         <label>Coverage Type<span class="text-danger">*</span></label>
-                        <select asp-for="CoverageType" class="form-select">
-                            <option value="">Coverage Type*</option>
+                        <select asp-for="CoverageType" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>Individual</option>
                             <option>Family</option>
                             <option>Employer</option>
@@ -280,8 +293,8 @@
 
                     <div class="field">
                         <label>Currently Insured?<span class="text-danger">*</span></label>
-                        <select asp-for="CurrentCoverage" class="form-select">
-                            <option value="">Currently Insured?*</option>
+                        <select asp-for="CurrentCoverage" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>Yes</option>
                             <option>No</option>
                         </select>
@@ -289,8 +302,8 @@
 
                     <div class="field">
                         <label>Household Size<span class="text-danger">*</span></label>
-                        <select asp-for="HouseholdSize" class="form-select">
-                            <option value="">Household Size*</option>
+                        <select asp-for="HouseholdSize" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>1</option>
                             <option>2–3</option>
                             <option>4–5</option>
@@ -302,8 +315,8 @@
                 <div class="lead-row two">
                     <div class="field">
                         <label>Primary Concern<span class="text-danger">*</span></label>
-                        <select asp-for="PrimaryConcern" class="form-select">
-                            <option value="">Primary Concern*</option>
+                        <select asp-for="PrimaryConcern" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>Monthly Cost</option>
                             <option>High Deductibles</option>
                             <option>Doctor Network</option>
@@ -313,8 +326,8 @@
 
                     <div class="field">
                         <label>When Do You Need Coverage?<span class="text-danger">*</span></label>
-                        <select asp-for="Timeline" class="form-select">
-                            <option value="">When Do You Need Coverage?*</option>
+                        <select asp-for="Timeline" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
                             <option>Immediately</option>
                             <option>Within 30 Days</option>
                             <option>60+ Days</option>
@@ -337,7 +350,7 @@
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Submit Health Quote Request</button>
+                <button type="submit" class="btn btn-gold">Request My Quote</button>
             </div>
         </div>
 

@@ -34,7 +34,7 @@
 
 <style>
     body { background-color: #0f172a; color: #f8fafc; }
-    .section-card { background-color: #0f172a; border: 1.6px solid #c79931; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); color: #f8fafc; }
+    .section-card { background-color: #0f172a; border: 1.6px solid #c79931; padding: 18px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); color: #f8fafc; }
     .section-title { font-size: 1.5rem; font-weight: 900; color: #c79931; margin-bottom: 1rem; }
     .form-control, .form-select { border: 1.6px solid #c79931; background: #ffffff; color: #0f172a; }
     .form-control::placeholder, .form-select::placeholder{ color: rgba(15,23,42,0.55); }
@@ -106,7 +106,20 @@
 
     .field .form-control,
     .field .form-select{
-        margin-bottom: 10px;
+        margin-bottom: 8px;
+    }
+
+    .field .form-select{
+        cursor: pointer;
+        appearance: auto;
+    }
+
+    .field .form-select:invalid{
+        color: #64748b;
+    }
+
+    .field .form-select option[value=""]{
+        color: #64748b;
     }
 
 .disclaimer-wrap{
@@ -149,26 +162,26 @@
                 <div class="lead-row three">
                     <div class="field">
                         <label>First Name<span class="text-danger">*</span></label>
-                        <input asp-for="FirstName" class="form-control" placeholder="First Name*" required />
+                        <input asp-for="FirstName" class="form-control" placeholder="First Name" required />
                     </div>
                     <div class="field">
                         <label>Last Name<span class="text-danger">*</span></label>
-                        <input asp-for="LastName" class="form-control" placeholder="Last Name*" required />
+                        <input asp-for="LastName" class="form-control" placeholder="Last Name" required />
                     </div>
                     <div class="field">
                         <label>Age<span class="text-danger">*</span></label>
-                        <input asp-for="Age" class="form-control" placeholder="Age*" required />
+                        <input asp-for="Age" class="form-control" placeholder="Age" required />
                     </div>
                 </div>
 
                 <div class="lead-row two">
                     <div class="field">
                         <label>Email<span class="text-danger">*</span></label>
-                        <input asp-for="Email" class="form-control" placeholder="Email*" required />
+                        <input asp-for="Email" class="form-control" placeholder="Email" required />
                     </div>
                     <div class="field">
                         <label>Phone<span class="text-danger">*</span></label>
-                        <input asp-for="Phone" class="form-control" placeholder="Phone*" required />
+                        <input asp-for="Phone" class="form-control" placeholder="Phone" required />
                     </div>
                 </div>
 
@@ -178,7 +191,7 @@
                     <div class="field">
                         <label>Preferred Contact Method<span class="text-danger">*</span></label>
                         <select asp-for="ContactMethod" class="form-select" required>
-                            <option value="">Preferred contact method*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Phone</option>
                             <option>Email</option>
                             <option>Text</option>
@@ -187,7 +200,7 @@
                     <div class="field">
                         <label>Best Time to Contact<span class="text-danger">*</span></label>
                         <select asp-for="BestTimeToContact" class="form-select" required>
-                            <option value="">Best Time to Contact*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Morning</option>
                             <option>Afternoon</option>
                             <option>Evening</option>
@@ -206,7 +219,7 @@
                     <div class="field">
                         <label>Employment Type<span class="text-danger">*</span></label>
                         <select asp-for="EmploymentType" class="form-select" required>
-                            <option value="">Employment Type*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>W-2 Employee</option>
                             <option>1099 / Contractor</option>
                             <option>Business Owner</option>
@@ -215,12 +228,12 @@
                     </div>
                     <div class="field">
                         <label>Occupation<span class="text-danger">*</span></label>
-                        <input asp-for="Occupation" class="form-control" placeholder="Occupation*" required />
+                        <input asp-for="Occupation" class="form-control" placeholder="Occupation" required />
                     </div>
                     <div class="field">
                         <label>Annual Income Range<span class="text-danger">*</span></label>
                         <select asp-for="IncomeRange" class="form-select" required>
-                            <option value="">Annual Income Range*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Under $50k</option>
                             <option>$50k–$100k</option>
                             <option>$100k–$250k</option>
@@ -237,7 +250,7 @@
                     <div class="field">
                         <label>Current Disability Coverage<span class="text-danger">*</span></label>
                         <select asp-for="CurrentCoverage" class="form-select" required>
-                            <option value="">Current Disability Coverage*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>None</option>
                             <option>Employer Only</option>
                             <option>Individual Policy</option>
@@ -247,7 +260,7 @@
                     <div class="field">
                         <label>Income Protection Importance<span class="text-danger">*</span></label>
                         <select asp-for="IncomeProtectionImportance" class="form-select" required>
-                            <option value="">Income Protection Importance*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Critical</option>
                             <option>Important</option>
                             <option>Somewhat Important</option>
@@ -257,7 +270,7 @@
                     <div class="field">
                         <label>Decision Timeline<span class="text-danger">*</span></label>
                         <select asp-for="Timeline" class="form-select" required>
-                            <option value="">Decision Timeline*</option>
+                            <option value="">-- Select an Option --</option>
                             <option>Immediately</option>
                             <option>30–60 Days</option>
                             <option>3–6 Months</option>
@@ -281,7 +294,7 @@
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Submit Disability Quote Request</button>
+                <button type="submit" class="btn btn-gold">Request My Quote</button>
             </div>
         </div>
 
