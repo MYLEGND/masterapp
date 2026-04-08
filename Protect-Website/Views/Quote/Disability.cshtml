@@ -20,7 +20,7 @@
 
     <p class="required-note text-center">
         <strong>
-            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+            * Fields marked with an asterisk are required.
         </strong>
     </p>
 
@@ -154,26 +154,26 @@
 
                 <div class="lead-row three">
                     <div class="field">
-                        <label>First Name<span class="text-danger">*</span></label>
+                        <label>First Name*</label>
                         <input asp-for="FirstName" class="form-control" placeholder="First Name" required />
                     </div>
                     <div class="field">
-                        <label>Last Name<span class="text-danger">*</span></label>
+                        <label>Last Name*</label>
                         <input asp-for="LastName" class="form-control" placeholder="Last Name" required />
                     </div>
                     <div class="field">
-                        <label>Age<span class="text-danger">*</span></label>
+                        <label>Age*</label>
                         <input asp-for="Age" class="form-control" placeholder="Age" required />
                     </div>
                 </div>
 
                 <div class="lead-row two">
                     <div class="field">
-                        <label>Email<span class="text-danger">*</span></label>
+                        <label>Email*</label>
                         <input asp-for="Email" class="form-control" placeholder="Email" required />
                     </div>
                     <div class="field">
-                        <label>Phone<span class="text-danger">*</span></label>
+                        <label>Phone*</label>
                         <input asp-for="Phone" class="form-control" placeholder="Phone" required />
                     </div>
                 </div>
@@ -182,7 +182,7 @@
 
                 <div class="lead-row two">
                     <div class="field">
-                        <label>Preferred Contact Method<span class="text-danger">*</span></label>
+                        <label>Preferred Contact Method*</label>
                         <select asp-for="ContactMethod" class="form-select" required>
                             <option value="">-- Select an Option --</option>
                             <option>Phone</option>
@@ -191,7 +191,7 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label>Best Time to Contact<span class="text-danger">*</span></label>
+                        <label>Best Time To Contact*</label>
                         <select asp-for="BestTimeToContact" class="form-select" required>
                             <option value="">-- Select an Option --</option>
                             <option>Morning</option>
@@ -210,7 +210,7 @@
 
                 <div class="lead-row two">
                     <div class="field">
-                        <label>Employment Type<span class="text-danger">*</span></label>
+                        <label>Employment Type*</label>
                         <select asp-for="EmploymentType" class="form-select" required>
                             <option value="">-- Select an Option --</option>
                             <option>W-2 Employee</option>
@@ -220,7 +220,7 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label>Occupation<span class="text-danger">*</span></label>
+                        <label>Occupation*</label>
                         <input asp-for="Occupation" class="form-control" placeholder="Occupation" required />
                     </div>
                 </div>
@@ -229,7 +229,7 @@
 
                 <div class="lead-row two">
                     <div class="field">
-                        <label>Income Protection Importance<span class="text-danger">*</span></label>
+                        <label>Income Protection Importance*</label>
                         <select asp-for="IncomeProtectionImportance" class="form-select" required>
                             <option value="">-- Select an Option --</option>
                             <option>Critical</option>
@@ -249,13 +249,13 @@
             <div class="form-check disclaimer-check">
                 <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
                 <label class="form-check-label" for="disclaimerCheckbox">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my disability insurance inquiry and personalized coverage review.<span class="text-danger">*</span>
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my disability insurance inquiry and personalized coverage review.*
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Request More Information</button>
+                <button type="submit" class="btn btn-gold">Explore My Options</button>
             </div>
         </div>
 
