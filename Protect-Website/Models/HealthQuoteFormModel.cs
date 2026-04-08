@@ -22,7 +22,6 @@ namespace Protect_Website.Models
         public int? Age { get; set; }
 
         // ===================== COVERAGE CONTEXT =====================
-        [Required(ErrorMessage = "Coverage Type is required")]
         public string CoverageType { get; set; } = "";
 
         public string CurrentCoverage { get; set; } = "";

@@ -28,7 +28,6 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Occupation is required")]
         public string Occupation { get; set; } = "";
 
-        [Required(ErrorMessage = "Income Range is required")]
         public string IncomeRange { get; set; } = "";
 
         // ===================== COVERAGE AWARENESS =====================
