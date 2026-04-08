@@ -1,7 +1,7 @@
 @model Protect_Website.Models.HealthQuoteFormModel
 
 @{
-    ViewData["Title"] = "Health Insurance Quote";
+    ViewData["Title"] = "Explore Your Health Insurance Options";
     ViewData["PageKey"] = "quote_health";
 }
 
@@ -14,7 +14,7 @@
             color: #a68023;
             letter-spacing: .5px;
             margin-bottom: 6px;">
-            Health Insurance Quote
+            Explore Your Health Insurance Options
         </h1>
     </div>
 
@@ -215,7 +215,7 @@
             <!-- CORE DETAILS -->
             <div class="lead-block">
 
-                <div class="section-title">Core Quote Details</div>
+                <div class="section-title">Tell Us About You</div>
 
                 <div class="lead-row three">
                     <div class="field">
@@ -272,7 +272,7 @@
             <!-- ADDITIONAL DETAILS -->
             <div class="lead-block">
 
-                <div class="section-title">Additional Details</div>
+                <div class="section-title">Help Us Understand Your Needs</div>
 
                 <div class="lead-row two">
                     <div class="field">
@@ -311,7 +311,7 @@
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Request My Custom Plan</button>
+                <button type="submit" class="btn btn-gold">Request More Information</button>
             </div>
         </div>
 
@@ -329,7 +329,7 @@ document.addEventListener("DOMContentLoaded", function () {
     form.addEventListener('submit', function(event) {
         if (!checkbox.checked) {
             event.preventDefault();
-            alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact me regarding your health insurance inquiry and personalized coverage review.');
+            alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your health insurance inquiry and personalized coverage review.');
         }
     });
 });
