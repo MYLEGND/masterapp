@@ -14,6 +14,7 @@ namespace Protect_Website.Controllers
         private readonly string tenantId;
         private readonly string clientId;
         private readonly string clientSecret;
+        private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
 
@@ -22,6 +23,7 @@ namespace Protect_Website.Controllers
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
+            senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
         }
@@ -124,7 +126,7 @@ namespace Protect_Website.Controllers
                     SaveToSentItems = true
                 };
 
-                await graphClient.Users[recipientEmail].SendMail.PostAsync(requestBody);
+                await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = "Life"; // or model.CoverageType if dynamic

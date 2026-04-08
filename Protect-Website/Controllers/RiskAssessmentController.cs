@@ -17,6 +17,7 @@ namespace Protect_Website.Controllers
         private readonly string tenantId;
         private readonly string clientId;
         private readonly string clientSecret;
+        private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
 
@@ -25,6 +26,7 @@ namespace Protect_Website.Controllers
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
+            senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
         }
@@ -220,7 +222,7 @@ var finalHtml = ApplyHeadingHighlighting(qa.ToString() + resultsHtml);
                     SaveToSentItems = true
                 };
 
-                await graphClient.Users[recipientEmail].SendMail.PostAsync(requestBody);
+                await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
                 // ✅ Thank you routing
                 TempData["QuoteType"] = "RiskAssessment";
