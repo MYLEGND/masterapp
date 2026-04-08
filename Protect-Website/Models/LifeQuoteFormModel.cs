@@ -30,17 +30,14 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Primary Reason is required")]
         public required string PrimaryReason { get; set; }
 
-        [Required(ErrorMessage = "Current Coverage is required")]
-        public required string CurrentCoverage { get; set; }
+        public string CurrentCoverage { get; set; } = "";
 
         [Required(ErrorMessage = "Coverage Amount is required")]
         public required string CoverageAmount { get; set; }
 
-        [Required(ErrorMessage = "Policy Type Interest is required")]
-        public required string PolicyTypeInterest { get; set; }
+        public string PolicyTypeInterest { get; set; } = "";
 
-        [Required(ErrorMessage = "Timeline is required")]
-        public required string Timeline { get; set; }
+        public string Timeline { get; set; } = "";
 
         // ===================== CONTACT PREFERENCES =====================
         [Required(ErrorMessage = "Preferred Contact Method is required")]
