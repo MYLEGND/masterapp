@@ -276,7 +276,7 @@
 
                 <div class="lead-row three">
                     <div class="field">
-                        <label>Coverage Amount Goal<span class="text-danger">*</span></label>
+                        <label>Monthly Budget Goal<span class="text-danger">*</span></label>
                         <input asp-for="CoverageType" class="form-control" placeholder="e.g. $750 monthly budget" required />
                     </div>
 
@@ -297,10 +297,14 @@
                         <label>Primary Concern<span class="text-danger">*</span></label>
                         <select asp-for="PrimaryConcern" class="form-select" required>
                             <option value="">-- Select an Option --</option>
-                            <option>Monthly Cost</option>
-                            <option>High Deductibles</option>
-                            <option>Doctor Network</option>
+                            <option>Lower Monthly Premium</option>
+                            <option>Lower Deductible</option>
+                            <option>Better Doctor Network</option>
                             <option>Prescription Coverage</option>
+                            <option>Family Coverage</option>
+                            <option>Dental / Vision Options</option>
+                            <option>Marketplace / ACA Guidance</option>
+                            <option>Not Sure / Need Guidance</option>
                         </select>
                     </div>
                 </div>
@@ -314,13 +318,13 @@
             <div class="form-check disclaimer-check">
                 <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
                 <label class="form-check-label" for="disclaimerCheckbox">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my health insurance quote request.<span class="text-danger">*</span>
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my health insurance inquiry and personalized coverage review.<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Request My Quote</button>
+                <button type="submit" class="btn btn-gold">Request My Custom Plan</button>
             </div>
         </div>
 
@@ -329,6 +333,7 @@
 </form>
 
 <script>
+document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById('healthQuoteForm');
     const checkbox = document.getElementById('disclaimerCheckbox');
 
@@ -337,7 +342,7 @@
     form.addEventListener('submit', function(event) {
         if (!checkbox.checked) {
             event.preventDefault();
-            alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact me regarding your health insurance interest.');
+            alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact me regarding your health insurance inquiry and personalized coverage review.');
         }
     });
 });
