@@ -5,6 +5,7 @@ using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
+using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
 {
@@ -17,8 +18,9 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
+        private readonly AgentTrackingResolver _resolver;
 
-        public HomeQuoteController(IConfiguration configuration)
+        public HomeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -26,6 +28,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
+            _resolver = resolver;
         }
 
 
@@ -39,18 +42,15 @@ namespace Protect_Website.Controllers
         // POST: /Quote/Home
         [HttpPost("Home")]
         public async Task<IActionResult> SubmitHomeQuote(HomeQuoteFormModel model)
-            private readonly AgentTrackingResolver _resolver;
         {
             if (!ModelState.IsValid)
-            public HomeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
                 return View("~/Views/Quote/Home.cshtml", model);
 
-            var leadRecipientEmail = ResolveLeadRecipientEmail();
+            var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
 
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                _resolver = resolver;
                 var graphClient = new GraphServiceClient(credential);
 
                 // Email body uses `model` for all values
@@ -60,7 +60,7 @@ namespace Protect_Website.Controllers
                     Body = new ItemBody
                     {
                         ContentType = BodyType.Html,
-                var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+                        Content = $@"
 <h2>Home Insurance Quote Lead</h2>
 
 <h3>Section 1 — Applicant Information</h3>
@@ -137,7 +137,6 @@ namespace Protect_Website.Controllers
 <p><strong>Effective Date (New Policy):</strong> {(model.NewPolicyEffectiveDate.HasValue ? model.NewPolicyEffectiveDate.Value.ToString("MM/dd/yyyy") : "")}</p>
 
 <hr />
-            private async Task<string> ResolveLeadRecipientEmailAsync()
 <h3>Underwriting Information</h3>
 <p><strong>Cancelled/Declined/Non-Renewed last 5 years:</strong> {model.CancelledDeclinedNonRenewedLast5Years}</p>
 <p><strong>Home Under Construction:</strong> {model.HomeUnderConstruction}</p>
@@ -145,49 +144,10 @@ namespace Protect_Website.Controllers
 <p><strong># of Employees:</strong> {model.NumberOfEmployees}</p>
 <p><strong>Swimming Pool On Premises:</strong> {model.SwimmingPoolOnPremises}</p>
 <p><strong>Dogs On Premises:</strong> {model.DogsOnPremises}</p>
-
-                string? slug = null;
-
-                var formSlug = Request?.Form["AgentSlug"].ToString();
-                if (!string.IsNullOrWhiteSpace(formSlug))
-                    slug = formSlug.Trim();
-
-                if (string.IsNullOrWhiteSpace(slug))
-                    slug = ExtractSlugFromPath(Request?.Path.Value);
-
-                if (string.IsNullOrWhiteSpace(slug))
-                    slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-
-                if (!string.IsNullOrWhiteSpace(slug))
-                {
-                    var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
-                    if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    {
-                        return bySlug.Profile.AgentUpn.Trim();
-                    }
-                }
 <hr />
 
 <h3>Additional Carrier Questions</h3>
 <p><strong>Paperless:</strong> {model.Paperless}</p>
-            private static string? ExtractSlugFromPath(string? pathOrUrl)
-            {
-                if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
-
-                var value = pathOrUrl.Trim();
-                if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
-                {
-                    value = uri.AbsolutePath;
-                }
-
-                var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
-                if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
-                {
-                    return segments[1];
-                }
-
-                return null;
-            }
 <p><strong>Number of Animals on Premises:</strong> {model.NumberOfAnimalsOnPremises}</p>
 <p><strong>Lapse in Coverage Past 12 Months:</strong> {model.LapseInCoveragePast12Months}</p>
 <p><strong>Auto Years With Prior Carrier/Agent:</strong> {model.AutoYearsWithPriorCarrierOrAgent}</p>
@@ -353,7 +313,7 @@ namespace Protect_Website.Controllers
             }
         }
 
-        private string ResolveLeadRecipientEmail()
+        private async Task<string> ResolveLeadRecipientEmailAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
@@ -362,7 +322,47 @@ namespace Protect_Website.Controllers
                 return trackingProfile.AgentUpn.Trim();
             }
 
+            string? slug = null;
+
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug))
+                slug = formSlug.Trim();
+
+            if (string.IsNullOrWhiteSpace(slug))
+                slug = ExtractSlugFromPath(Request?.Path.Value);
+
+            if (string.IsNullOrWhiteSpace(slug))
+                slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+
+            if (!string.IsNullOrWhiteSpace(slug))
+            {
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
+                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
+                {
+                    return bySlug.Profile.AgentUpn.Trim();
+                }
+            }
+
             return recipientEmail;
+        }
+
+        private static string? ExtractSlugFromPath(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
+
+            var value = pathOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                value = uri.AbsolutePath;
+            }
+
+            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[1];
+            }
+
+            return null;
         }
     }
 }
