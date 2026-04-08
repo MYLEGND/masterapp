@@ -62,7 +62,7 @@ namespace Protect_Website.Controllers
                             <h3>Employment</h3>
                             <p><strong>Employment Type:</strong> {model.EmploymentType}</p>
                             <p><strong>Occupation:</strong> {model.Occupation}</p>
-                            <p><strong>Income Range:</strong> {model.IncomeRange}</p>
+                            <p><strong>Requested Coverage Amount:</strong> {model.IncomeRange}</p>
 
                             <hr />
 
