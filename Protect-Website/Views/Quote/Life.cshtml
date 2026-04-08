@@ -1,7 +1,7 @@
 @model Protect_Website.Models.LifeQuoteFormModel
 
 @{
-    ViewData["Title"] = "Life Insurance Quote";
+    ViewData["Title"] = "Life Insurance Review";
     ViewData["PageKey"] = "quote_life";
 }
 
@@ -14,7 +14,7 @@
             color: #a68023;
             letter-spacing: .5px;
             margin-bottom: 6px;">
-            Life Insurance Quote
+            Life Insurance Review
         </h1>
     </div>
 
@@ -241,6 +241,32 @@
 
                 <div class="lead-row two">
                     <div class="field">
+                        <label>Primary Reason<span class="text-danger">*</span></label>
+                        <select name="PrimaryReason" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
+                            <option>Legacy planning</option>
+                            <option>Protect family income</option>
+                            <option>Cover debts / mortgage</option>
+                            <option>Business or estate planning</option>
+                            <option>Final expenses</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Coverage Amount<span class="text-danger">*</span></label>
+                        <input type="text" name="CoverageAmount" class="form-control" placeholder="e.g. $500,000" required />
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ADDITIONAL DETAILS -->
+            <div class="lead-block">
+
+                <div class="section-title">Additional Details</div>
+
+                <div class="lead-row three">
+                    <div class="field">
                         <label>Marital Status<span class="text-danger">*</span></label>
                         <select name="MaritalStatus" class="form-select" required>
                             <option value="">-- Select an Option --</option>
@@ -261,9 +287,7 @@
                             <option>Text</option>
                         </select>
                     </div>
-                </div>
 
-                <div class="lead-row two">
                     <div class="field">
                         <label>Best Time to Contact<span class="text-danger">*</span></label>
                         <select name="BestTimeToContact" class="form-select" required>
@@ -274,67 +298,6 @@
                         </select>
                     </div>
 
-                    <div class="field">
-                        <!-- spacer to keep the grid balanced on desktop -->
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- ADDITIONAL DETAILS -->
-            <div class="lead-block">
-
-                <div class="section-title">Additional Details</div>
-
-                <div class="lead-row two">
-                    <div class="field">
-                        <label>Primary Reason<span class="text-danger">*</span></label>
-                        <select name="PrimaryReason" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Legacy planning</option>
-                            <option>Protect family income</option>
-                            <option>Cover debts / mortgage</option>
-                            <option>Business or estate planning</option>
-                            <option>Final expenses</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>Current Coverage<span class="text-danger">*</span></label>
-                        <select name="CurrentCoverage" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>No</option>
-                            <option>Yes – Individual</option>
-                            <option>Yes – Employer provided</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="lead-row three">
-                    <div class="field">
-                        <label>Coverage Amount<span class="text-danger">*</span></label>
-                        <input type="text" name="CoverageAmount" class="form-control" placeholder="e.g. $500,000" required />
-                    </div>
-
-                    <div class="field">
-                        <label>Policy Type Interest<span class="text-danger">*</span></label>
-                        <select name="PolicyTypeInterest" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Term</option>
-                            <option>Permanent (Whole / IUL)</option>
-                            <option>Not sure – need guidance</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>Timeline<span class="text-danger">*</span></label>
-                        <select name="Timeline" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Immediately</option>
-                            <option>Within 30 days</option>
-                            <option>Just exploring options</option>
-                        </select>
-                    </div>
                 </div>
 
             </div>
@@ -346,13 +309,13 @@
             <div class="form-check disclaimer-check">
                 <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
                 <label class="form-check-label" for="disclaimerCheckbox">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my life insurance quote request.<span class="text-danger">*</span>
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my life insurance inquiry and personalized coverage review.<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Request My Quote</button>
+                <button type="submit" class="btn btn-gold">Request My Custom Plan</button>
             </div>
         </div>
 
@@ -368,7 +331,7 @@
         form.addEventListener('submit', function(event) {
             if (!checkbox.checked) {
                 event.preventDefault();
-                alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your life insurance interest.');
+                alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your life insurance inquiry and personalized coverage review.');
             }
         });
     }
