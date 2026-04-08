@@ -191,11 +191,12 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/meta-connect")]
     public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null)
     {
+        var target = string.IsNullOrWhiteSpace(returnUrl) ? "/WebsiteAnalytics/Index" : returnUrl!;
         try
         {
             var agentId = await ResolveMetaConnectionAgentIdAsync();
             if (!agentId.HasValue || agentId.Value == Guid.Empty)
-                return BadRequest(new { message = "Unable to resolve agent context for Meta Ads connection." });
+                return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Unable to resolve agent context for Meta Ads connection.")}");
 
             var connectUrl = _metaAdsOAuth.BuildConnectUrl(agentId.Value, returnUrl);
             return Redirect(connectUrl);
@@ -203,7 +204,7 @@ namespace AgentPortal.Controllers;
         catch (InvalidOperationException ex)
         {
             _logger.LogWarning(ex, "Meta connect request failed.");
-            return BadRequest(new { message = ex.Message });
+            return Redirect($"{target}?meta=error&message={Uri.EscapeDataString(ex.Message)}");
         }
     }
 
