@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
 using Protect_Website.Models;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -49,6 +50,8 @@ namespace Protect_Website.Controllers
                 ViewData["StartStep"] = model.CurrentStep <= 0 ? 1 : model.CurrentStep;
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
+
+            var leadRecipientEmail = ResolveLeadRecipientEmail();
 
             try
             {
@@ -331,7 +334,7 @@ namespace Protect_Website.Controllers
                     Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
                     ToRecipients = new List<Recipient>
                     {
-                        new Recipient { EmailAddress = new EmailAddress { Address = recipientEmail } }
+                        new Recipient { EmailAddress = new EmailAddress { Address = leadRecipientEmail } }
                     }
                 };
 
@@ -348,6 +351,18 @@ namespace Protect_Website.Controllers
                 ViewData["StartStep"] = model.CurrentStep <= 0 ? 1 : model.CurrentStep;
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
+        }
+
+        private string ResolveLeadRecipientEmail()
+        {
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile &&
+                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                return trackingProfile.AgentUpn.Trim();
+            }
+
+            return recipientEmail;
         }
     }
 }

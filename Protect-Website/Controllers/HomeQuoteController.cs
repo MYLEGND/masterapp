@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
 using Protect_Website.Models;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -39,6 +40,8 @@ namespace Protect_Website.Controllers
         {
             if (!ModelState.IsValid)
                 return View("~/Views/Quote/Home.cshtml", model);
+
+            var leadRecipientEmail = ResolveLeadRecipientEmail();
 
             try
             {
@@ -255,7 +258,7 @@ namespace Protect_Website.Controllers
                         {
                             EmailAddress = new EmailAddress
                             {
-                                Address = recipientEmail
+                                Address = leadRecipientEmail
                             }
                         }
                     }
@@ -305,6 +308,18 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
                 return View("~/Views/Quote/Home.cshtml", model);
             }
+        }
+
+        private string ResolveLeadRecipientEmail()
+        {
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile &&
+                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                return trackingProfile.AgentUpn.Trim();
+            }
+
+            return recipientEmail;
         }
     }
 }

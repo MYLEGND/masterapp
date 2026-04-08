@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
 using Protect_Website.Models;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -50,6 +51,8 @@ namespace Protect_Website.Controllers
         public async Task<IActionResult> Auto(AutoQuoteFormModel model)
         {
             NormalizeLists(model);
+
+            var leadRecipientEmail = ResolveLeadRecipientEmail();
 
             // business rule
             if (model.Drivers.Count == 0)
@@ -384,7 +387,7 @@ namespace Protect_Website.Controllers
                     Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
                     ToRecipients = new List<Recipient>
                     {
-                        new Recipient { EmailAddress = new EmailAddress { Address = recipientEmail } }
+                        new Recipient { EmailAddress = new EmailAddress { Address = leadRecipientEmail } }
                     }
                 };
 
@@ -402,6 +405,18 @@ namespace Protect_Website.Controllers
                 ViewData["StartStep"] = 5;
                 return View("~/Views/Quote/Auto.cshtml", model);
             }
+        }
+
+        private string ResolveLeadRecipientEmail()
+        {
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile &&
+                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                return trackingProfile.AgentUpn.Trim();
+            }
+
+            return recipientEmail;
         }
 
         private static void NormalizeLists(AutoQuoteFormModel model)
