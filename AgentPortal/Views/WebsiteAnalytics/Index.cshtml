@@ -38,12 +38,21 @@
       <div class="hero-link-panel hero-link-panel-meta">
         <div class="hero-link-label">Meta Ads</div>
         <div class="text-silver hero-link-help">Open Ads Manager to review campaigns, spend, and performance.</div>
-        <a class="btn btn-gold mt-2 hero-link-meta-btn"
-           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns"
-           target="_blank"
-           rel="noopener">
-          Open Meta Ads Manager
-        </a>
+        <div class="hero-link-meta-actions mt-2">
+            <a class="btn btn-gold hero-link-meta-btn"
+               href="https://adsmanager.facebook.com/adsmanager/manage/campaigns"
+               target="_blank"
+               rel="noopener">
+              Open Meta Ads Manager
+            </a>
+            <button type="button"
+                    class="btn btn-outline-light hero-link-meta-btn"
+                    id="meta-campaigns-open"
+                    data-bs-toggle="modal"
+                    data-bs-target="#metaCampaignsModal">
+                Campaigns
+            </button>
+        </div>
       </div>
         </div>
     </div>
@@ -500,6 +509,45 @@
             <thead><tr><th>When (UTC)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th></tr></thead>
             <tbody id="leads-body"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Meta Ads Campaigns · <span id="meta-campaigns-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="fa-muted">Account: <span class="fa-meta-strong" id="meta-campaigns-account">—</span></div>
+            <div class="fa-muted">Last sync: <span id="meta-campaigns-synced">—</span></div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Campaign</th>
+                        <th>Status</th>
+                        <th>Objective</th>
+                        <th class="text-end">Spend</th>
+                        <th class="text-end">Impr.</th>
+                        <th class="text-end">Reach</th>
+                        <th class="text-end">Clicks</th>
+                        <th class="text-end">CTR</th>
+                        <th class="text-end">CPC</th>
+                        <th class="text-end">CPM</th>
+                        <th class="text-end">Leads</th>
+                    </tr>
+                </thead>
+                <tbody id="meta-campaigns-body">
+                    <tr><td colspan="11" class="fa-loading">Loading campaigns…</td></tr>
+                </tbody>
+            </table>
+        </div>
       </div>
     </div>
   </div>

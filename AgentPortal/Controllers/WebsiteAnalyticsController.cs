@@ -16,6 +16,7 @@ namespace AgentPortal.Controllers;
     public class WebsiteAnalyticsController : Controller
     {
         private readonly IAnalyticsQueryService _analytics;
+        private readonly IMetaAdsService _metaAds;
         private readonly Services.Tracking.IAgentTrackingService _tracking;
         private readonly ILogger<WebsiteAnalyticsController> _logger;
         private readonly Infrastructure.Data.MasterAppDbContext _db;
@@ -23,9 +24,10 @@ namespace AgentPortal.Controllers;
         private readonly IConfiguration _config;
         private readonly EffectiveAgentContext _effectiveContext;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, Services.Tracking.IAgentTrackingService tracking, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, Services.Tracking.IAgentTrackingService tracking, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
         {
             _analytics = analytics;
+            _metaAds = metaAds;
             _tracking = tracking;
             _logger = logger;
             _db = db;
@@ -161,6 +163,24 @@ namespace AgentPortal.Controllers;
         var options = new AnalyticsQueryOptions { OrderBy = orderBy ?? "leads", Desc = desc, Take = take, Skip = skip };
         var result = await _analytics.GetAgentPerformanceAsync(range, ScopeContext.Global, options);
         return Json(result);
+    }
+
+    [HttpGet("meta-campaigns")]
+    [HttpGet("/website-analytics/meta-campaigns")]
+    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null)
+    {
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+            var scope = await ResolveScopeAsync(agentProfileId, team: false);
+            var result = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Meta campaigns request failed due to configuration/scope constraints.");
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)

@@ -12,7 +12,8 @@
       conversions: null,
       leads: null,
       agentPerf: null,
-      traffic: null
+      traffic: null,
+      metaCampaigns: null
     },
     agentProfileId: null,
     scope: {
@@ -58,7 +59,8 @@
     quote: '/WebsiteAnalytics/quote-funnel',
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
-    agentPerf: '/WebsiteAnalytics/agent-performance'
+    agentPerf: '/WebsiteAnalytics/agent-performance',
+    metaCampaigns: '/WebsiteAnalytics/meta-campaigns'
   };
 
   function abort(key) {
@@ -74,7 +76,22 @@
     const qs = new URLSearchParams(params).toString();
     try {
       const res = await fetch(`${url}?${qs}`, { signal: ctrl.signal });
-      if (!res.ok) throw new Error(`${key} fetch failed`);
+      if (!res.ok) {
+        let detail = '';
+        try {
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            const payload = await res.json();
+            detail = payload?.message || payload?.error || '';
+          } else {
+            detail = (await res.text()) || '';
+          }
+        } catch {
+          detail = '';
+        }
+        const msg = detail ? `${key} fetch failed: ${detail}` : `${key} fetch failed`;
+        throw new Error(msg);
+      }
       return await res.json();
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -415,6 +432,59 @@
     if (isFounder && state.cache.traffic) renderCampaignInsights(state.cache.traffic, data);
   }
 
+  function formatMoney(v) {
+    const num = Number(v || 0);
+    return Number.isFinite(num)
+      ? num.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })
+      : '$0.00';
+  }
+
+  function formatInt(v) {
+    const num = Number(v || 0);
+    return Number.isFinite(num) ? num.toLocaleString('en-US') : '0';
+  }
+
+  function formatPct(v) {
+    const num = Number(v || 0);
+    return Number.isFinite(num) ? `${num.toFixed(2)}%` : '0.00%';
+  }
+
+  function renderMetaCampaigns(data) {
+    state.cache.metaCampaigns = data;
+    setText('meta-campaigns-range-label', data.rangeLabel || '');
+    setText('meta-campaigns-account', data.accountId || '—');
+    setText('meta-campaigns-synced', data.syncedUtc ? formatDisplayDate(data.syncedUtc) : '—');
+
+    renderTable('meta-campaigns-body', data.rows || [], [
+      { render: r => `${r.campaignName || '—'}<div class="fa-muted small">${r.campaignId || ''}</div>` },
+      { key: 'status' },
+      { key: 'objective' },
+      { render: r => formatMoney(r.spend), align: 'text-end' },
+      { render: r => formatInt(r.impressions), align: 'text-end' },
+      { render: r => formatInt(r.reach), align: 'text-end' },
+      { render: r => formatInt(r.clicks), align: 'text-end' },
+      { render: r => formatPct(r.ctr), align: 'text-end' },
+      { render: r => formatMoney(r.cpc), align: 'text-end' },
+      { render: r => formatMoney(r.cpm), align: 'text-end' },
+      { render: r => formatInt(r.leads), align: 'text-end' }
+    ]);
+  }
+
+  async function loadMetaCampaigns() {
+    try {
+      const data = await fetchJson('metacampaigns', endpoints.metaCampaigns, rangeParams());
+      if (!data) return;
+      renderMetaCampaigns(data);
+    } catch (err) {
+      const body = document.getElementById('meta-campaigns-body');
+      const message = (err && err.message) ? err.message : 'Unable to load Meta campaigns.';
+      if (body) {
+        body.innerHTML = `<tr><td colspan="11" class="text-danger">${message}</td></tr>`;
+      }
+      console.error(err);
+    }
+  }
+
   // Team rollup (founder-only)
   function renderList(id, items, formatter) {
     const el = document.getElementById(id);
@@ -563,6 +633,7 @@
       case 'convModal': loadConv(); break;
       case 'leadsModal': loadLeads(); break;
       case 'agentPerfModal': loadAgentPerf(); break;
+      case 'metaCampaignsModal': loadMetaCampaigns(); break;
       default: loadSummary(); break;
     }
   }
@@ -634,6 +705,7 @@
     attachModal('quoteModal', loadQuote);
     attachModal('convModal', loadConv);
     attachModal('leadsModal', loadLeads);
+    attachModal('metaCampaignsModal', loadMetaCampaigns);
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
     }

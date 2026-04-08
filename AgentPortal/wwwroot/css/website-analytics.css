@@ -58,6 +58,14 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     font-weight: 900;
     letter-spacing: .01em;
 }
+.hero-link-meta-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+.hero-link-meta-actions .btn {
+    min-height: 38px;
+}
 .hero-link-url {
     font-size: 1rem;
     color: #f8fafc;
