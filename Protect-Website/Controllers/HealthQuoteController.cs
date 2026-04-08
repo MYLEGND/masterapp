@@ -5,6 +5,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
+using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
 {
@@ -17,8 +18,9 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
+        private readonly AgentTrackingResolver _resolver;
 
-        public HealthQuoteController(IConfiguration configuration)
+        public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -26,6 +28,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
+            _resolver = resolver;
         }
 
         // ===================== GET =====================
@@ -40,7 +43,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     if (!ModelState.IsValid)
         return View("~/Views/Quote/Health.cshtml", model);
 
-    var leadRecipientEmail = ResolveLeadRecipientEmail();
+    var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
 
     try
     {
@@ -140,7 +143,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     }
 }
 
-        private string ResolveLeadRecipientEmail()
+        private async Task<string> ResolveLeadRecipientEmailAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
@@ -149,7 +152,47 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
                 return trackingProfile.AgentUpn.Trim();
             }
 
+            string? slug = null;
+
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug))
+                slug = formSlug.Trim();
+
+            if (string.IsNullOrWhiteSpace(slug))
+                slug = ExtractSlugFromPath(Request?.Path.Value);
+
+            if (string.IsNullOrWhiteSpace(slug))
+                slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+
+            if (!string.IsNullOrWhiteSpace(slug))
+            {
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
+                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
+                {
+                    return bySlug.Profile.AgentUpn.Trim();
+                }
+            }
+
             return recipientEmail;
+        }
+
+        private static string? ExtractSlugFromPath(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
+
+            var value = pathOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                value = uri.AbsolutePath;
+            }
+
+            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[1];
+            }
+
+            return null;
         }
     }
 }
