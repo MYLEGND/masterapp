@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
 using Protect_Website.Models;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
@@ -36,6 +37,8 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
 {
     if (!ModelState.IsValid)
         return View("~/Views/Quote/Health.cshtml", model);
+
+    var leadRecipientEmail = ResolveLeadRecipientEmail();
 
     try
     {
@@ -110,7 +113,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
                 {
                     EmailAddress = new EmailAddress
                     {
-                        Address = recipientEmail
+                        Address = leadRecipientEmail
                     }
                 }
             }
@@ -134,5 +137,17 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         return View("~/Views/Quote/Health.cshtml", model);
     }
 }
+
+        private string ResolveLeadRecipientEmail()
+        {
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile &&
+                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                return trackingProfile.AgentUpn.Trim();
+            }
+
+            return recipientEmail;
+        }
     }
 }
