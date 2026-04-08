@@ -32,13 +32,11 @@ namespace Protect_Website.Models
         public string IncomeRange { get; set; } = "";
 
         // ===================== COVERAGE AWARENESS =====================
-        [Required(ErrorMessage = "Current Coverage is required")]
         public string CurrentCoverage { get; set; } = "";
 
         [Required(ErrorMessage = "Income Protection Importance is required")]
         public string IncomeProtectionImportance { get; set; } = "";
 
-        [Required(ErrorMessage = "Timeline is required")]
         public string Timeline { get; set; } = "";
 
         // ===================== CONTACT PREFERENCES =====================

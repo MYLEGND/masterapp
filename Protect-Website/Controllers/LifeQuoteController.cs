@@ -64,10 +64,7 @@ namespace Protect_Website.Controllers
 
 <h3>Coverage Goals</h3>
 <p><strong>Primary Reason:</strong> {model.PrimaryReason}</p>
-<p><strong>Current Coverage:</strong> {model.CurrentCoverage}</p>
 <p><strong>Desired Coverage Amount:</strong> {model.CoverageAmount}</p>
-<p><strong>Policy Interest:</strong> {model.PolicyTypeInterest}</p>
-<p><strong>Timeline:</strong> {model.Timeline}</p>
 
 <hr />
 

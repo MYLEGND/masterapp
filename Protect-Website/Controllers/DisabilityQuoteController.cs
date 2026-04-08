@@ -67,9 +67,7 @@ namespace Protect_Website.Controllers
                             <hr />
 
                             <h3>Coverage Awareness</h3>
-                            <p><strong>Current Coverage:</strong> {model.CurrentCoverage}</p>
                             <p><strong>Income Protection Importance:</strong> {model.IncomeProtectionImportance}</p>
-                            <p><strong>Decision Timeline:</strong> {model.Timeline}</p>
 
                             <hr />
 

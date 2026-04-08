@@ -25,7 +25,6 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Coverage Type is required")]
         public string CoverageType { get; set; } = "";
 
-        [Required(ErrorMessage = "Current Coverage is required")]
         public string CurrentCoverage { get; set; } = "";
 
         [Required(ErrorMessage = "Primary Concern is required")]
@@ -34,7 +33,6 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Household Size is required")]
         public string HouseholdSize { get; set; } = "";
 
-        [Required(ErrorMessage = "Timeline is required")]
         public string Timeline { get; set; } = "";
 
         // ===================== CONTACT =====================

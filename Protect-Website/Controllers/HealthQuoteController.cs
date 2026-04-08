@@ -56,10 +56,8 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
 
 <h3>Coverage Needs</h3>
 <p><strong>Requested Coverage Amount:</strong> {model.CoverageType}</p>
-<p><strong>Currently Insured:</strong> {model.CurrentCoverage}</p>
 <p><strong>Household Size:</strong> {model.HouseholdSize}</p>
 <p><strong>Primary Concern:</strong> {model.PrimaryConcern}</p>
-<p><strong>Timeline:</strong> {model.Timeline}</p>
 
 <hr />
 
