@@ -1,7 +1,7 @@
 @model Protect_Website.Models.DisabilityQuoteFormModel
 
 @{
-    ViewData["Title"] = "Disability Insurance Quote";
+    ViewData["Title"] = "Explore Your Disability Insurance Options";
     ViewData["PageKey"] = "quote_disability";
 }
 
@@ -14,7 +14,7 @@
             color: #a68023;
             letter-spacing: .5px;
             margin-bottom: 6px;">
-            Disability Insurance Quote
+            Explore Your Disability Insurance Options
         </h1>
     </div>
 
@@ -150,7 +150,7 @@
             <!-- CORE DETAILS -->
             <div class="lead-block">
 
-                <div class="section-title">Core Quote Details</div>
+                <div class="section-title">Tell Us About You</div>
 
                 <div class="lead-row three">
                     <div class="field">
@@ -206,7 +206,7 @@
             <!-- ADDITIONAL DETAILS -->
             <div class="lead-block">
 
-                <div class="section-title">Additional Details</div>
+                <div class="section-title">Help Us Understand Your Needs</div>
 
                 <div class="lead-row two">
                     <div class="field">
@@ -249,13 +249,13 @@
             <div class="form-check disclaimer-check">
                 <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
                 <label class="form-check-label" for="disclaimerCheckbox">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my disability insurance quote request.<span class="text-danger">*</span>
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my disability insurance inquiry and personalized coverage review.<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Request My Quote</button>
+                <button type="submit" class="btn btn-gold">Request More Information</button>
             </div>
         </div>
 
@@ -295,7 +295,7 @@ document.addEventListener("DOMContentLoaded", function () {
             form.addEventListener("submit", function (event) {
                 if (!disclaimerCheckbox.checked) {
                     event.preventDefault();
-                    alert("Please acknowledge the disclaimer to proceed: You must authorize us to contact me regarding your disability insurance interest.");
+                    alert("Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your disability insurance inquiry and personalized coverage review.");
                     disclaimerCheckbox.focus();
                     return false;
                 }
