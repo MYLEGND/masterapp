@@ -210,7 +210,6 @@ namespace AgentPortal.Controllers;
 
     [AllowAnonymous]
     [HttpGet("meta-callback")]
-    [HttpGet("/website-analytics/meta-callback")]
     public async Task<IActionResult> MetaCallback([FromQuery] string? code = null, [FromQuery] string? state = null, [FromQuery] string? error = null, [FromQuery(Name = "error_description")] string? errorDescription = null)
     {
         var target = "/WebsiteAnalytics/Index";
@@ -229,6 +228,11 @@ namespace AgentPortal.Controllers;
         {
             _logger.LogWarning(ex, "Meta callback failed.");
             return Redirect($"{target}?meta=error&message={Uri.EscapeDataString(ex.Message)}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Meta callback failed with unexpected error.");
+            return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Meta connection failed unexpectedly. Please try again.")}");
         }
     }
 
