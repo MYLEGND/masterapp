@@ -10,7 +10,7 @@
     <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
         <h1 style="
             font-weight: 900;
-            font-size: 2.4rem;
+            font-size: 2rem;
             color: #a68023;
             letter-spacing: .5px;
             margin-bottom: 6px;">
@@ -24,10 +24,6 @@
         </strong>
     </p>
 
-    <p class="text-center" style="margin-bottom: 16px; color: #cbd5e1; font-weight: 600;">
-        Complete the core quote details first, then finish the additional details below.
-    </p>
-
 @if (ViewBag.Success != null)
 {
     <div class="success-message">
@@ -38,9 +34,9 @@
 
 <style>
     body { background-color: #0f172a; color: #f8fafc; }
-    .section-card { background-color: #0f172a; border: 1.6px solid #c79931; padding: 18px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); color: #f8fafc; }
-    .section-title { font-size: 1.5rem; font-weight: 900; color: #c79931; margin-bottom: 1rem; }
-    .form-control, .form-select { border: 1.6px solid #c79931; background: #ffffff; color: #0f172a; }
+    .section-card { background-color: #0f172a; border: 1.6px solid #c79931; padding: 16px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 18px 40px rgba(0,0,0,0.18); color: #f8fafc; }
+    .section-title { font-size: 1.25rem; font-weight: 900; color: #c79931; margin-bottom: 0.9rem; }
+    .form-control, .form-select { border: 1.6px solid #c79931; background: #ffffff; color: #0f172a; font-size: 0.95rem; padding: 8px 10px; }
     .form-control::placeholder, .form-select::placeholder{ color: rgba(15,23,42,0.55); }
     .form-control:focus, .form-select:focus { outline: none; box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22); border-color: #c79931; background: #ffffff; color: #0f172a; }
     .btn-gold { background: linear-gradient(180deg, #c79931, #a68023); color: #fff; font-weight: 900; border: 1.4px solid #c79931; box-shadow: 0 14px 32px rgba(0,0,0,0.18); }
@@ -49,21 +45,28 @@
 
     /* ===== Visual-only: single-card layout + tighter, lead-form grouping ===== */
     .lead-card{
-        max-width: 1320px;
+        max-width: 1100px;
         width: 100%;
-        margin: 0 auto 30px auto;
+        margin: 0 auto 24px auto;
     }
 
     .lead-grid{
         display: grid;
         grid-template-columns: 1fr;
-        gap: 18px;
+        gap: 14px;
+    }
+
+    @@media (min-width: 1100px){
+        .lead-grid{
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
     }
 
     .lead-block{
         border: 1.4px solid #c79931;
         border-radius: 10px;
-        padding: 16px 16px 6px 16px;
+        padding: 12px 12px 4px 12px;
         background: #111c32;
         color: #f8fafc;
     }
