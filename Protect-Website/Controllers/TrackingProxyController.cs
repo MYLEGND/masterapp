@@ -53,7 +53,15 @@ public sealed class TrackingProxyController : ControllerBase
 
         var response = await ForwardAsync("/api/analytics/ingest", req, ct);
         if (response == null)
+        {
+            if (IsDevelopmentEnvironment())
+            {
+                _logger.LogWarning("Local analytics ingest unavailable. Returning accepted/noop in Development to avoid client-side 502 noise.");
+                return Accepted(new { status = "skipped_local_tracking_unavailable" });
+            }
+
             return StatusCode(StatusCodes.Status502BadGateway, new { error = "analytics_forward_failed" });
+        }
 
         return await BuildPassThroughResultAsync(response, ct);
     }
@@ -229,6 +237,12 @@ public sealed class TrackingProxyController : ControllerBase
         return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
             || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
             || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsDevelopmentEnvironment()
+    {
+        var env = _config["ASPNETCORE_ENVIRONMENT"] ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        return string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
