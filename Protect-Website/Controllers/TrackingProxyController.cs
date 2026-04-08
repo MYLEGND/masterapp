@@ -89,7 +89,27 @@ public sealed class TrackingProxyController : ControllerBase
             "Development",
             StringComparison.OrdinalIgnoreCase);
 
-        foreach (var baseUrl in BuildForwardBaseCandidates(portalBase, isDevelopment))
+        var allCandidates = BuildForwardBaseCandidates(portalBase, isDevelopment).ToList();
+        var candidates = allCandidates
+            .Where(baseUrl =>
+            {
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)) return false;
+                var isLocalHost = IsLocalHost(uri.Host);
+                return isDevelopment ? isLocalHost : !isLocalHost;
+            })
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            _logger.LogError(
+                "Tracking proxy target rejected by environment isolation. Environment={Environment}; ConfiguredApiBase={ApiBase}; Candidates={Candidates}",
+                isDevelopment ? "Development" : "NonDevelopment",
+                portalBase,
+                string.Join(",", allCandidates));
+            return null;
+        }
+
+        foreach (var baseUrl in candidates)
         {
             var target = $"{baseUrl}{path}";
             try
@@ -202,6 +222,13 @@ public sealed class TrackingProxyController : ControllerBase
         }
 
         return seen;
+    }
+
+    private static bool IsLocalHost(string host)
+    {
+        return string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(host, "::1", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
