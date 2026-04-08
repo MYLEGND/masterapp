@@ -526,6 +526,47 @@
     return 'meta-good';
   }
 
+  function metaImpressionsClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-bad';
+    if (n < 1000) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaReachClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-bad';
+    if (n < 500) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaClicksClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-bad';
+    if (n < 10) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaLeadsClass(v) {
+    const n = toNumber(v);
+    if (n <= 0) return 'meta-bad';
+    if (n < 3) return 'meta-warn';
+    return 'meta-good';
+  }
+
+  function metaSpendClass(row) {
+    const spend = toNumber(row?.spend);
+    const leads = toNumber(row?.leads);
+
+    if (spend <= 0) return 'meta-neutral';
+    if (leads <= 0) return 'meta-bad';
+
+    const cpl = spend / leads;
+    if (cpl <= 5) return 'meta-good';
+    if (cpl <= 15) return 'meta-warn';
+    return 'meta-bad';
+  }
+
   function metaCtrClass(v) {
     const n = toNumber(v);
     if (n < 1) return 'meta-bad';
@@ -560,14 +601,14 @@
       { render: r => `${r.campaignName || '—'}<div class="fa-muted small">${r.campaignId || ''}</div>` },
       { render: r => pill(r.status || '—', metaStatusClass(r.status)) },
       { render: r => pill(r.objective || '—', metaObjectiveClass(r.objective)) },
-      { render: r => pill(formatMoney(r.spend), metaVolumeClass(r.spend)), align: 'text-end' },
-      { render: r => pill(formatInt(r.impressions), metaVolumeClass(r.impressions)), align: 'text-end' },
-      { render: r => pill(formatInt(r.reach), metaVolumeClass(r.reach)), align: 'text-end' },
-      { render: r => pill(formatInt(r.clicks), metaVolumeClass(r.clicks)), align: 'text-end' },
+      { render: r => pill(formatMoney(r.spend), metaSpendClass(r)), align: 'text-end' },
+      { render: r => pill(formatInt(r.impressions), metaImpressionsClass(r.impressions)), align: 'text-end' },
+      { render: r => pill(formatInt(r.reach), metaReachClass(r.reach)), align: 'text-end' },
+      { render: r => pill(formatInt(r.clicks), metaClicksClass(r.clicks)), align: 'text-end' },
       { render: r => pill(formatPct(r.ctr), metaCtrClass(r.ctr)), align: 'text-end' },
       { render: r => pill(formatMoney(r.cpc), metaCpcClass(r.cpc)), align: 'text-end' },
       { render: r => pill(formatMoney(r.cpm), metaCpmClass(r.cpm)), align: 'text-end' },
-      { render: r => pill(formatInt(r.leads), metaVolumeClass(r.leads)), align: 'text-end' }
+      { render: r => pill(formatInt(r.leads), metaLeadsClass(r.leads)), align: 'text-end' }
     ]);
   }
 

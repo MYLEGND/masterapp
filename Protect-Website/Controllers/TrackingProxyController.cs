@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
@@ -93,9 +94,15 @@ public sealed class TrackingProxyController : ControllerBase
             var target = $"{baseUrl}{path}";
             try
             {
+                var requestId = Guid.NewGuid();
+                var timestamp = DateTimeOffset.UtcNow;
+
                 using var request = new HttpRequestMessage(HttpMethod.Post, target);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 request.Headers.Add("X-Shared-Secret", sharedSecret);
+                request.Headers.Add("X-Request-Id", requestId.ToString("D"));
+                request.Headers.Add("X-Timestamp", timestamp.ToString("O"));
+                request.Headers.Add("X-Signature", ComputeSignature(sharedSecret, requestId, timestamp));
                 request.Content = new StringContent(JsonSerializer.Serialize(payload, JsonPascalCase), Encoding.UTF8, "application/json");
 
                 return await client.SendAsync(request, ct);
@@ -109,6 +116,14 @@ public sealed class TrackingProxyController : ControllerBase
 
         _logger.LogError(lastError, "Tracking proxy could not reach portal ingest endpoint. ConfiguredApiBase={ApiBase}", portalBase);
         return null;
+    }
+
+    private static string ComputeSignature(string secret, Guid requestId, DateTimeOffset timestamp)
+    {
+        var payload = $"{requestId:D}:{timestamp:O}";
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hash);
     }
 
     private static async Task<IActionResult> BuildPassThroughResultAsync(HttpResponseMessage response, CancellationToken ct)

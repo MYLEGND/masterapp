@@ -339,7 +339,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 
 /* Meta Campaigns tracker sizing + color coding */
 .meta-campaigns-dialog {
-    max-width: min(96vw, 1700px);
+    max-width: min(90vw, 1320px);
 }
 
 .meta-campaigns-table th,
@@ -347,13 +347,13 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     font-size: .93rem;
 }
 
-.meta-campaigns-table td {
-    white-space: nowrap;
-}
-
 .meta-campaigns-table td:first-child {
     min-width: 280px;
     white-space: normal;
+}
+
+.meta-campaigns-table td:not(:first-child) {
+    white-space: nowrap;
 }
 
 .meta-pill {
