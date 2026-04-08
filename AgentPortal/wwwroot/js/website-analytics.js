@@ -512,6 +512,21 @@
     return 'meta-neutral';
   }
 
+  function metaCampaignNameClass(row) {
+    const statusClass = metaStatusClass(row?.status);
+    const leads = toNumber(row?.leads);
+    const ctr = toNumber(row?.ctr);
+
+    if (statusClass === 'meta-bad') return 'meta-bad';
+    if (statusClass === 'meta-warn') return 'meta-warn';
+    if (statusClass === 'meta-good') {
+      if (leads > 0 || ctr >= 1.5) return 'meta-good';
+      return 'meta-warn';
+    }
+
+    return leads > 0 ? 'meta-good' : 'meta-neutral';
+  }
+
   function metaObjectiveClass(objective) {
     const o = String(objective || '').toUpperCase();
     if (o.includes('LEAD') || o.includes('CONVERSION') || o.includes('OUTCOME')) return 'meta-good';
@@ -598,7 +613,9 @@
     setMetaAccountChip(data.accountName || data.accountId || 'Connected');
 
     renderTable('meta-campaigns-body', data.rows || [], [
-      { render: r => `${r.campaignName || '—'}<div class="fa-muted small">${r.campaignId || ''}</div>` },
+      {
+        render: r => `${pill(r.campaignName || '—', `${metaCampaignNameClass(r)} meta-campaign-name-pill`)}<div class="fa-muted small mt-1">${r.campaignId || ''}</div>`
+      },
       { render: r => pill(r.status || '—', metaStatusClass(r.status)) },
       { render: r => pill(r.objective || '—', metaObjectiveClass(r.objective)) },
       { render: r => pill(formatMoney(r.spend), metaSpendClass(r)), align: 'text-end' },
