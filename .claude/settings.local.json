@@ -26,7 +26,8 @@
       "Bash(rm -rf /tmp/masterapp/obj/AgentPortal /tmp/masterapp/obj/Infrastructure /tmp/masterapp/obj/Shared)",
       "Bash(zip -r /tmp/masterapp-protect.zip . -q)",
       "Bash(rm -rf /tmp/masterapp/obj)",
-      "Bash(rm -rf /tmp/masterapp-protect-publish /tmp/masterapp-protect.zip)"
+      "Bash(rm -rf /tmp/masterapp-protect-publish /tmp/masterapp-protect.zip)",
+      "Bash(unzip -l /tmp/masterapp-protect.zip)"
     ]
   }
 }
