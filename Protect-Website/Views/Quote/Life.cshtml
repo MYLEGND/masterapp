@@ -79,11 +79,11 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 
-/* ---- Progress indicator ---- */
+/* ---- Progress indicator (pill rail) ---- */
 .lq-progress {
-    max-width: 720px;
-    margin: 0 auto 20px auto;
-    padding: 0 14px;
+    max-width: 760px;
+    margin: 0 auto 18px auto;
+    padding: 0 12px;
 }
 .lq-progress-head {
     display: flex;
@@ -92,77 +92,60 @@ body { background-color: #0f172a; color: #f8fafc; }
     color: rgba(248,250,252,0.7);
     font-weight: 700;
     font-size: .9rem;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
-.lq-progress-track {
-    position: relative;
-    padding: 10px 2px 4px 2px;
-}
-.lq-prog-line {
-    position: absolute;
-    left: 20px;
-    right: 20px;
-    top: 21px;
-    height: 3px;
-    background: rgba(199,153,49,0.16);
-    border-radius: 6px;
-}
-.lq-prog-line-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 100%;
-    background: linear-gradient(90deg, #c79931, #d6b354);
-    width: 25%;
-    border-radius: 6px;
-    transition: width 0.35s ease;
-}
-.lq-prog-steps {
+.lq-progress-rail {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0;
-    position: relative;
-    z-index: 1;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
 }
-.lq-prog-step {
+.lq-pill-step {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1.6px solid rgba(199,153,49,0.35);
+    background: rgba(17,28,50,0.8);
+    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.08);
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
 }
-.lq-prog-dot {
-    width: 32px;
-    height: 32px;
+.lq-pill-num {
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
-    border: 2px solid rgba(199,153,49,0.4);
-    background: #0f172a;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
-    font-size: .85rem;
-    color: rgba(199,153,49,0.55);
-    transition: background 0.25s, border-color 0.25s, color 0.25s, transform 0.2s;
-}
-.lq-prog-label {
-    font-size: .78rem;
-    font-weight: 700;
-    color: rgba(248,250,252,0.55);
-    white-space: nowrap;
-}
-.lq-prog-step.active .lq-prog-dot {
-    border-color: #c79931;
-    background: #c79931;
-    color: #0f172a;
-    transform: scale(1.05);
-}
-.lq-prog-step.active .lq-prog-label { color: #c79931; }
-.lq-prog-step.complete .lq-prog-dot {
-    border-color: #c79931;
     background: rgba(199,153,49,0.14);
     color: #c79931;
+    font-weight: 900;
+    font-size: .9rem;
 }
-.lq-prog-step.complete .lq-prog-label { color: rgba(199,153,49,0.75); }
+.lq-pill-label {
+    font-weight: 800;
+    color: rgba(248,250,252,0.8);
+    font-size: .92rem;
+    letter-spacing: 0.01em;
+}
+.lq-pill-step.active {
+    border-color: #c79931;
+    background: linear-gradient(135deg, #c79931 0%, #a68023 100%);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    transform: translateY(-1px);
+}
+.lq-pill-step.active .lq-pill-num {
+    background: #0f172a;
+    color: #c79931;
+}
+.lq-pill-step.active .lq-pill-label { color: #0f172a; }
+.lq-pill-step.complete {
+    border-color: rgba(199,153,49,0.55);
+    background: rgba(199,153,49,0.14);
+    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.18);
+}
+.lq-pill-step.complete .lq-pill-num { background: rgba(199,153,49,0.25); color: #c79931; }
+.lq-pill-step.complete .lq-pill-label { color: rgba(248,250,252,0.78); }
 
 /* ---- Step cards ---- */
 .lq-step-panel {
@@ -373,25 +356,20 @@ body { background-color: #0f172a; color: #f8fafc; }
          aria-valuemin="0" aria-valuemax="100" aria-valuenow="33">
         <div class="lq-progress-head">
             <span>Progress</span>
-            <span id="lq-progress-percent">33% done</span>
+            <span id="lq-progress-percent">Step 1 of 3</span>
         </div>
-        <div class="lq-progress-track">
-            <div class="lq-prog-line">
-                <div class="lq-prog-line-fill" id="lq-prog-fill"></div>
+        <div class="lq-progress-rail">
+            <div class="lq-pill-step active" id="lq-prog-step1" aria-current="step">
+                <span class="lq-pill-num">1</span>
+                <span class="lq-pill-label">Age</span>
             </div>
-            <div class="lq-prog-steps">
-                <div class="lq-prog-step active" id="lq-prog-step1" aria-current="step">
-                    <div class="lq-prog-dot">1</div>
-                    <div class="lq-prog-label">Age</div>
-                </div>
-                <div class="lq-prog-step" id="lq-prog-step2">
-                    <div class="lq-prog-dot">2</div>
-                    <div class="lq-prog-label">Focus</div>
-                </div>
-                <div class="lq-prog-step" id="lq-prog-step3">
-                    <div class="lq-prog-dot">3</div>
-                    <div class="lq-prog-label">Your Details</div>
-                </div>
+            <div class="lq-pill-step" id="lq-prog-step2">
+                <span class="lq-pill-num">2</span>
+                <span class="lq-pill-label">Focus</span>
+            </div>
+            <div class="lq-pill-step" id="lq-prog-step3">
+                <span class="lq-pill-num">3</span>
+                <span class="lq-pill-label">Your Details</span>
             </div>
         </div>
     </div>
@@ -579,13 +557,11 @@ body { background-color: #0f172a; color: #f8fafc; }
 
     // ---- Progress indicator ----
     function setProgress(step) {
-        var percent = Math.min(100, step * 33);
-        var fill = document.getElementById('lq-prog-fill');
+        var percent = Math.min(100, Math.round(step / 3 * 100));
         var percentLabel = document.getElementById('lq-progress-percent');
         var bar = document.getElementById('lq-progress-indicator');
 
-        if (fill) fill.style.width = percent + '%';
-        if (percentLabel) percentLabel.textContent = percent + '% done';
+        if (percentLabel) percentLabel.textContent = 'Step ' + step + ' of 3';
         if (bar) bar.setAttribute('aria-valuenow', percent.toString());
 
         for (var i = 1; i <= 3; i++) {
