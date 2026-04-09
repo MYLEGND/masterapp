@@ -589,7 +589,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             RangeLabel = range.Label
         };
     }
-}
 
     // ── Behavior Intelligence Engine ──────────────────────────────────────────
 

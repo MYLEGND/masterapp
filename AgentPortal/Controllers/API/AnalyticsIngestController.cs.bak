@@ -96,32 +96,6 @@ public class AnalyticsIngestController : ControllerBase
         public string? SubmitOutcome { get; set; }
         public string? MetadataJson { get; set; }
         public bool IsInternal { get; set; }
-        // Behavior Intelligence fields (all optional, additive)
-        public string? ReferrerHost { get; set; }
-        public string? DeviceType { get; set; }
-        public string? Browser { get; set; }
-        public string? OperatingSystem { get; set; }
-        public int? ScreenWidth { get; set; }
-        public int? ScreenHeight { get; set; }
-        public int? ViewportWidth { get; set; }
-        public int? ViewportHeight { get; set; }
-        public int? ScrollPercent { get; set; }
-        public long? DwellMilliseconds { get; set; }
-        public long? EngagedMilliseconds { get; set; }
-        public bool? IsBounceCandidate { get; set; }
-        public bool? IsExitPage { get; set; }
-        public string? UtmTerm { get; set; }
-        public string? UtmContent { get; set; }
-        public string? MetaCampaignId { get; set; }
-        public string? MetaCampaignName { get; set; }
-        public string? MetaAdSetId { get; set; }
-        public string? MetaAdSetName { get; set; }
-        public string? MetaAdId { get; set; }
-        public string? MetaAdName { get; set; }
-        public string? Placement { get; set; }
-        public string? FormId { get; set; }
-        public string? FieldName { get; set; }
-        public string? ElementId { get; set; }
     }
 
     [HttpPost]
@@ -196,34 +170,7 @@ public class AnalyticsIngestController : ControllerBase
             MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson,
             IsInternal = req.IsInternal || FounderGuard.IsFounder(User),
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
-            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
-            // Behavior Intelligence fields
-            ReferrerHost = TrimOrNull(req.ReferrerHost) ?? ParseReferrerHost(req.Referrer),
-            DeviceType = TrimOrNull(req.DeviceType),
-            Browser = TrimOrNull(req.Browser),
-            OperatingSystem = TrimOrNull(req.OperatingSystem),
-            ScreenWidth = req.ScreenWidth,
-            ScreenHeight = req.ScreenHeight,
-            ViewportWidth = req.ViewportWidth,
-            ViewportHeight = req.ViewportHeight,
-            ScrollPercent = req.ScrollPercent.HasValue ? Math.Clamp(req.ScrollPercent.Value, 0, 100) : null,
-            DwellMilliseconds = req.DwellMilliseconds.HasValue && req.DwellMilliseconds.Value >= 0 ? req.DwellMilliseconds : null,
-            EngagedMilliseconds = req.EngagedMilliseconds.HasValue && req.EngagedMilliseconds.Value >= 0 ? req.EngagedMilliseconds : null,
-            IsBounceCandidate = req.IsBounceCandidate,
-            IsExitPage = req.IsExitPage,
-            UtmTerm = TrimOrNull(req.UtmTerm),
-            UtmContent = TrimOrNull(req.UtmContent),
-            MetaCampaignId = TrimOrNull(req.MetaCampaignId),
-            MetaCampaignName = TrimOrNull(req.MetaCampaignName),
-            MetaAdSetId = TrimOrNull(req.MetaAdSetId),
-            MetaAdSetName = TrimOrNull(req.MetaAdSetName),
-            MetaAdId = TrimOrNull(req.MetaAdId),
-            MetaAdName = TrimOrNull(req.MetaAdName),
-            Placement = TrimOrNull(req.Placement),
-            FormId = TrimOrNull(req.FormId),
-            // FieldName accepted only for field-level event types; never store free-form values
-            FieldName = IsFieldLevelEvent(req.EventType) ? TrimOrNull(req.FieldName) : null,
-            ElementId = TrimOrNull(req.ElementId)
+            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null
         };
 
         // Legacy local SQLite databases may have AnalyticsEvents.Id as non-rowid bigint PK
@@ -283,6 +230,64 @@ public class AnalyticsIngestController : ControllerBase
             );
     }
 
+    // Preflight responder for CORS
+    [HttpOptions]
+    [IgnoreAntiforgeryToken]
+    public IActionResult Options() => Ok();
+}
+    // Behavior Intelligence fields (all optional, additive)
+    public string? ReferrerHost { get; set; }
+    public string? DeviceType { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public int? ScreenWidth { get; set; }
+    public int? ScreenHeight { get; set; }
+    public int? ViewportWidth { get; set; }
+    public int? ViewportHeight { get; set; }
+    public int? ScrollPercent { get; set; }
+    public long? DwellMilliseconds { get; set; }
+    public long? EngagedMilliseconds { get; set; }
+    public bool? IsBounceCandidate { get; set; }
+    public bool? IsExitPage { get; set; }
+    public string? UtmTerm { get; set; }
+    public string? UtmContent { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaCampaignName { get; set; }
+    public string? MetaAdSetId { get; set; }
+    public string? MetaAdSetName { get; set; }
+    public string? MetaAdId { get; set; }
+    public string? MetaAdName { get; set; }
+    public string? Placement { get; set; }
+    public string? FormId { get; set; }
+    public string? FieldName { get; set; }
+    public string? ElementId { get; set; }
+            // Behavior Intelligence fields
+            ReferrerHost = TrimOrNull(req.ReferrerHost) ?? ParseReferrerHost(req.Referrer),
+            DeviceType = TrimOrNull(req.DeviceType),
+            Browser = TrimOrNull(req.Browser),
+            OperatingSystem = TrimOrNull(req.OperatingSystem),
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScrollPercent = req.ScrollPercent.HasValue ? Math.Clamp(req.ScrollPercent.Value, 0, 100) : null,
+            DwellMilliseconds = req.DwellMilliseconds.HasValue && req.DwellMilliseconds.Value >= 0 ? req.DwellMilliseconds : null,
+            EngagedMilliseconds = req.EngagedMilliseconds.HasValue && req.EngagedMilliseconds.Value >= 0 ? req.EngagedMilliseconds : null,
+            IsBounceCandidate = req.IsBounceCandidate,
+            IsExitPage = req.IsExitPage,
+            UtmTerm = TrimOrNull(req.UtmTerm),
+            UtmContent = TrimOrNull(req.UtmContent),
+            MetaCampaignId = TrimOrNull(req.MetaCampaignId),
+            MetaCampaignName = TrimOrNull(req.MetaCampaignName),
+            MetaAdSetId = TrimOrNull(req.MetaAdSetId),
+            MetaAdSetName = TrimOrNull(req.MetaAdSetName),
+            MetaAdId = TrimOrNull(req.MetaAdId),
+            MetaAdName = TrimOrNull(req.MetaAdName),
+            Placement = TrimOrNull(req.Placement),
+            FormId = TrimOrNull(req.FormId),
+            // FieldName accepted only for field-level event types; never store free-form values
+            FieldName = IsFieldLevelEvent(req.EventType) ? TrimOrNull(req.FieldName) : null,
+            ElementId = TrimOrNull(req.ElementId),
     private static string? ParseReferrerHost(string? referrer)
     {
         if (string.IsNullOrWhiteSpace(referrer)) return null;
@@ -295,9 +300,3 @@ public class AnalyticsIngestController : ControllerBase
             eventType.Equals("form_field_complete", StringComparison.OrdinalIgnoreCase) ||
             eventType.Equals("form_field_abandon", StringComparison.OrdinalIgnoreCase)
         );
-
-    // Preflight responder for CORS
-    [HttpOptions]
-    [IgnoreAntiforgeryToken]
-    public IActionResult Options() => Ok();
-}
