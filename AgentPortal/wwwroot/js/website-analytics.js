@@ -64,7 +64,12 @@
     agentPerf: '/WebsiteAnalytics/agent-performance',
     metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
     metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
-    metaDisconnect: '/WebsiteAnalytics/meta-disconnect'
+    metaDisconnect: '/WebsiteAnalytics/meta-disconnect',
+    behaviorSummary: '/WebsiteAnalytics/behavior/summary',
+    behaviorTime: '/WebsiteAnalytics/behavior/time-on-page',
+    behaviorExit: '/WebsiteAnalytics/behavior/exit-analysis',
+    behaviorJourney: '/WebsiteAnalytics/behavior/journey',
+    behaviorSources: '/WebsiteAnalytics/behavior/source-performance'
   };
 
   function abort(key) {
@@ -493,6 +498,16 @@
   function formatPct(v) {
     const num = Number(v || 0);
     return Number.isFinite(num) ? `${num.toFixed(2)}%` : '0.00%';
+  }
+
+  function formatMs(ms) {
+    const num = Number(ms || 0);
+    if (!Number.isFinite(num) || num <= 0) return '—';
+    const totalSeconds = Math.round(num / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    if (minutes <= 0) return `${seconds}s`;
+    return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
   }
 
   function toNumber(v) {

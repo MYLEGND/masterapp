@@ -336,6 +336,87 @@
 </div>
 }
 <!-- Modals -->
+<div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Behavior Intelligence · <span id="bhvr-range-label"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row row-cols-1 row-cols-md-3 g-3 mb-3">
+          <div class="col">
+            <div class="kpi-card">
+              <div class="fa-kpi-title">Avg Session Duration</div>
+              <div class="fa-kpi-value" id="bhvr-avg-session">—</div>
+              <div class="fa-kpi-sub">Median: <span id="bhvr-med-session">—</span></div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="kpi-card">
+              <div class="fa-kpi-title">Avg Time on Page</div>
+              <div class="fa-kpi-value" id="bhvr-avg-page">—</div>
+              <div class="fa-kpi-sub">Median: <span id="bhvr-med-page">—</span></div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="kpi-card">
+              <div class="fa-kpi-title">Engaged Session Rate</div>
+              <div class="fa-kpi-value" id="bhvr-engaged-rate">—</div>
+              <div class="fa-kpi-sub">Quick exits: <span id="bhvr-quick-exit">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-lg-6">
+            <h6 class="text-warning mb-1">Short-Visit Problem Pages</h6>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table">
+                <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Dwell</th><th class="text-end">Median</th></tr></thead>
+                <tbody id="bhvr-short-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <h6 class="text-warning mb-1">Top Exit Pages</h6>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table">
+                <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
+                <tbody id="bhvr-exit-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mt-2">
+          <div class="col-lg-6">
+            <h6 class="text-warning mb-1">Top Landing Pages</h6>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table">
+                <thead><tr><th>Page</th><th class="text-end">Sessions</th><th class="text-end">Engaged</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead>
+                <tbody id="bhvr-landing-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <h6 class="text-warning mb-1">Top Sources (Conversion)</h6>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table">
+                <thead><tr><th>Source</th><th class="text-end">Sessions</th><th class="text-end">Engaged</th><th class="text-end">Leads</th><th class="text-end">Sess Conv</th></tr></thead>
+                <tbody id="bhvr-source-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
