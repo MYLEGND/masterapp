@@ -533,3 +533,113 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     background: rgba(148, 163, 184, .18);
     border-color: rgba(148, 163, 184, .45);
 }
+
+/* ── Behavior Intelligence modal polish ──────────────────────────────────── */
+
+/* Tab bar — flush bottom border, breathing room below */
+#behaviorModal .bhvr-tabs {
+    gap: 4px;
+    border-bottom: 1px solid rgba(199,153,49,.26);
+    padding-bottom: 0;
+    margin-bottom: 0 !important;
+    flex-wrap: wrap;
+}
+
+/* Tab content — consistent top padding from the tab bar */
+#behaviorModal .bhvr-tab-content {
+    padding-top: 16px;
+}
+
+/* KPI cards in the 6-column overview row: compact font so formatted
+   durations like "1m 29s" never overflow or wrap awkwardly */
+#behaviorModal .kpi-card {
+    min-height: 100px;
+    padding: 14px 12px;
+}
+
+#behaviorModal .fa-kpi-title {
+    font-size: .7rem;
+    letter-spacing: .06em;
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#behaviorModal .fa-kpi-value {
+    font-size: 1.35rem;
+    line-height: 1.2;
+    word-break: break-word;
+    hyphens: auto;
+}
+
+/* Highlights bar — contained pill beneath the KPI row */
+#behaviorModal .bhvr-highlights {
+    font-size: .82rem;
+    line-height: 1.5;
+    padding: 8px 12px;
+    background: rgba(8,18,40,.55);
+    border: 1px solid rgba(199,153,49,.18);
+    border-radius: 10px;
+    color: var(--legend-silver);
+}
+
+/* Section labels (replaces h6 for consistent weight/size across all tabs) */
+#behaviorModal .bhvr-section-label {
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: rgba(199,153,49,.85);
+    padding-bottom: 7px;
+    border-bottom: 1px solid rgba(199,153,49,.20);
+    margin-bottom: 10px;
+}
+
+/* Table wrapper — prevent horizontal bleed on narrow modal */
+#behaviorModal .table-responsive {
+    border-radius: 10px;
+    overflow-x: auto;
+}
+
+/* Page/form key column — truncate very long paths cleanly */
+#behaviorModal .bhvr-table td:first-child,
+#behaviorModal .bhvr-table th:first-child {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Numeric columns — keep values on one line */
+#behaviorModal .bhvr-table td:not(:first-child),
+#behaviorModal .bhvr-table th:not(:first-child) {
+    white-space: nowrap;
+}
+
+/* Low-sample notice injected by JS */
+#behaviorModal .bhvr-low-sample-notice {
+    color: rgba(199,153,49,.72);
+    font-size: .78rem;
+    padding: 2px 0 0 2px;
+}
+
+/* Chip list — slightly tighter wrap gap */
+#behaviorModal .bhvr-chip-list {
+    gap: 6px;
+}
+
+#behaviorModal .bhvr-chip {
+    font-size: .8rem;
+    padding: 4px 10px;
+    line-height: 1.3;
+}
+
+/* Journey columns — even spacing, chips don't stretch full width */
+#behaviorModal #bhvr-journey .col-md-4 {
+    border-right: 1px solid rgba(199,153,49,.14);
+}
+
+#behaviorModal #bhvr-journey .col-md-4:last-child {
+    border-right: 0;
+}

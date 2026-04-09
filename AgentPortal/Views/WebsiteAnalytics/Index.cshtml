@@ -399,7 +399,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <ul class="nav nav-tabs mb-3 bhvr-tabs" id="bhvr-tabs">
+        <ul class="nav nav-tabs bhvr-tabs" id="bhvr-tabs">
           <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#bhvr-overview" type="button">Overview</button></li>
           <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bhvr-pages" type="button">Pages</button></li>
           <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bhvr-scroll" type="button">Scroll</button></li>
@@ -408,50 +408,83 @@
           <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bhvr-source" type="button">Source</button></li>
           <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bhvr-forms" type="button">Forms</button></li>
         </ul>
-        <div class="tab-content">
+        <div class="tab-content bhvr-tab-content">
+
           <div class="tab-pane fade show active" id="bhvr-overview">
-            <div class="row g-3 mb-3" id="bhvr-engagement-kpis"></div>
-            <div id="bhvr-engagement-highlights" class="fa-muted"></div>
-            <div class="row g-3 mt-1">
+            <div class="row g-2 mb-2" id="bhvr-engagement-kpis"></div>
+            <div id="bhvr-engagement-highlights" class="bhvr-highlights"></div>
+            <div class="row g-3 mt-2">
               <div class="col-md-6">
-                <h6>Longest Avg Dwell</h6>
-                <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Avg ms</th></tr></thead><tbody id="bhvr-longest-dwell-body"></tbody></table>
+                <div class="bhvr-section-label">Longest Avg Dwell</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Avg Time</th></tr></thead><tbody id="bhvr-longest-dwell-body"></tbody></table>
+                </div>
               </div>
               <div class="col-md-6">
-                <h6>Short Visits</h6>
-                <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Avg ms</th></tr></thead><tbody id="bhvr-short-dwell-body"></tbody></table>
+                <div class="bhvr-section-label">Short Visits</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Avg Time</th></tr></thead><tbody id="bhvr-short-dwell-body"></tbody></table>
+                </div>
               </div>
             </div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-pages">
-            <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg ms</th><th class="text-end">Exit %</th><th class="text-end">Lead %</th></tr></thead><tbody id="bhvr-pages-body"></tbody></table>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Exit %</th><th class="text-end">Lead %</th></tr></thead><tbody id="bhvr-pages-body"></tbody></table>
+            </div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-scroll">
-            <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">25%</th><th class="text-end">50%</th><th class="text-end">75%</th><th class="text-end">90%</th><th class="text-end">100%</th></tr></thead><tbody id="bhvr-scroll-body"></tbody></table>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">25%</th><th class="text-end">50%</th><th class="text-end">75%</th><th class="text-end">90%</th><th class="text-end">100%</th></tr></thead><tbody id="bhvr-scroll-body"></tbody></table>
+            </div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-exits">
-            <h6>Top Exit Pages</h6>
-            <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Exits</th><th class="text-end">Rate</th></tr></thead><tbody id="bhvr-exits-body"></tbody></table>
-            <h6>Quick Exit Pages</h6>
-            <div id="bhvr-quick-exits" class="bhvr-chip-list"></div>
+            <div class="bhvr-section-label">Top Exit Pages</div>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Exits</th><th class="text-end">Rate</th></tr></thead><tbody id="bhvr-exits-body"></tbody></table>
+            </div>
+            <div class="bhvr-section-label">Quick Exit Pages</div>
+            <div id="bhvr-quick-exits" class="bhvr-chip-list mt-1"></div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-journey">
             <div class="row g-3">
-              <div class="col-md-4"><h6>Landing</h6><div id="bhvr-journey-landing" class="bhvr-chip-list"></div></div>
-              <div class="col-md-4"><h6>Before Lead</h6><div id="bhvr-journey-lead" class="bhvr-chip-list"></div></div>
-              <div class="col-md-4"><h6>Drop-off</h6><div id="bhvr-journey-dropoff" class="bhvr-chip-list"></div></div>
+              <div class="col-md-4">
+                <div class="bhvr-section-label">Landing Pages</div>
+                <div id="bhvr-journey-landing" class="bhvr-chip-list mt-1"></div>
+              </div>
+              <div class="col-md-4">
+                <div class="bhvr-section-label">Before Lead</div>
+                <div id="bhvr-journey-lead" class="bhvr-chip-list mt-1"></div>
+              </div>
+              <div class="col-md-4">
+                <div class="bhvr-section-label">Drop-off</div>
+                <div id="bhvr-journey-dropoff" class="bhvr-chip-list mt-1"></div>
+              </div>
             </div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-source">
-            <table class="table table-sm"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th class="text-end">Sessions</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead><tbody id="bhvr-source-body"></tbody></table>
-            <h6>Landing Page Performance</h6>
-            <table class="table table-sm"><thead><tr><th>Page</th><th class="text-end">Sessions</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead><tbody id="bhvr-landing-body"></tbody></table>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Source</th><th>Medium</th><th>Campaign</th><th class="text-end">Sessions</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead><tbody id="bhvr-source-body"></tbody></table>
+            </div>
+            <div class="bhvr-section-label">Landing Page Performance</div>
+            <div class="table-responsive mt-2">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Page</th><th class="text-end">Sessions</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead><tbody id="bhvr-landing-body"></tbody></table>
+            </div>
           </div>
+
           <div class="tab-pane fade" id="bhvr-forms">
-            <table class="table table-sm"><thead><tr><th>Form</th><th class="text-end">Starts</th><th class="text-end">Submits</th><th class="text-end">Abandons</th><th class="text-end">Completion %</th></tr></thead><tbody id="bhvr-forms-body"></tbody></table>
-            <h6>Top Abandon Fields</h6>
-            <div id="bhvr-abandon-fields" class="bhvr-chip-list"></div>
+            <div class="table-responsive mb-3">
+              <table class="table table-sm bhvr-table"><thead><tr><th>Form</th><th class="text-end">Starts</th><th class="text-end">Submits</th><th class="text-end">Abandons</th><th class="text-end">Completion %</th></tr></thead><tbody id="bhvr-forms-body"></tbody></table>
+            </div>
+            <div class="bhvr-section-label">Top Abandoned Fields</div>
+            <div id="bhvr-abandon-fields" class="bhvr-chip-list mt-1"></div>
           </div>
+
         </div>
       </div>
     </div>
