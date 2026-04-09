@@ -20,7 +20,10 @@
       "Bash(zip -r /tmp/agentportal-deploy.zip . -q)",
       "Bash(az rest:*)",
       "Bash(az account:*)",
-      "Bash(zip -r /tmp/masterapp-client.zip . -q)"
+      "Bash(zip -r /tmp/masterapp-client.zip . -q)",
+      "Bash(rm -f /tmp/masterapp/obj/AgentPortal/Release/AgentPortal.AssemblyInfoInputs.cache)",
+      "Bash(rm -rf /tmp/masterapp-portal-publish /tmp/masterapp-portal.zip)",
+      "Bash(rm -rf /tmp/masterapp/obj/AgentPortal /tmp/masterapp/obj/Infrastructure /tmp/masterapp/obj/Shared)"
     ]
   }
 }
