@@ -285,6 +285,98 @@ namespace AgentPortal.Controllers;
         return Json(new { ok = true });
     }
 
+    // ── Behavior Intelligence Engine endpoints ────────────────────────────────
+
+    [HttpGet("engagement-summary")]
+    [HttpGet("/website-analytics/engagement-summary")]
+    public async Task<IActionResult> EngagementSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetEngagementSummaryAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("page-engagement")]
+    [HttpGet("/website-analytics/page-engagement")]
+    public async Task<IActionResult> PageEngagement([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetPageEngagementAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("time-on-page")]
+    [HttpGet("/website-analytics/time-on-page")]
+    public async Task<IActionResult> TimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetTimeOnPageAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("exit-analysis")]
+    [HttpGet("/website-analytics/exit-analysis")]
+    public async Task<IActionResult> ExitAnalysis([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetExitAnalysisAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("scroll-analysis")]
+    [HttpGet("/website-analytics/scroll-analysis")]
+    public async Task<IActionResult> ScrollAnalysis([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetScrollAnalysisAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("journey-analysis")]
+    [HttpGet("/website-analytics/journey-analysis")]
+    public async Task<IActionResult> JourneyAnalysis([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetJourneyAnalysisAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("source-performance")]
+    [HttpGet("/website-analytics/source-performance")]
+    public async Task<IActionResult> SourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetSourcePerformanceAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("landing-page-performance")]
+    [HttpGet("/website-analytics/landing-page-performance")]
+    public async Task<IActionResult> LandingPagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetLandingPagePerformanceAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("form-friction")]
+    [HttpGet("/website-analytics/form-friction")]
+    public async Task<IActionResult> FormFriction([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetFormFrictionAsync(range, scope);
+        return Json(result);
+    }
+
     private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team = false)
     {
         var isFounder = FounderGuard.IsFounder(User);
