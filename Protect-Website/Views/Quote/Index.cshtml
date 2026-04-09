@@ -697,6 +697,12 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeTile.setAttribute("aria-expanded", "true");
     }
     lifeTile?.addEventListener("click", (e) => {
+        const link = (e.target instanceof Element) ? e.target.closest(".life-dropdown a") : null;
+        if (link) {
+            // allow navigation but close menu for good measure
+            closeLife();
+            return;
+        }
         e.preventDefault();
         lifeMenu?.hidden ? openLife() : closeLife();
     });
