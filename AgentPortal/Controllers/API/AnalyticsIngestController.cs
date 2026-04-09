@@ -36,6 +36,7 @@ public class AnalyticsIngestController : ControllerBase
 
     private static readonly HashSet<string> AllowedEventTypes = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Core interaction events (existing)
         "page_view",
         "cta_click",
         "quote_click",
@@ -46,7 +47,27 @@ public class AnalyticsIngestController : ControllerBase
         "lead_modal_open",
         "lead_form_start",
         "lead_form_submit_success",
-        "lead_form_submit_failed"
+        "lead_form_submit_failed",
+        // Behavior Intelligence Engine events
+        "page_engaged_10s",
+        "page_engaged_30s",
+        "page_engaged_60s",
+        "scroll_depth_25",
+        "scroll_depth_50",
+        "scroll_depth_75",
+        "scroll_depth_90",
+        "scroll_depth_100",
+        "page_exit",
+        "session_end",
+        "form_field_focus",
+        "form_field_complete",
+        "form_field_abandon",
+        "rage_click",
+        "dead_click",
+        "file_download",
+        "section_view",
+        "page_visibility_hidden",
+        "page_visibility_return"
     };
 
     public sealed class AnalyticsEventRequest
@@ -214,3 +235,68 @@ public class AnalyticsIngestController : ControllerBase
     [IgnoreAntiforgeryToken]
     public IActionResult Options() => Ok();
 }
+    // Behavior Intelligence fields (all optional, additive)
+    public string? ReferrerHost { get; set; }
+    public string? DeviceType { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public int? ScreenWidth { get; set; }
+    public int? ScreenHeight { get; set; }
+    public int? ViewportWidth { get; set; }
+    public int? ViewportHeight { get; set; }
+    public int? ScrollPercent { get; set; }
+    public long? DwellMilliseconds { get; set; }
+    public long? EngagedMilliseconds { get; set; }
+    public bool? IsBounceCandidate { get; set; }
+    public bool? IsExitPage { get; set; }
+    public string? UtmTerm { get; set; }
+    public string? UtmContent { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaCampaignName { get; set; }
+    public string? MetaAdSetId { get; set; }
+    public string? MetaAdSetName { get; set; }
+    public string? MetaAdId { get; set; }
+    public string? MetaAdName { get; set; }
+    public string? Placement { get; set; }
+    public string? FormId { get; set; }
+    public string? FieldName { get; set; }
+    public string? ElementId { get; set; }
+            // Behavior Intelligence fields
+            ReferrerHost = TrimOrNull(req.ReferrerHost) ?? ParseReferrerHost(req.Referrer),
+            DeviceType = TrimOrNull(req.DeviceType),
+            Browser = TrimOrNull(req.Browser),
+            OperatingSystem = TrimOrNull(req.OperatingSystem),
+            ScreenWidth = req.ScreenWidth,
+            ScreenHeight = req.ScreenHeight,
+            ViewportWidth = req.ViewportWidth,
+            ViewportHeight = req.ViewportHeight,
+            ScrollPercent = req.ScrollPercent.HasValue ? Math.Clamp(req.ScrollPercent.Value, 0, 100) : null,
+            DwellMilliseconds = req.DwellMilliseconds.HasValue && req.DwellMilliseconds.Value >= 0 ? req.DwellMilliseconds : null,
+            EngagedMilliseconds = req.EngagedMilliseconds.HasValue && req.EngagedMilliseconds.Value >= 0 ? req.EngagedMilliseconds : null,
+            IsBounceCandidate = req.IsBounceCandidate,
+            IsExitPage = req.IsExitPage,
+            UtmTerm = TrimOrNull(req.UtmTerm),
+            UtmContent = TrimOrNull(req.UtmContent),
+            MetaCampaignId = TrimOrNull(req.MetaCampaignId),
+            MetaCampaignName = TrimOrNull(req.MetaCampaignName),
+            MetaAdSetId = TrimOrNull(req.MetaAdSetId),
+            MetaAdSetName = TrimOrNull(req.MetaAdSetName),
+            MetaAdId = TrimOrNull(req.MetaAdId),
+            MetaAdName = TrimOrNull(req.MetaAdName),
+            Placement = TrimOrNull(req.Placement),
+            FormId = TrimOrNull(req.FormId),
+            // FieldName accepted only for field-level event types; never store free-form values
+            FieldName = IsFieldLevelEvent(req.EventType) ? TrimOrNull(req.FieldName) : null,
+            ElementId = TrimOrNull(req.ElementId),
+    private static string? ParseReferrerHost(string? referrer)
+    {
+        if (string.IsNullOrWhiteSpace(referrer)) return null;
+        try { return new Uri(referrer).Host; } catch { return null; }
+    }
+
+    private static bool IsFieldLevelEvent(string? eventType) =>
+        eventType != null && (
+            eventType.Equals("form_field_focus", StringComparison.OrdinalIgnoreCase) ||
+            eventType.Equals("form_field_complete", StringComparison.OrdinalIgnoreCase) ||
+            eventType.Equals("form_field_abandon", StringComparison.OrdinalIgnoreCase)
+        );

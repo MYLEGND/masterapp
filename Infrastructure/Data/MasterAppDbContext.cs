@@ -264,6 +264,37 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.EventType, x.EventUtc });
             e.HasIndex(x => new { x.PageKey, x.EventUtc });
             e.HasIndex(x => new { x.ElementKey, x.EventUtc });
+
+            // ── Behavior Intelligence columns (all nullable, additive) ──
+            e.Property(x => x.ReferrerHost).HasMaxLength(200);
+            e.Property(x => x.DeviceType).HasMaxLength(60);
+            e.Property(x => x.Browser).HasMaxLength(100);
+            e.Property(x => x.OperatingSystem).HasMaxLength(100);
+            e.Property(x => x.ScreenWidth);
+            e.Property(x => x.ScreenHeight);
+            e.Property(x => x.ViewportWidth);
+            e.Property(x => x.ViewportHeight);
+            e.Property(x => x.ScrollPercent);
+            e.Property(x => x.DwellMilliseconds);
+            e.Property(x => x.EngagedMilliseconds);
+            e.Property(x => x.IsBounceCandidate);
+            e.Property(x => x.IsExitPage);
+            e.Property(x => x.UtmTerm).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.MetaCampaignId).HasMaxLength(200);
+            e.Property(x => x.MetaCampaignName).HasMaxLength(200);
+            e.Property(x => x.MetaAdSetId).HasMaxLength(200);
+            e.Property(x => x.MetaAdSetName).HasMaxLength(200);
+            e.Property(x => x.MetaAdId).HasMaxLength(200);
+            e.Property(x => x.MetaAdName).HasMaxLength(200);
+            e.Property(x => x.Placement).HasMaxLength(100);
+            e.Property(x => x.FormId).HasMaxLength(120);
+            e.Property(x => x.FieldName).HasMaxLength(120);
+            e.Property(x => x.ElementId).HasMaxLength(120);
+
+            // Behavior intelligence indexes
+            e.HasIndex(x => x.DeviceType);
+            e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
         });
 
         // WEBSITE LEADS

@@ -590,3 +590,4 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 }
+
