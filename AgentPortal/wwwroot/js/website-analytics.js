@@ -370,6 +370,43 @@
     setText('quote-range-label', data.rangeLabel || '');
   }
 
+  function renderBehavior(summary, time, exit, journey, sources) {
+    setText('bhvr-avg-session', formatMs(summary?.avgSessionDurationMs));
+    setText('bhvr-med-session', formatMs(summary?.medianSessionDurationMs));
+    setText('bhvr-avg-page', formatMs(summary?.avgTimeOnPageMs));
+    setText('bhvr-med-page', formatMs(summary?.medianTimeOnPageMs));
+    setText('bhvr-engaged-rate', formatPct(summary?.engagedSessionRate));
+    setText('bhvr-quick-exit', formatPct(summary?.quickExitRate));
+    setText('bhvr-range-label', summary?.rangeLabel || time?.rangeLabel || exit?.rangeLabel || journey?.rangeLabel || sources?.rangeLabel || '');
+
+    renderTable('bhvr-short-body', time?.shortVisitProblemPages || [], [
+      { key: 'pageKey' },
+      { key: 'views', align: 'text-end' },
+      { render: r => formatMs(r.avgDwellMs), align: 'text-end' },
+      { render: r => formatMs(r.medianDwellMs), align: 'text-end' }
+    ]);
+
+    renderTable('bhvr-exit-body', exit?.topExitPages || [], [
+      { key: 'pageKey' },
+      { key: 'views', align: 'text-end' },
+      { key: 'exits', align: 'text-end' },
+      { render: r => formatPct(r.exitRate), align: 'text-end' }
+    ]);
+
+    renderTable('bhvr-landing-body', journey?.topLandingPages || [], [
+      { key: 'key' },
+      { key: 'count', align: 'text-end' }
+    ]);
+
+    renderTable('bhvr-source-body', sources?.rows || [], [
+      { key: 'source' },
+      { key: 'sessions', align: 'text-end' },
+      { key: 'engagedSessions', align: 'text-end' },
+      { key: 'verifiedLeads', align: 'text-end' },
+      { render: r => formatPct(r.sessionConversionRate), align: 'text-end' }
+    ]);
+  }
+
   function renderConversions(data) {
     state.cache.conversions = data;
     const summary = state.cache.summary;
@@ -958,6 +995,7 @@
       case 'leadsModal': loadLeads(); break;
       case 'agentPerfModal': loadAgentPerf(); break;
       case 'metaCampaignsModal': loadMetaCampaigns(); break;
+      case 'behaviorModal': loadBehavior(); break;
       default: loadSummary(); break;
     }
   }
@@ -1031,6 +1069,7 @@
     attachModal('convModal', loadConv);
     attachModal('leadsModal', loadLeads);
     attachModal('metaCampaignsModal', loadMetaCampaigns);
+    attachModal('behaviorModal', loadBehavior);
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
     }
