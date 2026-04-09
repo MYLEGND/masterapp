@@ -1184,6 +1184,7 @@
       });
     }
     wireGrowthCopyButtons();
+    wireProductLinks();
 
     const metaDisconnectBtn = document.getElementById('meta-disconnect-btn');
     if (metaDisconnectBtn) {
@@ -1210,6 +1211,66 @@
   }
 
   document.addEventListener('DOMContentLoaded', init);
+
+  // ── Product-specific offer links ──────────────────────────────────
+  const OFFER_VARIANTS = [
+    { key: 'life',         label: 'General Life' },
+    { key: 'mortgage',     label: 'Mortgage Protection' },
+    { key: 'finalexpense', label: 'Final Expense' },
+    { key: 'term',         label: 'Term Life' },
+    { key: 'wholelife',    label: 'Whole Life' },
+    { key: 'iul',          label: 'Indexed Universal Life (IUL)' },
+  ];
+
+  function buildOfferUrl(baseLink, offerKey) {
+    if (!baseLink) return '';
+    try {
+      // Ensure trailing slash so 'Quote/Life' resolves relative to base, not parent dir
+      const base = baseLink.endsWith('/') ? baseLink : baseLink + '/';
+      const url = new URL('Quote/Life', base);
+      url.searchParams.set('offer', offerKey);
+      return url.toString();
+    } catch {
+      // Fallback for unusual base URLs
+      const clean = baseLink.replace(/\/$/, '');
+      return `${clean}/Quote/Life?offer=${encodeURIComponent(offerKey)}`;
+    }
+  }
+
+  function wireProductLinks() {
+    const toggle = document.getElementById('product-links-toggle');
+    const section = document.getElementById('product-links-section');
+    const list = document.getElementById('product-links-list');
+    const display = document.getElementById('product-link-display');
+    if (!toggle || !section || !list) return;
+
+    // Render offer rows
+    list.innerHTML = OFFER_VARIANTS.map(v =>
+      `<div class="product-link-row">` +
+        `<span class="product-link-label">${v.label}</span>` +
+        `<button type="button" class="product-link-copy" data-offer="${v.key}">Copy</button>` +
+      `</div>`
+    ).join('');
+
+    // Toggle expand/collapse
+    toggle.addEventListener('click', () => {
+      const isOpen = !section.hidden;
+      section.hidden = isOpen;
+      toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+    });
+
+    // Copy on click — URL built fresh from current base link so agent scope changes are reflected
+    list.addEventListener('click', e => {
+      const btn = e.target.closest('.product-link-copy');
+      if (!btn) return;
+      const offerKey = btn.dataset.offer;
+      const url = buildOfferUrl(currentBaseLink(), offerKey);
+      if (display) display.value = url;
+      copyToClipboard(url);
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
 
   function currentBaseLink() {
     const agentId = state.scope.agentProfileId;

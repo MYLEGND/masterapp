@@ -586,7 +586,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
-    window.legendTrack?.({ EventType: 'life_quote_submit_attempt', PageKey: 'quote_life' });
+    window.legendTrack?.({ EventType: 'life_quote_submit_attempt', PageKey: 'quote_life', Offer: currentOffer });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -603,15 +603,15 @@ body { background-color: #0f172a; color: #f8fafc; }
         headers: { 'X-Requested-With': 'fetch' }
       });
       if (!res.ok) throw new Error('Network');
-      window.legendTrack?.({ EventType: 'life_quote_submit_success', PageKey: 'quote_life' });
+      window.legendTrack?.({ EventType: 'life_quote_submit_success', PageKey: 'quote_life', Offer: currentOffer });
       window.location.href = thankYouPath;
     } catch (err) {
       lifeError.textContent = 'We could not send this right now. Please try again.';
       lifeError.style.display = 'block';
-      window.legendTrack?.({ EventType: 'life_quote_submit_error', PageKey: 'quote_life' });
+      window.legendTrack?.({ EventType: 'life_quote_submit_error', PageKey: 'quote_life', Offer: currentOffer });
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Get My Personalized Review';
+      submitBtn.textContent = submitLabel;
     }
   });
 

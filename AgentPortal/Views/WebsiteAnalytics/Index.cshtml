@@ -32,7 +32,17 @@
         <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Website link actions">
           <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
           <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
-                </div>
+        </div>
+        <button type="button" class="btn btn-outline-light btn-sm w-100 mt-2 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
+          Product-Specific Links
+        </button>
+        <div class="product-links-section" id="product-links-section" hidden>
+          <div class="product-links-header">Ad-Matching Quote Links</div>
+          <div id="product-links-list"></div>
+          <div class="mt-2">
+            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Click Copy to see URL" aria-label="Selected product link" />
+          </div>
+        </div>
             </div>
 
       <div class="hero-link-panel hero-link-panel-meta">
