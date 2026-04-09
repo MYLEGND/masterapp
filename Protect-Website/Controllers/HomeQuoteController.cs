@@ -5,6 +5,7 @@ using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
+using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
