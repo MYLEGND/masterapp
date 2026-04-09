@@ -917,15 +917,8 @@
                 border-radius: 16px;
             }
 
-            header .navbar .container-fluid {
-                display: grid !important;
-                grid-template-columns: auto 1fr auto;
-                align-items: center !important;
-                gap: 10px;
-            }
-
             .navbar-brand img { height: 60px; max-height: 60px; padding: 8px; }
-            .nav-toggle { display: inline-flex; justify-self: end; }
+            .nav-toggle { display: inline-flex; margin-left: auto; }
 
             .navbar-left,
             .navbar-right {
@@ -1452,7 +1445,7 @@
 
         [navLeft, navRight].forEach(group => {
             if (!group) return;
-            group.querySelectorAll('a, button').forEach(el => {
+            group.querySelectorAll('a, button:not([data-bs-toggle])').forEach(el => {
                 el.addEventListener('click', () => closeNav());
             });
         });
@@ -1460,6 +1453,7 @@
         document.addEventListener('click', function (e) {
             if (!nav.classList.contains('mobile-open')) return;
             if (nav.contains(e.target) || e.target === toggle) return;
+            if (e.target.closest('#exploreTrigger, #psalmsModal, .scripture-card')) return;
             closeNav();
         });
 
