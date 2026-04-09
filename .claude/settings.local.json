@@ -27,7 +27,8 @@
       "Bash(zip -r /tmp/masterapp-protect.zip . -q)",
       "Bash(rm -rf /tmp/masterapp/obj)",
       "Bash(rm -rf /tmp/masterapp-protect-publish /tmp/masterapp-protect.zip)",
-      "Bash(unzip -l /tmp/masterapp-protect.zip)"
+      "Bash(unzip -l /tmp/masterapp-protect.zip)",
+      "Bash(ls /tmp/masterapp-protect-publish/*.Views.dll)"
     ]
   }
 }
