@@ -654,3 +654,12 @@ textarea:focus{
 .required-note{
     color: #0f172a !important;
 }
+
+/* Progress text readability on white backgrounds */
+.progress-label,
+.progress-text,
+.wizard-steptext,
+.lq-progress-percent,
+.progress-percent {
+    color: #0f172a !important;
+}
