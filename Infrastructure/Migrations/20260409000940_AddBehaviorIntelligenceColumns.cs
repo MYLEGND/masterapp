@@ -194,92 +194,15 @@ namespace Infrastructure.Migrations
                 type: "INTEGER",
                 nullable: true);
 
-            migrationBuilder.CreateTable(
-                name: "QuickBooksConnections",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    OwnerUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    RealmId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    AccessTokenCipher = table.Column<string>(type: "TEXT", nullable: false),
-                    RefreshTokenCipher = table.Column<string>(type: "TEXT", nullable: false),
-                    AccessTokenExpiresUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    RefreshTokenExpiresUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    ConnectedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    LastSyncUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
-                    LastSyncStatus = table.Column<string>(type: "TEXT", maxLength: 64, nullable: true),
-                    LastSyncError = table.Column<string>(type: "TEXT", maxLength: 1000, nullable: true),
-                    IsActive = table.Column<bool>(type: "INTEGER", nullable: false)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_QuickBooksConnections", x => x.Id);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "QuickBooksFinancialSnapshots",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    OwnerUserId = table.Column<string>(type: "TEXT", maxLength: 450, nullable: false),
-                    RealmId = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
-                    SyncedUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    RevenueMtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    RevenueYtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    ExpensesMtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    ExpensesYtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    NetProfitMtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    NetProfitYtd = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    CashPosition = table.Column<decimal>(type: "decimal(18,2)", nullable: false),
-                    SourceTag = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    AccountsCount = table.Column<int>(type: "INTEGER", nullable: false),
-                    TopExpenseCategoriesJson = table.Column<string>(type: "TEXT", nullable: true),
-                    ProfitTrendJson = table.Column<string>(type: "TEXT", nullable: true),
-                    RecentTransactionsJson = table.Column<string>(type: "TEXT", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_QuickBooksFinancialSnapshots", x => x.Id);
-                });
-
             migrationBuilder.CreateIndex(
                 name: "IX_AnalyticsEvents_DeviceType",
                 table: "AnalyticsEvents",
                 column: "DeviceType");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_QuickBooksConnections_IsActive",
-                table: "QuickBooksConnections",
-                column: "IsActive");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_QuickBooksConnections_OwnerUserId",
-                table: "QuickBooksConnections",
-                column: "OwnerUserId",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_QuickBooksFinancialSnapshots_OwnerUserId",
-                table: "QuickBooksFinancialSnapshots",
-                column: "OwnerUserId",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
-                name: "IX_QuickBooksFinancialSnapshots_SyncedUtc",
-                table: "QuickBooksFinancialSnapshots",
-                column: "SyncedUtc");
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "QuickBooksConnections");
-
-            migrationBuilder.DropTable(
-                name: "QuickBooksFinancialSnapshots");
-
             migrationBuilder.DropIndex(
                 name: "IX_AnalyticsEvents_DeviceType",
                 table: "AnalyticsEvents");

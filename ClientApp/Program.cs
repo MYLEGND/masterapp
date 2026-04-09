@@ -1,6 +1,5 @@
 using Infrastructure.Data;
 using ClientApp.Services;
-using ClientApp.Services.QuickBooks;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -31,9 +30,6 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddScoped<IAzureUserUpdater, NoopAzureUserUpdater>();
 builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
-builder.Services.Configure<QuickBooksOptions>(builder.Configuration.GetSection("QuickBooks"));
-builder.Services.AddHttpClient(nameof(QuickBooksIntegrationService));
-builder.Services.AddScoped<IQuickBooksIntegrationService, QuickBooksIntegrationService>();
 
 // ------------------------------------------------------------
 // DB CONNECTION RESOLUTION

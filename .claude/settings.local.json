@@ -11,7 +11,8 @@
       "Bash(dotnet test:*)",
       "Bash(echo \"EXIT:$?\")",
       "Bash(echo \"Exit: $?\")",
-      "Bash(dotnet /tmp/testout/AgentPortal.Tests.dll)"
+      "Bash(dotnet /tmp/testout/AgentPortal.Tests.dll)",
+      "Bash(dotnet ef:*)"
     ]
   }
 }

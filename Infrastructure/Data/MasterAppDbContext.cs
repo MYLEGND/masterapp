@@ -16,9 +16,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<FinanceToolState> FinanceToolStates => Set<FinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
-    public DbSet<QuickBooksConnection> QuickBooksConnections => Set<QuickBooksConnection>();
-    public DbSet<QuickBooksFinancialSnapshot> QuickBooksFinancialSnapshots => Set<QuickBooksFinancialSnapshot>();
-    public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
+public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
     public DbSet<Proposal> Proposals => Set<Proposal>();
     public DbSet<UnderwritingRecord> UnderwritingRecords => Set<UnderwritingRecord>();
     public DbSet<OnboardingInvite> OnboardingInvites => Set<OnboardingInvite>();
@@ -695,62 +693,6 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Notes).HasMaxLength(240);
 
             e.HasIndex(x => new { x.OwnerUserId, x.Scope, x.IsActive });
-        });
-
-        // ==========================================================
-        // QUICKBOOKS CONNECTION (SOURCE-OF-TRUTH LINK)
-        // ==========================================================
-        modelBuilder.Entity<QuickBooksConnection>(e =>
-        {
-            e.HasKey(x => x.Id);
-
-            e.Property(x => x.OwnerUserId)
-                .HasMaxLength(450)
-                .IsRequired();
-
-            e.Property(x => x.RealmId)
-                .HasMaxLength(128)
-                .IsRequired();
-
-            e.Property(x => x.LastSyncStatus)
-                .HasMaxLength(64);
-
-            e.Property(x => x.LastSyncError)
-                .HasMaxLength(1000);
-
-            e.HasIndex(x => x.OwnerUserId).IsUnique();
-            e.HasIndex(x => x.IsActive);
-        });
-
-        // ==========================================================
-        // QUICKBOOKS FINANCIAL SNAPSHOT (CACHE, NOT SOURCE OF TRUTH)
-        // ==========================================================
-        modelBuilder.Entity<QuickBooksFinancialSnapshot>(e =>
-        {
-            e.HasKey(x => x.Id);
-
-            e.Property(x => x.OwnerUserId)
-                .HasMaxLength(450)
-                .IsRequired();
-
-            e.Property(x => x.RealmId)
-                .HasMaxLength(128)
-                .IsRequired();
-
-            e.Property(x => x.SourceTag)
-                .HasMaxLength(64)
-                .IsRequired();
-
-            e.Property(x => x.RevenueMtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.RevenueYtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.ExpensesMtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.ExpensesYtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.NetProfitMtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.NetProfitYtd).HasColumnType("decimal(18,2)");
-            e.Property(x => x.CashPosition).HasColumnType("decimal(18,2)");
-
-            e.HasIndex(x => x.OwnerUserId).IsUnique();
-            e.HasIndex(x => x.SyncedUtc);
         });
 
         // ==========================================================
