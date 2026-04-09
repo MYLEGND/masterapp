@@ -3,6 +3,9 @@
 @{
     ViewData["Title"] = "Get Your Personalized Disability Insurance Review";
     ViewData["PageKey"] = "quote_disability";
+    var path = Context?.Request?.Path.Value ?? string.Empty;
+    var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
 }
 
 <style>
@@ -309,6 +312,10 @@ body { background-color: #0f172a; color: #f8fafc; }
     }
 
     <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form" novalidate>
+        @if (!string.IsNullOrWhiteSpace(agentSlug))
+        {
+            <input type="hidden" name="AgentSlug" value="@agentSlug" />
+        }
 
         @if (!ViewData.ModelState.IsValid)
         {
