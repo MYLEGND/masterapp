@@ -315,6 +315,8 @@ public sealed class TrackingProxyController : ControllerBase
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
         public string? Environment { get; set; }
@@ -323,6 +325,30 @@ public sealed class TrackingProxyController : ControllerBase
         public string? SubmitOutcome { get; set; }
         public string? MetadataJson { get; set; }
         public bool IsInternal { get; set; }
+        // Behavior Intelligence fields — must mirror AnalyticsIngestController.AnalyticsEventRequest exactly
+        public string? ReferrerHost { get; set; }
+        public string? DeviceType { get; set; }
+        public string? Browser { get; set; }
+        public string? OperatingSystem { get; set; }
+        public int? ScreenWidth { get; set; }
+        public int? ScreenHeight { get; set; }
+        public int? ViewportWidth { get; set; }
+        public int? ViewportHeight { get; set; }
+        public int? ScrollPercent { get; set; }
+        public long? DwellMilliseconds { get; set; }
+        public long? EngagedMilliseconds { get; set; }
+        public bool? IsBounceCandidate { get; set; }
+        public bool? IsExitPage { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetaCampaignName { get; set; }
+        public string? MetaAdSetId { get; set; }
+        public string? MetaAdSetName { get; set; }
+        public string? MetaAdId { get; set; }
+        public string? MetaAdName { get; set; }
+        public string? Placement { get; set; }
+        public string? FormId { get; set; }
+        public string? FieldName { get; set; }
+        public string? ElementId { get; set; }
     }
 
     public sealed class LeadSubmitRequest
