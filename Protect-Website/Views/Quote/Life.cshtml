@@ -92,80 +92,13 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 
-/* Progress pills */
-.lq-progress {
-    max-width: 760px;
-    margin: 0 auto 18px auto;
-    padding: 0 12px;
-}
-.lq-progress-rail {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
-    gap: 10px;
-}
-.lq-pill-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1.6px solid rgba(199,153,49,0.35);
-    background: linear-gradient(145deg, rgba(17,28,50,0.9), rgba(24,36,58,0.82));
-    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.12), 0 10px 24px rgba(0,0,0,0.18);
-    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
-}
-.lq-pill-num {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(199,153,49,0.14);
-    color: #c79931;
-    font-weight: 900;
-    font-size: .9rem;
-}
-.lq-pill-label {
-    font-weight: 800;
-    color: rgba(248,250,252,0.8);
-    font-size: .92rem;
-    letter-spacing: 0.01em;
-}
-.lq-pill-step.active {
-    border-color: #c79931;
-    background: linear-gradient(135deg, #dfb75a 0%, #b88a26 45%, #916a1d 100%);
-    box-shadow: 0 12px 28px rgba(0,0,0,0.34), 0 0 18px rgba(199,153,49,0.35);
-    transform: translateY(-1px);
-}
-.lq-pill-step.active .lq-pill-num { background: #0f172a; color: #dfb75a; }
-.lq-pill-step.active .lq-pill-label { color: #0f172a; }
-.lq-pill-step.complete {
-    border-color: rgba(199,153,49,0.55);
-    background: linear-gradient(135deg, rgba(199,153,49,0.22), rgba(199,153,49,0.12));
-    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.18);
-}
-.lq-pill-step.complete .lq-pill-num { background: rgba(199,153,49,0.25); color: #c79931; }
-.lq-pill-step.complete .lq-pill-label { color: rgba(248,250,252,0.78); }
-.lq-progress-percent {
-    text-align: center;
-    color: rgba(248,250,252,0.72);
-    font-weight: 800;
-    font-size: .9rem;
-    margin-top: 6px;
-}
-.lq-progress-bar {
-    height: 6px;
-    background: rgba(199,153,49,0.25);
-    border-radius: 999px;
-    overflow: hidden;
-    margin-top: 8px;
-}
-.lq-progress-fill {
-    height: 100%;
-    width: 25%;
-    background: linear-gradient(90deg, #dfb75a, #b88a26);
-    transition: width 0.18s ease;
+.lq-step-meta{
+    position:absolute;
+    top:10px;
+    right:12px;
+    font-weight:850;
+    color:#c79931;
+    font-size:.88rem;
 }
 
 /* Step panels */
@@ -178,6 +111,7 @@ body { background-color: #0f172a; color: #f8fafc; }
     border-radius: 12px;
     box-shadow: 0 18px 40px rgba(0,0,0,0.22);
     animation: lqFadeIn 0.22s ease;
+    position: relative;
 }
 .lq-inner-block {
     background: #111c32;
@@ -358,29 +292,13 @@ body { background-color: #0f172a; color: #f8fafc; }
         <input type="hidden" name="Answer3" id="Answer3" />
         <input type="hidden" name="Answer4" id="Answer4" />
 
-        <div class="lq-progress" aria-hidden="true">
-            <div class="lq-progress-rail">
-                @for (var i = 0; i < totalSteps; i++)
-                {
-                    var isContact = i == totalSteps - 1;
-                    <div class="lq-pill-step" data-pill="@i">
-                        <div class="lq-pill-num">@(i + 1)</div>
-                        <div class="lq-pill-label">@(isContact ? "Your Details" : $"Step {i + 1}")</div>
-                    </div>
-                }
-            </div>
-            <div class="lq-progress-percent">
-                <span id="progressPercent">25%</span> complete
-                <div class="lq-progress-bar"><div class="lq-progress-fill" id="progressFill"></div></div>
-            </div>
-        </div>
-
         @for (var i = 0; i < cfg.Steps.Count; i++)
         {
             var step = cfg.Steps[i];
             var gridClass = step.Options.Count >= 4 ? "lq-grid-2" : "";
         <div class="lq-step-panel" data-step="@i" data-alias="@step.FieldAlias" @(i == 0 ? "" : "hidden")>
             <div class="lq-step-panel-pad">
+                <div class="lq-step-meta">Step @(i + 1) of @totalSteps</div>
                 <div class="lq-step-title">@step.Question</div>
                 <div class="lq-inner-block">
                     <div class="lq-choice-group">
@@ -410,6 +328,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 
         <div class="lq-step-panel" data-step="@cfg.Steps.Count" hidden>
             <div class="lq-step-panel-pad">
+                <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
                 <div class="lq-step-title">Where should we send your review?</div>
                 <div class="lq-step-helper">Enter your details below and we’ll follow up with personalized guidance.</div>
                 <div class="lq-inner-block">
@@ -465,9 +384,6 @@ body { background-color: #0f172a; color: #f8fafc; }
 (() => {
   const form = document.getElementById('lifeWizardForm');
   const steps = Array.from(document.querySelectorAll('[data-step]'));
-  const pills = Array.from(document.querySelectorAll('[data-pill]'));
-  const progressFill = document.getElementById('progressFill');
-  const progressPercent = document.getElementById('progressPercent');
   const totalSteps = steps.length;
   const answerHidden = [
     document.getElementById('Answer1'),
@@ -485,13 +401,6 @@ body { background-color: #0f172a; color: #f8fafc; }
 
   function setStep(idx) {
     steps.forEach((s, i) => s.hidden = i !== idx);
-    pills.forEach((p, i) => {
-      p.classList.toggle('active', i === idx);
-      p.classList.toggle('complete', i < idx);
-    });
-    const pct = Math.round(((idx + 1) / totalSteps) * 100);
-    if (progressPercent) progressPercent.textContent = `${pct}%`;
-    if (progressFill) progressFill.style.width = `${pct}%`;
     const target = steps[idx];
     setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
