@@ -63,20 +63,19 @@ namespace Protect_Website.Controllers
 
 <h3>Personal Information</h3>
 <p><strong>Name:</strong> {model.FirstName}</p>
-<p><strong>Age:</strong> {model.Age}</p>
+<p><strong>Age Range:</strong> {model.AgeRange}</p>
 <p><strong>Email:</strong> {model.Email}</p>
 <p><strong>Phone:</strong> {model.Phone}</p>
 
 <hr />
 
 <h3>Coverage Goals</h3>
-<p><strong>Primary Reason:</strong> {model.PrimaryReason}</p>
-<p><strong>Desired Coverage Amount:</strong> {model.CoverageAmount}</p>
+<p><strong>Protect Focus:</strong> {model.ProtectFocus}</p>
 
 <hr />
 
-<h3>Disclaimer</h3>
-<p><strong>Acknowledged Disclaimer:</strong> {(model.AcknowledgedDisclaimer ? "Acknowledged" : "Not Acknowledged")}</p>
+<h3>Consent</h3>
+<p><strong>Marketing Consent:</strong> {(model.MarketingEmailConsent ? "Yes" : "No")}</p>
 "
                     },
                     ToRecipients = new List<Recipient>
