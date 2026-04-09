@@ -8,6 +8,9 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "First Name is required")]
         public required string FirstName { get; set; }
 
+        [Required(ErrorMessage = "Last Name is required")]
+        public required string LastName { get; set; }
+
         [Required(ErrorMessage = "Email is required")]
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public required string Email { get; set; }
@@ -30,6 +33,10 @@ namespace Protect_Website.Models
         public bool MarketingEmailConsent { get; set; } = false;
 
         public string? PageKey { get; set; }
+
+        /// <summary>Product type for downstream routing/analytics (life/term/wholelife/finalexpense/mortgage/iul).</summary>
+        [Required]
+        public string ProductType { get; set; } = "life";
 
         /// <summary>Canonical offer key (life/term/wholelife/finalexpense/mortgage/iul).</summary>
         [Required]

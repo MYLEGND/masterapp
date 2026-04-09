@@ -37,8 +37,8 @@ namespace Protect_Website.Models
             [LifeOfferKeys.Mortgage] = new(
                 Key:               LifeOfferKeys.Mortgage,
                 DisplayName:       "Mortgage Protection",
-                HeroHeadline:      "Request Your Personalized Mortgage Protection Review",
-                HeroSubheadline:   "See protection options designed to help safeguard your home and family if life changes unexpectedly.",
+                HeroHeadline:      "Protect What You’ve Built",
+                HeroSubheadline:   "Review coverage options designed to help protect your mortgage and family.",
                 FormSectionTitle:  "Start Your Mortgage Protection Review",
                 SubmitButtonText:  "See My Options",
                 PageTitle:         "Mortgage Protection Review"
@@ -46,8 +46,8 @@ namespace Protect_Website.Models
             [LifeOfferKeys.FinalExpense] = new(
                 Key:               LifeOfferKeys.FinalExpense,
                 DisplayName:       "Final Expense",
-                HeroHeadline:      "Explore Your Final Expense Coverage Options",
-                HeroSubheadline:   "Request a personalized review to help protect your loved ones from final expenses and related costs.",
+                HeroHeadline:      "Explore Final Expense Coverage Options",
+                HeroSubheadline:   "Review coverage options designed to help with burial and final expense planning.",
                 FormSectionTitle:  "Start Your Final Expense Review",
                 SubmitButtonText:  "See My Options",
                 PageTitle:         "Final Expense Coverage Review"
@@ -55,8 +55,8 @@ namespace Protect_Website.Models
             [LifeOfferKeys.Term] = new(
                 Key:               LifeOfferKeys.Term,
                 DisplayName:       "Term Life",
-                HeroHeadline:      "Explore Your Term Life Insurance Options",
-                HeroSubheadline:   "See flexible coverage options designed to help protect your family for the years that matter most.",
+                HeroHeadline:      "Explore Term Life Insurance Options",
+                HeroSubheadline:   "Review temporary coverage options designed to help protect your income and family.",
                 FormSectionTitle:  "Start Your Term Life Review",
                 SubmitButtonText:  "See My Options",
                 PageTitle:         "Term Life Insurance Review"
@@ -64,8 +64,8 @@ namespace Protect_Website.Models
             [LifeOfferKeys.WholeLife] = new(
                 Key:               LifeOfferKeys.WholeLife,
                 DisplayName:       "Whole Life",
-                HeroHeadline:      "Explore Your Whole Life Insurance Options",
-                HeroSubheadline:   "Request a personalized review to explore long-term protection with lifelong coverage potential.",
+                HeroHeadline:      "Explore Whole Life Insurance Options",
+                HeroSubheadline:   "Review permanent coverage options built around long-term protection and legacy goals.",
                 FormSectionTitle:  "Start Your Whole Life Review",
                 SubmitButtonText:  "See My Options",
                 PageTitle:         "Whole Life Insurance Review"
@@ -73,8 +73,8 @@ namespace Protect_Website.Models
             [LifeOfferKeys.Iul] = new(
                 Key:               LifeOfferKeys.Iul,
                 DisplayName:       "Indexed Universal Life (IUL)",
-                HeroHeadline:      "Explore Your Indexed Universal Life Options",
-                HeroSubheadline:   "See whether an indexed universal life strategy may fit your protection and long-term goals.",
+                HeroHeadline:      "Explore Indexed Universal Life Options",
+                HeroSubheadline:   "Review protection strategies designed for long-term goals and cash value potential.",
                 FormSectionTitle:  "Start Your IUL Review",
                 SubmitButtonText:  "See My Options",
                 PageTitle:         "Indexed Universal Life Review"

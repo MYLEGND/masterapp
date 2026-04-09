@@ -1,15 +1,16 @@
-@model Protect_Website.Models.LifeQuoteFormModel
+@model Protect_Website.Models.LifeWizardViewModel
 
 @{
-    var offer = ViewData["OfferContent"] as Protect_Website.Models.LifeOfferContent
-                ?? Protect_Website.Models.LifeOfferResolver.GetContent(null);
-    ViewData["Title"] = offer.PageTitle;
-    ViewData["PageKey"] = "quote_life";
+    var cfg = Model.Config;
+    var form = Model.Form;
+    ViewData["Title"] = cfg.PageTitle;
+    ViewData["PageKey"] = cfg.PageKey;
+    var totalSteps = cfg.Steps.Count + 1; // contact step
 }
 
 <style>
 /* ================================================================
-   LIFE QUOTE — 3-STEP MICRO WIZARD (matches Disability look/feel)
+   Shared Life Wizard — Mobile-first, micro-step, premium styling
    ================================================================ */
 body { background-color: #0f172a; color: #f8fafc; }
 
@@ -46,6 +47,18 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .btn-gold:hover { opacity: 0.93; color: #fff; transform: translateY(-1px); }
 .text-gold { color: #c79931; }
+
+.btn-ghost {
+    border: 1px solid rgba(199,153,49,0.55);
+    background: transparent;
+    color: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-weight: 850;
+    transition: border-color .12s ease, color .12s ease, transform .12s ease, box-shadow .12s ease;
+}
+.btn-ghost:hover { border-color: #c79931; color: #dfb75a; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.18); }
+.btn-ghost:focus-visible { outline: 2px solid #dfb75a; outline-offset: 2px; }
 
 .lq-header { margin-top: 18px; margin-bottom: 16px; text-align: center; }
 .lq-header h1 {
@@ -85,12 +98,9 @@ body { background-color: #0f172a; color: #f8fafc; }
     margin: 0 auto 18px auto;
     padding: 0 12px;
 }
-.lq-progress-head {
-    display: none;
-}
 .lq-progress-rail {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     gap: 10px;
 }
 .lq-pill-step {
@@ -137,6 +147,26 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-pill-step.complete .lq-pill-num { background: rgba(199,153,49,0.25); color: #c79931; }
 .lq-pill-step.complete .lq-pill-label { color: rgba(248,250,252,0.78); }
+.lq-progress-percent {
+    text-align: center;
+    color: rgba(248,250,252,0.72);
+    font-weight: 800;
+    font-size: .9rem;
+    margin-top: 6px;
+}
+.lq-progress-bar {
+    height: 6px;
+    background: rgba(199,153,49,0.25);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+.lq-progress-fill {
+    height: 100%;
+    width: 25%;
+    background: linear-gradient(90deg, #dfb75a, #b88a26);
+    transition: width 0.18s ease;
+}
 
 /* Step panels */
 .lq-step-panel {
@@ -160,14 +190,6 @@ body { background-color: #0f172a; color: #f8fafc; }
     font-weight: 900;
     color: #c79931;
     margin-bottom: 6px;
-}
-.lq-step-kicker {
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    font-weight: 800;
-    color: rgba(248,250,252,0.55);
-    font-size: .72rem;
-    margin-bottom: 4px;
 }
 .lq-step-helper {
     font-size: .94rem;
@@ -248,17 +270,6 @@ body { background-color: #0f172a; color: #f8fafc; }
     gap: 10px;
     flex-wrap: wrap;
 }
-.btn-ghost {
-    border: 1px solid rgba(199,153,49,0.55);
-    background: transparent;
-    color: #f8fafc;
-    padding: 10px 14px;
-    border-radius: 10px;
-    font-weight: 850;
-    transition: border-color .12s ease, color .12s ease, transform .12s ease, box-shadow .12s ease;
-}
-.btn-ghost:hover { border-color: #c79931; color: #dfb75a; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.18); }
-.btn-ghost:focus-visible { outline: 2px solid #dfb75a; outline-offset: 2px; }
 .lq-reassurance {
     text-align: center;
     font-size: .84rem;
@@ -327,86 +338,78 @@ body { background-color: #0f172a; color: #f8fafc; }
 
 <div class="container lq-container">
     <div class="lq-header">
-        <h1>@offer.HeroHeadline</h1>
-        <div class="lq-subtext">@offer.HeroSubheadline</div>
+        <h1>@cfg.Header</h1>
+        <div class="lq-subtext">@cfg.Subheader</div>
         <div class="lq-trust-row">
             <span class="lq-trust-chip">Takes 60 Seconds</span>
             <span class="lq-trust-chip">Private &amp; Secure</span>
         </div>
     </div>
 
-    <form asp-action="SubmitLifeQuote" asp-controller="LifeQuote" method="post" id="lifeQuoteForm" data-form-key="quote_life_form">
+    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@cfg.PageKey">
         @Html.AntiForgeryToken()
+        <input type="hidden" name="OfferKey" id="OfferKey" value="@cfg.OfferKey" />
+        <input type="hidden" name="ProductType" id="ProductType" value="@cfg.ProductType" />
+        <input type="hidden" name="PageKey" value="@cfg.PageKey" />
         <input type="hidden" name="AgeRange" id="AgeRange" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" />
-        <input type="hidden" name="PageKey" value="quote_life" />
-        <input type="hidden" name="OfferKey" id="OfferKey" value="@offer.Key" />
+        <input type="hidden" name="Answer1" id="Answer1" />
+        <input type="hidden" name="Answer2" id="Answer2" />
+        <input type="hidden" name="Answer3" id="Answer3" />
+        <input type="hidden" name="Answer4" id="Answer4" />
 
-        <div class="lq-progress">
-            <div class="lq-progress-rail" aria-hidden="true">
-                <div class="lq-pill-step" data-pill="1"><div class="lq-pill-num">1</div><div class="lq-pill-label">Age</div></div>
-                <div class="lq-pill-step" data-pill="2"><div class="lq-pill-num">2</div><div class="lq-pill-label">Focus</div></div>
-                <div class="lq-pill-step" data-pill="3"><div class="lq-pill-num">3</div><div class="lq-pill-label">Your Details</div></div>
+        <div class="lq-progress" aria-hidden="true">
+            <div class="lq-progress-rail">
+                @for (var i = 0; i < totalSteps; i++)
+                {
+                    var isContact = i == totalSteps - 1;
+                    <div class="lq-pill-step" data-pill="@i">
+                        <div class="lq-pill-num">@(i + 1)</div>
+                        <div class="lq-pill-label">@(isContact ? "Your Details" : $"Step {i + 1}")</div>
+                    </div>
+                }
+            </div>
+            <div class="lq-progress-percent">
+                <span id="progressPercent">25%</span> complete
+                <div class="lq-progress-bar"><div class="lq-progress-fill" id="progressFill"></div></div>
             </div>
         </div>
 
-        <!-- STEP 1 -->
-        <div class="lq-step-panel" data-step="1">
+        @for (var i = 0; i < cfg.Steps.Count; i++)
+        {
+            var step = cfg.Steps[i];
+            var gridClass = step.Options.Count >= 4 ? "lq-grid-2" : "";
+        <div class="lq-step-panel" data-step="@i" data-alias="@step.FieldAlias" @(i == 0 ? "" : "hidden")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-kicker">Step 1 of 3</div>
-                <div class="lq-step-title">What is your age range?</div>
-                <div class="lq-step-helper">Choose the range that fits you best.</div>
+                <div class="lq-step-title">@step.Question</div>
                 <div class="lq-inner-block">
                     <div class="lq-choice-group">
-                        <div class="lq-choice-grid lq-grid-2">
-                            @foreach (var opt in new[]{ "18–24","25–34","35–44","45–54","55–64","65+" })
+                        <div class="lq-choice-grid @gridClass">
+                            @foreach (var opt in step.Options)
                             {
+                                var inputName = $"step-{i}-option";
                                 <label class="lq-card">
-                                    <input type="radio" name="AgeRangeCard" value="@opt" />
-                                    <span>@opt</span>
+                                    <input type="radio" name="@inputName" value="@opt.Code" data-label="@opt.Label" />
+                                    <span>@opt.Label</span>
                                 </label>
                             }
                         </div>
-                        <div class="lq-choice-error" id="ageError">Please choose an age range.</div>
+                        <div class="lq-choice-error" id="error-step-@i">Please choose an option.</div>
                     </div>
                     <div class="lq-step-actions dual">
-                        <button type="button" class="btn-gold" id="ageNext">Next</button>
+                        @if (i > 0)
+                        {
+                            <button type="button" class="btn-ghost" data-back="@i">Back</button>
+                        }
+                        <button type="button" class="btn-gold" data-next="@i">Next</button>
                     </div>
                 </div>
             </div>
         </div>
+        }
 
-        <!-- STEP 2 -->
-        <div class="lq-step-panel" data-step="2" hidden>
+        <div class="lq-step-panel" data-step="@cfg.Steps.Count" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-kicker">Step 2 of 3</div>
-                <div class="lq-step-title">What are you mainly looking to protect?</div>
-                <div class="lq-step-helper">Tell us your priority so we can tailor the review.</div>
-                <div class="lq-inner-block">
-                    <div class="lq-choice-group">
-                        <div class="lq-choice-grid lq-grid-2">
-                            @foreach (var opt in new[]{ "My family","My mortgage / debts","My income","Final expenses","My business","Not sure yet" })
-                            {
-                                <label class="lq-card">
-                                    <input type="radio" name="ProtectFocusCard" value="@opt" />
-                                    <span>@opt</span>
-                                </label>
-                            }
-                        </div>
-                        <div class="lq-choice-error" id="focusError">Please choose an option.</div>
-                    </div>
-                    <div class="lq-step-actions dual">
-                        <button type="button" class="btn-gold" id="focusNext">Next</button>
-                        <button type="button" class="btn-ghost w-50" id="focusBack">Back</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- STEP 3 -->
-        <div class="lq-step-panel" data-step="3" hidden>
-            <div class="lq-step-panel-pad">
-                <div class="lq-step-kicker">Step 3 of 3</div>
                 <div class="lq-step-title">Where should we send your review?</div>
                 <div class="lq-step-helper">Enter your details below and we’ll follow up with personalized guidance.</div>
                 <div class="lq-inner-block">
@@ -414,25 +417,30 @@ body { background-color: #0f172a; color: #f8fafc; }
                         <div class="lq-field-row two">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
-                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" />
+                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" />
-                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                                <label for="LastName">Last Name <span style="color:#f87171">*</span></label>
+                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
+                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
-                        <div class="lq-field-row">
+                        <div class="lq-field-row two">
+                            <div class="lq-field">
+                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                            </div>
                             <div class="lq-field">
                                 <label for="Email">Email <span style="color:#f87171">*</span></label>
-                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" />
+                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email.</div>
                             </div>
                         </div>
                         <div class="lq-field-row">
                             <label class="lq-consent full">
-                                <input type="checkbox" name="MarketingEmailConsent" value="true" required />
+                                <input type="checkbox" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : "") required />
                                 <span>I authorize the company to contact me regarding this request.</span>
                             </label>
                             <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
@@ -440,11 +448,11 @@ body { background-color: #0f172a; color: #f8fafc; }
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@offer.SubmitButtonText">@offer.SubmitButtonText</button>
+                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <button type="button" class="btn-ghost w-100 mt-2" id="contactBack">Back</button>
+                        <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
                     </div>
                     <div class="lq-reassurance">We only use your details to send your personalized review.</div>
                 </div>
@@ -455,21 +463,25 @@ body { background-color: #0f172a; color: #f8fafc; }
 
 <script>
 (() => {
+  const form = document.getElementById('lifeWizardForm');
   const steps = Array.from(document.querySelectorAll('[data-step]'));
   const pills = Array.from(document.querySelectorAll('[data-pill]'));
-  const ageNext = document.getElementById('ageNext');
-  const focusNext = document.getElementById('focusNext');
-  const focusBack = document.getElementById('focusBack');
-  const contactBack = document.getElementById('contactBack');
-  const form = document.getElementById('lifeQuoteForm');
+  const progressFill = document.getElementById('progressFill');
+  const progressPercent = document.getElementById('progressPercent');
+  const totalSteps = steps.length;
+  const answerHidden = [
+    document.getElementById('Answer1'),
+    document.getElementById('Answer2'),
+    document.getElementById('Answer3'),
+    document.getElementById('Answer4'),
+  ];
   const ageHidden = document.getElementById('AgeRange');
   const focusHidden = document.getElementById('ProtectFocus');
-  const lifeError = document.getElementById('lifeError');
-  const lifeSuccess = document.getElementById('lifeSuccess');
   const submitBtn = document.getElementById('submitLife');
-  const submitLabel = submitBtn?.dataset.defaultLabel || 'Request My Review';
-  const currentOffer = document.getElementById('OfferKey')?.value || 'life';
-  const progressLabel = document.getElementById('lqProgressLabel');
+  const submitLabel = submitBtn?.dataset.defaultLabel || 'Submit';
+  const pageKey = form.dataset.formKey || 'quote_life';
+  const startEvent = '@cfg.StartEvent';
+  const submitEvent = '@cfg.SubmitEvent';
 
   function setStep(idx) {
     steps.forEach((s, i) => s.hidden = i !== idx);
@@ -477,105 +489,109 @@ body { background-color: #0f172a; color: #f8fafc; }
       p.classList.toggle('active', i === idx);
       p.classList.toggle('complete', i < idx);
     });
-    progressLabel.textContent = `Step ${idx + 1} of 3`;
+    const pct = Math.round(((idx + 1) / totalSteps) * 100);
+    if (progressPercent) progressPercent.textContent = `${pct}%`;
+    if (progressFill) progressFill.style.width = `${pct}%`;
     const target = steps[idx];
-    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }
 
-  function getChecked(name) {
-    return form.querySelector(`input[name="${name}"]:checked`)?.value || '';
+  function storeAnswer(stepIndex, code, label, alias) {
+    if (stepIndex < answerHidden.length) {
+      answerHidden[stepIndex].value = code;
+    }
+    if (alias === 'AgeRange') ageHidden.value = label;
+    if (alias === 'ProtectFocus') focusHidden.value = label;
   }
 
-  // auto-advance when selecting age
-  form.querySelectorAll('input[name="AgeRangeCard"]').forEach(r => {
-    r.addEventListener('change', () => {
-      const age = getChecked('AgeRangeCard');
-      const err = document.getElementById('ageError');
-      if (!age) { err.classList.add('visible'); return; }
-      err.classList.remove('visible');
-      ageHidden.value = age;
-      window.legendTrack?.({ EventType: 'life_quote_age_selected', Choice: age, PageKey: 'quote_life' });
-      setTimeout(() => setStep(1), 80);
+  function validateStep(idx) {
+    const errorEl = document.getElementById(`error-step-${idx}`);
+    const selected = form.querySelector(`input[name=\"step-${idx}-option\"]:checked`);
+    if (!selected) {
+      errorEl?.classList.add('visible');
+      return false;
+    }
+    errorEl?.classList.remove('visible');
+    return true;
+  }
+
+  // wire option clicks
+  steps.forEach((stepEl, idx) => {
+    if (idx >= totalSteps - 1) return; // skip contact
+    const alias = stepEl.dataset.alias;
+    stepEl.querySelectorAll('input[type=\"radio\"]').forEach(r => {
+      r.addEventListener('change', (e) => {
+        const code = r.value;
+        const label = r.dataset.label || r.value;
+        storeAnswer(idx, code, label, stepEl.getAttribute('data-alias'));
+        window.legendTrack?.({ EventType: startEvent, Step: idx + 1, Choice: label, Code: code, PageKey: pageKey });
+        setTimeout(() => setStep(idx + 1), 120);
+      });
     });
   });
-  ageNext.addEventListener('click', () => {
-    const age = getChecked('AgeRangeCard');
-    const err = document.getElementById('ageError');
-    if (!age) { err.classList.add('visible'); return; }
-    err.classList.remove('visible');
-    ageHidden.value = age;
-    window.legendTrack?.({ EventType: 'life_quote_age_selected', Choice: age, PageKey: 'quote_life' });
-    setStep(1);
-  });
 
-  focusBack.addEventListener('click', () => {
-    window.legendTrack?.({ EventType: 'life_quote_back_click', FromStep: 2, PageKey: 'quote_life' });
-    setStep(0);
-  });
-
-  // auto-advance when selecting focus
-  form.querySelectorAll('input[name="ProtectFocusCard"]').forEach(r => {
-    r.addEventListener('change', () => {
-      const focus = getChecked('ProtectFocusCard');
-      const err = document.getElementById('focusError');
-      if (!focus) { err.classList.add('visible'); return; }
-      err.classList.remove('visible');
-      focusHidden.value = focus;
-      window.legendTrack?.({ EventType: 'life_quote_reason_selected', Choice: focus, PageKey: 'quote_life' });
-      setTimeout(() => setStep(2), 80);
+  // back / next buttons
+  document.querySelectorAll('[data-back]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(btn.getAttribute('data-back'));
+      const prev = Math.max(0, idx - 1);
+      window.legendTrack?.({ EventType: 'life_quote_back_click', FromStep: idx + 1, PageKey: pageKey });
+      setStep(prev);
     });
   });
-  focusNext.addEventListener('click', () => {
-    const focus = getChecked('ProtectFocusCard');
-    const err = document.getElementById('focusError');
-    if (!focus) { err.classList.add('visible'); return; }
-    err.classList.remove('visible');
-    focusHidden.value = focus;
-    window.legendTrack?.({ EventType: 'life_quote_reason_selected', Choice: focus, PageKey: 'quote_life' });
-    setStep(2);
+  document.querySelectorAll('[data-next]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.getAttribute('data-next'));
+      if (!validateStep(idx)) return;
+      const selected = form.querySelector(`input[name=\"step-${idx}-option\"]:checked`);
+      storeAnswer(idx, selected.value, selected.dataset.label || selected.value, steps[idx].getAttribute('data-alias'));
+      setStep(Math.min(totalSteps - 1, idx + 1));
+    });
   });
 
-  contactBack.addEventListener('click', () => {
-    window.legendTrack?.({ EventType: 'life_quote_back_click', FromStep: 3, PageKey: 'quote_life' });
-    setStep(1);
-  });
-
+  // form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const lifeError = document.getElementById('lifeError');
+    const lifeSuccess = document.getElementById('lifeSuccess');
     lifeError.style.display = 'none';
     lifeSuccess.style.display = 'none';
-    ['FirstName','Phone','Email'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
+    ['FirstName','LastName','Phone','Email'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
     document.getElementById('err-Consent')?.classList.remove('visible');
 
-    if (!ageHidden.value || !focusHidden.value) {
-      lifeError.textContent = 'Please complete steps 1 and 2.';
-      lifeError.style.display = 'block';
-      return setStep(!ageHidden.value ? 0 : 1);
+    // validate all question steps
+    for (let i = 0; i < totalSteps - 1; i++) {
+      if (!validateStep(i)) { setStep(i); return; }
+      const selected = form.querySelector(`input[name=\"step-${i}-option\"]:checked`);
+      storeAnswer(i, selected.value, selected.dataset.label || selected.value, steps[i].getAttribute('data-alias'));
     }
 
-    const required = ['FirstName','Phone','Email'];
+    // contact validation
+    const required = ['FirstName','LastName','Phone','Email'];
     for (const name of required) {
-      const el = form.querySelector(`[name="${name}"]`);
+      const el = form.querySelector(`[name=\"${name}\"]`);
       if (!el || !el.value.trim()) {
         lifeError.textContent = 'Please fill all required contact fields.';
         lifeError.style.display = 'block';
         el?.focus();
         document.getElementById(`err-${name}`)?.classList.add('visible');
+        setStep(totalSteps - 1);
         return;
       }
     }
-    const consent = form.querySelector('input[name="MarketingEmailConsent"]');
+    const consent = form.querySelector('input[name=\"MarketingEmailConsent\"]');
     if (!consent?.checked) {
       lifeError.textContent = 'Please authorize contact.';
       lifeError.style.display = 'block';
       consent?.focus();
       document.getElementById('err-Consent')?.classList.add('visible');
+      setStep(totalSteps - 1);
       return;
     }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
-    window.legendTrack?.({ EventType: 'life_quote_submit_attempt', PageKey: 'quote_life', Offer: currentOffer });
+    window.legendTrack?.({ EventType: submitEvent.replace('_submit','_submit_attempt'), PageKey: pageKey, Offer: '@cfg.OfferKey' });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -586,25 +602,24 @@ body { background-color: #0f172a; color: #f8fafc; }
     })();
 
     try {
-      const res = await fetch(form.action, {
-        method: 'POST',
-        body: new FormData(form),
-        headers: { 'X-Requested-With': 'fetch' }
-      });
+      const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
-      window.legendTrack?.({ EventType: 'life_quote_submit_success', PageKey: 'quote_life', Offer: currentOffer });
+      window.legendTrack?.({ EventType: submitEvent, PageKey: pageKey, Offer: '@cfg.OfferKey' });
       window.location.href = thankYouPath;
     } catch (err) {
       lifeError.textContent = 'We could not send this right now. Please try again.';
       lifeError.style.display = 'block';
-      window.legendTrack?.({ EventType: 'life_quote_submit_error', PageKey: 'quote_life', Offer: currentOffer });
+      window.legendTrack?.({ EventType: submitEvent.replace('_submit','_submit_error'), PageKey: pageKey, Offer: '@cfg.OfferKey' });
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = submitLabel;
     }
   });
 
-  // Focus first step on load
+  // fire start event once
+  window.legendTrack?.({ EventType: startEvent, PageKey: pageKey, Offer: '@cfg.OfferKey' });
+
+  // initial position
   setStep(0);
 })();
 </script>
