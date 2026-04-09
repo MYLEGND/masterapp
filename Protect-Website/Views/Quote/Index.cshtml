@@ -243,6 +243,9 @@
     left:18px;
     right:18px;
     z-index:5;
+    max-height:320px;
+    overflow-y:auto;
+    -webkit-overflow-scrolling: touch;
 }
 .life-dropdown a{
     padding:11px 14px;
@@ -718,5 +721,7 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!lifeTile || !lifeMenu) return;
         if (!lifeTile.contains(e.target)) closeLife();
     });
+    window.addEventListener("scroll", closeLife, { passive: true });
+    window.addEventListener("resize", closeLife);
 });
 </script>
