@@ -1,361 +1,415 @@
 @model Protect_Website.Models.LifeQuoteFormModel
-
 @{
-    ViewData["Title"] = "Explore Your Life Insurance Options";
+    ViewData["Title"] = "Get Your Personalized Life Insurance Review";
     ViewData["PageKey"] = "quote_life";
 }
 
-<div class="container-narrow">
+<div class="life-quote-shell">
+    <div class="wizard-card">
+        <div class="wizard-header">
+            <div class="eyebrow">Premium Guided Quiz</div>
+            <h1>Get Your Personalized Life Insurance Review</h1>
+            <p class="sub">Personalized guidance based on your needs.</p>
+            <div class="badges">
+                <span class="pill">Takes 60 Seconds</span>
+                <span class="pill">Private &amp; Secure</span>
+            </div>
+        </div>
 
-    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
-        <h1 style="
-            font-weight: 900;
-            font-size: 2rem;
-            color: #a68023;
-            letter-spacing: .5px;
-            margin-bottom: 6px;">
-            Explore Your Life Insurance Options
-        </h1>
+        <div class="progress-rail" aria-hidden="true">
+            <div class="progress-step" data-step="1"><span>25%</span></div>
+            <div class="progress-step" data-step="2"><span>50%</span></div>
+            <div class="progress-step" data-step="3"><span>100%</span></div>
+            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+
+        <form asp-action="SubmitLifeQuote" asp-controller="LifeQuote" method="post" id="lifeWizardForm" novalidate>
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="AgeRange" id="AgeRange" />
+            <input type="hidden" name="ProtectFocus" id="ProtectFocus" />
+            <input type="hidden" name="PageKey" value="quote_life" />
+
+            <div class="wizard-steps">
+
+                <!-- STEP 1 -->
+                <section class="wizard-step" data-step="1" aria-labelledby="step1-title">
+                    <div class="step-top">
+                        <button type="button" class="back-btn" disabled aria-hidden="true">Back</button>
+                        <span class="step-label">Step 1 of 3</span>
+                    </div>
+                    <h2 id="step1-title">What is your age range?</h2>
+                    <div class="options-grid">
+                        @foreach (var opt in new[]{
+                            "18–24","25–34","35–44","45–54","55–64","65+"
+                        }){
+                            <button type="button" class="option" data-value="@opt" data-field="AgeRange">@opt</button>
+                        }
+                    </div>
+                </section>
+
+                <!-- STEP 2 -->
+                <section class="wizard-step" data-step="2" aria-labelledby="step2-title" hidden>
+                    <div class="step-top">
+                        <button type="button" class="back-btn" data-back>Back</button>
+                        <span class="step-label">Step 2 of 3</span>
+                    </div>
+                    <h2 id="step2-title">What are you mainly looking to protect?</h2>
+                    <div class="options-grid">
+                        @foreach (var opt in new[]{
+                            "My family","My mortgage / debts","My income",
+                            "Final expenses","My business","Not sure yet"
+                        }){
+                            <button type="button" class="option" data-value="@opt" data-field="ProtectFocus">@opt</button>
+                        }
+                    </div>
+                </section>
+
+                <!-- STEP 3 -->
+                <section class="wizard-step" data-step="3" aria-labelledby="step3-title" hidden>
+                    <div class="step-top">
+                        <button type="button" class="back-btn" data-back>Back</button>
+                        <span class="step-label">Step 3 of 3</span>
+                    </div>
+                    <h2 id="step3-title">Where should we send your review?</h2>
+                    <p class="helper">Enter your details and we’ll follow up with personalized guidance.</p>
+                    <div class="form-grid">
+                        <label class="field">
+                            First Name*
+                            <input type="text" name="FirstName" required placeholder="First name" />
+                        </label>
+                        <label class="field">
+                            Phone*
+                            <input type="tel" name="Phone" required placeholder="(555) 555-5555" />
+                        </label>
+                        <label class="field">
+                            Email*
+                            <input type="email" name="Email" required placeholder="you@example.com" />
+                        </label>
+                        <label class="consent">
+                            <input type="checkbox" name="MarketingEmailConsent" value="true" required />
+                            <span>I authorize the company to contact me regarding this request.</span>
+                        </label>
+                    </div>
+                    <div class="actions">
+                        <button type="submit" class="submit-btn" id="wizardSubmit">Get My Personalized Review</button>
+                    </div>
+                    <div class="form-error" id="formError"></div>
+                    <div class="form-success" id="formSuccess"></div>
+                </section>
+            </div>
+        </form>
     </div>
-
-    <p class="required-note text-center">
-        <strong>
-            * Fields marked with an asterisk are required.
-        </strong>
-    </p>
+</div>
 
 <style>
-    body { background-color: #0f172a; color: #f8fafc; }
-
-    .section-card {
-        background-color: #0f172a;
-        border: 1.6px solid #c79931;
-        padding: 18px;
-        border-radius: 10px;
-        margin-bottom: 24px;
-        box-shadow: 0 18px 40px rgba(0,0,0,0.18);
-        color: #f8fafc;
-    }
-
-    .section-title {
-        font-size: 1.25rem;
-        font-weight: 900;
-        color: #c79931;
-        margin-bottom: 14px;
-    }
-
-    .form-control,
-    .form-select {
-        border: 1.6px solid #c79931;
-        margin-bottom: 10px;
-        background: #ffffff;
-        color: #0f172a;
-        font-size: 0.95rem;
-        padding: 8px 10px;
-    }
-    .form-control::placeholder,
-    .form-select::placeholder{
-        color: rgba(15,23,42,0.55);
-    }
-    .form-control:focus,
-    .form-select:focus {
-        outline: none;
-        box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
-        border-color: #c79931;
-        background: #ffffff;
-        color: #0f172a;
-    }
-
-    .btn-gold {
-        background: linear-gradient(180deg, #c79931, #a68023);
-        color: #fff;
-        font-weight: 900;
-        padding: 9px 24px;
-        border-radius: 6px;
-        font-size: 1rem;
-        border: 1.4px solid #c79931;
-        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
-    }
-
-    .btn-gold:hover {
-        background: linear-gradient(180deg, #c79931, #a68023);
-        color: #fff;
-    }
-
-    .text-gold { color: #c79931; }
-
-    .success-message {
-        color: #f8fafc;
-        font-weight: bold;
-        margin-bottom: 20px;
-        font-size: 1.1rem;
-    }
-
-    /* ===== Visual-only: single-card layout + tighter, lead-form grouping ===== */
-    .lead-card{
-        max-width: 1100px;
-        width: 100%;
-        margin: 0 auto 24px auto;
-    }
-
-
-    .lead-grid{
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 14px;
-    }
-
-    .lead-block{
-        border: 1.4px solid #c79931;
-        border-radius: 10px;
-        padding: 12px 12px 4px 12px;
-        background: #111c32;
-        color: #f8fafc;
-    }
-
-    .lead-block .section-title{
-        margin-bottom: 12px;
-        font-size: 1.15rem;
-    }
-
-    .lead-row{
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 12px 14px;
-    }
-
-    @@media (min-width: 768px){
-        .lead-row.three{
-            grid-template-columns: repeat(3, 1fr);
-        }
-        .lead-row.two{
-            grid-template-columns: repeat(2, 1fr);
-        }
-    }
-
-    .field{
-        margin-bottom: 0;
-    }
-
-    .field label{
-        display:block;
-        margin-bottom: 6px;
-        font-weight: 800;
-        color: #f8fafc;
-        font-size: .95rem;
-    }
-
-    /* keep your existing inputs/selects untouched; just tighten spacing visually */
-    .field .form-control,
-    .field .form-select{
-        margin-bottom: 8px;
-    }
-
-    .field .form-select{
-        cursor: pointer;
-        appearance: auto;
-    }
-
-    .field .form-select:invalid{
-        color: #64748b;
-    }
-
-    .field .form-select option[value=""]{
-        color: #64748b;
-    }
-
-.disclaimer-wrap{
-    margin-top: 6px;
+body { background:#0f172a; color:#f8fafc; }
+.life-quote-shell{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px 16px 48px;
 }
-.disclaimer-check{
+.wizard-card{
+    width:min(960px, 100%);
+    background:#0b1326;
+    border:1.6px solid rgba(199,153,49,.75);
+    border-radius:18px;
+    box-shadow:0 28px 60px rgba(0,0,0,.32);
+    padding:22px 20px 24px;
+}
+.wizard-header{
+    text-align:center;
+    margin-bottom:12px;
+}
+.wizard-header h1{
+    margin:6px 0;
+    font-size:clamp(1.6rem,4vw,2.2rem);
+    color:#ddb457;
+    font-weight:900;
+}
+.wizard-header .sub{
+    margin:0;
+    color:rgba(232,237,247,.85);
+}
+.badges{
+    display:flex;
+    justify-content:center;
+    gap:10px;
+    flex-wrap:wrap;
+    margin-top:10px;
+}
+.pill{
+    border:1px solid rgba(199,153,49,.6);
+    color:#f8fafc;
+    padding:6px 12px;
+    border-radius:999px;
+    font-weight:800;
+    background:rgba(255,255,255,0.06);
+    font-size:.9rem;
+}
+.progress-rail{
+    position:relative;
+    margin:12px 0 18px;
+    padding-top:24px;
+}
+.progress-bar{
+    height:6px;
+    background:rgba(255,255,255,0.06);
+    border-radius:999px;
+    overflow:hidden;
+}
+.progress-fill{
+    height:100%;
+    width:25%;
+    background:linear-gradient(90deg,#c79931,#a68023);
+    border-radius:999px;
+    transition:width .25s ease;
+}
+.progress-step{
+    position:absolute;
+    top:0;
+    transform:translateX(-50%);
+    width:44px;height:44px;
+    border-radius:12px;
+    border:1.4px solid rgba(199,153,49,.65);
+    background:#0f172a;
+    color:#ddb457;
+    font-weight:900;
+    display:grid;
+    place-items:center;
+    box-shadow:0 14px 30px rgba(0,0,0,.24);
+}
+.progress-step[data-step="1"]{ left:0%; }
+.progress-step[data-step="2"]{ left:50%; }
+.progress-step[data-step="3"]{ left:100%; }
+.wizard-steps{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+}
+.wizard-step{
+    background:linear-gradient(180deg,#0f172a,#0b1326);
+    border:1.4px solid rgba(199,153,49,.55);
+    border-radius:14px;
+    padding:14px 14px 18px;
+    box-shadow:0 18px 38px rgba(0,0,0,.28);
+}
+.step-top{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+}
+.back-btn{
+    border:1px solid rgba(199,153,49,.45);
+    background:transparent;
+    color:#f8fafc;
+    padding:8px 12px;
+    border-radius:10px;
+    font-weight:800;
+}
+.back-btn[disabled]{ opacity:.35; pointer-events:none; }
+.step-label{ color:rgba(232,237,247,.8); font-weight:800; }
+.wizard-step h2{
+    margin:10px 0 8px;
+    font-size:1.35rem;
+    color:#ddb457;
+    font-weight:900;
+}
+.helper{ margin:0 0 12px; color:rgba(232,237,247,.8); }
+.options-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+}
+@@media (min-width:720px){
+    .options-grid{ grid-template-columns:repeat(2,1fr); }
+}
+.option{
+    width:100%;
+    text-align:left;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1.4px solid rgba(199,153,49,.45);
+    background:rgba(255,255,255,0.04);
+    color:#f8fafc;
+    font-weight:900;
+    letter-spacing:.2px;
+    transition:transform .12s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+}
+.option.selected{
+    border-color:rgba(199,153,49,.9);
+    background:rgba(199,153,49,.16);
+    box-shadow:0 14px 28px rgba(0,0,0,.26);
+}
+.option:focus-visible{
+    outline:2px solid #ddb457;
+    outline-offset:2px;
+}
+.form-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:12px;
+}
+@@media (min-width:720px){
+    .form-grid{ grid-template-columns:repeat(2,1fr); }
+    .form-grid label.consent{ grid-column:1 / -1; }
+}
+.field input{
+    width:100%;
+    border-radius:12px;
+    border:1.4px solid rgba(199,153,49,.8);
+    padding:12px 12px;
+    background:#fff;
+    color:#0f172a;
+    font-weight:700;
+}
+.consent{
     display:flex;
     align-items:flex-start;
     gap:10px;
-    padding:10px 0;
-}
-.disclaimer-check .form-check-input{
-    width:18px;
-    height:18px;
-    margin-top:2px;
-    margin-left:0;
-    margin-right:0;
-    position:static;
-    flex-shrink:0;
-}
-.disclaimer-check .form-check-label{
-    line-height:1.5;
-    white-space:normal;
+    font-weight:800;
     color:#f8fafc;
+}
+.consent input{ width:18px; height:18px; margin-top:3px; flex-shrink:0; }
+.actions{ margin-top:10px; }
+.submit-btn{
+    width:100%;
+    border:none;
+    background:linear-gradient(180deg,#c79931,#a68023);
+    color:#fff;
+    padding:14px;
+    border-radius:12px;
+    font-weight:900;
+    box-shadow:0 18px 38px rgba(0,0,0,.28);
+}
+.form-error,.form-success{
+    margin-top:10px;
+    font-weight:800;
+    display:none;
+}
+.form-error{ color:#fca5a5; }
+.form-success{ color:#bbf7d0; }
+
+@@media (max-width:600px){
+    .wizard-card{ padding:18px 14px; }
+    .progress-step{ width:40px; height:40px; }
+    .wizard-step h2{ font-size:1.2rem; }
 }
 </style>
 
-<div class="container">
-
-    @if (ViewBag.Success != null)
-    {
-        <div class="success-message">
-            @ViewBag.Success
-        </div>
-    }
-
-<form asp-action="SubmitLifeQuote" asp-controller="LifeQuote" method="post" id="lifeQuoteForm" data-form-key="quote_life_form">
-
-    <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
-    <div class="section-card lead-card">
-
-        <div class="lead-grid">
-
-            <!-- CORE DETAILS -->
-            <div class="lead-block">
-
-                <div class="section-title">Tell Us About You</div>
-
-                <div class="lead-row three">
-                    <div class="field">
-                        <label>First Name*</label>
-                        <input type="text" name="FirstName" class="form-control" placeholder="First Name" required />
-                    </div>
-
-                    <div class="field">
-                        <label>Last Name*</label>
-                        <input type="text" name="LastName" class="form-control" placeholder="Last Name" required />
-                    </div>
-
-                    <div class="field">
-                        <label>Age*</label>
-                        <input type="number" name="Age" class="form-control" placeholder="Age" required />
-                    </div>
-                </div>
-
-                <div class="lead-row two">
-                    <div class="field">
-                        <label>Email*</label>
-                        <input type="email" name="Email" class="form-control" placeholder="Email" required />
-                    </div>
-
-                    <div class="field">
-                        <label>Phone*</label>
-                        <input type="tel" name="Phone" class="form-control" placeholder="Phone" required />
-                    </div>
-                </div>
-
-                <div class="lead-row two">
-                    <div class="field">
-                        <label>Primary Reason*</label>
-                        <select name="PrimaryReason" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Legacy planning</option>
-                            <option>Protect family income</option>
-                            <option>Cover debts / mortgage</option>
-                            <option>Business or estate planning</option>
-                            <option>Final expenses</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>Coverage Amount*</label>
-                        <input type="text" name="CoverageAmount" class="form-control" placeholder="e.g. $500,000" required />
-                    </div>
-                </div>
-
-            </div>
-
-            <!-- ADDITIONAL DETAILS -->
-            <div class="lead-block">
-
-                <div class="section-title">Help Us Understand Your Needs</div>
-
-                <div class="lead-row three">
-                    <div class="field">
-                        <label>Marital Status*</label>
-                        <select name="MaritalStatus" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Single</option>
-                            <option>Married</option>
-                            <option>Separated</option>
-                            <option>Divorced</option>
-                            <option>Widowed</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>Preferred Contact Method*</label>
-                        <select name="ContactMethod" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Phone</option>
-                            <option>Email</option>
-                            <option>Text</option>
-                        </select>
-                    </div>
-
-                    <div class="field">
-                        <label>Best Time To Contact*</label>
-                        <select name="BestTimeToContact" class="form-select" required>
-                            <option value="">-- Select an Option --</option>
-                            <option>Morning</option>
-                            <option>Afternoon</option>
-                            <option>Evening</option>
-                        </select>
-                    </div>
-
-                </div>
-
-            </div>
-
-        </div>
-
-        <!-- ===================== DISCLAIMER ===================== -->
-        <div class="lead-block disclaimer-wrap">
-            <div class="form-check disclaimer-check">
-                <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
-                <label class="form-check-label" for="disclaimerCheckbox">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my life insurance inquiry and personalized coverage review.*
-                </label>
-            </div>
-            <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
-
-            <div class="text-center mb-5" style="margin-top: 30px;">
-                <button type="submit" class="btn btn-gold">Explore My Options</button>
-            </div>
-        </div>
-
-    </div>
-
-</form>
-
 <script>
-    const form = document.getElementById('lifeQuoteForm');
-    const checkbox = document.getElementById('disclaimerCheckbox');
+(() => {
+  const steps = Array.from(document.querySelectorAll('.wizard-step'));
+  const fill = document.getElementById('progressFill');
+  const hiddenFields = { AgeRange: document.getElementById('AgeRange'), ProtectFocus: document.getElementById('ProtectFocus') };
+  const form = document.getElementById('lifeWizardForm');
+  const errorEl = document.getElementById('formError');
+  const successEl = document.getElementById('formSuccess');
+  const submitBtn = document.getElementById('wizardSubmit');
 
-    if (form && checkbox) {
-        form.addEventListener('submit', function(event) {
-            if (!checkbox.checked) {
-                event.preventDefault();
-                alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your life insurance inquiry and personalized coverage review.');
-            }
-        });
-    }
-</script>
+  let current = 0;
 
-<script>
-document.addEventListener("DOMContentLoaded", function () {
-    const validationForm = document.getElementById('lifeQuoteForm');
+  function setStep(idx, focusTarget) {
+    steps.forEach((s, i) => s.hidden = i !== idx);
+    current = idx;
+    const pct = (idx === 0 ? 25 : idx === 1 ? 50 : 100);
+    fill.style.width = pct + '%';
+    const stepEl = steps[idx];
+    setTimeout(() => {
+      (focusTarget || stepEl.querySelector('h2') || stepEl).scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+  }
 
-    if (!validationForm) return;
+  function handleOption(btn) {
+    const field = btn.dataset.field;
+    const val = btn.dataset.value;
+    if (!field || !hiddenFields[field]) return;
+    btn.parentElement.querySelectorAll('.option').forEach(o => o.classList.remove('selected'));
+    btn.classList.add('selected');
+    hiddenFields[field].value = val;
+    const evtName = field === 'AgeRange' ? 'life_quote_age_selected' : 'life_quote_reason_selected';
+    window.legendTrack?.({ EventType: evtName, PageKey: 'quote_life', Choice: val });
+    if (current < steps.length - 1) setStep(current + 1);
+  }
 
-    validationForm.addEventListener("submit", function (event) {
-        if (!validationForm.checkValidity()) {
-            event.preventDefault();
-
-            const firstInvalid = validationForm.querySelector(":invalid");
-            if (firstInvalid) {
-                firstInvalid.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center"
-                });
-                firstInvalid.focus();
-            }
-        }
+  steps.forEach((step, idx) => {
+    step.querySelectorAll('[data-value]').forEach(btn => {
+      btn.addEventListener('click', () => handleOption(btn));
     });
-});
+    step.querySelectorAll('[data-back]').forEach(back => {
+      back.addEventListener('click', () => {
+        window.legendTrack?.({ EventType: 'life_quote_back_click', PageKey: 'quote_life', FromStep: idx + 1 });
+        setStep(Math.max(0, idx - 1));
+      });
+    });
+  });
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.style.display = 'none';
+    successEl.style.display = 'none';
+
+    if (!hiddenFields.AgeRange.value || !hiddenFields.ProtectFocus.value) {
+      errorEl.textContent = 'Please choose your age range and what you want to protect.';
+      errorEl.style.display = 'block';
+      return setStep( hiddenFields.AgeRange.value ? 1 : 0 );
+    }
+    const required = ['FirstName','Phone','Email'];
+    for (const name of required) {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!el || !el.value.trim()) {
+        errorEl.textContent = 'Please fill all required contact fields.';
+        errorEl.style.display = 'block';
+        el?.focus();
+        return;
+      }
+    }
+    const consent = form.querySelector('input[name="MarketingEmailConsent"]');
+    if (!consent?.checked) {
+      errorEl.textContent = 'Please authorize contact.';
+      errorEl.style.display = 'block';
+      consent?.focus();
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sending...';
+    window.legendTrack?.({ EventType: 'life_quote_submit_attempt', PageKey: 'quote_life' });
+
+    try {
+      const res = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: { 'X-Requested-With': 'fetch' }
+      });
+      if (!res.ok) throw new Error('Network');
+      const text = await res.text();
+      if (text?.includes('Success')) {
+        successEl.textContent = 'Thanks! We received your request.';
+        successEl.style.display = 'block';
+        window.legendTrack?.({ EventType: 'life_quote_submit_success', PageKey: 'quote_life' });
+        form.reset();
+        hiddenFields.AgeRange.value = '';
+        hiddenFields.ProtectFocus.value = '';
+        steps.forEach(s => s.querySelectorAll('.option').forEach(o => o.classList.remove('selected')));
+        setStep(0);
+      } else {
+        throw new Error('Server');
+      }
+    } catch (err) {
+      errorEl.textContent = 'We could not send this right now. Please try again.';
+      errorEl.style.display = 'block';
+      window.legendTrack?.({ EventType: 'life_quote_submit_error', PageKey: 'quote_life' });
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Get My Personalized Review';
+    }
+  });
+
+  // kickoff
+  setStep(0);
+  window.legendTrack?.({ EventType: 'life_quote_contact_step_view', PageKey: 'quote_life', Step: 1 });
+})();
 </script>
