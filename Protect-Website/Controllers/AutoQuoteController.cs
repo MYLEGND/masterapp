@@ -76,290 +76,182 @@ namespace Protect_Website.Controllers
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
-                static string E(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : WebUtility.HtmlEncode(s.Trim());
-                static string D(DateTime? d) => d.HasValue ? WebUtility.HtmlEncode(d.Value.ToString("MM/dd/yyyy")) : "N/A";
+                string Nv(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s.Trim();
+                string Nd(DateTime? d) => d.HasValue ? d.Value.ToString("MM/dd/yyyy") : "N/A";
 
                 string DriverNameByIndex(int? idx)
                 {
-                    if (!idx.HasValue) return "N/A";
-                    if (idx.Value < 0 || idx.Value >= model.Drivers.Count) return "N/A";
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Drivers.Count) return "N/A";
                     var dr = model.Drivers[idx.Value];
                     return $"{dr.FirstName} {dr.LastName}".Trim();
                 }
 
                 string VehicleLabelByIndex(int? idx)
                 {
-                    if (!idx.HasValue) return "N/A";
-                    if (idx.Value < 0 || idx.Value >= model.Vehicles.Count) return "N/A";
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Vehicles.Count) return "N/A";
                     var v = model.Vehicles[idx.Value];
-                    var ymm = $"{v.Year} {v.Make} {v.Model}".Trim();
-                    return $"{ymm} (VIN: {v.VIN})".Trim();
-                }
-
-                string BuildApplicantInfo()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1 — Applicant Info</h3>");
-
-                    sb.AppendLine($"<p><strong>First Name:</strong> {E(model.FirstName)}</p>");
-                    sb.AppendLine($"<p><strong>Last Name:</strong> {E(model.LastName)}</p>");
-                    sb.AppendLine($"<p><strong>Address State:</strong> {E(model.AddressState)}</p>");
-                    sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PostalCode)}</p>");
-                    sb.AppendLine($"<p><strong>Nickname:</strong> {E(model.Nickname)}</p>");
-                    sb.AppendLine($"<p><strong>Gender:</strong> {E(model.Gender)}</p>");
-                    sb.AppendLine($"<p><strong>DOB:</strong> {D(model.DOB)}</p>");
-                    sb.AppendLine($"<p><strong>Marital Status:</strong> {E(model.MaritalStatus)}</p>");
-                    sb.AppendLine($"<p><strong>Driver's License #:</strong> {E(model.DriversLicenseNumber)}</p>");
-                    sb.AppendLine($"<p><strong>DL Status:</strong> {E(model.DLStatus)}</p>");
-                    sb.AppendLine($"<p><strong>DL State:</strong> {E(model.DLState)}</p>");
-                    sb.AppendLine($"<p><strong>Education:</strong> {E(model.Education)}</p>");
-                    sb.AppendLine($"<p><strong>Industry:</strong> {E(model.Industry)}</p>");
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                // ===================== ADDRESS + CONTACT INFO =====================
-                string BuildAddress()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1B — Address</h3>");
-
-                    sb.AppendLine("<h4>Primary Address</h4>");
-                    sb.AppendLine($"<p><strong>Address:</strong> {E(model.PrimaryAddress)}</p>");
-                    sb.AppendLine($"<p><strong>Unit:</strong> {E(model.PrimaryUnit)}</p>");
-                    sb.AppendLine($"<p><strong>Address Line 2:</strong> {E(model.PrimaryAddressLine2)}</p>");
-                    sb.AppendLine($"<p><strong>City:</strong> {E(model.PrimaryCity)}</p>");
-                    sb.AppendLine($"<p><strong>State:</strong> {E(model.PrimaryState)}</p>");
-                    sb.AppendLine($"<p><strong>Country:</strong> {E(model.PrimaryCountry)}</p>");
-                    sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PrimaryPostalCode)}</p>");
-                    sb.AppendLine($"<p><strong>Years At Address:</strong> {E(model.PrimaryYearsAtAddress)}</p>");
-
-                    bool hasPrev =
-                        !string.IsNullOrWhiteSpace(model.PreviousAddress) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousCity) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousState) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousCountry) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousPostalCode) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousYearsAtAddress) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousUnit) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousAddressLine2);
-
-                    if (hasPrev)
-                    {
-                        sb.AppendLine("<h4>Previous Address</h4>");
-                        sb.AppendLine($"<p><strong>Address:</strong> {E(model.PreviousAddress)}</p>");
-                        sb.AppendLine($"<p><strong>Unit:</strong> {E(model.PreviousUnit)}</p>");
-                        sb.AppendLine($"<p><strong>Address Line 2:</strong> {E(model.PreviousAddressLine2)}</p>");
-                        sb.AppendLine($"<p><strong>City:</strong> {E(model.PreviousCity)}</p>");
-                        sb.AppendLine($"<p><strong>State:</strong> {E(model.PreviousState)}</p>");
-                        sb.AppendLine($"<p><strong>Country:</strong> {E(model.PreviousCountry)}</p>");
-                        sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PreviousPostalCode)}</p>");
-                        sb.AppendLine($"<p><strong>Years At Address:</strong> {E(model.PreviousYearsAtAddress)}</p>");
-                    }
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildContactInfo()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1C — Contact Info</h3>");
-
-                    sb.AppendLine($"<p><strong>Phone Type:</strong> {E(model.PhoneType)}</p>");
-                    sb.AppendLine($"<p><strong>Phone Number:</strong> {E(model.PhoneNumber)}</p>");
-                    sb.AppendLine($"<p><strong>Email Type:</strong> {E(model.EmailType)}</p>");
-                    sb.AppendLine($"<p><strong>Email Address:</strong> {E(model.EmailAddress)}</p>");
-                    sb.AppendLine($"<p><strong>Preferred Contact Method:</strong> {E(model.PreferredContactMethod)}</p>");
-                    sb.AppendLine($"<p><strong>Best Time To Contact:</strong> {E(model.BestTimeToContact)}</p>");
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-                // ================================================================
-
-                string BuildPolicy()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1 — Policy Information (Auto)</h3>");
-                    sb.AppendLine($"<p><strong>Prior Carrier:</strong> {E(model.PriorCarrier)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Expiration Date:</strong> {D(model.PriorPolicyExpirationDate)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Liability Limits:</strong> {E(model.PriorLiabilityLimits)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Term:</strong> {E(model.PriorPolicyTerm)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Premium:</strong> {E(model.PriorPolicyPremium)}</p>");
-                    sb.AppendLine($"<p><strong>Years with Prior Carrier:</strong> {E(model.YearsWithPriorCarrier)} &nbsp;&nbsp; <strong>Months:</strong> {E(model.MonthsWithPriorCarrier)}</p>");
-                    sb.AppendLine($"<p><strong>Years Continuous Coverage:</strong> {E(model.YearsContinuousCoverage)} &nbsp;&nbsp; <strong>Months:</strong> {E(model.MonthsContinuousCoverage)}</p>");
-                    sb.AppendLine($"<p><strong>Credit/Underwriting Reports Authorized:</strong> {E(model.CreditCheckAuthorized)}</p>");
-                    sb.AppendLine($"<p><strong>New Policy Term:</strong> {E(model.NewPolicyTerm)}</p>");
-                    sb.AppendLine($"<p><strong>Package:</strong> {E(model.PackagePolicy)}</p>");
-                    sb.AppendLine($"<p><strong>Effective Date (New Policy):</strong> {D(model.NewPolicyEffectiveDate)}</p>");
-                    sb.AppendLine($"<p><strong>Additional Carrier Questions:</strong> {E(model.AdditionalCarrierQuestions)}</p>");
-                    sb.AppendLine($"<p><strong>Paperless:</strong> {E(model.Paperless)}</p>");
-                    sb.AppendLine($"<p><strong>Multi-Policy Discount:</strong> {E(model.MultiPolicyDiscount)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildDrivers()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 2 — Drivers</h3>");
-
-                    for (int i = 0; i < model.Drivers.Count; i++)
-                    {
-                        var d = model.Drivers[i];
-                        sb.AppendLine($"<h4>{(i == 0 ? "Primary Insured" : $"Additional Driver {i}")}</h4>");
-                        sb.AppendLine($"<p><strong>Name:</strong> {E(d.FirstName)} {E(d.LastName)}</p>");
-                        sb.AppendLine($"<p><strong>DOB:</strong> {D(d.DOB)}</p>");
-                        sb.AppendLine($"<p><strong>Gender:</strong> {E(d.Gender)} &nbsp;&nbsp; <strong>Marital Status:</strong> {E(d.MaritalStatus)}</p>");
-                        sb.AppendLine($"<p><strong>Occupation Industry:</strong> {E(d.OccupationIndustry)} &nbsp;&nbsp; <strong>Occupation Title:</strong> {E(d.OccupationTitle)}</p>");
-                        sb.AppendLine($"<p><strong>DL Status:</strong> {E(d.DLStatus)} &nbsp;&nbsp; <strong>Age Licensed:</strong> {E(d.AgeLicensed)}</p>");
-                        sb.AppendLine($"<p><strong>DL #:</strong> {E(d.DLNumber)} &nbsp;&nbsp; <strong>DL State:</strong> {E(d.DLState)}</p>");
-                        sb.AppendLine($"<p><strong>Defensive Driver Course Date:</strong> {D(d.DefensiveDriverCourseDate)}</p>");
-                        sb.AppendLine($"<p><strong>License Suspended/Revoked (Last 5 years):</strong> {E(d.LicenseSuspendedLast5Years)}</p>");
-                        sb.AppendLine($"<p><strong>Driver Education:</strong> {E(d.DriverEducation)} &nbsp;&nbsp; <strong>Mature Driver:</strong> {E(d.MatureDriver)} &nbsp;&nbsp; <strong>Good Driver:</strong> {E(d.GoodDriver)}</p>");
-                        sb.AppendLine("<p><strong>Carrier Questions</strong></p>");
-                        sb.AppendLine($"<p><strong>Telematics Discount:</strong> {E(d.TelematicsDiscount)} &nbsp;&nbsp; <strong>Military Service:</strong> {E(d.MilitaryService)}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildVehicles()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 3 — Vehicles</h3>");
-
-                    for (int i = 0; i < model.Vehicles.Count; i++)
-                    {
-                        var v = model.Vehicles[i];
-                        sb.AppendLine($"<h4>{(i == 0 ? "Primary Vehicle" : $"Additional Vehicle {i}")}</h4>");
-                        sb.AppendLine($"<p><strong>VIN:</strong> {E(v.VIN)}</p>");
-                        sb.AppendLine($"<p><strong>Year/Make/Model:</strong> {E(v.Year)} {E(v.Make)} {E(v.Model)}</p>");
-                        sb.AppendLine($"<p><strong>Purchase Date:</strong> {D(v.PurchaseDate)}</p>");
-
-                        sb.AppendLine($"<p><strong>Passive Restraints:</strong> {E(v.PassiveRestraints)}</p>");
-                        sb.AppendLine($"<p><strong>Anti-Theft:</strong> {E(v.AntiTheft)}</p>");
-
-                        // ✅ MISSING FIELDS (NOW INCLUDED)
-                        sb.AppendLine($"<p><strong>Anti-Lock Brakes:</strong> {E(v.AntiLockBrakes)}</p>");
-                        sb.AppendLine($"<p><strong>Daytime Running Lights:</strong> {E(v.DaytimeRunningLights)}</p>");
-                        sb.AppendLine($"<p><strong>Cost New Value:</strong> {E(v.CostNewValue)}</p>");
-                        sb.AppendLine($"<p><strong>Modification Value:</strong> {E(v.ModificationValue)}</p>");
-                        sb.AppendLine($"<p><strong>Was New:</strong> {E(v.WasNew)}</p>");
-                        sb.AppendLine($"<p><strong>Carpool:</strong> {E(v.Carpool)}</p>");
-                        sb.AppendLine($"<p><strong>Telematics:</strong> {E(v.Telematics)}</p>");
-                        sb.AppendLine($"<p><strong>TNC:</strong> {E(v.TNC)}</p>");
-
-                        sb.AppendLine($"<p><strong>Vehicle Use:</strong> {E(v.Use)} &nbsp;&nbsp; <strong>Annual Miles:</strong> {E(v.AnnualMiles)}</p>");
-                        sb.AppendLine($"<p><strong>Performance:</strong> {E(v.Performance)}</p>");
-                        sb.AppendLine($"<p><strong>Ownership Type:</strong> {E(v.OwnershipType)}</p>");
-                        sb.AppendLine($"<p><strong>Assigned Driver (100%):</strong> {E(DriverNameByIndex(v.AssignedDriverIndex))}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildIncidents()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 4 — Incidents</h3>");
-
-                    if (model.Accidents.Any())
-                    {
-                        sb.AppendLine("<h4>Accidents</h4>");
-                        foreach (var a in model.Accidents)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(a.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(a.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Description:</strong> {E(a.Description)}</p>");
-                            sb.AppendLine($"<p><strong>Property Damage:</strong> {E(a.PropertyDamageAmount)} &nbsp;&nbsp; <strong>Bodily Injury:</strong> {E(a.BodilyInjuryAmount)}</p>");
-                            sb.AppendLine($"<p><strong>Collision:</strong> {E(a.CollisionAmount)} &nbsp;&nbsp; <strong>Medical Payment:</strong> {E(a.MedicalPaymentAmount)}</p>");
-
-                            // ✅ FIX: Build the vehicle text, then encode ONCE
-                            string vehicleText = a.VehicleIndex.HasValue
-                                ? VehicleLabelByIndex(a.VehicleIndex)
-                                : (a.VehicleInvolvedText ?? "");
-
-                            sb.AppendLine($"<p><strong>Vehicle Involved:</strong> {E(vehicleText)}</p><hr/>");
-                        }
-                    }
-
-                    if (model.Violations.Any())
-                    {
-                        sb.AppendLine("<h4>Violations</h4>");
-                        foreach (var v in model.Violations)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(v.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(v.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Description:</strong> {E(v.Description)}</p><hr/>");
-                        }
-                    }
-
-                    if (model.CompLosses.Any())
-                    {
-                        sb.AppendLine("<h4>Comp Losses</h4>");
-                        foreach (var c in model.CompLosses)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(c.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(c.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Loss Description:</strong> {E(c.LossDescription)}</p><hr/>");
-                        }
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildCoverage()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 5 — General Coverage</h3>");
-                    sb.AppendLine($"<p><strong>Bodily Injury:</strong> {E(model.BodilyInjury)}</p>");
-                    sb.AppendLine($"<p><strong>Uninsured Motorist:</strong> {E(model.UninsuredMotorist)}</p>");
-                    sb.AppendLine($"<p><strong>Underinsured Motorist:</strong> {E(model.UnderinsuredMotorist)}</p>");
-                    sb.AppendLine($"<p><strong>Medical Payments:</strong> {E(model.MedicalPayments)}</p>");
-                    sb.AppendLine($"<p><strong>Residence is:</strong> {E(model.ResidenceType)}</p>");
-                    sb.AppendLine("<hr/>");
-
-                    sb.AppendLine("<h3>Vehicle Coverages</h3>");
-                    for (int i = 0; i < model.Vehicles.Count; i++)
-                    {
-                        var v = model.Vehicles[i];
-                        sb.AppendLine($"<h4>Vehicle {i + 1} — {E(v.Year)} {E(v.Make)} {E(v.Model)} (VIN: {E(v.VIN)})</h4>");
-                        sb.AppendLine($"<p><strong>Comprehensive:</strong> {E(v.Comprehensive)}</p>");
-                        sb.AppendLine($"<p><strong>Collision:</strong> {E(v.Collision)}</p>");
-                        sb.AppendLine($"<p><strong>Towing & Labor:</strong> {E(v.Towing)}</p>");
-                        sb.AppendLine($"<p><strong>Rental Expense:</strong> {E(v.Rental)}</p>");
-                        sb.AppendLine($"<p><strong>Loan/Lease Coverage:</strong> {E(v.LoanLease)}</p>");
-                        sb.AppendLine($"<p><strong>Liability (Yes/No):</strong> {E(v.Liability)}</p>");
-
-                        sb.AppendLine("<p><strong>Carrier Questions</strong></p>");
-                        sb.AppendLine($"<p><strong>Special Equipment:</strong> {E(v.SpecialEquipment)}</p>");
-                        sb.AppendLine($"<p><strong>Branded Title:</strong> {E(v.BrandedTitle)}</p>");
-                        sb.AppendLine($"<p><strong>Custom/Additional Equipment:</strong> {E(v.CustomEquipment)}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
+                    return $"{v.Year} {v.Make} {v.Model} (VIN: {v.VIN})".Trim();
                 }
 
                 var primary = model.Drivers.FirstOrDefault();
                 var subjectName = primary == null ? "Unknown" : $"{primary.FirstName} {primary.LastName}".Trim();
 
-                var emailBody = LeadEmailTemplate.Wrap(
-                    "New Quote — Auto Insurance",
-                    new LeadEmailTemplate.RowBuilder()
-                        .Raw(BuildApplicantInfo())
-                        .Raw(BuildAddress())
-                        .Raw(BuildContactInfo())
-                        .Raw(BuildPolicy())
-                        .Raw(BuildDrivers())
-                        .Raw(BuildVehicles())
-                        .Raw(BuildIncidents())
-                        .Raw(BuildCoverage())
-                        .Section("Authorization")
-                        .Row("Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer))
-                        .ToString());
+                var rows = new LeadEmailTemplate.RowBuilder()
+                    .Section("Applicant Info")
+                    .Row("Name",              $"{model.FirstName} {model.LastName}".Trim())
+                    .Row("Address State",     Nv(model.AddressState))
+                    .Row("Postal Code",       Nv(model.PostalCode))
+                    .Row("Nickname",          model.Nickname)
+                    .Row("Gender",            model.Gender)
+                    .Row("Date of Birth",     Nd(model.DOB))
+                    .Row("Marital Status",    model.MaritalStatus)
+                    .Row("Driver's License",  model.DriversLicenseNumber)
+                    .Row("DL Status",         model.DLStatus)
+                    .Row("DL State",          model.DLState)
+                    .Row("Education",         model.Education)
+                    .Row("Industry",          model.Industry)
+                    .Section("Primary Address")
+                    .Row("Address",       model.PrimaryAddress)
+                    .Row("Unit",          model.PrimaryUnit)
+                    .Row("City",          model.PrimaryCity)
+                    .Row("State",         model.PrimaryState)
+                    .Row("Country",       model.PrimaryCountry)
+                    .Row("Postal Code",   model.PrimaryPostalCode)
+                    .Row("Years at Address", model.PrimaryYearsAtAddress);
+
+                bool hasPrev = !string.IsNullOrWhiteSpace(model.PreviousAddress) ||
+                               !string.IsNullOrWhiteSpace(model.PreviousCity) ||
+                               !string.IsNullOrWhiteSpace(model.PreviousState);
+                if (hasPrev)
+                {
+                    rows.Section("Previous Address")
+                        .Row("Address",       model.PreviousAddress)
+                        .Row("Unit",          model.PreviousUnit)
+                        .Row("City",          model.PreviousCity)
+                        .Row("State",         model.PreviousState)
+                        .Row("Country",       model.PreviousCountry)
+                        .Row("Postal Code",   model.PreviousPostalCode)
+                        .Row("Years at Address", model.PreviousYearsAtAddress);
+                }
+
+                rows.Section("Contact Info")
+                    .Row("Phone Type",               model.PhoneType)
+                    .Row("Phone Number",             model.PhoneNumber)
+                    .Row("Email",                    model.EmailAddress)
+                    .Row("Preferred Contact Method", model.PreferredContactMethod)
+                    .Row("Best Time to Contact",     model.BestTimeToContact)
+                    .Section("Policy Info")
+                    .Row("Prior Carrier",             model.PriorCarrier)
+                    .Row("Prior Policy Expiration",   Nd(model.PriorPolicyExpirationDate))
+                    .Row("Prior Liability Limits",    model.PriorLiabilityLimits)
+                    .Row("Prior Policy Term",         model.PriorPolicyTerm)
+                    .Row("Prior Policy Premium",      model.PriorPolicyPremium)
+                    .Row("Years / Months with Carrier", $"{Nv(model.YearsWithPriorCarrier)} yrs / {Nv(model.MonthsWithPriorCarrier)} mo")
+                    .Row("Continuous Coverage",       $"{Nv(model.YearsContinuousCoverage)} yrs / {Nv(model.MonthsContinuousCoverage)} mo")
+                    .Row("Credit Reports Authorized", model.CreditCheckAuthorized)
+                    .Row("New Policy Term",           model.NewPolicyTerm)
+                    .Row("Package Policy",            model.PackagePolicy)
+                    .Row("New Policy Effective Date", Nd(model.NewPolicyEffectiveDate))
+                    .Row("Additional Notes",          model.AdditionalCarrierQuestions)
+                    .Row("Paperless",                 model.Paperless)
+                    .Row("Multi-Policy Discount",     model.MultiPolicyDiscount);
+
+                rows.Section("Drivers");
+                for (int i = 0; i < model.Drivers.Count; i++)
+                {
+                    var d = model.Drivers[i];
+                    rows.Section(i == 0 ? "Driver 1 — Primary Insured" : $"Driver {i + 1}")
+                        .Row("Name",             $"{d.FirstName} {d.LastName}".Trim())
+                        .Row("Date of Birth",    Nd(d.DOB))
+                        .Row("Gender",           d.Gender)
+                        .Row("Marital Status",   d.MaritalStatus)
+                        .Row("Occupation",       $"{d.OccupationIndustry} / {d.OccupationTitle}".Trim(' ', '/'))
+                        .Row("DL Status",        d.DLStatus)
+                        .Row("Age Licensed",     d.AgeLicensed)
+                        .Row("DL # / State",     $"{d.DLNumber} / {d.DLState}".Trim(' ', '/'))
+                        .Row("Defensive Driver Course", Nd(d.DefensiveDriverCourseDate))
+                        .Row("License Suspended (5yr)", d.LicenseSuspendedLast5Years)
+                        .Row("Driver Education", d.DriverEducation)
+                        .Row("Mature Driver",    d.MatureDriver)
+                        .Row("Good Driver",      d.GoodDriver)
+                        .Row("Telematics Discount", d.TelematicsDiscount)
+                        .Row("Military Service", d.MilitaryService);
+                }
+
+                rows.Section("Vehicles");
+                for (int i = 0; i < model.Vehicles.Count; i++)
+                {
+                    var v = model.Vehicles[i];
+                    rows.Section(i == 0 ? "Vehicle 1 — Primary" : $"Vehicle {i + 1}")
+                        .Row("Year / Make / Model", $"{v.Year} {v.Make} {v.Model}".Trim())
+                        .Row("VIN",                 v.VIN)
+                        .Row("Purchase Date",       Nd(v.PurchaseDate))
+                        .Row("Vehicle Use",         v.Use)
+                        .Row("Annual Miles",        v.AnnualMiles)
+                        .Row("Passive Restraints",  v.PassiveRestraints)
+                        .Row("Anti-Theft",          v.AntiTheft)
+                        .Row("Anti-Lock Brakes",    v.AntiLockBrakes)
+                        .Row("Daytime Running Lights", v.DaytimeRunningLights)
+                        .Row("Cost New Value",      v.CostNewValue)
+                        .Row("Modification Value",  v.ModificationValue)
+                        .Row("Was New",             v.WasNew)
+                        .Row("Carpool",             v.Carpool)
+                        .Row("Telematics",          v.Telematics)
+                        .Row("TNC",                 v.TNC)
+                        .Row("Performance",         v.Performance)
+                        .Row("Ownership Type",      v.OwnershipType)
+                        .Row("Assigned Driver",     DriverNameByIndex(v.AssignedDriverIndex))
+                        .Row("Comprehensive",       v.Comprehensive)
+                        .Row("Collision",           v.Collision)
+                        .Row("Towing & Labor",      v.Towing)
+                        .Row("Rental Expense",      v.Rental)
+                        .Row("Loan/Lease Coverage", v.LoanLease)
+                        .Row("Liability",           v.Liability)
+                        .Row("Special Equipment",   v.SpecialEquipment)
+                        .Row("Branded Title",       v.BrandedTitle)
+                        .Row("Custom Equipment",    v.CustomEquipment);
+                }
+
+                if (model.Accidents.Any())
+                {
+                    rows.Section("Accidents");
+                    foreach (var a in model.Accidents)
+                    {
+                        string veh = a.VehicleIndex.HasValue ? VehicleLabelByIndex(a.VehicleIndex) : (a.VehicleInvolvedText ?? "");
+                        rows.Row("Date / Driver", $"{Nd(a.Date)} / {DriverNameByIndex(a.DriverIndex)}")
+                            .Row("Description",   a.Description)
+                            .Row("Property Damage / Bodily Injury", $"{Nv(a.PropertyDamageAmount)} / {Nv(a.BodilyInjuryAmount)}")
+                            .Row("Collision / Medical", $"{Nv(a.CollisionAmount)} / {Nv(a.MedicalPaymentAmount)}")
+                            .Row("Vehicle Involved", veh);
+                    }
+                }
+
+                if (model.Violations.Any())
+                {
+                    rows.Section("Violations");
+                    foreach (var v in model.Violations)
+                        rows.Row("Date / Driver", $"{Nd(v.Date)} / {DriverNameByIndex(v.DriverIndex)}")
+                            .Row("Description", v.Description);
+                }
+
+                if (model.CompLosses.Any())
+                {
+                    rows.Section("Comp Losses");
+                    foreach (var c in model.CompLosses)
+                        rows.Row("Date / Driver", $"{Nd(c.Date)} / {DriverNameByIndex(c.DriverIndex)}")
+                            .Row("Description", c.LossDescription);
+                }
+
+                rows.Section("General Coverage")
+                    .Row("Bodily Injury",          model.BodilyInjury)
+                    .Row("Uninsured Motorist",     model.UninsuredMotorist)
+                    .Row("Underinsured Motorist",  model.UnderinsuredMotorist)
+                    .Row("Medical Payments",       model.MedicalPayments)
+                    .Row("Residence Type",         model.ResidenceType)
+                    .Section("Authorization")
+                    .Row("Disclaimer Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer));
+
+                var emailBody = LeadEmailTemplate.Wrap("New Quote — Auto Insurance", rows.ToString());
 
                 var message = new Message
                 {
