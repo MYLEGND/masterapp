@@ -174,7 +174,10 @@ namespace Protect_Website.Controllers
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = offerContent.DisplayName;
 
-                // ✅ Redirect to centralized ThankYouController
+                // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
+                if (IsAjax())
+                    return Ok(new { success = true });
+
                 return RedirectToAction("Index", "ThankYou");
             }
             catch (Exception ex)
