@@ -371,39 +371,77 @@
   }
 
   function renderBehavior(summary, time, exit, journey, sources) {
-    setText('bhvr-avg-session', formatMs(summary?.avgSessionDurationMs));
-    setText('bhvr-med-session', formatMs(summary?.medianSessionDurationMs));
-    setText('bhvr-avg-page', formatMs(summary?.avgTimeOnPageMs));
-    setText('bhvr-med-page', formatMs(summary?.medianTimeOnPageMs));
-    setText('bhvr-engaged-rate', formatPct(summary?.engagedSessionRate));
-    setText('bhvr-quick-exit', formatPct(summary?.quickExitRate));
-    setText('bhvr-range-label', summary?.rangeLabel || time?.rangeLabel || exit?.rangeLabel || journey?.rangeLabel || sources?.rangeLabel || '');
+    const rangeLabel = summary?.rangeLabel || time?.rangeLabel || exit?.rangeLabel || journey?.rangeLabel || sources?.rangeLabel || '';
+    setText('bhvr-range-label', rangeLabel);
 
-    renderTable('bhvr-short-body', time?.shortVisitProblemPages || [], [
+    // ── Overview KPIs ──────────────────────────────────────────────
+    setText('bhvr-total-sessions', summary?.totalSessions != null ? formatInt(summary.totalSessions) : '—');
+    setText('bhvr-avg-session',    formatMs(summary?.avgSessionDurationMs));
+    setText('bhvr-med-session',    formatMs(summary?.medianSessionDurationMs));
+    setText('bhvr-avg-page',       formatMs(summary?.avgTimeOnPageMs));
+    setText('bhvr-quick-exit',     formatPct(summary?.quickExitRate));
+    setText('bhvr-engaged-rate',   formatPct(summary?.engagedSessionRate));
+
+    // ── Highlights bar ─────────────────────────────────────────────
+    const highlights = document.getElementById('bhvr-highlights');
+    const parts = [];
+    if (summary?.topExitPage)                  parts.push(`Top exit: <strong>${summary.topExitPage}</strong>`);
+    if (summary?.topLongDwellPage)             parts.push(`Highest dwell: <strong>${summary.topLongDwellPage}</strong>`);
+    if (summary?.highestScrollCompletionPage)  parts.push(`Top scroll: <strong>${summary.highestScrollCompletionPage}</strong>`);
+    if (highlights) {
+      if (parts.length) {
+        highlights.innerHTML = parts.join(' &nbsp;·&nbsp; ');
+        highlights.style.display = '';
+      } else {
+        highlights.style.display = 'none';
+      }
+    }
+
+    // ── Dwell table columns ────────────────────────────────────────
+    const dwellCols = [
       { key: 'pageKey' },
       { key: 'views', align: 'text-end' },
-      { render: r => formatMs(r.avgDwellMs), align: 'text-end' },
+      { render: r => formatMs(r.avgDwellMs),    align: 'text-end' },
       { render: r => formatMs(r.medianDwellMs), align: 'text-end' }
-    ]);
-
-    renderTable('bhvr-exit-body', exit?.topExitPages || [], [
+    ];
+    const exitCols = [
       { key: 'pageKey' },
       { key: 'views', align: 'text-end' },
       { key: 'exits', align: 'text-end' },
       { render: r => formatPct(r.exitRate), align: 'text-end' }
-    ]);
-
-    renderTable('bhvr-landing-body', journey?.topLandingPages || [], [
+    ];
+    const keyCountCols = [
       { key: 'key' },
       { key: 'count', align: 'text-end' }
-    ]);
+    ];
 
+    // ── Overview tab tables ────────────────────────────────────────
+    renderTable('bhvr-short-body',         time?.shortVisitProblemPages || [], dwellCols);
+    renderTable('bhvr-exit-body-overview', exit?.topExitPages           || [], exitCols);
+
+    // ── Time on Page tab ───────────────────────────────────────────
+    renderTable('bhvr-long-avg-body',   time?.longestAvgDwell        || [], dwellCols);
+    renderTable('bhvr-short-body-time', time?.shortVisitProblemPages || [], dwellCols);
+
+    // ── Exit Analysis tab ──────────────────────────────────────────
+    renderTable('bhvr-exit-body',       exit?.topExitPages  || [], exitCols);
+    renderTable('bhvr-quick-exit-body', exit?.quickExitPages || [], keyCountCols);
+
+    // ── Journey tab ────────────────────────────────────────────────
+    renderTable('bhvr-landing-body', journey?.topLandingPages    || [], keyCountCols);
+    renderTable('bhvr-prelead-body', journey?.pagesBeforeLead    || [], keyCountCols);
+    renderTable('bhvr-dropoff-body', journey?.commonDropOffPages || [], keyCountCols);
+
+    // ── Sources tab ────────────────────────────────────────────────
     renderTable('bhvr-source-body', sources?.rows || [], [
       { key: 'source' },
-      { key: 'sessions', align: 'text-end' },
+      { render: r => r.medium   || '—' },
+      { render: r => r.campaign || '—' },
+      { key: 'sessions',       align: 'text-end' },
       { key: 'engagedSessions', align: 'text-end' },
-      { key: 'verifiedLeads', align: 'text-end' },
-      { render: r => formatPct(r.sessionConversionRate), align: 'text-end' }
+      { key: 'verifiedLeads',  align: 'text-end' },
+      { render: r => formatPct(r.sessionConversionRate), align: 'text-end' },
+      { render: r => formatMs(r.avgDwellMs),             align: 'text-end' }
     ]);
   }
 
