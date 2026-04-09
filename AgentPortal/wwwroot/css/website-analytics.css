@@ -288,6 +288,113 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     font-weight: 700;
 }
 
+/* Behavior modal polish (less blocky, smoother card/table rhythm) */
+#behaviorModal .modal-content {
+    background: linear-gradient(155deg, #0b1530 0%, #0f1d3c 65%, #102347 100%);
+    border: 1px solid rgba(199,153,49,.42);
+    border-radius: 20px;
+    box-shadow: 0 30px 70px rgba(0,0,0,.42);
+}
+
+#behaviorModal .modal-header {
+    border-bottom: 1px solid rgba(199,153,49,.30);
+    padding: 1rem 1.25rem 0.85rem;
+}
+
+#behaviorModal .modal-body {
+    padding: 1.1rem 1.25rem 1.25rem;
+}
+
+#behaviorModal .kpi-card {
+    min-height: 116px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,.34);
+    background: linear-gradient(145deg, rgba(10,23,51,.92), rgba(14,33,70,.88));
+    box-shadow: 0 12px 28px rgba(0,0,0,.24);
+}
+
+#behaviorModal .table {
+    border-collapse: separate;
+    border-spacing: 0 8px;
+}
+
+#behaviorModal .table thead th {
+    background: rgba(8,18,40,.92);
+    border: 0;
+    color: #e9c978;
+    font-size: .76rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 9px 12px;
+}
+
+#behaviorModal .table thead th:first-child {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+}
+
+#behaviorModal .table thead th:last-child {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
+#behaviorModal .table tbody td {
+    background: rgba(11,25,53,.86);
+    border: 0;
+    border-top: 1px solid rgba(199,153,49,.18);
+    border-bottom: 1px solid rgba(199,153,49,.18);
+    padding: 11px 12px;
+}
+
+#behaviorModal .table tbody td:first-child {
+    border-top-left-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-left: 1px solid rgba(199,153,49,.18);
+}
+
+#behaviorModal .table tbody td:last-child {
+    border-top-right-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-right: 1px solid rgba(199,153,49,.18);
+}
+
+#behaviorModal .table tbody tr:hover td {
+    background: rgba(16,37,78,.92);
+}
+
+#behaviorModal .bhvr-chip {
+    background: rgba(13,31,67,.92);
+    border-color: rgba(199,153,49,.38);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+#behaviorModal .bhvr-tabs {
+    border-bottom: 1px solid rgba(199,153,49,.26);
+    padding-bottom: 6px;
+    margin-bottom: 14px !important;
+}
+
+#behaviorModal .bhvr-tabs .nav-link {
+    border-radius: 10px;
+    padding: 7px 12px;
+    min-height: 36px;
+    color: #e9eef9 !important;
+}
+
+#behaviorModal .bhvr-tabs .nav-link:hover,
+#behaviorModal .bhvr-tabs .nav-link:focus {
+    color: #f5f8ff !important;
+}
+
+#behaviorModal .bhvr-tabs .nav-link.active,
+#behaviorModal .bhvr-tabs .nav-link.active:hover,
+#behaviorModal .bhvr-tabs .nav-link.active:focus {
+    background: var(--legend-gold) !important;
+    border-color: var(--legend-gold-border) !important;
+    color: #0b1530 !important;
+    font-weight: 800;
+}
+
 /* Premium form/table polish inside modals */
 .fa-modal .modal-content {
     background: var(--legend-navy);

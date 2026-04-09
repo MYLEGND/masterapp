@@ -40,6 +40,13 @@
         <div class="text-silver hero-link-help">Open Ads Manager to review campaigns, spend, and performance.</div>
         <div class="small mt-2" id="meta-connection-status">Checking connection…</div>
         <div class="hero-link-meta-actions mt-2">
+            <button type="button"
+                class="btn btn-outline-light hero-link-meta-btn"
+                id="behavior-quick-btn"
+                data-bs-toggle="modal"
+                data-bs-target="#behaviorModal">
+              Behavior Intelligence
+            </button>
             <a class="btn btn-outline-light hero-link-meta-btn"
                id="meta-connect-btn"
                href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
@@ -80,14 +87,7 @@
                 <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
             </div>
         <div class="mx-md-auto">
-          <button class="btn btn-sm"
-              id="behavior-quick-btn"
-              type="button"
-              data-bs-toggle="modal"
-              data-bs-target="#behaviorModal"
-              style="background: linear-gradient(180deg, #4ea3ff, #2e7bd7); color:#f5f9ff; border:1px solid #9bc6ff; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
-            Behavior Intelligence
-          </button>
+          <!-- Behavior Intelligence button moved to Meta Ads container -->
         </div>
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(isFounder)
