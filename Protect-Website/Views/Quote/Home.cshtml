@@ -1622,7 +1622,14 @@
                     toggleHouseUpdateYearFields();
                     enableAllInputsForSubmit();
                     const disclaimer = document.getElementById("AcknowledgedDisclaimer");
-                    if (disclaimer) disclaimer.disabled = false;
+                    if (disclaimer) {
+                        disclaimer.disabled = false;
+                        if (disclaimer.checked) {
+                            disclaimer.value = "true";
+                        } else {
+                            disclaimer.removeAttribute("value");
+                        }
+                    }
                 });
             }
         });

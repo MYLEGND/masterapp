@@ -2117,11 +2117,16 @@
             form.addEventListener("submit", function () {
                 buildVehicleCoverageCards();
                 enableAllInputsForSubmit();
-                // ensure required checkbox stays enabled and counts
+                // ensure required checkbox stays enabled and submitted
                 const disclaimer = document.getElementById("AcknowledgedDisclaimer");
                 if (disclaimer) {
                     disclaimer.disabled = false;
-                    disclaimer.setAttribute("data-autofilled","0");
+                    // force its value into the form data before submit
+                    if (disclaimer.checked) {
+                        disclaimer.value = "true";
+                    } else {
+                        disclaimer.removeAttribute("value");
+                    }
                 }
             });
         }
