@@ -1621,6 +1621,8 @@
                     togglePreviousAddress(true);
                     toggleHouseUpdateYearFields();
                     enableAllInputsForSubmit();
+                    const disclaimer = document.getElementById("AcknowledgedDisclaimer");
+                    if (disclaimer) disclaimer.disabled = false;
                 });
             }
         });
