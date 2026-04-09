@@ -16,11 +16,14 @@ namespace Protect_Website.Models
         [Phone(ErrorMessage = "Invalid phone number")]
         public required string Phone { get; set; }
 
-        [Required(ErrorMessage = "Age range is required")]
-        public required string AgeRange { get; set; }
+        public string? AgeRange { get; set; }
 
-        [Required(ErrorMessage = "Protect focus is required")]
-        public required string ProtectFocus { get; set; }
+        public string? ProtectFocus { get; set; }
+
+        public string? Answer1 { get; set; }
+        public string? Answer2 { get; set; }
+        public string? Answer3 { get; set; }
+        public string? Answer4 { get; set; }
 
         [Display(Name = "MarketingEmailConsent")]
         [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
@@ -28,7 +31,8 @@ namespace Protect_Website.Models
 
         public string? PageKey { get; set; }
 
-        /// <summary>Canonical offer key (life/mortgage/finalexpense/term/wholelife/iul). Optional enrichment — no validation.</summary>
-        public string? OfferKey { get; set; }
+        /// <summary>Canonical offer key (life/term/wholelife/finalexpense/mortgage/iul).</summary>
+        [Required]
+        public string OfferKey { get; set; } = "life";
     }
 }

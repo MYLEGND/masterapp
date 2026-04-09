@@ -7,6 +7,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
 using ProtectWebsite.Services.Tracking;
+using System.Text;
 
 namespace Protect_Website.Controllers
 {
@@ -34,55 +35,61 @@ namespace Protect_Website.Controllers
 
         // ===================== GET =====================
         [HttpGet("Life")]
-        public IActionResult LifeQuote([FromQuery] string? offer = null)
-        {
-            ViewData["OfferContent"] = LifeOfferResolver.GetContent(offer);
-            return View("~/Views/Quote/Life.cshtml");
-        }
+        public IActionResult LifeQuote([FromQuery] string? offer = null) => RenderWizard(string.IsNullOrWhiteSpace(offer) ? "life" : offer);
+        [HttpGet("Term-Life")]
+        public IActionResult TermLifeQuote() => RenderWizard("term");
+        [HttpGet("Whole-Life")]
+        public IActionResult WholeLifeQuote() => RenderWizard("wholelife");
+        [HttpGet("Final-Expense")]
+        public IActionResult FinalExpenseQuote() => RenderWizard("finalexpense");
+        [HttpGet("Mortgage-Protection")]
+        public IActionResult MortgageQuote() => RenderWizard("mortgage");
+        [HttpGet("IUL")]
+        public IActionResult IulQuote() => RenderWizard("iul");
 
         // ===================== POST =====================
         [HttpPost("Life")]
-        public async Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model)
+        public Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, model.OfferKey ?? "life");
+        [HttpPost("Term-Life")]
+        public Task<IActionResult> SubmitTermLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "term");
+        [HttpPost("Whole-Life")]
+        public Task<IActionResult> SubmitWholeLifeQuote(LifeQuoteFormModel model) => SubmitInternal(model, "wholelife");
+        [HttpPost("Final-Expense")]
+        public Task<IActionResult> SubmitFinalExpenseQuote(LifeQuoteFormModel model) => SubmitInternal(model, "finalexpense");
+        [HttpPost("Mortgage-Protection")]
+        public Task<IActionResult> SubmitMortgageQuote(LifeQuoteFormModel model) => SubmitInternal(model, "mortgage");
+        [HttpPost("IUL")]
+        public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
+
+        private IActionResult RenderWizard(string offerKey)
+        {
+            var cfg = GetContent(offerKey);
+            return View("~/Views/Quote/Life.cshtml", cfg);
+        }
+
+        private async Task<IActionResult> SubmitInternal(LifeQuoteFormModel model, string offerKey)
         {
             if (!ModelState.IsValid)
             {
-                ViewData["OfferContent"] = LifeOfferResolver.GetContent(model.OfferKey);
-                return View("~/Views/Quote/Life.cshtml", model);
+                return View("~/Views/Quote/Life.cshtml", GetContent(offerKey));
             }
 
+            model.OfferKey = offerKey;
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+            var offerContent = GetContent(offerKey);
 
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
-                var offerContent = GetContent(model.OfferKey);
                 var message = new Message
                 {
                     Subject = $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
                     Body = new ItemBody
                     {
                         ContentType = BodyType.Html,
-                        Content = $@"
-<h2>Life Insurance Quote Lead</h2>
-
-<h3>Personal Information</h3>
-<p><strong>Name:</strong> {model.FirstName}</p>
-<p><strong>Age Range:</strong> {model.AgeRange}</p>
-<p><strong>Email:</strong> {model.Email}</p>
-<p><strong>Phone:</strong> {model.Phone}</p>
-
-<hr />
-
-<h3>Coverage Goals</h3>
-<p><strong>Protect Focus:</strong> {model.ProtectFocus}</p>
-
-<hr />
-
-<h3>Consent</h3>
-<p><strong>Marketing Consent:</strong> {(model.MarketingEmailConsent ? "Yes" : "No")}</p>
-"
+                        Content = BuildEmailBody(model, offerContent)
                     },
                     ToRecipients = new List<Recipient>
                     {
@@ -130,7 +137,7 @@ namespace Protect_Website.Controllers
                 await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
             // Set the quote type so the Thank You page can display the correct name
-            TempData["QuoteType"] = "Life"; // or model.CoverageType if dynamic
+            TempData["QuoteType"] = offerContent.DisplayName;
 
                 // ✅ Redirect to centralized ThankYouController
                 return RedirectToAction("Index", "ThankYou");
@@ -138,8 +145,7 @@ namespace Protect_Website.Controllers
             catch (Exception ex)
             {
                 ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                ViewData["OfferContent"] = GetContent(model.OfferKey);
-                return View("~/Views/Quote/Life.cshtml", model);
+                return View("~/Views/Quote/Life.cshtml", offerContent);
             }
         }
 
@@ -193,6 +199,35 @@ namespace Protect_Website.Controllers
             }
 
             return null;
+        }
+
+        private string BuildEmailBody(LifeQuoteFormModel model, LifeOfferContent offer)
+        {
+            var sb = new StringBuilder();
+            sb.Append($"<h2>{offer.DisplayName} Lead</h2>");
+            sb.Append("<h3>Personal Information</h3>");
+            sb.Append($"<p><strong>Name:</strong> {model.FirstName}</p>");
+            sb.Append($"<p><strong>Email:</strong> {model.Email}</p>");
+            sb.Append($"<p><strong>Phone:</strong> {model.Phone}</p>");
+
+            sb.Append("<hr /><h3>Responses</h3>");
+            void addRow(string label, string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value)) return;
+                sb.Append($"<p><strong>{label}:</strong> {value}</p>");
+            }
+            addRow("Age Range", model.AgeRange);
+            addRow("Protect Focus", model.ProtectFocus);
+            addRow("Answer 1", model.Answer1);
+            addRow("Answer 2", model.Answer2);
+            addRow("Answer 3", model.Answer3);
+            addRow("Answer 4", model.Answer4);
+
+            sb.Append("<hr /><h3>Consent</h3>");
+            sb.Append($"<p><strong>Marketing Consent:</strong> {(model.MarketingEmailConsent ? "Yes" : "No")}</p>");
+            sb.Append($"<p><strong>Offer:</strong> {offer.DisplayName}</p>");
+            sb.Append($"<p><strong>Offer Key:</strong> {model.OfferKey}</p>");
+            return sb.ToString();
         }
     }
 }
