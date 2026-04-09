@@ -230,6 +230,32 @@
     text-decoration: none;
 }
 
+.life-dropdown{
+    margin-top:10px;
+    background:var(--card);
+    border:1.2px solid var(--border);
+    border-radius:12px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.22);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+    position:absolute;
+    left:18px;
+    right:18px;
+    z-index:5;
+}
+.life-dropdown a{
+    padding:11px 14px;
+    color:#f8fafc;
+    font-weight:800;
+    border-bottom:1px solid rgba(199,153,49,0.22);
+    text-decoration:none;
+}
+.life-dropdown a:last-child{ border-bottom:none; }
+.life-dropdown a:hover{ background:rgba(199,153,49,0.12); color:var(--gold-strong); }
+.life-tile{ cursor:pointer; position:relative; }
+.life-tile:focus-visible{ outline:2px solid var(--gold-strong); outline-offset:4px; }
+
 .tile-sub{
     margin:8px 0 0;
     color:#f8fafc;
@@ -258,6 +284,27 @@
     justify-content:center;
     transition:.18s ease;
 }
+.life-dropdown{
+    margin-top:10px;
+    background:var(--card);
+    border:1.2px solid var(--border);
+    border-radius:12px;
+    box-shadow:0 12px 30px rgba(0,0,0,0.22);
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+}
+.life-dropdown a{
+    padding:11px 14px;
+    color:#f8fafc;
+    font-weight:800;
+    border-bottom:1px solid rgba(199,153,49,0.22);
+    text-decoration:none;
+}
+.life-dropdown a:last-child{ border-bottom:none; }
+.life-dropdown a:hover{ background:rgba(199,153,49,0.12); color:var(--gold-strong); }
+.life-tile{ cursor:pointer; position:relative; }
+.life-tile:focus-visible{ outline:2px solid var(--gold-strong); outline-offset:4px; }
 .quote-tile:hover .tile-arrow{
     border-color:var(--gold-strong);
     color:var(--gold-strong);
@@ -635,5 +682,35 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }, { threshold: 0.12 });
     els.forEach(el => io.observe(el));
+
+    // Life product dropdown (keep page minimal but offer all life variants)
+    const lifeTile = document.querySelector(".life-tile");
+    const lifeMenu = lifeTile?.querySelector(".life-dropdown");
+    function closeLife() {
+        if (!lifeTile || !lifeMenu) return;
+        lifeMenu.hidden = true;
+        lifeTile.setAttribute("aria-expanded", "false");
+    }
+    function openLife() {
+        if (!lifeTile || !lifeMenu) return;
+        lifeMenu.hidden = false;
+        lifeTile.setAttribute("aria-expanded", "true");
+    }
+    lifeTile?.addEventListener("click", (e) => {
+        e.preventDefault();
+        lifeMenu?.hidden ? openLife() : closeLife();
+    });
+    lifeTile?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            lifeMenu?.hidden ? openLife() : closeLife();
+        } else if (e.key === "Escape") {
+            closeLife();
+        }
+    });
+    document.addEventListener("click", (e) => {
+        if (!lifeTile || !lifeMenu) return;
+        if (!lifeTile.contains(e.target)) closeLife();
+    });
 });
 </script>
