@@ -201,16 +201,24 @@
                 font-size: 30px;
             }
             .nav-toggle { display: inline-flex; }
-            .navbar-right {
+            .navbar-right,
+            .navbar-left {
                 display: none;
-                flex-direction: column;
-                gap: 8px;
                 width: 100%;
                 margin-top: 10px;
             }
-            .navbar.mobile-open .navbar-right { display: flex; }
+            .navbar.mobile-open .navbar-right,
+            .navbar.mobile-open .navbar-left { display: flex; }
+
+            header .navbar .navbar-left .nav-row {
+                flex-direction: column !important;
+                gap: .4rem;
+                align-items: stretch;
+            }
+
             .navbar-right .nav-link,
-            .navbar-right .login-link {
+            .navbar-right .login-link,
+            .navbar-left .nav-link {
                 width: 100%;
                 text-align: left;
                 justify-content: flex-start;
