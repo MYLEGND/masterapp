@@ -493,7 +493,11 @@
     var slugPrefix = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase))
         ? $"/a/{segs[1]}"
         : string.Empty;
-    string Link(string relative) => $"{slugPrefix}{relative}";
+    string Link(string relative)
+    {
+        var basePath = Context?.Request?.PathBase.Value ?? string.Empty;
+        return $"{basePath}{slugPrefix}{relative}";
+    }
 }
 
 <div class="quote-page">
