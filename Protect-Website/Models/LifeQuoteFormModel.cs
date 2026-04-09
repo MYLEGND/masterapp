@@ -27,5 +27,8 @@ namespace Protect_Website.Models
         public bool MarketingEmailConsent { get; set; } = false;
 
         public string? PageKey { get; set; }
+
+        /// <summary>Canonical offer key (life/mortgage/finalexpense/term/wholelife/iul). Optional enrichment — no validation.</summary>
+        public string? OfferKey { get; set; }
     }
 }

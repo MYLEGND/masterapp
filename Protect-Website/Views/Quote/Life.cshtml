@@ -583,6 +583,14 @@ body { background-color: #0f172a; color: #f8fafc; }
     submitBtn.textContent = 'Sending...';
     window.legendTrack?.({ EventType: 'life_quote_submit_attempt', PageKey: 'quote_life' });
 
+    const thankYouPath = (() => {
+      const parts = location.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2 && parts[0] === 'a') {
+        return `/a/${parts[1]}/ThankYou`;
+      }
+      return '/ThankYou';
+    })();
+
     try {
       const res = await fetch(form.action, {
         method: 'POST',
@@ -590,14 +598,8 @@ body { background-color: #0f172a; color: #f8fafc; }
         headers: { 'X-Requested-With': 'fetch' }
       });
       if (!res.ok) throw new Error('Network');
-      lifeSuccess.textContent = 'Thanks! We received your request.';
-      lifeSuccess.style.display = 'block';
       window.legendTrack?.({ EventType: 'life_quote_submit_success', PageKey: 'quote_life' });
-      form.reset();
-      ageHidden.value = '';
-      focusHidden.value = '';
-      form.querySelectorAll('input[type="radio"]').forEach(r => r.checked = false);
-      setStep(0);
+      window.location.href = thankYouPath;
     } catch (err) {
       lifeError.textContent = 'We could not send this right now. Please try again.';
       lifeError.style.display = 'block';

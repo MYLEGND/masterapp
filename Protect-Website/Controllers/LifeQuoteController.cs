@@ -33,8 +33,9 @@ namespace Protect_Website.Controllers
 
         // ===================== GET =====================
         [HttpGet("Life")]
-        public IActionResult LifeQuote()
+        public IActionResult LifeQuote([FromQuery] string? offer = null)
         {
+            ViewData["OfferContent"] = LifeOfferResolver.GetContent(offer);
             return View("~/Views/Quote/Life.cshtml");
         }
 
@@ -43,7 +44,10 @@ namespace Protect_Website.Controllers
         public async Task<IActionResult> SubmitLifeQuote(LifeQuoteFormModel model)
         {
             if (!ModelState.IsValid)
+            {
+                ViewData["OfferContent"] = LifeOfferResolver.GetContent(model.OfferKey);
                 return View("~/Views/Quote/Life.cshtml", model);
+            }
 
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
 
