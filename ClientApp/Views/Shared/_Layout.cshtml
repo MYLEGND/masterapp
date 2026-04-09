@@ -941,6 +941,7 @@
                 padding: 11px 14px 10px;
                 border-radius: 16px;
                 row-gap: 6px;
+                position: relative;
             }
 
             header .navbar .container-fluid {
@@ -955,7 +956,8 @@
             .nav-toggle { display: inline-flex; justify-self: end; }
 
             .navbar-left,
-            .navbar-right {
+            .navbar-right,
+            .mini-tools {
                 display: none !important;
                 width: 100%;
                 margin-top: .5rem;
@@ -969,6 +971,11 @@
             .navbar.mobile-open .navbar-left,
             .navbar.mobile-open .navbar-right {
                 display: block !important;
+                position: absolute;
+                top: calc(100% + 8px);
+                left: 0;
+                right: 0;
+                z-index: 1060;
             }
 
             /* Center the LIFE HAC pill across full width */
