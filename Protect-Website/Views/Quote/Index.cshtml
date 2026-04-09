@@ -230,8 +230,13 @@
     text-decoration: none;
 }
 
+.life-tile{
+    position:relative;
+    cursor:pointer;
+    overflow:visible;
+}
 .life-dropdown{
-    margin-top:10px;
+    margin-top:8px;
     background:var(--card);
     border:1.2px solid var(--border);
     border-radius:12px;
@@ -239,10 +244,10 @@
     display:none;
     flex-direction:column;
     overflow:hidden;
-    position:fixed;
-    left:12px;
-    right:12px;
-    top:9999px;
+    position:absolute;
+    left:0;
+    right:0;
+    top:100%;
     z-index:9999;
     max-height:320px;
     overflow-y:auto;
@@ -715,20 +720,8 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeTile.classList.remove("open");
         lifeTile.setAttribute("aria-expanded", "false");
     }
-    function positionLifeMenu() {
-        if (!lifeTile || !lifeMenu) return;
-        const rect = lifeTile.getBoundingClientRect();
-        const top = rect.bottom + window.scrollY + 8;
-        const left = Math.max(12, rect.left + window.scrollX);
-        const right = Math.max(12, window.innerWidth - rect.right + window.scrollX);
-        lifeMenu.style.top = `${top}px`;
-        lifeMenu.style.left = `${left}px`;
-        lifeMenu.style.right = `${right}px`;
-        lifeMenu.style.display = "flex";
-    }
     function openLife() {
         if (!lifeTile || !lifeMenu) return;
-        positionLifeMenu();
         lifeMenu.hidden = false;
         lifeTile.classList.add("open");
         lifeTile.setAttribute("aria-expanded", "true");
@@ -754,9 +747,6 @@ document.addEventListener("DOMContentLoaded", function () {
             if (!lifeTile.contains(e.target)) closeLife();
         });
         window.addEventListener("scroll", closeLife, { passive: true });
-        window.addEventListener("resize", () => {
-            if (!lifeMenu.hidden) positionLifeMenu();
-        });
     }
 });
 </script>
