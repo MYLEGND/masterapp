@@ -169,6 +169,52 @@ namespace AgentPortal.Controllers;
         return Json(result);
     }
 
+    // ── Behavior Intelligence ─────────────────────────────────────
+    [HttpGet("behavior/summary")]
+    public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetEngagementSummaryAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("behavior/time-on-page")]
+    public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetTimeOnPageAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("behavior/exit-analysis")]
+    public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetExitAnalysisAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("behavior/journey")]
+    public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetJourneyAnalysisAsync(range, scope);
+        return Json(result);
+    }
+
+    [HttpGet("behavior/source-performance")]
+    public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetSourcePerformanceAsync(range, scope);
+        return Json(result);
+    }
+
     [HttpGet("meta-campaigns")]
     [HttpGet("/website-analytics/meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null)
