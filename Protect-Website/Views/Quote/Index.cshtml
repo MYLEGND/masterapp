@@ -487,6 +487,15 @@
 <!-- HTML BELOW REMAINS EXACTLY THE SAME -->
 
 
+@{
+    var path = Context?.Request?.Path.Value ?? string.Empty;
+    var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    var slugPrefix = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase))
+        ? $"/a/{segs[1]}"
+        : string.Empty;
+    string Link(string relative) => $"{slugPrefix}{relative}";
+}
+
 <div class="quote-page">
 
     <!-- ===================== HERO ===================== -->
@@ -516,7 +525,7 @@
 
         <div class="quote-grid">
 
-            <a href="/Quote/Auto" class="quote-tile reveal" aria-label="Start Auto Insurance Quote" data-cta="quote_index_auto_start">
+            <a href="@Link("/Quote/Auto")" class="quote-tile reveal" aria-label="Start Auto Insurance Quote" data-cta="quote_index_auto_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -531,7 +540,7 @@
                 </div>
             </a>
 
-            <a href="/Quote/Home" class="quote-tile reveal" aria-label="Start Home Insurance Quote" data-cta="quote_index_home_start">
+            <a href="@Link("/Quote/Home")" class="quote-tile reveal" aria-label="Start Home Insurance Quote" data-cta="quote_index_home_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -546,7 +555,7 @@
                 </div>
             </a>
 
-            <a href="/Quote/Commercial" class="quote-tile reveal" aria-label="Start Commercial Insurance Quote" data-cta="quote_index_commercial_start">
+            <a href="@Link("/Quote/Commercial")" class="quote-tile reveal" aria-label="Start Commercial Insurance Quote" data-cta="quote_index_commercial_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -575,16 +584,16 @@
                     <span class="tile-arrow">▾</span>
                 </div>
                 <div class="life-dropdown" hidden>
-                    <a href="/Quote/Life"              data-cta="quote_index_life_general">General Life</a>
-                    <a href="/Quote/Term-Life"         data-cta="quote_index_life_term">Term Life</a>
-                    <a href="/Quote/Whole-Life"        data-cta="quote_index_life_whole">Whole Life</a>
-                    <a href="/Quote/Final-Expense"     data-cta="quote_index_life_finalexpense">Final Expense</a>
-                    <a href="/Quote/Mortgage-Protection" data-cta="quote_index_life_mp">Mortgage Protection</a>
-                    <a href="/Quote/IUL"               data-cta="quote_index_life_iul">Indexed Universal Life (IUL)</a>
+                    <a href="@Link("/Quote/Life")"                data-cta="quote_index_life_general">General Life</a>
+                    <a href="@Link("/Quote/Term-Life")"           data-cta="quote_index_life_term">Term Life</a>
+                    <a href="@Link("/Quote/Whole-Life")"          data-cta="quote_index_life_whole">Whole Life</a>
+                    <a href="@Link("/Quote/Final-Expense")"       data-cta="quote_index_life_finalexpense">Final Expense</a>
+                    <a href="@Link("/Quote/Mortgage-Protection")" data-cta="quote_index_life_mp">Mortgage Protection</a>
+                    <a href="@Link("/Quote/IUL")"                 data-cta="quote_index_life_iul">Indexed Universal Life (IUL)</a>
                 </div>
             </div>
 
-            <a href="/Quote/Disability" class="quote-tile reveal" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
+            <a href="@Link("/Quote/Disability")" class="quote-tile reveal" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -599,7 +608,7 @@
                 </div>
             </a>
 
-            <a href="/Quote/Health" class="quote-tile reveal" aria-label="Start Health Insurance Quote" data-cta="quote_index_health_start">
+            <a href="@Link("/Quote/Health")" class="quote-tile reveal" aria-label="Start Health Insurance Quote" data-cta="quote_index_health_start">
                 <div>
                     <div class="tile-top">
                         <div>
