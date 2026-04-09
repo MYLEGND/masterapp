@@ -31,7 +31,8 @@
       "Bash(ls /tmp/masterapp-protect-publish/*.Views.dll)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://masterapp-protect.azurewebsites.net/Quote/Life?offer=mortgage\")",
       "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Life?offer=mortgage\")",
-      "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Disability\")"
+      "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Disability\")",
+      "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Life\")"
     ]
   }
 }
