@@ -98,7 +98,14 @@ namespace Protect_Website.Controllers
                 {
                     leadRecipientEmail,
                     recipientEmail
-                };
+                }
+                .Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => a.Trim())
+                .ToList();
+
+                if (recipients.Count == 0)
+                    throw new InvalidOperationException("No recipient email resolved.");
+
                 foreach (var addr in recipients)
                 {
                     message.ToRecipients.Add(new Recipient
