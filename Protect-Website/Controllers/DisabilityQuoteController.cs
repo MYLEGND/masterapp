@@ -57,7 +57,7 @@ namespace Protect_Website.Controllers
                     $"New Lead — Disability Insurance",
                     new LeadEmailTemplate.RowBuilder()
                         .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
-                        .Row("Age",   model.Age)
+                        .Row("Age",   model.Age?.ToString())
                         .Row("Email", model.Email)
                         .Row("Phone", model.Phone)
                         .Section("Employment")
