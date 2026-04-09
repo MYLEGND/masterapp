@@ -2015,7 +2015,10 @@
         applyPendingIncidentSelections();
     }
 
+    let _autoAssignLock = false;
+
     function defaultPrimaryVehicleToPrimaryDriver() {
+        if (_autoAssignLock) return;
         const sel = document.getElementById("Vehicle0_AssignedDriverIndex");
         if (!sel) return;
 
@@ -2026,9 +2029,14 @@
         // Ensure the options exist before setting
         const has0 = Array.from(sel.options).some(o => o.value === "0");
         if (has0) {
+            const already = sel.value === "0";
+            _autoAssignLock = true;
             sel.value = "0";
             sel.setAttribute("data-autofilled", "1");
-            sel.dispatchEvent(new Event("change", { bubbles: true }));
+            if (!already) {
+                sel.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+            _autoAssignLock = false;
         }
     }
 
@@ -2109,6 +2117,9 @@
             form.addEventListener("submit", function () {
                 buildVehicleCoverageCards();
                 enableAllInputsForSubmit();
+                // ensure required checkbox stays enabled and counts
+                const disclaimer = document.getElementById("AcknowledgedDisclaimer");
+                if (disclaimer) disclaimer.disabled = false;
             });
         }
     });
