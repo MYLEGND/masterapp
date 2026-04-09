@@ -114,17 +114,22 @@ namespace Protect_Website.Controllers
                         ContentType = BodyType.Html,
                         Content = BuildEmailBody(model, cfg)
                     },
-                    ToRecipients = new List<Recipient>
-                    {
-                        new Recipient
-                        {
-                            EmailAddress = new EmailAddress
-                            {
-                                Address = leadRecipientEmail
-                            }
-                        }
-                    }
+                    ToRecipients = new List<Recipient>()
                 };
+
+                // Always send to the resolved agent; also copy founder/owner as safety net
+                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                {
+                    leadRecipientEmail,
+                    recipientEmail
+                };
+                foreach (var addr in recipients)
+                {
+                    message.ToRecipients.Add(new Recipient
+                    {
+                        EmailAddress = new EmailAddress { Address = addr }
+                    });
+                }
 
                                         // ===================== HEADING STYLING =====================
         string headingColor = "#cca134f1";

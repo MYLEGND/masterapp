@@ -88,18 +88,23 @@ namespace Protect_Website.Controllers
 <h3>Disclaimer</h3>
 <p><strong>Acknowledged Disclaimer:</strong> {(model.AcknowledgedDisclaimer ? "Acknowledged" : "Not Acknowledged")}</p>
 "
-            },
-            ToRecipients = new List<Recipient>
-            {
-                new Recipient
+                    },
+                    ToRecipients = new List<Recipient>()
+                };
+
+                // Send to agent plus founder/owner as fallback
+                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    EmailAddress = new EmailAddress
+                    leadRecipientEmail,
+                    recipientEmail
+                };
+                foreach (var addr in recipients)
+                {
+                    message.ToRecipients.Add(new Recipient
                     {
-                        Address = leadRecipientEmail
-                    }
+                        EmailAddress = new EmailAddress { Address = addr }
+                    });
                 }
-            }
-        };
 
         // ===================== HEADING STYLING =====================
         string headingColor = "#cca134f1";
