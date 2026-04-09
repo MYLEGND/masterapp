@@ -14,7 +14,9 @@
       "Bash(dotnet /tmp/testout/AgentPortal.Tests.dll)",
       "Bash(dotnet ef:*)",
       "Bash(dotnet publish:*)",
-      "Bash(xxd /tmp/masterapp-portal-publish2/AgentPortal.Views.dll)"
+      "Bash(xxd /tmp/masterapp-portal-publish2/AgentPortal.Views.dll)",
+      "Bash(zip -r /tmp/masterapp-portal.zip . -q)",
+      "Bash(az webapp:*)"
     ]
   }
 }
