@@ -242,7 +242,7 @@
     position:absolute;
     left:18px;
     right:18px;
-    z-index:5;
+    z-index:9999;
     max-height:320px;
     overflow-y:auto;
     -webkit-overflow-scrolling: touch;
@@ -703,8 +703,22 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeMenu.hidden = true;
         lifeTile.setAttribute("aria-expanded", "false");
     }
+    function positionLifeMenu() {
+        if (!lifeTile || !lifeMenu) return;
+        const rect = lifeTile.getBoundingClientRect();
+        const top = rect.bottom + window.scrollY + 8;
+        const left = rect.left + window.scrollX;
+        const rightGap = window.innerWidth - rect.right + window.scrollX;
+        // Use fixed positioning so it floats above other content on mobile
+        lifeMenu.style.position = "fixed";
+        lifeMenu.style.top = `${top}px`;
+        lifeMenu.style.left = `${Math.max(12, left)}px`;
+        lifeMenu.style.right = `${Math.max(12, rightGap)}px`;
+        lifeMenu.style.maxWidth = `${Math.min(420, window.innerWidth - 24)}px`;
+    }
     function openLife() {
         if (!lifeTile || !lifeMenu) return;
+        positionLifeMenu();
         lifeMenu.hidden = false;
         lifeTile.setAttribute("aria-expanded", "true");
     }
@@ -731,6 +745,8 @@ document.addEventListener("DOMContentLoaded", function () {
         if (!lifeTile.contains(e.target)) closeLife();
     });
     window.addEventListener("scroll", closeLife, { passive: true });
-    window.addEventListener("resize", closeLife);
+    window.addEventListener("resize", () => {
+        if (!lifeMenu?.hidden) positionLifeMenu();
+    });
 });
 </script>
