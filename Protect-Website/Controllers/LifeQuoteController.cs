@@ -101,12 +101,12 @@ namespace Protect_Website.Controllers
 
             model.OfferKey = offerKey;
             model.ProductType = cfg.ProductType;
-            var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
             var offerContent = GetContent(offerKey);
             var isAgentContext = IsAgentContext();
 
             try
             {
+                var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
