@@ -31,8 +31,13 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 .hero-link .text-gold { color: var(--legend-gold); }
 .hero-link-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
+}
+@media (max-width: 900px) {
+    .hero-link-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 .hero-link-panel {
     border: 1px solid rgba(199,153,49,.42);
@@ -87,7 +92,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     color: var(--legend-silver);
     background: transparent;
 }
-@media (max-width: 768px) {
+@media (max-width: 600px) {
     .hero-link-grid {
         grid-template-columns: 1fr;
     }
