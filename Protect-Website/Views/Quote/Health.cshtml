@@ -1,676 +1,359 @@
 @model Protect_Website.Models.HealthQuoteFormModel
 
 @{
-    ViewData["Title"] = "Get Your Personalized Health Insurance Review";
+    ViewData["Title"] = "Explore Your Health Insurance Options";
     ViewData["PageKey"] = "quote_health";
 }
 
-<style>
-/* ================================================================
-   HEALTH QUOTE — MOBILE-FIRST MICRO WIZARD
-   ================================================================ */
-body { background-color: #0f172a; color: #f8fafc; }
-
-.form-control,
-.form-select {
-    border: 1.6px solid #c79931;
-    margin-bottom: 10px;
-    background: #ffffff;
-    color: #0f172a;
-    font-size: 0.95rem;
-    padding: 10px 12px;
-    border-radius: 8px;
-}
-.form-control::placeholder { color: rgba(15,23,42,0.55); }
-.form-control:focus,
-.form-select:focus {
-    outline: none;
-    box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
-    border-color: #c79931;
-    background: #ffffff;
-    color: #0f172a;
-}
-
-.btn-gold {
-    background: linear-gradient(180deg, #c79931, #a68023);
-    color: #fff;
-    font-weight: 900;
-    padding: 12px 24px;
-    border-radius: 10px;
-    font-size: 1rem;
-    border: 1.4px solid #c79931;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.24);
-    transition: opacity 0.15s, transform 0.12s;
-}
-.btn-gold:hover { opacity: 0.93; color: #fff; transform: translateY(-1px); }
-.text-gold { color: #c79931; }
-
-.lq-header { margin-top: 18px; margin-bottom: 16px; text-align: center; }
-.lq-header h1 {
-    font-weight: 900;
-    font-size: 2rem;
-    color: #a68023;
-    letter-spacing: .5px;
-    margin-bottom: 6px;
-}
-.lq-subtext {
-    color: #c79931;
-    font-weight: 700;
-    font-size: 1.05rem;
-    margin-bottom: 6px;
-}
-.lq-trust-row {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 10px;
-}
-.lq-trust-chip {
-    background: #c79931;
-    color: #0f172a;
-    font-weight: 800;
-    border-radius: 10px;
-    padding: 6px 12px;
-    font-size: .9rem;
-}
-.lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
-
-.lq-progress {
-    max-width: 760px;
-    margin: 0 auto 18px auto;
-    padding: 0 12px;
-}
-.lq-progress-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #d5b77c;
-    font-weight: 800;
-    letter-spacing: .02em;
-    font-size: .95rem;
-    margin-bottom: 8px;
-}
-.lq-progress-rail {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
-}
-.lq-pill-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
-    border-radius: 12px;
-    border: 1.6px solid rgba(199,153,49,0.35);
-    background: linear-gradient(145deg, rgba(17,28,50,0.9), rgba(24,36,58,0.82));
-    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.12), 0 10px 24px rgba(0,0,0,0.18);
-    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
-}
-.lq-pill-num {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(199,153,49,0.14);
-    color: #c79931;
-    font-weight: 900;
-    font-size: .9rem;
-}
-.lq-pill-label {
-    font-weight: 800;
-    color: rgba(248,250,252,0.8);
-    font-size: .92rem;
-    letter-spacing: 0.01em;
-}
-.lq-pill-step.active {
-    border-color: #c79931;
-    background: linear-gradient(135deg, #dfb75a 0%, #b88a26 45%, #916a1d 100%);
-    box-shadow: 0 12px 28px rgba(0,0,0,0.34), 0 0 18px rgba(199,153,49,0.35);
-    transform: translateY(-1px);
-}
-.lq-pill-step.active .lq-pill-num { background: #0f172a; color: #dfb75a; }
-.lq-pill-step.active .lq-pill-label { color: #0f172a; }
-.lq-pill-step.complete {
-    border-color: rgba(199,153,49,0.55);
-    background: linear-gradient(135deg, rgba(199,153,49,0.22), rgba(199,153,49,0.12));
-    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.18);
-}
-.lq-pill-step.complete .lq-pill-num { background: rgba(199,153,49,0.25); color: #c79931; }
-.lq-pill-step.complete .lq-pill-label { color: rgba(248,250,252,0.78); }
-
-.lq-step-panel {
-    max-width: 760px;
-    width: 100%;
-    margin: 0 auto 18px auto;
-    background: #0f172a;
-    border: 1.6px solid #c79931;
-    border-radius: 12px;
-    box-shadow: 0 18px 40px rgba(0,0,0,0.22);
-    animation: lqFadeIn 0.22s ease;
-}
-.lq-inner-block {
-    background: #111c32;
-    border: 1.4px solid rgba(199,153,49,0.35);
-    border-radius: 10px;
-    padding: 18px 16px 14px 16px;
-}
-.lq-step-title {
-    font-size: 1.2rem;
-    font-weight: 900;
-    color: #c79931;
-    margin-bottom: 6px;
-}
-.lq-step-kicker {
-    text-transform: uppercase;
-    letter-spacing: .12em;
-    font-weight: 800;
-    color: rgba(248,250,252,0.55);
-    font-size: .72rem;
-    margin-bottom: 4px;
-}
-.lq-step-helper { font-size: .94rem; color: rgba(248,250,252,0.7); margin-bottom: 16px; }
-.lq-step-panel-pad { padding: 16px; }
-
-@@keyframes lqFadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-}
-
-.lq-choice-group { margin-bottom: 8px; }
-.lq-choice-label { font-weight: 800; font-size: 1rem; color: #f8fafc; margin-bottom: 12px; }
-.lq-choice-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
-.lq-choice-grid.lq-grid-2 { grid-template-columns: 1fr 1fr; }
-.lq-choice-grid.lq-grid-3 { grid-template-columns: 1fr 1fr; }
-@@media (min-width: 600px) {
-    .lq-choice-grid.lq-grid-3 { grid-template-columns: repeat(3, 1fr); }
-}
-.lq-card {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 14px 10px;
-    min-height: 58px;
-    border: 1.6px solid rgba(199,153,49,0.32);
-    border-radius: 10px;
-    background: rgba(15,23,42,0.8);
-    color: #f8fafc;
-    font-weight: 800;
-    font-size: .95rem;
-    cursor: pointer;
-    transition: border-color 0.14s, background 0.14s, box-shadow 0.14s, color 0.14s;
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    line-height: 1.25;
-    position: relative;
-}
-.lq-card:hover { border-color: #c79931; background: rgba(199,153,49,0.08); }
-.lq-card input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
-.lq-card.lq-selected,
-.lq-card:has(input:checked) { border-color: #c79931; background: rgba(199,153,49,0.18); box-shadow: 0 0 0 2px rgba(199,153,49,0.32); color: #c79931; }
-.lq-card.lq-invalid { border-color: #ef4444; }
-.lq-choice-error { color: #f87171; font-size: .82rem; margin-top: 4px; min-height: 18px; display: none; }
-.lq-choice-error.visible { display: block; }
-
-.lq-step-actions { margin-top: 16px; }
-.lq-step-actions.dual { display: flex; gap: 10px; flex-wrap: wrap; }
-.lq-reassurance { text-align: center; font-size: .84rem; color: rgba(248,250,252,0.55); margin-top: 10px; margin-bottom: 0; }
-
-.lq-field-row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-bottom: 4px; }
-@@media (min-width: 720px) {
-    .lq-field-row { grid-template-columns: repeat(2, 1fr); }
-    .lq-field-row.triple { grid-template-columns: repeat(3, 1fr); }
-}
-.lq-field label { display: block; margin-bottom: 6px; font-weight: 800; color: #f8fafc; font-size: .95rem; }
-.lq-field .form-control,
-.lq-field .form-select { margin-bottom: 0; }
-.lq-field-err { color: #f87171; font-size: .8rem; margin-top: 4px; display: none; }
-.lq-field-err.visible { display: block; }
-
-.lq-consent {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    padding: 12px 0 6px 0;
-    border-top: 1px solid rgba(199,153,49,0.18);
-    margin-top: 14px;
-}
-.lq-consent-checkbox { width: 18px; height: 18px; margin-top: 2px; flex-shrink: 0; accent-color: #c79931; cursor: pointer; }
-.lq-consent-label { line-height: 1.5; color: rgba(248,250,252,0.85); font-size: .9rem; cursor: pointer; }
-.lq-alert { background: rgba(239,68,68,0.12); border: 1px solid #ef4444; border-radius: 6px; color: #fca5a5; padding: 10px 14px; margin-bottom: 14px; font-size: .9rem; }
-.lq-alert ul { margin: 0; padding-left: 18px; }
-.lq-success { color: #f8fafc; font-weight: bold; margin-bottom: 20px; font-size: 1.1rem; }
-</style>
-
 <div class="container-narrow">
-    <div class="lq-header">
-        <h1>Get Your Personalized Health Insurance Review</h1>
-        <div class="lq-subtext">No obligation. Personalized guidance based on your needs.</div>
-        <div class="lq-trust-row">
-            <span class="lq-trust-chip">No obligation</span>
-            <span class="lq-trust-chip">Takes 60 Seconds</span>
-        </div>
-        <div class="lq-helper-intro">Tap through a few quick steps to get health coverage guidance.</div>
+
+    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
+        <h1 style="
+            font-weight: 900;
+            font-size: 2rem;
+            color: #a68023;
+            letter-spacing: .5px;
+            margin-bottom: 6px;">
+            Explore Your Health Insurance Options
+        </h1>
     </div>
 
-    <div class="lq-progress" id="lq-progress-indicator" aria-label="Form progress" role="progressbar"
-         aria-valuemin="0" aria-valuemax="100" aria-valuenow="25">
-        <div class="lq-progress-head">
-            <span>Progress</span>
-            <span id="lq-progress-percent">Step 1 of 4</span>
-        </div>
-        <div class="lq-progress-rail">
-            <div class="lq-pill-step active" id="lq-prog-step1" aria-current="step">
-                <span class="lq-pill-num">1</span>
-                <span class="lq-pill-label">Age</span>
-            </div>
-            <div class="lq-pill-step" id="lq-prog-step2">
-                <span class="lq-pill-num">2</span>
-                <span class="lq-pill-label">Primary Concern</span>
-            </div>
-            <div class="lq-pill-step" id="lq-prog-step3">
-                <span class="lq-pill-num">3</span>
-                <span class="lq-pill-label">Household</span>
-            </div>
-            <div class="lq-pill-step" id="lq-prog-step4">
-                <span class="lq-pill-num">4</span>
-                <span class="lq-pill-label">Your Details</span>
-            </div>
-        </div>
-    </div>
+    <p class="required-note text-center">
+        <strong>
+            * Fields marked with an asterisk are required.
+        </strong>
+    </p>
 
-    @if (ViewBag.Success != null)
-    {
-        <div class="lq-success">@ViewBag.Success</div>
+<style>
+    body { background-color: #0f172a; color: #f8fafc; }
+
+    .section-card {
+        background-color: #0f172a;
+        border: 1.6px solid #c79931;
+        padding: 16px;
+        border-radius: 12px;
+        margin-bottom: 24px;
+        box-shadow: 0 18px 40px rgba(0,0,0,0.18);
+        color: #f8fafc;
     }
 
-    <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form" novalidate>
+    .section-title {
+        font-size: 1.25rem;
+        font-weight: 900;
+        color: #c79931;
+        margin-bottom: 12px;
+    }
 
-        @if (!ViewData.ModelState.IsValid)
-        {
-            <div class="lq-alert" role="alert">
-                <ul>
-                @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
-                {
-                    <li>@error.ErrorMessage</li>
-                }
-                </ul>
-            </div>
+    .form-control, .form-select {
+        border: 1.6px solid #c79931;
+        margin-bottom: 10px;
+        background: #ffffff;
+        color: #0f172a;
+        font-size: 0.95rem;
+        padding: 8px 10px;
+    }
+    .form-control::placeholder, .form-select::placeholder{
+        color: rgba(15,23,42,0.55);
+    }
+    .form-control:focus, .form-select:focus {
+        outline: none;
+        box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
+        border-color: #c79931;
+        background: #ffffff;
+        color: #0f172a;
+    }
+
+    .btn-gold {
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+        font-weight: 900;
+        padding: 9px 20px;
+        border-radius: 8px;
+        font-size: 1rem;
+        border: 1.4px solid #c79931;
+        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
+    }
+
+    .btn-gold:hover {
+        background: linear-gradient(180deg, #c79931, #a68023);
+        color: #fff;
+    }
+
+    .text-gold { color: #c79931; }
+
+    /* ===================== DISCLAIMER ===================== */
+    .disclaimer-container {
+        margin-top: 40px;
+        margin-bottom: 40px;
+        font-size: 1rem;
+        font-weight: bold;
+        line-height: 1.5;
+        color: #f8fafc;
+        display: flex;
+        align-items: flex-start;
+    }
+
+    .disclaimer-container input {
+        margin-right: 12px;
+        margin-top: 4px;
+        width: 20px;
+        height: 20px;
+    }
+
+    /* ===== Visual-only: single-card layout + tighter, lead-form grouping ===== */
+    .lead-card{
+        max-width: 1100px;
+        width: 100%;
+        margin: 0 auto 24px auto;
+    }
+
+    .lead-grid{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+    }
+
+    .lead-block{
+        border: 1.4px solid #c79931;
+        border-radius: 10px;
+        padding: 12px 12px 4px 12px;
+        background: #111c32;
+        color: #f8fafc;
+    }
+
+    .lead-block .section-title{
+        margin-bottom: 12px;
+        font-size: 1.15rem;
+        color: #c79931;
+    }
+
+    .lead-row{
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px 14px;
+    }
+
+    @@media (min-width: 768px){
+        .lead-row.three{
+            grid-template-columns: repeat(3, 1fr);
         }
-
-        <!-- STEP 1 -->
-        <div class="lq-step-panel" id="hq-step1" data-step="1">
-            <div class="lq-step-panel-pad">
-                <div class="lq-inner-block">
-                    <div class="lq-step-kicker">Step 1 of 4</div>
-                    <div class="lq-step-title">What is your age range?</div>
-                    <p class="lq-step-helper">One tap to set the right track. We’ll auto-advance.</p>
-
-                    <div class="lq-choice-group" id="grp-AgeRange" role="radiogroup" aria-labelledby="lbl-AgeRange" aria-required="true">
-                        <div class="lq-choice-label" id="lbl-AgeRange">Select your age range.</div>
-                        <div class="lq-choice-grid lq-grid-2">
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="18–24"><span>18–24</span></label>
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="25–34"><span>25–34</span></label>
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="35–44"><span>35–44</span></label>
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="45–54"><span>45–54</span></label>
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="55–64"><span>55–64</span></label>
-                            <label class="lq-card"><input type="radio" name="AgeRange" value="65+"><span>65+</span></label>
-                        </div>
-                        <div class="lq-choice-error" id="err-AgeRange" role="alert">Please select your age range.</div>
-                    </div>
-
-                    <div class="lq-step-actions">
-                        <button type="button" class="btn btn-gold btn-lg w-100 lq-next" data-next="2" data-validate="AgeRange">Next</button>
-                        <p class="lq-reassurance">Takes less than a minute.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- STEP 2 -->
-        <div class="lq-step-panel" id="hq-step2" data-step="2" style="display:none;">
-            <div class="lq-step-panel-pad">
-                <div class="lq-inner-block">
-                    <div class="lq-step-kicker">Step 2 of 4</div>
-                    <div class="lq-step-title">What’s your primary concern?</div>
-                    <p class="lq-step-helper">We’ll shape recommendations around this.</p>
-
-                    <div class="lq-choice-group" id="grp-PrimaryConcern" role="radiogroup" aria-labelledby="lbl-PrimaryConcern" aria-required="true">
-                        <div class="lq-choice-label" id="lbl-PrimaryConcern">Choose one.</div>
-                        <div class="lq-choice-grid lq-grid-2">
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Lower Monthly Premium"><span>Lower Monthly Premium</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Lower Deductible"><span>Lower Deductible</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Better Doctor Network"><span>Better Doctor Network</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Prescription Coverage"><span>Prescription Coverage</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Family Coverage"><span>Family Coverage</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Dental / Vision Options"><span>Dental / Vision Options</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Marketplace / ACA Guidance"><span>Marketplace / ACA Guidance</span></label>
-                            <label class="lq-card"><input type="radio" name="PrimaryConcern" value="Not Sure / Need Guidance"><span>Not Sure / Need Guidance</span></label>
-                        </div>
-                        <div class="lq-choice-error" id="err-PrimaryConcern" role="alert">Please choose your primary concern.</div>
-                    </div>
-
-                    <div class="lq-step-actions dual">
-                        <button type="button" class="btn btn-outline-light w-50 lq-back" data-back="1">Back</button>
-                        <button type="button" class="btn btn-gold w-50 lq-next" data-next="3" data-validate="PrimaryConcern">Next</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- STEP 3 -->
-        <div class="lq-step-panel" id="hq-step3" data-step="3" style="display:none;">
-            <div class="lq-step-panel-pad">
-                <div class="lq-inner-block">
-                    <div class="lq-step-kicker">Step 3 of 4</div>
-                    <div class="lq-step-title">How many people are in your household?</div>
-                    <p class="lq-step-helper">We’ll size coverage to your household.</p>
-
-                    <div class="lq-choice-group" id="grp-HouseholdSize" role="radiogroup" aria-labelledby="lbl-HouseholdSize" aria-required="true">
-                        <div class="lq-choice-label" id="lbl-HouseholdSize">Choose one.</div>
-                        <div class="lq-choice-grid lq-grid-3">
-                            <label class="lq-card"><input type="radio" name="HouseholdSizeChoice" value="1"><span>Just me</span></label>
-                            <label class="lq-card"><input type="radio" name="HouseholdSizeChoice" value="2"><span>2 people</span></label>
-                            <label class="lq-card"><input type="radio" name="HouseholdSizeChoice" value="3"><span>3 people</span></label>
-                            <label class="lq-card"><input type="radio" name="HouseholdSizeChoice" value="4"><span>4 people</span></label>
-                            <label class="lq-card"><input type="radio" name="HouseholdSizeChoice" value="5"><span>5+</span></label>
-                        </div>
-                        <div class="lq-choice-error" id="err-HouseholdSize" role="alert">Please select household size.</div>
-                    </div>
-
-                    <div class="lq-step-actions dual">
-                        <button type="button" class="btn btn-outline-light w-50 lq-back" data-back="2">Back</button>
-                        <button type="button" class="btn btn-gold w-50 lq-next" data-next="4" data-validate="HouseholdSizeChoice">Next</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- STEP 4 CONTACT -->
-        <div class="lq-step-panel" id="hq-step4" data-step="4" style="display:none;">
-            <div class="lq-step-panel-pad">
-                <div class="lq-inner-block">
-                    <div class="lq-step-kicker">Step 4 of 4</div>
-                    <div class="lq-step-title">Where should we send your review?</div>
-                    <p class="lq-step-helper">Enter your details and we’ll follow up with personalized guidance.</p>
-
-                    <div class="lq-field-row triple">
-                        <div class="lq-field">
-                            <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
-                            <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" />
-                            <div class="lq-field-err" id="err-FirstName" role="alert">Please enter your first name.</div>
-                        </div>
-                        <div class="lq-field">
-                            <label for="LastName">Last Name <span style="color:#f87171">*</span></label>
-                            <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" />
-                            <div class="lq-field-err" id="err-LastName" role="alert">Please enter your last name.</div>
-                        </div>
-                        <div class="lq-field">
-                            <label for="Email">Email <span style="color:#f87171">*</span></label>
-                            <input type="email" id="Email" name="Email" class="form-control" placeholder="you@email.com" autocomplete="email" />
-                            <div class="lq-field-err" id="err-Email" role="alert">Please enter a valid email.</div>
-                        </div>
-                    </div>
-
-                    <div class="lq-field-row">
-                        <div class="lq-field">
-                            <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                            <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 000-0000" autocomplete="tel" inputmode="tel" />
-                            <div class="lq-field-err" id="err-Phone" role="alert">Please enter your phone.</div>
-                        </div>
-                        <div class="lq-field">
-                            <label for="ContactMethod">Preferred Contact Method <span style="color:#f87171">*</span></label>
-                            <select id="ContactMethod" name="ContactMethod" class="form-select">
-                                <option value="">Select</option>
-                                <option>Phone</option>
-                                <option>Email</option>
-                                <option>Text</option>
-                            </select>
-                            <div class="lq-field-err" id="err-ContactMethod" role="alert">Select a contact method.</div>
-                        </div>
-                    </div>
-
-                    <div class="lq-field-row">
-                        <div class="lq-field">
-                            <label for="BestTimeToContact">Best Time To Contact <span style="color:#f87171">*</span></label>
-                            <select id="BestTimeToContact" name="BestTimeToContact" class="form-select">
-                                <option value="">Select</option>
-                                <option>Morning</option>
-                                <option>Afternoon</option>
-                                <option>Evening</option>
-                            </select>
-                            <div class="lq-field-err" id="err-BestTimeToContact" role="alert">Select a time.</div>
-                        </div>
-                    </div>
-
-                    <div class="lq-consent">
-                        <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="lq-consent-checkbox" id="disclaimerCheckbox" />
-                        <label class="lq-consent-label" for="disclaimerCheckbox">
-                            I authorize contact about my health insurance inquiry and personalized coverage review.
-                        </label>
-                    </div>
-                    <div class="lq-field-err" id="err-Consent" role="alert" style="margin-top:2px;">You must agree to continue.</div>
-                    <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger" style="font-size:.82rem;"></span>
-
-                    <div class="lq-step-actions dual mt-3">
-                        <button type="button" class="btn btn-outline-light w-50 lq-back" data-back="3">Back</button>
-                        <button type="submit" id="hq-submit" class="btn btn-gold w-50">Get My Personalized Review</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </form>
-</div>
-
-@section Scripts {
-    <partial name="_ValidationScriptsPartial" />
-    <script>
-    (function () {
-        'use strict';
-
-        var track = (window.legendTrack && typeof window.legendTrack === 'function')
-            ? window.legendTrack
-            : function () {};
-
-        var form = document.getElementById('healthQuoteForm');
-        var steps = [
-            { id: 'hq-step1', group: 'AgeRange', err: 'err-AgeRange' },
-            { id: 'hq-step2', group: 'PrimaryConcern', err: 'err-PrimaryConcern' },
-            { id: 'hq-step3', group: 'HouseholdSizeChoice', err: 'err-HouseholdSize' },
-            { id: 'hq-step4', group: null, err: null }
-        ];
-        var currentStep = 1;
-        var autoTimer = null;
-
-        if (!form) return;
-
-        track({ EventType: 'health_quote_step1_view', PageKey: 'quote_health' });
-
-        function setProgress(step) {
-            var percent = Math.min(100, step * 25);
-            var percentLabel = document.getElementById('lq-progress-percent');
-            var bar = document.getElementById('lq-progress-indicator');
-            if (percentLabel) percentLabel.textContent = 'Step ' + step + ' of 4';
-            if (bar) bar.setAttribute('aria-valuenow', percent.toString());
-
-            for (var i = 1; i <= 4; i++) {
-                var stepEl = document.getElementById('lq-prog-step' + i);
-                if (!stepEl) continue;
-                stepEl.classList.remove('active', 'complete');
-                stepEl.removeAttribute('aria-current');
-                if (i < step) stepEl.classList.add('complete');
-                else if (i === step) { stepEl.classList.add('active'); stepEl.setAttribute('aria-current', 'step'); }
-            }
+        .lead-row.two{
+            grid-template-columns: repeat(2, 1fr);
         }
+    }
 
-        function scrollAndFocus(selector) {
-            var el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : null;
-            var fallbackPanel = document.getElementById('hq-step' + currentStep);
-            var target = el || fallbackPanel;
+    .field{
+        margin-bottom: 0;
+    }
 
-            if (target && target.getBoundingClientRect) {
-                var rect = target.getBoundingClientRect();
-                var desiredTop = rect.top + window.scrollY - (window.innerHeight / 2) + (rect.height / 2);
-                window.scrollTo({ top: Math.max(0, desiredTop), behavior: 'smooth' });
-            } else {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
+    .field label{
+        display:block;
+        margin-bottom: 6px;
+        font-weight: 800;
+        color: #f8fafc;
+        font-size: .95rem;
+    }
 
-            setTimeout(function () {
-                if (!el) return;
-                if (el.getAttribute && !el.getAttribute('tabindex')) el.setAttribute('tabindex', '-1');
-                if (el.focus) el.focus({ preventScroll: true });
-            }, 160);
-        }
+    .field .form-control,
+    .field .form-select{
+        margin-bottom: 8px;
+    }
 
-        function showStep(step) {
-            if (step < 1 || step > steps.length) return;
-            steps.forEach(function (s, idx) {
-                var panel = document.getElementById(s.id);
-                if (panel) panel.style.display = (idx + 1 === step) ? 'block' : 'none';
-            });
-            currentStep = step;
-            setProgress(step);
-            scrollAndFocus(steps[step - 1].group ? '#grp-' + steps[step - 1].group + ' input, #grp-' + steps[step - 1].group + ' select' : '#FirstName');
-            if (step === 4) {
-                track({ EventType: 'health_quote_contact_step_view', PageKey: 'quote_health' });
-            }
-        }
+    .field .form-select{
+        cursor: pointer;
+        appearance: auto;
+    }
 
-        function showGroupError(groupName, errorId) {
-            var items = document.querySelectorAll('[name="' + groupName + '"]');
-            items.forEach(function (r) { var card = r.closest('.lq-card'); if (card) card.classList.add('lq-invalid'); });
-            var err = document.getElementById(errorId);
-            if (err) err.classList.add('visible');
-        }
-        function clearGroupError(groupName, errorId) {
-            var items = document.querySelectorAll('[name="' + groupName + '"]');
-            items.forEach(function (r) { var card = r.closest('.lq-card'); if (card) card.classList.remove('lq-invalid'); });
-            var err = document.getElementById(errorId);
-            if (err) err.classList.remove('visible');
-        }
-        function requireSelection(groupName, errorId) {
-            if (!groupName) return true;
-            var checked = document.querySelector('[name="' + groupName + '"]:checked');
-            if (!checked) { showGroupError(groupName, errorId); return false; }
-            clearGroupError(groupName, errorId);
-            return true;
-        }
+    .field .form-select:invalid{
+        color: #64748b;
+    }
 
-        steps.slice(0, 3).forEach(function (s, idx) {
-            var radios = document.querySelectorAll('[name="' + s.group + '"]');
-            radios.forEach(function (radio) {
-                radio.addEventListener('change', function () {
-                    clearGroupError(s.group, s.err);
-                    var card = radio.closest('.lq-card');
-                    if (card) { card.classList.add('lq-selected'); card.classList.remove('lq-invalid'); }
-                    clearTimeout(autoTimer);
-                    autoTimer = setTimeout(function () { showStep(idx + 2); }, 220);
-                });
-            });
-        });
+    .field .form-select option[value=""]{
+        color: #64748b;
+    }
 
-        document.querySelectorAll('.lq-next').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var target = parseInt(btn.getAttribute('data-next'), 10);
-                var groupName = btn.getAttribute('data-validate');
-                var map = {
-                    'AgeRange': 'err-AgeRange',
-                    'PrimaryConcern': 'err-PrimaryConcern',
-                    'HouseholdSizeChoice': 'err-HouseholdSize'
-                };
-                if (groupName && !requireSelection(groupName, map[groupName])) return;
-                showStep(target);
-            });
-        });
-
-        document.querySelectorAll('.lq-back').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                var target = parseInt(btn.getAttribute('data-back'), 10);
-                showStep(target);
-            });
-        });
-
-        setProgress(1);
-
-        function showFieldError(fieldId, errorId, show) {
-            var field = document.getElementById(fieldId);
-            var err   = document.getElementById(errorId);
-            if (!field || !err) return;
-            if (show) { field.classList.add('is-invalid'); field.style.borderColor = '#ef4444'; err.classList.add('visible'); }
-            else { field.classList.remove('is-invalid'); field.style.borderColor = ''; err.classList.remove('visible'); }
-        }
-
-        ['FirstName','LastName','Email','Phone'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            el.addEventListener('blur', function () {
-                var empty = !el.value.trim();
-                showFieldError(id, 'err-' + id, empty);
-            });
-            el.addEventListener('input', function () {
-                if (el.value.trim()) showFieldError(id, 'err-' + id, false);
-            });
-        });
-
-        ['ContactMethod','BestTimeToContact'].forEach(function (id) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            el.addEventListener('change', function () { if (el.value) showFieldError(id, 'err-' + id, false); });
-        });
-
-        form.addEventListener('submit', function (event) {
-            var valid = true;
-
-            if (!requireSelection('AgeRange', 'err-AgeRange')) { valid = false; showStep(1); }
-            else if (!requireSelection('PrimaryConcern', 'err-PrimaryConcern')) { valid = false; showStep(2); }
-            else if (!requireSelection('HouseholdSizeChoice', 'err-HouseholdSize')) { valid = false; showStep(3); }
-
-            ['FirstName','LastName','Email','Phone'].forEach(function (id) {
-                var el = document.getElementById(id);
-                var empty = !el || !el.value.trim();
-                showFieldError(id, 'err-' + id, empty);
-                if (empty) valid = false;
-            });
-            ['ContactMethod','BestTimeToContact'].forEach(function (id) {
-                var el = document.getElementById(id);
-                var empty = !el || !el.value;
-                showFieldError(id, 'err-' + id, empty);
-                if (empty) valid = false;
-            });
-
-            var disclaimer = document.getElementById('disclaimerCheckbox');
-            var consentErr = document.getElementById('err-Consent');
-            if (!disclaimer || !disclaimer.checked) {
-                valid = false;
-                if (consentErr) consentErr.classList.add('visible');
-            } else if (consentErr) consentErr.classList.remove('visible');
-
-            if (!valid) {
-                event.preventDefault();
-                return false;
-            }
-
-            function ensureHidden(name, value) {
-                var el = form.querySelector('input[name="' + name + '"]:not([type="radio"])');
-                if (!el) { el = document.createElement('input'); el.type = 'hidden'; el.name = name; form.appendChild(el); }
-                el.value = value;
-            }
-
-            var ageMap = { '18\u201324': 21, '25\u201334': 30, '35\u201344': 40, '45\u201354': 50, '55\u201364': 60, '65+': 70 };
-            var selectedAge = document.querySelector('input[name="AgeRange"]:checked');
-            ensureHidden('Age', selectedAge ? (ageMap[selectedAge.value] || 30) : 30);
-
-            var selectedHouse = document.querySelector('input[name="HouseholdSizeChoice"]:checked');
-            ensureHidden('HouseholdSize', selectedHouse ? selectedHouse.value : '');
-        });
-
-        scrollAndFocus('#grp-AgeRange input');
-    }());
-    </script>
+.disclaimer-wrap{
+    margin-top: 6px;
 }
+.disclaimer-check{
+    display:flex;
+    align-items:flex-start;
+    gap:10px;
+    padding:10px 0;
+}
+.disclaimer-check .form-check-input{
+    width:18px;
+    height:18px;
+    margin-top:2px;
+    margin-left:0;
+    margin-right:0;
+    position:static;
+    flex-shrink:0;
+}
+.disclaimer-check .form-check-label{
+    line-height:1.5;
+    white-space:normal;
+    color:#f8fafc;
+}
+</style>
+
+<!-- ===================== SUCCESS MESSAGE ===================== -->
+@if (ViewBag.Success != null)
+{
+    <div class="success-message">
+        @ViewBag.Success
+    </div>
+}
+
+<form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form">
+
+    <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
+    <div class="section-card lead-card">
+
+        <div class="lead-grid">
+
+            <!-- CORE DETAILS -->
+            <div class="lead-block">
+
+                <div class="section-title">Tell Us About You</div>
+
+                <div class="lead-row three">
+                    <div class="field">
+                        <label>First Name*</label>
+                        <input asp-for="FirstName" class="form-control" placeholder="First Name" />
+                    </div>
+                    <div class="field">
+                        <label>Last Name*</label>
+                        <input asp-for="LastName" class="form-control" placeholder="Last Name" />
+                    </div>
+                    <div class="field">
+                        <label>Age*</label>
+                        <input asp-for="Age" class="form-control" placeholder="Age" />
+                    </div>
+                </div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Email*</label>
+                        <input asp-for="Email" class="form-control" placeholder="Email" />
+                    </div>
+                    <div class="field">
+                        <label>Phone*</label>
+                        <input asp-for="Phone" class="form-control" placeholder="Phone" />
+                    </div>
+                </div>
+
+                <div class="section-title" style="margin-top: 6px;">Next Steps</div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Preferred Contact Method*</label>
+                        <select asp-for="ContactMethod" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
+                            <option>Phone</option>
+                            <option>Email</option>
+                            <option>Text</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label>Best Time To Contact*</label>
+                        <select asp-for="BestTimeToContact" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
+                            <option>Morning</option>
+                            <option>Afternoon</option>
+                            <option>Evening</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- ADDITIONAL DETAILS -->
+            <div class="lead-block">
+
+                <div class="section-title">Help Us Understand Your Needs</div>
+
+                <div class="lead-row two">
+                    <div class="field">
+                        <label>Household Size*</label>
+                        <input asp-for="HouseholdSize" class="form-control" placeholder="e.g. 4" required />
+                    </div>
+
+                    <div class="field">
+                        <label>Primary Concern*</label>
+                        <select asp-for="PrimaryConcern" class="form-select" required>
+                            <option value="">-- Select an Option --</option>
+                            <option>Lower Monthly Premium</option>
+                            <option>Lower Deductible</option>
+                            <option>Better Doctor Network</option>
+                            <option>Prescription Coverage</option>
+                            <option>Family Coverage</option>
+                            <option>Dental / Vision Options</option>
+                            <option>Marketplace / ACA Guidance</option>
+                            <option>Not Sure / Need Guidance</option>
+                        </select>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- ===================== DISCLAIMER ===================== -->
+        <div class="lead-block disclaimer-wrap">
+            <div class="form-check disclaimer-check">
+                <input asp-for="AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckbox" required />
+                <label class="form-check-label" for="disclaimerCheckbox">
+                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my health insurance inquiry and personalized coverage review.*
+                </label>
+            </div>
+            <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
+
+            <div class="text-center mb-5" style="margin-top: 30px;">
+                <button type="submit" class="btn btn-gold">Explore My Options</button>
+            </div>
+        </div>
+
+    </div>
+
+</form>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.getElementById('healthQuoteForm');
+    const checkbox = document.getElementById('disclaimerCheckbox');
+
+    if (!form || !checkbox) return;
+
+    form.addEventListener('submit', function(event) {
+        if (!checkbox.checked) {
+            event.preventDefault();
+            alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your health insurance inquiry and personalized coverage review.');
+        }
+    });
+});
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector("form");
+
+    if (!form) return;
+
+    form.addEventListener("submit", function (event) {
+        if (!form.checkValidity()) {
+            event.preventDefault();
+
+            const firstInvalid = form.querySelector(":invalid");
+            if (firstInvalid) {
+                firstInvalid.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center"
+                });
+                firstInvalid.focus();
+            }
+        }
+    });
+});
+</script>

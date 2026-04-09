@@ -15,16 +15,7 @@
       leads: null,
       agentPerf: null,
       traffic: null,
-      metaCampaigns: null,
-      behavior: null,
-      pageEngagement: null,
-      timeOnPage: null,
-      exitAnalysis: null,
-      scrollAnalysis: null,
-      journeyAnalysis: null,
-      sourcePerformance: null,
-      landingPerformance: null,
-      formFriction: null
+      metaCampaigns: null
     },
     agentProfileId: null,
     scope: {
@@ -71,15 +62,6 @@
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
     agentPerf: '/WebsiteAnalytics/agent-performance',
-    engagementSummary: '/WebsiteAnalytics/engagement-summary',
-    pageEngagement: '/WebsiteAnalytics/page-engagement',
-    timeOnPage: '/WebsiteAnalytics/time-on-page',
-    exitAnalysis: '/WebsiteAnalytics/exit-analysis',
-    scrollAnalysis: '/WebsiteAnalytics/scroll-analysis',
-    journeyAnalysis: '/WebsiteAnalytics/journey-analysis',
-    sourcePerformance: '/WebsiteAnalytics/source-performance',
-    landingPagePerformance: '/WebsiteAnalytics/landing-page-performance',
-    formFriction: '/WebsiteAnalytics/form-friction',
     metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
     metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
     metaDisconnect: '/WebsiteAnalytics/meta-disconnect'
@@ -433,178 +415,6 @@
       { key: 'source' }
     ]);
     setText('leads-range-label', data.rangeLabel || '');
-  }
-
-  function formatMs(v) {
-    const ms = Number(v);
-    if (!Number.isFinite(ms) || ms <= 0) return '—';
-    if (ms < 1000) return `${Math.round(ms)}ms`;
-    const totalSec = ms / 1000;
-    if (totalSec < 60) return totalSec < 10 ? `${totalSec.toFixed(1)}s` : `${Math.round(totalSec)}s`;
-    const h = Math.floor(totalSec / 3600);
-    const m = Math.floor((totalSec % 3600) / 60);
-    const s = Math.floor(totalSec % 60);
-    if (h > 0) return `${h}h ${m}m`;
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  }
-
-  function formatRate(v) {
-    const n = Number(v || 0);
-    return Number.isFinite(n) ? `${n.toFixed(2)}%` : '0.00%';
-  }
-
-  function renderKeyCountChips(elId, rows) {
-    const el = document.getElementById(elId);
-    if (!el) return;
-    if (!rows || !rows.length) {
-      el.innerHTML = '<span class="fa-empty">No data in range</span>';
-      return;
-    }
-    el.innerHTML = rows.map(r => `<span class="bhvr-chip">${r.key}: ${r.count}</span>`).join('');
-  }
-
-  function renderBehaviorOverview(summary, topTime) {
-    const kpis = document.getElementById('bhvr-engagement-kpis');
-    if (kpis) {
-      const lowSample = (summary.totalSessions || 0) < 5;
-      const cards = [
-        ['Avg Session', formatMs(summary.avgSessionDurationMs)],
-        ['Median Session', formatMs(summary.medianSessionDurationMs)],
-        ['Avg Time on Page', formatMs(summary.avgTimeOnPageMs)],
-        ['Quick Exit', formatRate(summary.quickExitRate)],
-        ['Engaged Sessions', formatRate(summary.engagedSessionRate)],
-        ['Total Sessions', formatInt(summary.totalSessions)]
-      ];
-      kpis.innerHTML = cards.map(([t, v]) =>
-        `<div class="col-md-4 col-lg-2"><div class="kpi-card"><div class="fa-kpi-title">${t}</div><div class="fa-kpi-value">${v}</div></div></div>`
-      ).join('');
-      const existing = kpis.parentElement?.querySelector('.bhvr-low-sample-notice');
-      if (existing) existing.remove();
-      if (lowSample && (summary.totalSessions || 0) > 0) {
-        const notice = document.createElement('div');
-        notice.className = 'bhvr-low-sample-notice col-12 mt-1';
-        notice.innerHTML = `<span class="fa-muted small">Low sample — ${summary.totalSessions} session${summary.totalSessions === 1 ? '' : 's'} in range. Metrics may not be representative.</span>`;
-        kpis.parentElement.appendChild(notice);
-      }
-    }
-
-    const highlights = document.getElementById('bhvr-engagement-highlights');
-    if (highlights) {
-      highlights.textContent = `Top exit page: ${summary.topExitPage || '—'} · Long-dwell page: ${summary.topLongDwellPage || '—'} · Highest scroll completion: ${summary.highestScrollCompletionPage || '—'}`;
-    }
-
-    renderTable('bhvr-longest-dwell-body', topTime?.longestAvgDwell || [], [
-      { key: 'pageKey' },
-      { render: r => formatMs(r.avgDwellMs), align: 'text-end' }
-    ]);
-    renderTable('bhvr-short-dwell-body', topTime?.shortVisitProblemPages || [], [
-      { key: 'pageKey' },
-      { render: r => formatMs(r.avgDwellMs), align: 'text-end' }
-    ]);
-  }
-
-  function renderBehaviorPages(data) {
-    renderTable('bhvr-pages-body', data?.rows || [], [
-      { key: 'pageKey' },
-      { key: 'views', align: 'text-end' },
-      { render: r => formatMs(r.avgTimeMs), align: 'text-end' },
-      { render: r => formatRate(r.exitRate), align: 'text-end' },
-      { render: r => formatRate(r.leadRate), align: 'text-end' }
-    ]);
-  }
-
-  function renderBehaviorScroll(data) {
-    renderTable('bhvr-scroll-body', data?.rows || [], [
-      { key: 'pageKey' },
-      { key: 'views', align: 'text-end' },
-      { render: r => formatRate(r.scroll25Rate), align: 'text-end' },
-      { render: r => formatRate(r.scroll50Rate), align: 'text-end' },
-      { render: r => formatRate(r.scroll75Rate), align: 'text-end' },
-      { render: r => formatRate(r.scroll90Rate), align: 'text-end' },
-      { render: r => formatRate(r.scroll100Rate), align: 'text-end' }
-    ]);
-  }
-
-  function renderBehaviorExits(data) {
-    renderTable('bhvr-exits-body', data?.topExitPages || [], [
-      { key: 'pageKey' },
-      { key: 'exits', align: 'text-end' },
-      { render: r => formatRate(r.exitRate), align: 'text-end' }
-    ]);
-    renderKeyCountChips('bhvr-quick-exits', data?.quickExitPages || []);
-  }
-
-  function renderBehaviorJourney(data) {
-    renderKeyCountChips('bhvr-journey-landing', data?.topLandingPages || []);
-    renderKeyCountChips('bhvr-journey-lead', data?.pagesBeforeLead || []);
-    renderKeyCountChips('bhvr-journey-dropoff', data?.commonDropOffPages || []);
-  }
-
-  function renderBehaviorSource(source, landing) {
-    renderTable('bhvr-source-body', source?.rows || [], [
-      { key: 'source' },
-      { key: 'medium' },
-      { key: 'campaign' },
-      { key: 'sessions', align: 'text-end' },
-      { key: 'verifiedLeads', align: 'text-end' },
-      { render: r => formatRate(r.sessionConversionRate), align: 'text-end' }
-    ]);
-
-    renderTable('bhvr-landing-body', landing?.rows || [], [
-      { key: 'pageKey' },
-      { key: 'sessions', align: 'text-end' },
-      { key: 'verifiedLeads', align: 'text-end' },
-      { render: r => formatRate(r.conversionRate), align: 'text-end' }
-    ]);
-  }
-
-  function renderBehaviorForms(data) {
-    renderTable('bhvr-forms-body', data?.rows || [], [
-      { key: 'formKey' },
-      { key: 'starts', align: 'text-end' },
-      { key: 'submits', align: 'text-end' },
-      { key: 'abandons', align: 'text-end' },
-      { render: r => formatRate(r.completionRate), align: 'text-end' }
-    ]);
-    renderKeyCountChips('bhvr-abandon-fields', data?.topAbandonFields || []);
-  }
-
-  async function loadBehavior() {
-    const params = rangeParams();
-    const [summary, pages, time, exits, scroll, journey, source, landing, forms] = await Promise.all([
-      fetchJson('bhvr-summary', endpoints.engagementSummary, params),
-      fetchJson('bhvr-pages', endpoints.pageEngagement, params),
-      fetchJson('bhvr-time', endpoints.timeOnPage, params),
-      fetchJson('bhvr-exits', endpoints.exitAnalysis, params),
-      fetchJson('bhvr-scroll', endpoints.scrollAnalysis, params),
-      fetchJson('bhvr-journey', endpoints.journeyAnalysis, params),
-      fetchJson('bhvr-source', endpoints.sourcePerformance, params),
-      fetchJson('bhvr-landing', endpoints.landingPagePerformance, params),
-      fetchJson('bhvr-forms', endpoints.formFriction, params)
-    ]);
-
-    if (!summary) return;
-    state.cache.behavior = summary;
-    state.cache.pageEngagement = pages;
-    state.cache.timeOnPage = time;
-    state.cache.exitAnalysis = exits;
-    state.cache.scrollAnalysis = scroll;
-    state.cache.journeyAnalysis = journey;
-    state.cache.sourcePerformance = source;
-    state.cache.landingPerformance = landing;
-    state.cache.formFriction = forms;
-
-    setText('bhvr-range-label', summary.rangeLabel || '');
-    renderBehaviorOverview(summary, time);
-    renderBehaviorPages(pages);
-    renderBehaviorScroll(scroll);
-    renderBehaviorExits(exits);
-    renderBehaviorJourney(journey);
-    renderBehaviorSource(source, landing);
-    renderBehaviorForms(forms);
-
-    const meta = document.getElementById('mod-behavior-meta');
-    if (meta) meta.textContent = `Quick exits: ${formatRate(summary.quickExitRate)} · Engaged: ${formatRate(summary.engagedSessionRate)}`;
   }
 
   function formatDisplayDate(utcString) {
@@ -1116,7 +926,6 @@
       case 'quoteModal': loadQuote(); break;
       case 'convModal': loadConv(); break;
       case 'leadsModal': loadLeads(); break;
-      case 'behaviorModal': loadBehavior(); break;
       case 'agentPerfModal': loadAgentPerf(); break;
       case 'metaCampaignsModal': loadMetaCampaigns(); break;
       default: loadSummary(); break;
@@ -1136,8 +945,7 @@
       'mod-cta': 'ctaPerfModal',
       'mod-quote': 'quoteModal',
       'mod-conv': 'convModal',
-      'mod-leads': 'leadsModal',
-      'mod-behavior': 'behaviorModal'
+      'mod-leads': 'leadsModal'
     };
     if (isFounder) {
       map['mod-agentperf'] = 'agentPerfModal';
@@ -1192,7 +1000,6 @@
     attachModal('quoteModal', loadQuote);
     attachModal('convModal', loadConv);
     attachModal('leadsModal', loadLeads);
-    attachModal('behaviorModal', loadBehavior);
     attachModal('metaCampaignsModal', loadMetaCampaigns);
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
