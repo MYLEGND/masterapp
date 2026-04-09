@@ -346,78 +346,212 @@
 }
 <!-- Modals -->
 <div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Behavior Intelligence · <span id="bhvr-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div>
+          <h5 class="modal-title mb-0">Behavior Intelligence</h5>
+          <div class="fa-muted small" id="bhvr-range-label"></div>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="row row-cols-1 row-cols-md-3 g-3 mb-3">
-          <div class="col">
-            <div class="kpi-card">
-              <div class="fa-kpi-title">Avg Session Duration</div>
-              <div class="fa-kpi-value" id="bhvr-avg-session">—</div>
-              <div class="fa-kpi-sub">Median: <span id="bhvr-med-session">—</span></div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="kpi-card">
-              <div class="fa-kpi-title">Avg Time on Page</div>
-              <div class="fa-kpi-value" id="bhvr-avg-page">—</div>
-              <div class="fa-kpi-sub">Median: <span id="bhvr-med-page">—</span></div>
-            </div>
-          </div>
-          <div class="col">
-            <div class="kpi-card">
-              <div class="fa-kpi-title">Engaged Session Rate</div>
-              <div class="fa-kpi-value" id="bhvr-engaged-rate">—</div>
-              <div class="fa-kpi-sub">Quick exits: <span id="bhvr-quick-exit">—</span></div>
-            </div>
-          </div>
-        </div>
 
-        <div class="row g-3">
-          <div class="col-lg-6">
-            <h6 class="text-warning mb-1">Short-Visit Problem Pages</h6>
-            <div class="table-responsive">
-              <table class="table table-sm bhvr-table">
-                <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Dwell</th><th class="text-end">Median</th></tr></thead>
-                <tbody id="bhvr-short-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-          <div class="col-lg-6">
-            <h6 class="text-warning mb-1">Top Exit Pages</h6>
-            <div class="table-responsive">
-              <table class="table table-sm bhvr-table">
-                <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
-                <tbody id="bhvr-exit-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <!-- Tab Nav -->
+        <ul class="nav nav-tabs bhvr-tabs d-flex mb-0" id="bhvr-nav" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="bhvr-tab-overview-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-overview" type="button" role="tab">Overview</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-time-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-time" type="button" role="tab">Time on Page</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-exit-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-exit" type="button" role="tab">Exit Analysis</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-journey-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-journey" type="button" role="tab">Journey</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-sources-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-sources" type="button" role="tab">Sources</button>
+          </li>
+        </ul>
 
-        <div class="row g-3 mt-2">
-          <div class="col-lg-6">
-            <h6 class="text-warning mb-1">Top Landing Pages</h6>
+        <div class="tab-content bhvr-tab-content">
+
+          <!-- ── OVERVIEW ─────────────────────────────────────────── -->
+          <div class="tab-pane fade show active" id="bhvr-tab-overview" role="tabpanel">
+            <div class="row row-cols-2 row-cols-md-3 row-cols-lg-6 g-2 mb-3">
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Total Sessions</div>
+                  <div class="fa-kpi-value" id="bhvr-total-sessions">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Avg Session</div>
+                  <div class="fa-kpi-value" id="bhvr-avg-session">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Median Session</div>
+                  <div class="fa-kpi-value" id="bhvr-med-session">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Avg Time on Page</div>
+                  <div class="fa-kpi-value" id="bhvr-avg-page">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Quick Exit %</div>
+                  <div class="fa-kpi-value" id="bhvr-quick-exit">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Engaged Sessions</div>
+                  <div class="fa-kpi-value" id="bhvr-engaged-rate">—</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Highlights -->
+            <div class="bhvr-highlights mb-3" id="bhvr-highlights" style="display:none;">
+              <span id="bhvr-highlight-exit"></span>
+              <span id="bhvr-highlight-dwell"></span>
+              <span id="bhvr-highlight-scroll"></span>
+            </div>
+
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Short-Visit Problem Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Top Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
+                    <tbody id="bhvr-exit-body-overview"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TIME ON PAGE ───────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-time" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Longest Avg Dwell</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-long-avg-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Short-Visit Problem Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body-time"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── EXIT ANALYSIS ─────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-exit" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Top Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
+                    <tbody id="bhvr-exit-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Quick Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Quick Exits</th></tr></thead>
+                    <tbody id="bhvr-quick-exit-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── JOURNEY ────────────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-journey" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Top Landing Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Sessions</th></tr></thead>
+                    <tbody id="bhvr-landing-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Pages Before Lead</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Count</th></tr></thead>
+                    <tbody id="bhvr-prelead-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Common Drop-Off Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Count</th></tr></thead>
+                    <tbody id="bhvr-dropoff-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── SOURCES ────────────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-sources" role="tabpanel">
+            <div class="bhvr-section-label">Source &amp; Attribution Performance</div>
             <div class="table-responsive">
               <table class="table table-sm bhvr-table">
-                <thead><tr><th>Page</th><th class="text-end">Sessions</th><th class="text-end">Engaged</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead>
-                <tbody id="bhvr-landing-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Medium</th>
+                    <th>Campaign</th>
+                    <th class="text-end">Sessions</th>
+                    <th class="text-end">Engaged</th>
+                    <th class="text-end">Leads</th>
+                    <th class="text-end">Sess Conv</th>
+                    <th class="text-end">Avg Dwell</th>
+                  </tr>
+                </thead>
+                <tbody id="bhvr-source-body"><tr><td colspan="8" class="fa-empty">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
-          <div class="col-lg-6">
-            <h6 class="text-warning mb-1">Top Sources (Conversion)</h6>
-            <div class="table-responsive">
-              <table class="table table-sm bhvr-table">
-                <thead><tr><th>Source</th><th class="text-end">Sessions</th><th class="text-end">Engaged</th><th class="text-end">Leads</th><th class="text-end">Sess Conv</th></tr></thead>
-                <tbody id="bhvr-source-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+
+        </div><!-- /tab-content -->
       </div>
       <div class="modal-footer border-0">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
