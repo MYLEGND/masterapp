@@ -54,7 +54,7 @@ namespace Protect_Website.Controllers
 
                 var message = new Message
                 {
-                    Subject = $"[LIFE QUOTE] New Lead | {model.FirstName} {model.LastName}",
+                    Subject = $"[LIFE QUOTE] New Lead | {model.FirstName}",
                     Body = new ItemBody
                     {
                         ContentType = BodyType.Html,
@@ -62,23 +62,16 @@ namespace Protect_Website.Controllers
 <h2>Life Insurance Quote Lead</h2>
 
 <h3>Personal Information</h3>
-<p><strong>Name:</strong> {model.FirstName} {model.LastName}</p>
+<p><strong>Name:</strong> {model.FirstName}</p>
 <p><strong>Age:</strong> {model.Age}</p>
 <p><strong>Email:</strong> {model.Email}</p>
 <p><strong>Phone:</strong> {model.Phone}</p>
-<p><strong>Marital Status:</strong> {model.MaritalStatus}</p>
 
 <hr />
 
 <h3>Coverage Goals</h3>
 <p><strong>Primary Reason:</strong> {model.PrimaryReason}</p>
 <p><strong>Desired Coverage Amount:</strong> {model.CoverageAmount}</p>
-
-<hr />
-
-<h3>Contact Preferences</h3>
-<p><strong>Preferred Method:</strong> {model.ContactMethod}</p>
-<p><strong>Best Time:</strong> {model.BestTimeToContact}</p>
 
 <hr />
 
