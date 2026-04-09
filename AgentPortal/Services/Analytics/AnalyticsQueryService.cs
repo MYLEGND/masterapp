@@ -614,10 +614,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var avgSessionDuration = sessionDurations.Count > 0 ? sessionDurations.Average() : 0;
         var medianSessionDuration = Median(sessionDurations);
 
-        // Quick exits: sessions whose final page_exit had dwell < 10 s or was a bounce candidate.
+        // Session map: distinct sessions and their max accumulated engaged ms.
         var sessionEngagedMap = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .ToDictionary(g => g.Key, g => g.Max(x => x.EngagedMilliseconds ?? 0));
+
+        // Quick exits: sessions whose final page_exit had dwell < 10 s or was a bounce candidate.
         var lastExitPerSession = events
             .Where(e => (e.EventType == "page_exit" || e.EventType == "session_end") && !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
@@ -628,7 +630,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             (e.DwellMilliseconds.HasValue && e.DwellMilliseconds.Value < 10_000));
         var quickExitRate = sessionEngagedMap.Count > 0 ? Math.Round((decimal)quickExits / sessionEngagedMap.Count * 100, 2) : 0;
 
-        int engagedSessions = sessionEngagedMap.Count(kv => kv.Value >= 30_000);
+        // Engaged sessions: session has any page_engaged_* event (10s, 30s, or 60s checkpoint),
+        // OR EngagedMilliseconds >= 10 s as a fallback for sessions where the event fired but
+        // the engagement-event record is absent (e.g. beacon loss on slow connections).
+        var sessionsWithEngagementEvent = new HashSet<string>(
+            events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
+                               (e.EventType == "page_engaged_10s" ||
+                                e.EventType == "page_engaged_30s" ||
+                                e.EventType == "page_engaged_60s"))
+                  .Select(e => e.SessionId!));
+        int engagedSessions = sessionEngagedMap.Count(kv =>
+            sessionsWithEngagementEvent.Contains(kv.Key) || kv.Value >= 10_000);
         var engagedSessionRate = sessionEngagedMap.Count > 0 ? Math.Round((decimal)engagedSessions / sessionEngagedMap.Count * 100, 2) : 0;
 
         // Top exit page: from explicit page_exit events, falling back to last page_view per session.
