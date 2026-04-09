@@ -465,6 +465,21 @@
     if (!data) return;
     renderQuote(data);
   }
+  async function loadBehavior() {
+    try {
+      setText('bhvr-range-label', 'Loading…');
+      const [summary, time, exit, journey, sources] = await Promise.all([
+        fetchJson('bhvr-summary', endpoints.behaviorSummary, rangeParams()),
+        fetchJson('bhvr-time', endpoints.behaviorTime, rangeParams()),
+        fetchJson('bhvr-exit', endpoints.behaviorExit, rangeParams()),
+        fetchJson('bhvr-journey', endpoints.behaviorJourney, rangeParams()),
+        fetchJson('bhvr-source', endpoints.behaviorSources, rangeParams())
+      ]);
+      renderBehavior(summary || {}, time || {}, exit || {}, journey || {}, sources || {});
+    } catch (err) {
+      console.error(err);
+    }
+  }
   async function loadConv() {
     const data = await fetchJson('conv', endpoints.conversions, rangeParams());
     if (!data) return;
