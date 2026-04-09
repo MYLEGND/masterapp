@@ -579,7 +579,13 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     white-space: nowrap;
     flex: 1;
 }
-.product-link-copy {
+.product-link-actions{
+    display:flex;
+    gap:6px;
+    flex-shrink:0;
+}
+.product-link-copy,
+.product-link-open {
     font-size: .72rem;
     font-weight: 800;
     border: 1px solid rgba(199,153,49,.45);
@@ -591,15 +597,26 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     transition: background .12s, color .12s, border-color .12s;
     line-height: 1.6;
 }
-.product-link-copy:hover {
+.product-link-copy:hover,
+.product-link-open:hover {
     background: rgba(199,153,49,.14);
     color: #c79931;
     border-color: #c79931;
 }
+.product-link-open{
+    border-color: rgba(199,153,49,.7);
+    color: #f8fafc;
+    background: rgba(199,153,49,.14);
+}
+.product-link-open:hover{
+    background: rgba(199,153,49,.22);
+    color: #fff;
+}
 .product-link-display {
     font-size: .72rem;
-    background: rgba(255,255,255,.04) !important;
-    border: 1px solid rgba(199,153,49,.3) !important;
-    color: var(--legend-silver) !important;
-    border-radius: 8px;
+    background: #ffffff !important;
+    border: 1.5px solid rgba(199,153,49,.45) !important;
+    color: #0f172a !important;
+    border-radius: 10px;
+    box-shadow: 0 6px 14px rgba(0,0,0,.08);
 }

@@ -1248,7 +1248,10 @@
     list.innerHTML = OFFER_VARIANTS.map(v =>
       `<div class="product-link-row">` +
         `<span class="product-link-label">${v.label}</span>` +
-        `<button type="button" class="product-link-copy" data-offer="${v.key}">Copy</button>` +
+        `<div class="product-link-actions">` +
+          `<button type="button" class="product-link-open" data-offer="${v.key}">Open</button>` +
+          `<button type="button" class="product-link-copy" data-offer="${v.key}">Copy</button>` +
+        `</div>` +
       `</div>`
     ).join('');
 
@@ -1261,14 +1264,20 @@
 
     // Copy on click — URL built fresh from current base link so agent scope changes are reflected
     list.addEventListener('click', e => {
-      const btn = e.target.closest('.product-link-copy');
-      if (!btn) return;
-      const offerKey = btn.dataset.offer;
+      const copyBtn = e.target.closest('.product-link-copy');
+      const openBtn = e.target.closest('.product-link-open');
+      if (!copyBtn && !openBtn) return;
+      const offerKey = (copyBtn || openBtn).dataset.offer;
       const url = buildOfferUrl(currentBaseLink(), offerKey);
       if (display) display.value = url;
-      copyToClipboard(url);
-      btn.textContent = 'Copied!';
-      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+      if (copyBtn) {
+        copyToClipboard(url);
+        copyBtn.textContent = 'Copied!';
+        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+      }
+      if (openBtn) {
+        window.open(url, '_blank', 'noopener');
+      }
     });
   }
 
