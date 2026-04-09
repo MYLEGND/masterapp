@@ -276,8 +276,9 @@ namespace Protect_Website.Controllers
         private bool IsAjax()
         {
             var hdr = Request?.Headers["X-Requested-With"].ToString();
-            return !string.IsNullOrWhiteSpace(hdr) && hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
-                   hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase);
+            return !string.IsNullOrWhiteSpace(hdr) &&
+                   (hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
+                    hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
         private static LifeWizardConfig GetWizardConfig(string rawOfferKey)
