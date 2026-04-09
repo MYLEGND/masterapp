@@ -184,6 +184,7 @@ footer.footer {
         padding: 12px 14px 10px;
         border-radius: 16px;
         row-gap: 6px;
+        position: relative;
     }
 
     /* hide nav clusters until toggled */
@@ -193,6 +194,7 @@ footer.footer {
         display: none !important;
         width: 100%;
         margin-top: 0.35rem;
+        position: relative;
     }
 
     /* show stacks when hamburger is open */
@@ -204,6 +206,11 @@ footer.footer {
         border-radius: 14px;
         padding: 10px;
         box-shadow: 0 18px 30px rgba(0,0,0,.28);
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        z-index: 1060;
     }
 
     .navbar-left .nav-row {
