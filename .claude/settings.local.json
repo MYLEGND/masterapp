@@ -16,7 +16,8 @@
       "Bash(dotnet publish:*)",
       "Bash(xxd /tmp/masterapp-portal-publish2/AgentPortal.Views.dll)",
       "Bash(zip -r /tmp/masterapp-portal.zip . -q)",
-      "Bash(az webapp:*)"
+      "Bash(az webapp:*)",
+      "Bash(zip -r /tmp/agentportal-deploy.zip . -q)"
     ]
   }
 }

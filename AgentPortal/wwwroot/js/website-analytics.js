@@ -15,7 +15,8 @@
       leads: null,
       agentPerf: null,
       traffic: null,
-      metaCampaigns: null
+      metaCampaigns: null,
+      behaviorSources: null
     },
     agentProfileId: null,
     scope: {
@@ -433,6 +434,7 @@
     renderTable('bhvr-dropoff-body', journey?.commonDropOffPages || [], keyCountCols);
 
     // ── Sources tab ────────────────────────────────────────────────
+    state.cache.behaviorSources = sources;
     renderTable('bhvr-source-body', sources?.rows || [], [
       { key: 'source' },
       { render: r => r.medium   || '—' },
@@ -1051,7 +1053,8 @@
       'mod-cta': 'ctaPerfModal',
       'mod-quote': 'quoteModal',
       'mod-conv': 'convModal',
-      'mod-leads': 'leadsModal'
+      'mod-leads': 'leadsModal',
+      'mod-behavior': 'behaviorModal'
     };
     if (isFounder) {
       map['mod-agentperf'] = 'agentPerfModal';
@@ -1146,6 +1149,22 @@
         { header: 'Phone', selector: 'phone' },
         { header: 'Interest', selector: 'interest' },
         { header: 'Source', selector: 'source' }
+      ]);
+    });
+
+    const exportBehavior = document.getElementById('export-behavior');
+    if (exportBehavior) exportBehavior.addEventListener('click', () => {
+      const data = state.cache.behaviorSources;
+      if (!data || !data.rows || !data.rows.length) return;
+      downloadCsv('behavior-sources.csv', data.rows, [
+        { header: 'Source',    selector: 'source' },
+        { header: 'Medium',    selector: r => r.medium   || '' },
+        { header: 'Campaign',  selector: r => r.campaign || '' },
+        { header: 'Sessions',  selector: 'sessions' },
+        { header: 'Engaged',   selector: 'engagedSessions' },
+        { header: 'Leads',     selector: 'verifiedLeads' },
+        { header: 'SessConv',  selector: r => formatPct(r.sessionConversionRate) },
+        { header: 'AvgDwell',  selector: r => formatMs(r.avgDwellMs) }
       ]);
     });
 
