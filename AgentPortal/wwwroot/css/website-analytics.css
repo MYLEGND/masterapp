@@ -259,6 +259,35 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     color: var(--legend-silver);
 }
 
+.bhvr-tabs .nav-link {
+    border: 1px solid rgba(199,153,49,.35);
+    color: var(--legend-silver);
+    margin-right: 6px;
+    font-weight: 700;
+    background: rgba(11,21,48,.55);
+}
+.bhvr-tabs .nav-link.active {
+    color: var(--legend-navy);
+    background: var(--legend-gold);
+    border-color: var(--legend-gold-border);
+}
+
+.bhvr-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.bhvr-chip {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(199,153,49,.45);
+    color: var(--legend-silver);
+    background: rgba(11,21,48,.8);
+    font-size: .82rem;
+    font-weight: 700;
+}
+
 /* Premium form/table polish inside modals */
 .fa-modal .modal-content {
     background: var(--legend-navy);
