@@ -948,6 +948,7 @@
                 grid-template-columns: auto 1fr auto;
                 align-items: center !important;
                 gap: 10px;
+                width: 100%;
             }
 
             .navbar-brand img { height: 52px; max-height: 52px; padding: 6px; }
@@ -968,6 +969,20 @@
             .navbar.mobile-open .navbar-left,
             .navbar.mobile-open .navbar-right {
                 display: block !important;
+            }
+
+            /* Center the LIFE HAC pill across full width */
+            .header-psalms {
+                grid-column: 1 / -1;
+                justify-self: center;
+                align-self: center;
+                position: static;
+                transform: none;
+                width: 100%;
+                margin-top: .25rem;
+                text-align: center;
+                font-size: 1.06rem;
+                white-space: normal;
             }
 
             header .navbar .navbar-left .nav-row {
@@ -1001,6 +1016,7 @@
                 flex-wrap: wrap;
                 gap: 8px;
                 min-width: 0;
+                margin-top: .35rem;
             }
 
             .navbar-right .nav-link,
