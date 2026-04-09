@@ -231,6 +231,13 @@
                 <div class="fa-trend-bar"></div>
             </div>
         </div>
+        <div class="col">
+            <div class="fa-module" id="mod-behavior">
+                <h5>Behavior Intelligence</h5>
+                <div class="fa-module-meta" id="mod-behavior-meta">Dwell time, exits, journey &amp; source attribution</div>
+                <div class="fa-trend-bar"></div>
+            </div>
+        </div>
         @if(isFounder)
         {
         <div class="col">
@@ -553,7 +560,8 @@
 
         </div><!-- /tab-content -->
       </div>
-      <div class="modal-footer border-0">
+      <div class="modal-footer border-0 justify-content-between">
+        <button class="btn btn-sm fa-export-btn" id="export-behavior">Export Sources CSV</button>
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
