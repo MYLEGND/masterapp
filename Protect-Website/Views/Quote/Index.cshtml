@@ -691,20 +691,27 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", function () {
+    // Reveal animations (safe fallback)
     const els = document.querySelectorAll(".reveal");
-    const io = new IntersectionObserver((entries) => {
-        entries.forEach(e => {
-            if (e.isIntersecting) e.target.classList.add("show");
-        });
-    }, { threshold: 0.12 });
-    els.forEach(el => io.observe(el));
+    if ("IntersectionObserver" in window) {
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) e.target.classList.add("show");
+            });
+        }, { threshold: 0.12 });
+        els.forEach(el => io.observe(el));
+    } else {
+        els.forEach(el => el.classList.add("show"));
+    }
 
     // Life product dropdown (keep page minimal but offer all life variants)
     const lifeTile = document.querySelector(".life-tile");
-    const lifeMenu = lifeTile?.querySelector(".life-dropdown");
+    const lifeMenu = lifeTile ? lifeTile.querySelector(".life-dropdown") : null;
+
     function closeLife() {
         if (!lifeTile || !lifeMenu) return;
         lifeMenu.hidden = true;
+        lifeMenu.style.display = "none";
         lifeTile.setAttribute("aria-expanded", "false");
     }
     function positionLifeMenu() {
@@ -713,12 +720,12 @@ document.addEventListener("DOMContentLoaded", function () {
         const top = rect.bottom + window.scrollY + 8;
         const left = rect.left + window.scrollX;
         const rightGap = window.innerWidth - rect.right + window.scrollX;
-        // Use fixed positioning so it floats above other content on mobile
         lifeMenu.style.position = "fixed";
         lifeMenu.style.top = `${top}px`;
         lifeMenu.style.left = `${Math.max(12, left)}px`;
         lifeMenu.style.right = `${Math.max(12, rightGap)}px`;
         lifeMenu.style.maxWidth = `${Math.min(420, window.innerWidth - 24)}px`;
+        lifeMenu.style.display = "flex";
     }
     function openLife() {
         if (!lifeTile || !lifeMenu) return;
@@ -726,31 +733,30 @@ document.addEventListener("DOMContentLoaded", function () {
         lifeMenu.hidden = false;
         lifeTile.setAttribute("aria-expanded", "true");
     }
-    lifeTile?.addEventListener("click", (e) => {
-        const link = (e.target instanceof Element) ? e.target.closest(".life-dropdown a") : null;
-        if (link) {
-            // allow navigation but close menu for good measure
-            closeLife();
-            return;
-        }
-        e.preventDefault();
-        lifeMenu?.hidden ? openLife() : closeLife();
-    });
-    lifeTile?.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" || e.key === " ") {
+    if (lifeTile && lifeMenu) {
+        lifeTile.addEventListener("click", (e) => {
+            const link = (e.target instanceof Element) ? e.target.closest(".life-dropdown a") : null;
+            if (link) { closeLife(); return; }
             e.preventDefault();
-            lifeMenu?.hidden ? openLife() : closeLife();
-        } else if (e.key === "Escape") {
-            closeLife();
-        }
-    });
-    document.addEventListener("click", (e) => {
-        if (!lifeTile || !lifeMenu) return;
-        if (!lifeTile.contains(e.target)) closeLife();
-    });
-    window.addEventListener("scroll", closeLife, { passive: true });
-    window.addEventListener("resize", () => {
-        if (!lifeMenu?.hidden) positionLifeMenu();
-    });
+            lifeMenu.hidden ? openLife() : closeLife();
+        });
+        lifeTile.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                lifeMenu.hidden ? openLife() : closeLife();
+            } else if (e.key === "Escape") {
+                closeLife();
+            }
+        });
+        document.addEventListener("click", (e) => {
+            if (!lifeTile || !lifeMenu) return;
+            if (!(e.target instanceof Element)) return;
+            if (!lifeTile.contains(e.target)) closeLife();
+        });
+        window.addEventListener("scroll", closeLife, { passive: true });
+        window.addEventListener("resize", () => {
+            if (!lifeMenu.hidden) positionLifeMenu();
+        });
+    }
 });
 </script>
