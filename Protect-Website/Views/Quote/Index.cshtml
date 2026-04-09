@@ -511,7 +511,7 @@
                 </div>
             </a>
 
-            <a href="/Quote/Life" class="quote-tile reveal" aria-label="Start Life Insurance Quote" data-cta="quote_index_life_start">
+            <div class="quote-tile reveal life-tile" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" data-cta="quote_index_life_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -522,9 +522,17 @@
                 </div>
                 <div class="tile-footer">
                     <span class="tile-action">Start Quote</span>
-                    <span class="tile-arrow">→</span>
+                    <span class="tile-arrow">▾</span>
                 </div>
-            </a>
+                <div class="life-dropdown" hidden>
+                    <a href="/Quote/Life"              data-cta="quote_index_life_general">General Life</a>
+                    <a href="/Quote/Term-Life"         data-cta="quote_index_life_term">Term Life</a>
+                    <a href="/Quote/Whole-Life"        data-cta="quote_index_life_whole">Whole Life</a>
+                    <a href="/Quote/Final-Expense"     data-cta="quote_index_life_finalexpense">Final Expense</a>
+                    <a href="/Quote/Mortgage-Protection" data-cta="quote_index_life_mp">Mortgage Protection</a>
+                    <a href="/Quote/IUL"               data-cta="quote_index_life_iul">Indexed Universal Life (IUL)</a>
+                </div>
+            </div>
 
             <a href="/Quote/Disability" class="quote-tile reveal" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
                 <div>
