@@ -95,26 +95,13 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 
-.lq-step-meta{
-    position:absolute;
-    top:14px;
-    right:14px;
-    font-weight:850;
-    color:#c79931;
-    font-size:.88rem;
-    padding:4px 8px;
-    background: rgba(17,28,50,0.8);
-    border:1px solid rgba(199,153,49,0.4);
-    border-radius: 10px;
-    pointer-events:none;
-    z-index:2;
-}
+.lq-step-meta{ display:none; }
 
 /* Step panels */
 .lq-step-panel {
     max-width: 760px;
     width: 100%;
-    margin: 0 auto 18px auto;
+    margin: 0 auto 12px auto;
     background: #0f172a;
     border: 1.6px solid #c79931;
     border-radius: 12px;
@@ -332,7 +319,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                         {
                             <button type="button" class="btn-ghost" data-back="@i">Back</button>
                         }
-                        <button type="button" class="btn-gold" data-next="@i">Next</button>
+                        <!-- Auto-advance handles forward navigation; Next button hidden for clarity -->
                     </div>
                 </div>
             </div>
