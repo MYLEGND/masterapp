@@ -18,7 +18,8 @@
       "Bash(zip -r /tmp/masterapp-portal.zip . -q)",
       "Bash(az webapp:*)",
       "Bash(zip -r /tmp/agentportal-deploy.zip . -q)",
-      "Bash(az rest:*)"
+      "Bash(az rest:*)",
+      "Bash(az account:*)"
     ]
   }
 }
