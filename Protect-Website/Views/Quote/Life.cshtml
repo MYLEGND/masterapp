@@ -86,14 +86,7 @@ body { background-color: #0f172a; color: #f8fafc; }
     padding: 0 12px;
 }
 .lq-progress-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #d5b77c;
-    font-weight: 800;
-    letter-spacing: .02em;
-    font-size: .95rem;
-    margin-bottom: 8px;
+    display: none;
 }
 .lq-progress-rail {
     display: grid;
@@ -350,10 +343,6 @@ body { background-color: #0f172a; color: #f8fafc; }
         <input type="hidden" name="OfferKey" id="OfferKey" value="@offer.Key" />
 
         <div class="lq-progress">
-            <div class="lq-progress-head">
-                <span>Premium Guided Steps</span>
-                <span id="lqProgressLabel">Step 1 of 3</span>
-            </div>
             <div class="lq-progress-rail" aria-hidden="true">
                 <div class="lq-pill-step" data-pill="1"><div class="lq-pill-num">1</div><div class="lq-pill-label">Age</div></div>
                 <div class="lq-pill-step" data-pill="2"><div class="lq-pill-num">2</div><div class="lq-pill-label">Focus</div></div>
