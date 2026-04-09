@@ -206,6 +206,45 @@
             z-index: 1031;
         }
 
+        .nav-toggle {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: 1.4px solid rgba(166,128,35,0.65);
+            background: linear-gradient(160deg, #0e1a33, #0a1327);
+            box-shadow: 0 10px 18px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
+            cursor: pointer;
+            padding: 0;
+            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
+        }
+        .nav-toggle:focus-visible { outline: 2px solid var(--client-gold-bright); outline-offset: 3px; }
+        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.28); }
+        .nav-toggle-bars,
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #f8fafc;
+            border-radius: 4px;
+            position: relative;
+            transition: transform .18s ease, opacity .18s ease;
+        }
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            content: "";
+            position: absolute;
+            left: 0;
+        }
+        .nav-toggle-bars::before { top: -6px; }
+        .nav-toggle-bars::after { top: 6px; }
+        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
+        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
+        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
+
         .agent-pill-shell {
             order: 2;
             flex: 0 0 100%;
@@ -897,62 +936,80 @@
            keep nav items horizontal (wrap allowed),
            and move Psalms into flow.
            ========================= */
-        @@media (max-width: 576px) {
+        @@media (max-width: 840px) {
             .navbar {
-                padding: 1rem 1rem;
-                align-items: flex-start;
+                padding: 14px 14px 12px;
+                border-radius: 16px;
             }
 
-            .navbar-brand img { height: 70px; max-height: 70px; }
-
-            /* container stacks sections cleanly */
             header .navbar .container-fluid {
-                display: flex !important;
-                flex-direction: column;
-                align-items: stretch !important;
-                gap: .75rem;
+                display: grid !important;
+                grid-template-columns: auto 1fr auto;
+                align-items: center !important;
+                gap: 10px;
             }
 
-            /* Left tabs: STILL HORIZONTAL, just wrap to new line if needed */
-            header .navbar .navbar-left {
-                margin-left: 0;
+            .navbar-brand img { height: 60px; max-height: 60px; padding: 8px; }
+            .nav-toggle { display: inline-flex; justify-self: end; }
+
+            .navbar-left,
+            .navbar-right {
+                display: none;
                 width: 100%;
+                margin-top: .5rem;
+            }
+
+            .navbar.mobile-open .navbar-left,
+            .navbar.mobile-open .navbar-right {
+                display: block;
             }
 
             header .navbar .navbar-left .nav-row {
-                justify-content: center;
-                gap: .5rem;
-                flex-wrap: wrap; /* wraps, but remains side-by-side */
+                flex-direction: column !important;
+                gap: .4rem;
+                align-items: stretch;
             }
 
-            /* Psalms line MUST be inside border on mobile */
+            .navbar-left .nav-link {
+                width: 100%;
+                text-align: left;
+                padding: 0.55rem 0.95rem;
+                border-radius: 12px;
+                border: 1.2px solid rgba(166,128,35,.52);
+                background: rgba(255,255,255,0.04);
+            }
+
             .header-psalms {
                 position: static;
                 transform: none;
-                top: auto;
-                left: auto;
                 width: 100%;
-                max-width: 100%;
-                margin-top: .25rem;
+                margin-top: .35rem;
                 text-align: center;
-                font-size: 1.05rem;
+                font-size: 1.08rem;
                 white-space: normal;
             }
 
             .navbar-right {
-                width: 100%;
-                justify-content: center;
+                justify-content: stretch;
                 flex-wrap: wrap;
+                gap: 8px;
                 min-width: 0;
             }
 
+            .navbar-right .nav-link,
+            .navbar-right .btn-link {
+                width: 100%;
+                text-align: left;
+                justify-content: flex-start;
+            }
+
             .explore-trigger{
-                top: 215px;
+                top: 185px;
                 left: 12px;
             }
 
             .explore-drawer{
-                top: 215px;
+                top: 185px;
                 left: 70px;
             }
         }
@@ -1044,6 +1101,10 @@
             <a class="navbar-brand" asp-controller="Home" asp-action="Index">
                 <img src="~/images/company-icons/legend.png" asp-append-version="true" alt="Legend™" />
             </a>
+
+            <button class="nav-toggle" id="clientNavToggle" aria-label="Toggle navigation" aria-expanded="false">
+                <span class="nav-toggle-bars"></span>
+            </button>
 
             <div class="navbar-left">
                 <div class="nav-rows-grid">
@@ -1340,6 +1401,43 @@
 
 <script src="~/js/number-format.js" asp-append-version="true"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function () {
+        const nav = document.querySelector('.navbar');
+        const toggle = document.getElementById('clientNavToggle');
+        const navLeft = document.querySelector('.navbar-left');
+        const navRight = document.querySelector('.navbar-right');
+
+        if (!nav || !toggle) return;
+
+        function closeNav() {
+            nav.classList.remove('mobile-open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        toggle.addEventListener('click', function () {
+            const isOpen = nav.classList.toggle('mobile-open');
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        [navLeft, navRight].forEach(group => {
+            if (!group) return;
+            group.querySelectorAll('a, button').forEach(el => {
+                el.addEventListener('click', () => closeNav());
+            });
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!nav.classList.contains('mobile-open')) return;
+            if (nav.contains(e.target) || e.target === toggle) return;
+            closeNav();
+        });
+
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 840) closeNav();
+        });
+    }());
+</script>
 <script>
     (function () {
         const trigger = document.getElementById('exploreTrigger');
