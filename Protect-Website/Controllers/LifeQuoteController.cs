@@ -103,6 +103,7 @@ namespace Protect_Website.Controllers
             model.ProductType = cfg.ProductType;
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
             var offerContent = GetContent(offerKey);
+            var isAgentContext = IsAgentContext();
 
             try
             {
@@ -121,17 +122,21 @@ namespace Protect_Website.Controllers
                 };
 
                 // Always send to the resolved agent; also copy founder/owner as safety net
-                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                // Recipient routing: agent if slug/context; founder only for default URLs
+                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail) &&
+                    !string.Equals(leadRecipientEmail, recipientEmail, StringComparison.OrdinalIgnoreCase))
                 {
-                    leadRecipientEmail,
-                    recipientEmail
+                    recipients.Add(leadRecipientEmail.Trim());
                 }
-                .Where(a => !string.IsNullOrWhiteSpace(a))
-                .Select(a => a.Trim())
-                .ToList();
+                else
+                {
+                    // default / unknown -> founder (or resolved email)
+                    var fallback = string.IsNullOrWhiteSpace(leadRecipientEmail) ? recipientEmail : leadRecipientEmail;
+                    if (!string.IsNullOrWhiteSpace(fallback)) recipients.Add(fallback.Trim());
+                }
 
-                if (recipients.Count == 0)
-                    throw new InvalidOperationException("No recipient email resolved.");
+                if (recipients.Count == 0) throw new InvalidOperationException("No recipient email resolved.");
 
                 foreach (var addr in recipients)
                 {
@@ -278,6 +283,16 @@ namespace Protect_Website.Controllers
             sb.Append($"<p><strong>Offer Key:</strong> {model.OfferKey}</p>");
             sb.Append($"<p><strong>Page Key:</strong> {model.PageKey}</p>");
             return sb.ToString();
+        }
+
+        private bool IsAgentContext()
+        {
+            string? slug = null;
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
+            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
+            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+            return !string.IsNullOrWhiteSpace(slug);
         }
 
         private bool IsAjax()

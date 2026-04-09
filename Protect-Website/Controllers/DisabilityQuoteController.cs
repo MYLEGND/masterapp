@@ -45,6 +45,7 @@ namespace Protect_Website.Controllers
                                 : View("~/Views/Quote/Disability.cshtml", model);
 
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+            var isAgentContext = IsAgentContext();
 
             try
             {
@@ -94,14 +95,17 @@ namespace Protect_Website.Controllers
                 };
 
                 // Send to agent plus founder/owner as fallback
-                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail) &&
+                    !string.Equals(leadRecipientEmail, recipientEmail, StringComparison.OrdinalIgnoreCase))
                 {
-                    leadRecipientEmail,
-                    recipientEmail
+                    recipients.Add(leadRecipientEmail.Trim());
                 }
-                .Where(a => !string.IsNullOrWhiteSpace(a))
-                .Select(a => a.Trim())
-                .ToList();
+                else
+                {
+                    var fallback = string.IsNullOrWhiteSpace(leadRecipientEmail) ? recipientEmail : leadRecipientEmail;
+                    if (!string.IsNullOrWhiteSpace(fallback)) recipients.Add(fallback.Trim());
+                }
 
                 if (recipients.Count == 0)
                     throw new InvalidOperationException("No recipient email resolved.");
@@ -212,6 +216,16 @@ namespace Protect_Website.Controllers
             }
 
             return null;
+        }
+
+        private bool IsAgentContext()
+        {
+            string? slug = null;
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
+            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
+            if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+            return !string.IsNullOrWhiteSpace(slug);
         }
 
         private bool IsAjax()
