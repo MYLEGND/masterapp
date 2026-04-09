@@ -41,7 +41,8 @@ namespace Protect_Website.Controllers
         public async Task<IActionResult> SubmitDisabilityQuote(DisabilityQuoteFormModel model)
         {
             if (!ModelState.IsValid)
-                return View("~/Views/Quote/Disability.cshtml", model);
+                return IsAjax() ? BadRequest(new { error = "Invalid form data" })
+                                : View("~/Views/Quote/Disability.cshtml", model);
 
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
 
@@ -142,10 +143,13 @@ namespace Protect_Website.Controllers
 
         // ===================== REDIRECT =====================
         TempData["QuoteType"] = "Disability";
-        return RedirectToAction("Index", "ThankYou");
+        return IsAjax() ? Ok(new { success = true }) : RedirectToAction("Index", "ThankYou");
     }
     catch (Exception ex)
     {
+        if (IsAjax())
+            return StatusCode(500, new { error = "Failed to send lead", detail = ex.Message });
+
         ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
         return View("~/Views/Quote/Disability.cshtml", model);
     }
@@ -201,6 +205,14 @@ namespace Protect_Website.Controllers
             }
 
             return null;
+        }
+
+        private bool IsAjax()
+        {
+            var hdr = Request?.Headers["X-Requested-With"].ToString();
+            return !string.IsNullOrWhiteSpace(hdr) &&
+                   (hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
+                    hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
     }
 }

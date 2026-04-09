@@ -91,6 +91,9 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             if (!ModelState.IsValid)
             {
+                if (IsAjax())
+                    return BadRequest(new { error = "Invalid form data" });
+
                 var vmInvalid = new LifeWizardViewModel { Config = cfg, Form = model };
                 ViewData["Title"] = cfg.PageTitle;
                 return View("~/Views/Quote/Life.cshtml", vmInvalid);
@@ -172,6 +175,9 @@ namespace Protect_Website.Controllers
             }
             catch (Exception ex)
             {
+                if (IsAjax())
+                    return StatusCode(500, new { error = "Failed to send lead", detail = ex.Message });
+
                 ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
                 var vmError = new LifeWizardViewModel { Config = cfg, Form = model };
                 ViewData["Title"] = cfg.PageTitle;
@@ -265,6 +271,13 @@ namespace Protect_Website.Controllers
             sb.Append($"<p><strong>Offer Key:</strong> {model.OfferKey}</p>");
             sb.Append($"<p><strong>Page Key:</strong> {model.PageKey}</p>");
             return sb.ToString();
+        }
+
+        private bool IsAjax()
+        {
+            var hdr = Request?.Headers["X-Requested-With"].ToString();
+            return !string.IsNullOrWhiteSpace(hdr) && hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
+                   hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase);
         }
 
         private static LifeWizardConfig GetWizardConfig(string rawOfferKey)
