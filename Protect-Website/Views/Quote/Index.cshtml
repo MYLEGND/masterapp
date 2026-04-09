@@ -236,17 +236,19 @@
     border:1.2px solid var(--border);
     border-radius:12px;
     box-shadow:0 12px 30px rgba(0,0,0,0.22);
-    display:flex;
+    display:none;
     flex-direction:column;
     overflow:hidden;
-    position:absolute;
-    left:18px;
-    right:18px;
+    position:fixed;
+    left:12px;
+    right:12px;
+    top:9999px;
     z-index:9999;
     max-height:320px;
     overflow-y:auto;
     -webkit-overflow-scrolling: touch;
 }
+.life-tile.open .life-dropdown{ display:flex; }
 .life-dropdown a{
     padding:11px 14px;
     color:#f8fafc;
@@ -257,7 +259,6 @@
 .life-dropdown a:last-child{ border-bottom:none; }
 .life-dropdown a:hover{ background:rgba(199,153,49,0.12); color:var(--gold-strong); }
 .life-tile{ cursor:pointer; position:relative; }
-.life-tile:focus-visible{ outline:2px solid var(--gold-strong); outline-offset:4px; }
 
 .tile-sub{
     margin:8px 0 0;
@@ -704,33 +705,32 @@ document.addEventListener("DOMContentLoaded", function () {
         els.forEach(el => el.classList.add("show"));
     }
 
-    // Life product dropdown (keep page minimal but offer all life variants)
+    // Life product dropdown (JS fallback for broad browser support)
     const lifeTile = document.querySelector(".life-tile");
     const lifeMenu = lifeTile ? lifeTile.querySelector(".life-dropdown") : null;
 
     function closeLife() {
         if (!lifeTile || !lifeMenu) return;
         lifeMenu.hidden = true;
-        lifeMenu.style.display = "none";
+        lifeTile.classList.remove("open");
         lifeTile.setAttribute("aria-expanded", "false");
     }
     function positionLifeMenu() {
         if (!lifeTile || !lifeMenu) return;
         const rect = lifeTile.getBoundingClientRect();
         const top = rect.bottom + window.scrollY + 8;
-        const left = rect.left + window.scrollX;
-        const rightGap = window.innerWidth - rect.right + window.scrollX;
-        lifeMenu.style.position = "fixed";
+        const left = Math.max(12, rect.left + window.scrollX);
+        const right = Math.max(12, window.innerWidth - rect.right + window.scrollX);
         lifeMenu.style.top = `${top}px`;
-        lifeMenu.style.left = `${Math.max(12, left)}px`;
-        lifeMenu.style.right = `${Math.max(12, rightGap)}px`;
-        lifeMenu.style.maxWidth = `${Math.min(420, window.innerWidth - 24)}px`;
+        lifeMenu.style.left = `${left}px`;
+        lifeMenu.style.right = `${right}px`;
         lifeMenu.style.display = "flex";
     }
     function openLife() {
         if (!lifeTile || !lifeMenu) return;
         positionLifeMenu();
         lifeMenu.hidden = false;
+        lifeTile.classList.add("open");
         lifeTile.setAttribute("aria-expanded", "true");
     }
     if (lifeTile && lifeMenu) {
@@ -738,12 +738,12 @@ document.addEventListener("DOMContentLoaded", function () {
             const link = (e.target instanceof Element) ? e.target.closest(".life-dropdown a") : null;
             if (link) { closeLife(); return; }
             e.preventDefault();
-            lifeMenu.hidden ? openLife() : closeLife();
+            lifeTile.classList.contains("open") ? closeLife() : openLife();
         });
         lifeTile.addEventListener("keydown", (e) => {
             if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                lifeMenu.hidden ? openLife() : closeLife();
+                lifeTile.classList.contains("open") ? closeLife() : openLife();
             } else if (e.key === "Escape") {
                 closeLife();
             }
