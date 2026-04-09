@@ -89,9 +89,10 @@ body { background-color: #0f172a; color: #f8fafc; }
     display: flex;
     justify-content: space-between;
     align-items: center;
-    color: rgba(248,250,252,0.7);
-    font-weight: 700;
-    font-size: .9rem;
+    color: #d5b77c;
+    font-weight: 800;
+    letter-spacing: .02em;
+    font-size: .95rem;
     margin-bottom: 8px;
 }
 .lq-progress-rail {
@@ -106,8 +107,8 @@ body { background-color: #0f172a; color: #f8fafc; }
     padding: 10px 12px;
     border-radius: 12px;
     border: 1.6px solid rgba(199,153,49,0.35);
-    background: rgba(17,28,50,0.8);
-    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.08);
+    background: linear-gradient(145deg, rgba(17,28,50,0.9), rgba(24,36,58,0.82));
+    box-shadow: inset 0 0 0 1px rgba(199,153,49,0.12), 0 10px 24px rgba(0,0,0,0.18);
     transition: background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.15s;
 }
 .lq-pill-num {
@@ -130,18 +131,18 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-pill-step.active {
     border-color: #c79931;
-    background: linear-gradient(135deg, #c79931 0%, #a68023 100%);
-    box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+    background: linear-gradient(135deg, #dfb75a 0%, #b88a26 45%, #916a1d 100%);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.34), 0 0 18px rgba(199,153,49,0.35);
     transform: translateY(-1px);
 }
 .lq-pill-step.active .lq-pill-num {
     background: #0f172a;
-    color: #c79931;
+    color: #dfb75a;
 }
 .lq-pill-step.active .lq-pill-label { color: #0f172a; }
 .lq-pill-step.complete {
     border-color: rgba(199,153,49,0.55);
-    background: rgba(199,153,49,0.14);
+    background: linear-gradient(135deg, rgba(199,153,49,0.22), rgba(199,153,49,0.12));
     box-shadow: inset 0 0 0 1px rgba(199,153,49,0.18);
 }
 .lq-pill-step.complete .lq-pill-num { background: rgba(199,153,49,0.25); color: #c79931; }
@@ -341,12 +342,11 @@ body { background-color: #0f172a; color: #f8fafc; }
 <div class="container-narrow">
 
     <div class="lq-header">
-        <h1>Request a Personalized Life Insurance Review</h1>
-        <div class="lq-subtext">No obligation. Private &amp; secure. Results tailored to you.</div>
+        <h1>Get Your Personalized Life Insurance Review</h1>
+        <div class="lq-subtext">No obligation. Personalized guidance based on your needs.</div>
         <div class="lq-trust-row">
             <span class="lq-trust-chip">No obligation</span>
-            <span class="lq-trust-chip">Quick review</span>
-            <span class="lq-trust-chip">Private &amp; secure</span>
+            <span class="lq-trust-chip">Takes 60 Seconds</span>
         </div>
         <div class="lq-helper-intro">Tap through a few fast steps to get guided life coverage options.</div>
     </div>
