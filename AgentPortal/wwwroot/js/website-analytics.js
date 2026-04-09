@@ -436,8 +436,16 @@
   }
 
   function formatMs(v) {
-    const n = Number(v || 0);
-    return Number.isFinite(n) ? Math.round(n).toLocaleString('en-US') : '0';
+    const ms = Number(v);
+    if (!Number.isFinite(ms) || ms <= 0) return '—';
+    if (ms < 1000) return `${Math.round(ms)}ms`;
+    const totalSec = ms / 1000;
+    if (totalSec < 60) return totalSec < 10 ? `${totalSec.toFixed(1)}s` : `${Math.round(totalSec)}s`;
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = Math.floor(totalSec % 60);
+    if (h > 0) return `${h}h ${m}m`;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
   }
 
   function formatRate(v) {
@@ -458,6 +466,7 @@
   function renderBehaviorOverview(summary, topTime) {
     const kpis = document.getElementById('bhvr-engagement-kpis');
     if (kpis) {
+      const lowSample = (summary.totalSessions || 0) < 5;
       const cards = [
         ['Avg Session', formatMs(summary.avgSessionDurationMs)],
         ['Median Session', formatMs(summary.medianSessionDurationMs)],
@@ -466,7 +475,17 @@
         ['Engaged Sessions', formatRate(summary.engagedSessionRate)],
         ['Total Sessions', formatInt(summary.totalSessions)]
       ];
-      kpis.innerHTML = cards.map(([t, v]) => `<div class="col-md-4 col-lg-2"><div class="kpi-card"><div class="fa-kpi-title">${t}</div><div class="fa-kpi-value">${v}</div></div></div>`).join('');
+      kpis.innerHTML = cards.map(([t, v]) =>
+        `<div class="col-md-4 col-lg-2"><div class="kpi-card"><div class="fa-kpi-title">${t}</div><div class="fa-kpi-value">${v}</div></div></div>`
+      ).join('');
+      const existing = kpis.parentElement?.querySelector('.bhvr-low-sample-notice');
+      if (existing) existing.remove();
+      if (lowSample && (summary.totalSessions || 0) > 0) {
+        const notice = document.createElement('div');
+        notice.className = 'bhvr-low-sample-notice col-12 mt-1';
+        notice.innerHTML = `<span class="fa-muted small">Low sample — ${summary.totalSessions} session${summary.totalSessions === 1 ? '' : 's'} in range. Metrics may not be representative.</span>`;
+        kpis.parentElement.appendChild(notice);
+      }
     }
 
     const highlights = document.getElementById('bhvr-engagement-highlights');
