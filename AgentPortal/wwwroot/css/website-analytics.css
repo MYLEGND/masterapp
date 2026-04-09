@@ -87,7 +87,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     color: var(--legend-silver);
     background: transparent;
 }
-@@media (max-width: 768px) {
+@media (max-width: 768px) {
     .hero-link-grid {
         grid-template-columns: 1fr;
     }
