@@ -178,6 +178,66 @@ footer.footer {
     display: block;
 }
 
+/* ------------------------------ Mobile header compression ------------------------------ */
+@media (max-width: 840px) {
+    .navbar {
+        padding: 12px 14px 10px;
+        border-radius: 16px;
+        row-gap: 6px;
+    }
+
+    /* hide nav clusters until toggled */
+    .navbar-left,
+    .navbar-right,
+    .mini-tools {
+        display: none !important;
+        width: 100%;
+        margin-top: 0.35rem;
+    }
+
+    /* show stacks when hamburger is open */
+    .navbar.mobile-open .navbar-left,
+    .navbar.mobile-open .navbar-right {
+        display: block !important;
+        background: linear-gradient(175deg, #0d172d, #0b1326);
+        border: 1.3px solid rgba(166,128,35,0.55);
+        border-radius: 14px;
+        padding: 10px;
+        box-shadow: 0 18px 30px rgba(0,0,0,.28);
+    }
+
+    .navbar-left .nav-row {
+        flex-direction: column !important;
+        gap: 0.35rem;
+        align-items: stretch;
+        margin: 0;
+    }
+
+    .navbar-left .nav-link,
+    .navbar-right .nav-link {
+        width: 100%;
+        text-align: left;
+        padding: 0.55rem 0.95rem;
+        border-radius: 12px;
+        border: 1.2px solid rgba(166,128,35,.52);
+        background: rgba(255,255,255,0.06);
+    }
+
+    /* center LIFE HAC pill */
+    .header-psalms {
+        grid-column: 1 / -1;
+        justify-self: center;
+        align-self: center;
+        position: static;
+        transform: none;
+        width: 100%;
+        margin-top: 0.25rem;
+        text-align: center;
+        font-size: 1.06rem;
+        white-space: normal;
+    }
+}
+
 /* ------------------------------ Dashboard / Tool Cards ------------------------------ */
 .dashboard-tool {
     border: 2px solid #a68023;
