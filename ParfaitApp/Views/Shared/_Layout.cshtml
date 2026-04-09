@@ -120,6 +120,46 @@
             letter-spacing: 1.2px;
         }
 
+        /* Nav toggle */
+        .nav-toggle {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: 1.4px solid rgba(146,105,80,0.65);
+            background: linear-gradient(160deg, #f7f1eb, #efe2d7);
+            box-shadow: 0 10px 18px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.12);
+            cursor: pointer;
+            padding: 0;
+            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
+        }
+        .nav-toggle:focus-visible { outline: 2px solid #926950; outline-offset: 3px; }
+        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.22); }
+        .nav-toggle-bars,
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #3b2a23;
+            border-radius: 4px;
+            position: relative;
+            transition: transform .18s ease, opacity .18s ease;
+        }
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            content: "";
+            position: absolute;
+            left: 0;
+        }
+        .nav-toggle-bars::before { top: -6px; }
+        .nav-toggle-bars::after { top: 6px; }
+        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
+        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
+        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
+
         /* ============================== FOOTER ============================== */
         footer.footer {
             background-color: #f8f8f8 !important;
@@ -147,14 +187,50 @@
         .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
 
         /* ============================== RESPONSIVE ============================== */
-        @@media (max-width: 992px) {
-            .navbar-top { flex-wrap: wrap; justify-content: center; gap: 1rem; }
-            .navbar-bottom { margin-top: 0.5rem; }
-        }
-        @@media (max-width: 576px) {
-            .title-nunito-expanded { font-size: 32px; }
-            .navbar-right .nav-link { padding: 0.4rem 0.8rem; font-size: 0.9rem; }
-            .header-psalms { font-size: 1rem; }
+        @@media (max-width: 900px) {
+            .navbar {
+                padding: 14px 14px 12px;
+                border-radius: 14px;
+            }
+            .navbar-top {
+                flex-wrap: nowrap;
+                align-items: center;
+                gap: 10px;
+            }
+            .title-nunito-expanded {
+                font-size: 30px;
+            }
+            .nav-toggle { display: inline-flex; }
+            .navbar-right {
+                display: none;
+                flex-direction: column;
+                gap: 8px;
+                width: 100%;
+                margin-top: 10px;
+            }
+            .navbar.mobile-open .navbar-right { display: flex; }
+            .navbar-right .nav-link,
+            .navbar-right .login-link {
+                width: 100%;
+                text-align: left;
+                justify-content: flex-start;
+                border: 1.3px solid rgba(146,105,80,0.45);
+                background: rgba(146,105,80,0.08);
+                border-radius: 12px;
+                padding: 0.6rem 0.9rem;
+            }
+            .navbar-right .login-link {
+                background: linear-gradient(145deg, #fff5ed, #f7e7dc);
+                color: #7d5035 !important;
+                border-color: rgba(146,105,80,0.65);
+            }
+            .navbar-bottom {
+                margin-top: 10px;
+            }
+            .header-psalms {
+                font-size: 1.05rem;
+                white-space: normal;
+            }
         }
     </style>
 </head>
@@ -168,6 +244,10 @@
             <a class="navbar-brand" asp-controller="Home" asp-action="Index">
                 <h1 class="title-nunito-expanded">PARFAIT</h1>
             </a>
+
+            <button class="nav-toggle" id="parfaitNavToggle" aria-label="Toggle navigation" aria-expanded="false">
+                <span class="nav-toggle-bars"></span>
+            </button>
 
             <div class="navbar-right">
                 @{
@@ -208,6 +288,41 @@
 </footer>
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function () {
+        const nav = document.querySelector('.navbar');
+        const toggle = document.getElementById('parfaitNavToggle');
+        const navRight = document.querySelector('.navbar-right');
+
+        if (!nav || !toggle) return;
+
+        function closeNav() {
+            nav.classList.remove('mobile-open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        toggle.addEventListener('click', function () {
+            const isOpen = nav.classList.toggle('mobile-open');
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        if (navRight) {
+            navRight.querySelectorAll('a, button').forEach(el => {
+                el.addEventListener('click', () => closeNav());
+            });
+        }
+
+        document.addEventListener('click', function (e) {
+            if (!nav.classList.contains('mobile-open')) return;
+            if (nav.contains(e.target) || e.target === toggle) return;
+            closeNav();
+        });
+
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 900) closeNav();
+        });
+    }());
+</script>
 @await RenderSectionAsync("Scripts", required:false)
 </body>
 </html>
