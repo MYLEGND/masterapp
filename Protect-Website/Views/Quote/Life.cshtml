@@ -1,7 +1,9 @@
 @model Protect_Website.Models.LifeQuoteFormModel
 
 @{
-    ViewData["Title"] = "Get Your Personalized Life Insurance Review";
+    var offer = ViewData["OfferContent"] as Protect_Website.Models.LifeOfferContent
+                ?? Protect_Website.Models.LifeOfferResolver.GetContent(null);
+    ViewData["Title"] = offer.PageTitle;
     ViewData["PageKey"] = "quote_life";
 }
 
@@ -332,8 +334,8 @@ body { background-color: #0f172a; color: #f8fafc; }
 
 <div class="container lq-container">
     <div class="lq-header">
-        <div class="lq-subtext">Personalized guidance based on your needs.</div>
-        <h1>Get Your Personalized Life Insurance Review</h1>
+        <div class="lq-subtext">@offer.HeroSubheadline</div>
+        <h1>@offer.HeroHeadline</h1>
         <div class="lq-trust-row">
             <span class="lq-trust-chip">Takes 60 Seconds</span>
             <span class="lq-trust-chip">Private &amp; Secure</span>
@@ -345,6 +347,7 @@ body { background-color: #0f172a; color: #f8fafc; }
         <input type="hidden" name="AgeRange" id="AgeRange" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" />
         <input type="hidden" name="PageKey" value="quote_life" />
+        <input type="hidden" name="OfferKey" id="OfferKey" value="@offer.Key" />
 
         <div class="lq-progress">
             <div class="lq-progress-head">
@@ -448,7 +451,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <button type="submit" class="btn-gold w-100" id="submitLife">Get My Personalized Review</button>
+                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@offer.SubmitButtonText">@offer.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
@@ -475,6 +478,8 @@ body { background-color: #0f172a; color: #f8fafc; }
   const lifeError = document.getElementById('lifeError');
   const lifeSuccess = document.getElementById('lifeSuccess');
   const submitBtn = document.getElementById('submitLife');
+  const submitLabel = submitBtn?.dataset.defaultLabel || 'Request My Review';
+  const currentOffer = document.getElementById('OfferKey')?.value || 'life';
   const progressLabel = document.getElementById('lqProgressLabel');
 
   function setStep(idx) {

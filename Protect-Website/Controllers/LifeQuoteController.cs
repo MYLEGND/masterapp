@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
 using Protect_Website.Models;
+using static Protect_Website.Models.LifeOfferResolver;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
@@ -56,9 +57,10 @@ namespace Protect_Website.Controllers
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
+                var offerContent = GetContent(model.OfferKey);
                 var message = new Message
                 {
-                    Subject = $"[LIFE QUOTE] New Lead | {model.FirstName}",
+                    Subject = $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
                     Body = new ItemBody
                     {
                         ContentType = BodyType.Html,
@@ -136,6 +138,7 @@ namespace Protect_Website.Controllers
             catch (Exception ex)
             {
                 ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
+                ViewData["OfferContent"] = GetContent(model.OfferKey);
                 return View("~/Views/Quote/Life.cshtml", model);
             }
         }
