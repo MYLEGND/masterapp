@@ -16,10 +16,11 @@ namespace Infrastructure.Migrations
                 table: "AnalyticsEvents",
                 newName: "IX_AnalyticsEvents_SessionId_Behavior");
 
+            // Normalize SQLite-scaffolded types to SQL Server so we can index new columns
             migrationBuilder.AlterColumn<string>(
                 name: "UpdatedBy",
                 table: "ClientFinancialPlans",
-                type: "TEXT",
+                type: "nvarchar(320)",
                 maxLength: 320,
                 nullable: false,
                 defaultValue: "",
@@ -31,167 +32,167 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "Browser",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "DeviceType",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(60)",
                 maxLength: 60,
                 nullable: true);
 
             migrationBuilder.AddColumn<long>(
                 name: "DwellMilliseconds",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bigint",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ElementId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true);
 
             migrationBuilder.AddColumn<long>(
                 name: "EngagedMilliseconds",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bigint",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "FieldName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "FormId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsBounceCandidate",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bit",
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsExitPage",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bit",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaAdId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaAdName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaAdSetId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaAdSetName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaCampaignId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MetaCampaignName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "OperatingSystem",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "Placement",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ReferrerHost",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ScreenHeight",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ScreenWidth",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ScrollPercent",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "UtmContent",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(160)",
                 maxLength: 160,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "UtmTerm",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(160)",
                 maxLength: 160,
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ViewportHeight",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "ViewportWidth",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.CreateIndex(

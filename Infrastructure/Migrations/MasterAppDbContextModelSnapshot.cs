@@ -416,7 +416,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Browser")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("ButtonLabel")
                         .HasMaxLength(200)
@@ -427,21 +427,21 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("DeviceType")
                         .HasMaxLength(60)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(60)");
 
                     b.Property<long?>("DwellMilliseconds")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<string>("ElementId")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<string>("ElementKey")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("EngagedMilliseconds")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Environment")
                         .HasMaxLength(40)
@@ -460,11 +460,11 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("FieldName")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<string>("FormId")
                         .HasMaxLength(120)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(120)");
 
                     b.Property<string>("FormKey")
                         .HasMaxLength(120)
@@ -475,44 +475,44 @@ namespace Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<bool?>("IsBounceCandidate")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bit");
 
                     b.Property<bool?>("IsExitPage")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsInternal")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("MetaAdId")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetaAdName")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetaAdSetId")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetaAdSetName")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetaCampaignId")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetaCampaignName")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<string>("MetadataJson")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("OperatingSystem")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("PageKey")
                         .HasMaxLength(120)
@@ -524,7 +524,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Placement")
                         .HasMaxLength(100)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(100)");
 
                     b.Property<string>("QuoteType")
                         .HasMaxLength(80)
@@ -539,16 +539,16 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("ReferrerHost")
                         .HasMaxLength(200)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(200)");
 
                     b.Property<int?>("ScreenHeight")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int?>("ScreenWidth")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int?>("ScrollPercent")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("SectionKey")
                         .HasMaxLength(120)
@@ -572,7 +572,7 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("UtmContent")
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(160)");
 
                     b.Property<string>("UtmMedium")
                         .HasMaxLength(160)
@@ -584,13 +584,13 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("UtmTerm")
                         .HasMaxLength(160)
-                        .HasColumnType("TEXT");
+                        .HasColumnType("nvarchar(160)");
 
                     b.Property<int?>("ViewportHeight")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<int?>("ViewportWidth")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("int");
 
                     b.Property<string>("VisitorId")
                         .HasMaxLength(120)
