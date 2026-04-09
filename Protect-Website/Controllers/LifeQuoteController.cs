@@ -130,6 +130,8 @@ namespace Protect_Website.Controllers
                     primary = recipientEmail.Trim();
                 else if (!string.IsNullOrWhiteSpace(recipientEmail))
                     primary = recipientEmail.Trim();
+                else if (!string.IsNullOrWhiteSpace(senderEmail))
+                    primary = senderEmail.Trim();
 
                 if (string.IsNullOrWhiteSpace(primary))
                     throw new InvalidOperationException("No recipient email resolved.");
