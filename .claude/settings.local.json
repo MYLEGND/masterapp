@@ -34,7 +34,8 @@
       "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Disability\")",
       "Bash(curl -s \"https://masterapp-protect.azurewebsites.net/Quote/Life\")",
       "Bash(curl -s \"https://protect.mylegnd.com/a/legend/Quote/Whole-Life\")",
-      "Bash(zip -r ../ProtectWebsite.zip . -x \"*.pdb\")"
+      "Bash(zip -r ../ProtectWebsite.zip . -x \"*.pdb\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://protect.mylegnd.com/a/legend/Quote/Whole-Life\")"
     ]
   }
 }
