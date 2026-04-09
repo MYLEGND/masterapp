@@ -495,23 +495,6 @@ body { background-color: #0f172a; color: #f8fafc; }
 
         track({ EventType: 'disability_quote_step1_view', PageKey: 'quote_disability' });
 
-        function setProgress(step) {
-            var percent = Math.min(100, step * 25);
-            var percentLabel = document.getElementById('lq-progress-percent');
-            var bar = document.getElementById('lq-progress-indicator');
-            if (percentLabel) percentLabel.textContent = 'Step ' + step + ' of 4';
-            if (bar) bar.setAttribute('aria-valuenow', percent.toString());
-
-            for (var i = 1; i <= 4; i++) {
-                var stepEl = document.getElementById('lq-prog-step' + i);
-                if (!stepEl) continue;
-                stepEl.classList.remove('active', 'complete');
-                stepEl.removeAttribute('aria-current');
-                if (i < step) stepEl.classList.add('complete');
-                else if (i === step) { stepEl.classList.add('active'); stepEl.setAttribute('aria-current', 'step'); }
-            }
-        }
-
         function scrollAndFocus(selector) {
             var el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : null;
             var fallbackPanel = document.getElementById('dq-step' + currentStep);
