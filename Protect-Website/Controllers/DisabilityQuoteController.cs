@@ -95,28 +95,21 @@ namespace Protect_Website.Controllers
                 };
 
                 // Send to agent plus founder/owner as fallback
-                var recipients = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail) &&
-                    !string.Equals(leadRecipientEmail, recipientEmail, StringComparison.OrdinalIgnoreCase))
-                {
-                    recipients.Add(leadRecipientEmail.Trim());
-                }
-                else
-                {
-                    var fallback = string.IsNullOrWhiteSpace(leadRecipientEmail) ? recipientEmail : leadRecipientEmail;
-                    if (!string.IsNullOrWhiteSpace(fallback)) recipients.Add(fallback.Trim());
-                }
+                string? primary = null;
+                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
+                    primary = leadRecipientEmail.Trim();
+                else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
+                    primary = recipientEmail.Trim();
+                else if (!string.IsNullOrWhiteSpace(recipientEmail))
+                    primary = recipientEmail.Trim();
 
-                if (recipients.Count == 0)
+                if (string.IsNullOrWhiteSpace(primary))
                     throw new InvalidOperationException("No recipient email resolved.");
 
-                foreach (var addr in recipients)
+                message.ToRecipients.Add(new Recipient
                 {
-                    message.ToRecipients.Add(new Recipient
-                    {
-                        EmailAddress = new EmailAddress { Address = addr }
-                    });
-                }
+                    EmailAddress = new EmailAddress { Address = primary }
+                });
 
         // ===================== HEADING STYLING =====================
         string headingColor = "#cca134f1";
