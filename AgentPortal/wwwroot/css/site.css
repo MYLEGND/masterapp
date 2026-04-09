@@ -571,8 +571,17 @@ footer.footer {
         flex-wrap: wrap;
     }
     /* Trim header noise but keep logout + greeting */
-    .header-psalms,
     .navbar-mini-tools{ display: none !important; }
+    .header-psalms{
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        position: static !important;
+        transform: none !important;
+        width: 100%;
+        text-align: center;
+        margin: 0.35rem 0 0 0;
+    }
     .navbar-right .nav-link[href*=\"store\"]{ display:none !important; }
 
     /* Hero / heavy intro blocks */
