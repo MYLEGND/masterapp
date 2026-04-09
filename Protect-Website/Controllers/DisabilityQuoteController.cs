@@ -5,6 +5,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
+using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
@@ -52,45 +53,29 @@ namespace Protect_Website.Controllers
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
+                var emailBody = LeadEmailTemplate.Wrap(
+                    $"New Lead — Disability Insurance",
+                    new LeadEmailTemplate.RowBuilder()
+                        .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
+                        .Row("Age",   model.Age)
+                        .Row("Email", model.Email)
+                        .Row("Phone", model.Phone)
+                        .Section("Employment")
+                        .Row("Employment Type", model.EmploymentType)
+                        .Row("Occupation",      model.Occupation)
+                        .Section("Coverage")
+                        .Row("Income Protection Priority", model.IncomeProtectionImportance)
+                        .Section("Contact Preferences")
+                        .Row("Preferred Method", model.ContactMethod)
+                        .Row("Best Time",        model.BestTimeToContact)
+                        .Section("Authorization")
+                        .Row("Disclaimer Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer))
+                        .ToString());
+
                 var message = new Message
                 {
                     Subject = $"[DISABILITY QUOTE] New Lead | {model.FirstName} {model.LastName}",
-                    Body = new ItemBody
-                    {
-                        ContentType = BodyType.Html,
-                        Content = $@"
-                            <h2>Disability Insurance Quote Lead</h2>
-
-                            <h3>Personal Info</h3>
-                            <p><strong>Name:</strong> {model.FirstName} {model.LastName}</p>
-                            <p><strong>Age:</strong> {model.Age}</p>
-                            <p><strong>Email:</strong> {model.Email}</p>
-                            <p><strong>Phone:</strong> {model.Phone}</p>
-
-                            <hr />
-
-                            <h3>Employment</h3>
-                            <p><strong>Employment Type:</strong> {model.EmploymentType}</p>
-                            <p><strong>Occupation:</strong> {model.Occupation}</p>
-
-                            <hr />
-
-                            <h3>Coverage Awareness</h3>
-                            <p><strong>Income Protection Importance:</strong> {model.IncomeProtectionImportance}</p>
-
-                            <hr />
-
-                            <h3>Contact Preferences</h3>
-                            <p><strong>Preferred Method:</strong> {model.ContactMethod}</p>
-                            <p><strong>Best Time:</strong> {model.BestTimeToContact}</p>
-
-                                 <hr />
-
-                          
-<h3>Disclaimer</h3>
-<p><strong>Acknowledged Disclaimer:</strong> {(model.AcknowledgedDisclaimer ? "Acknowledged" : "Not Acknowledged")}</p>
-"
-                    },
+                    Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
                     ToRecipients = new List<Recipient>()
                 };
 
@@ -112,31 +97,6 @@ namespace Protect_Website.Controllers
                 {
                     EmailAddress = new EmailAddress { Address = primary }
                 });
-
-        // ===================== HEADING STYLING =====================
-        string headingColor = "#cca134f1";
-        string headingFontSize = "1.2em";
-        string headingPadding = "4px 6px";
-
-        string ApplyHeadingHighlighting(string html)
-        {
-            if (string.IsNullOrWhiteSpace(html)) return html;
-
-            return System.Text.RegularExpressions.Regex.Replace(
-                html,
-                @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                m =>
-                {
-                    var tag = m.Groups[1].Value;
-                    var content = m.Groups[2].Value.Trim();
-                    return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                },
-                System.Text.RegularExpressions.RegexOptions.Singleline |
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase
-            );
-        }
-
-        message.Body.Content = ApplyHeadingHighlighting(message.Body.Content);
 
         // ===================== SEND EMAIL =====================
         var requestBody = new SendMailPostRequestBody

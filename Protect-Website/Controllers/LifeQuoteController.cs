@@ -10,6 +10,7 @@ using ProtectWebsite.Services.Tracking;
 using System.Text;
 using System.Linq;
 using System.Collections.Generic;
+using ProtectWebsite.Services;
 
 namespace Protect_Website.Controllers
 {
@@ -138,31 +139,6 @@ namespace Protect_Website.Controllers
 
                 message.ToRecipients.Add(new Recipient { EmailAddress = new EmailAddress { Address = primary } });
 
-                                        // ===================== HEADING STYLING =====================
-        string headingColor = "#cca134f1";
-        string headingFontSize = "1.2em";
-        string headingPadding = "4px 6px";
-
-        string ApplyHeadingHighlighting(string html)
-        {
-            if (string.IsNullOrWhiteSpace(html)) return html;
-
-            return System.Text.RegularExpressions.Regex.Replace(
-                html,
-                @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                m =>
-                {
-                    var tag = m.Groups[1].Value;
-                    var content = m.Groups[2].Value.Trim();
-                    return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                },
-                System.Text.RegularExpressions.RegexOptions.Singleline |
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase
-            );
-        }
-
-        message.Body.Content = ApplyHeadingHighlighting(message.Body.Content);
-
                 var requestBody = new SendMailPostRequestBody
                 {
                     Message = message,
@@ -244,21 +220,15 @@ namespace Protect_Website.Controllers
             return null;
         }
 
-        private string BuildEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
+        private static string BuildEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
         {
-            var sb = new StringBuilder();
-            sb.Append($"<h2>{cfg.DisplayName} Lead</h2>");
-            sb.Append("<h3>Personal Information</h3>");
-            sb.Append($"<p><strong>Name:</strong> {model.FirstName} {model.LastName}</p>");
-            sb.Append($"<p><strong>Email:</strong> {model.Email}</p>");
-            sb.Append($"<p><strong>Phone:</strong> {model.Phone}</p>");
+            var rows = new LeadEmailTemplate.RowBuilder()
+                .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
+                .Row("Email", model.Email)
+                .Row("Phone", model.Phone);
 
-            sb.Append("<hr /><h3>Responses</h3>");
-            void addRow(string label, string? value)
-            {
-                if (string.IsNullOrWhiteSpace(value)) return;
-                sb.Append($"<p><strong>{label}:</strong> {value}</p>");
-            }
+            // Wizard step answers
+            rows.Section("Responses");
             var answers = new[] { model.Answer1, model.Answer2, model.Answer3, model.Answer4 };
             for (var i = 0; i < cfg.Steps.Count && i < answers.Length; i++)
             {
@@ -266,18 +236,15 @@ namespace Protect_Website.Controllers
                 var code = answers[i];
                 if (string.IsNullOrWhiteSpace(code)) continue;
                 var label = step.Options.FirstOrDefault(o => o.Code == code)?.Label ?? code;
-                addRow(step.Question, label);
+                rows.Row(step.Question, label);
             }
-            // legacy aliases preserved for downstream consumers
-            addRow("Age Range", model.AgeRange);
-            addRow("Protect Focus", model.ProtectFocus);
 
-            sb.Append("<hr /><h3>Consent</h3>");
-            sb.Append($"<p><strong>Marketing Consent:</strong> {(model.MarketingEmailConsent ? "Yes" : "No")}</p>");
-            sb.Append($"<p><strong>Product:</strong> {cfg.DisplayName}</p>");
-            sb.Append($"<p><strong>Offer Key:</strong> {model.OfferKey}</p>");
-            sb.Append($"<p><strong>Page Key:</strong> {model.PageKey}</p>");
-            return sb.ToString();
+            rows.Section("Details")
+                .Row("Product",          cfg.DisplayName)
+                .Row("Offer Key",        model.OfferKey)
+                .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
+
+            return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
 
         private bool IsAgentContext()

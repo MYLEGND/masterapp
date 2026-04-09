@@ -12,6 +12,7 @@ using System.Text;
 using System.Net;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
@@ -345,44 +346,20 @@ namespace Protect_Website.Controllers
                 var primary = model.Drivers.FirstOrDefault();
                 var subjectName = primary == null ? "Unknown" : $"{primary.FirstName} {primary.LastName}".Trim();
 
-                var emailBody = $@"
-<h2>AUTO INSURANCE — New Quote Request</h2>
-{BuildApplicantInfo()}
-{BuildAddress()}
-{BuildContactInfo()}
-{BuildPolicy()}
-{BuildDrivers()}
-{BuildVehicles()}
-{BuildIncidents()}
-{BuildCoverage()}
-<h3>Authorization</h3>
-<p><strong>Acknowledged:</strong> {(model.AcknowledgedDisclaimer ? "Yes" : "No")}</p>
-";
-
-                // ===================== APPLY HEADING STYLING =====================
-                string headingColor = "#cca134f1";
-                string headingFontSize = "1.2em";
-                string headingPadding = "4px 6px";
-
-                string ApplyHeadingHighlighting(string html)
-                {
-                    if (string.IsNullOrWhiteSpace(html)) return html;
-
-                    return System.Text.RegularExpressions.Regex.Replace(
-                        html,
-                        @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                        m =>
-                        {
-                            var tag = m.Groups[1].Value;
-                            var content = m.Groups[2].Value.Trim();
-                            return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                        },
-                        System.Text.RegularExpressions.RegexOptions.Singleline |
-                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                    );
-                }
-
-                emailBody = ApplyHeadingHighlighting(emailBody);
+                var emailBody = LeadEmailTemplate.Wrap(
+                    "New Quote — Auto Insurance",
+                    new LeadEmailTemplate.RowBuilder()
+                        .Raw(BuildApplicantInfo())
+                        .Raw(BuildAddress())
+                        .Raw(BuildContactInfo())
+                        .Raw(BuildPolicy())
+                        .Raw(BuildDrivers())
+                        .Raw(BuildVehicles())
+                        .Raw(BuildIncidents())
+                        .Raw(BuildCoverage())
+                        .Section("Authorization")
+                        .Row("Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer))
+                        .ToString());
 
                 var message = new Message
                 {
