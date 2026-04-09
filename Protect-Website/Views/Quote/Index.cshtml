@@ -235,25 +235,75 @@
     cursor:pointer;
     overflow:visible;
 }
-.life-dropdown{
-    margin-top:8px;
-    background:var(--card);
-    border:1.2px solid var(--border);
-    border-radius:12px;
-    box-shadow:0 12px 30px rgba(0,0,0,0.22);
+.life-modal{
+    position:fixed;
+    inset:0;
+    background:rgba(8,12,24,0.72);
+    backdrop-filter:blur(8px);
     display:none;
-    flex-direction:column;
-    overflow:hidden;
-    position:absolute;
-    left:0;
-    right:0;
-    top:100%;
-    z-index:9999;
-    max-height:320px;
-    overflow-y:auto;
-    -webkit-overflow-scrolling: touch;
+    align-items:center;
+    justify-content:center;
+    z-index:10000;
+    padding:16px;
 }
-.life-tile.open .life-dropdown{ display:flex; }
+.life-modal.open{ display:flex; }
+.life-modal-card{
+    width:min(480px, 94vw);
+    background:linear-gradient(180deg,#0f172a 0%, #0c1427 100%);
+    border:1.6px solid rgba(199,153,49,.8);
+    border-radius:16px;
+    box-shadow:0 24px 60px rgba(0,0,0,.35);
+    color:#f4f6fb;
+    padding:18px;
+    position:relative;
+}
+.life-modal-card h3{
+    margin:0 0 12px;
+    font-weight:900;
+    font-size:1.2rem;
+    text-align:center;
+    color:#dfb75a;
+}
+.life-modal-close{
+    position:absolute;
+    top:10px;
+    right:10px;
+    background:transparent;
+    border:1px solid rgba(244,246,251,.35);
+    color:#f4f6fb;
+    border-radius:10px;
+    width:32px;
+    height:32px;
+    font-size:1.1rem;
+    cursor:pointer;
+}
+.life-modal-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+}
+@media (min-width: 520px){
+    .life-modal-grid{ grid-template-columns:repeat(2,1fr); }
+}
+.life-option{
+    display:block;
+    padding:12px 14px;
+    border:1px solid rgba(199,153,49,.65);
+    border-radius:10px;
+    text-decoration:none;
+    color:#f8fafc;
+    font-weight:850;
+    text-align:center;
+    background:rgba(199,153,49,0.08);
+}
+.life-option:hover{
+    border-color:#c79931;
+    background:rgba(199,153,49,0.15);
+    color:#dfb75a;
+}
+.life-dropdown{
+    display:none;
+}
 .life-dropdown a{
     padding:11px 14px;
     color:#f8fafc;
@@ -580,7 +630,7 @@
                 </div>
             </a>
 
-            <div class="quote-tile reveal life-tile" tabindex="0" role="button" aria-haspopup="true" aria-expanded="false" data-cta="quote_index_life_start">
+            <div class="quote-tile reveal life-tile" tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" data-cta="quote_index_life_start">
                 <div>
                     <div class="tile-top">
                         <div>
@@ -592,14 +642,6 @@
                 <div class="tile-footer">
                     <span class="tile-action">Start Quote</span>
                     <span class="tile-arrow">▾</span>
-                </div>
-                <div class="life-dropdown" hidden>
-                    <a href="@Link("/Quote/Life")"                data-cta="quote_index_life_general">General Life</a>
-                    <a href="@Link("/Quote/Term-Life")"           data-cta="quote_index_life_term">Term Life</a>
-                    <a href="@Link("/Quote/Whole-Life")"          data-cta="quote_index_life_whole">Whole Life</a>
-                    <a href="@Link("/Quote/Final-Expense")"       data-cta="quote_index_life_finalexpense">Final Expense</a>
-                    <a href="@Link("/Quote/Mortgage-Protection")" data-cta="quote_index_life_mp">Mortgage Protection</a>
-                    <a href="@Link("/Quote/IUL")"                 data-cta="quote_index_life_iul">Indexed Universal Life (IUL)</a>
                 </div>
             </div>
 
@@ -695,6 +737,11 @@
 
 </div>
 
+@{
+    var linkBase = Context?.Request?.PathBase.Value + (slugPrefix ?? string.Empty);
+    await Html.RenderPartialAsync("_LifeModal", linkBase);
+}
+
 <script>
 document.addEventListener("DOMContentLoaded", function () {
     // Reveal animations (safe fallback)
@@ -710,26 +757,24 @@ document.addEventListener("DOMContentLoaded", function () {
         els.forEach(el => el.classList.add("show"));
     }
 
-    // Life product dropdown (JS fallback for broad browser support)
+    // Life product modal
     const lifeTile = document.querySelector(".life-tile");
-    const lifeMenu = lifeTile ? lifeTile.querySelector(".life-dropdown") : null;
+    const lifeModal = document.getElementById("lifeModal");
+    const lifeClose = lifeModal ? lifeModal.querySelector(".life-modal-close") : null;
 
     function closeLife() {
-        if (!lifeTile || !lifeMenu) return;
-        lifeMenu.hidden = true;
-        lifeTile.classList.remove("open");
+        if (!lifeTile || !lifeModal) return;
+        lifeModal.classList.remove("open");
         lifeTile.setAttribute("aria-expanded", "false");
     }
     function openLife() {
-        if (!lifeTile || !lifeMenu) return;
-        lifeMenu.hidden = false;
-        lifeTile.classList.add("open");
+        if (!lifeTile || !lifeModal) return;
+        lifeModal.classList.add("open");
         lifeTile.setAttribute("aria-expanded", "true");
+        lifeModal.focus();
     }
-    if (lifeTile && lifeMenu) {
+    if (lifeTile && lifeModal) {
         lifeTile.addEventListener("click", (e) => {
-            const link = (e.target instanceof Element) ? e.target.closest(".life-dropdown a") : null;
-            if (link) { closeLife(); return; }
             e.preventDefault();
             lifeTile.classList.contains("open") ? closeLife() : openLife();
         });
@@ -742,11 +787,12 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         });
         document.addEventListener("click", (e) => {
-            if (!lifeTile || !lifeMenu) return;
+            if (!lifeTile || !lifeModal) return;
             if (!(e.target instanceof Element)) return;
-            if (!lifeTile.contains(e.target)) closeLife();
+            if (!lifeTile.contains(e.target) && !lifeModal.contains(e.target)) closeLife();
         });
         window.addEventListener("scroll", closeLife, { passive: true });
+        lifeClose?.addEventListener("click", closeLife);
     }
 });
 </script>
