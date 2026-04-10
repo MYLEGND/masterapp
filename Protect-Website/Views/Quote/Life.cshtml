@@ -368,13 +368,6 @@ body { background-color: #0f172a; color: #f8fafc; }
                             </div>
                         </div>
                         <div class="lq-field-row">
-                            <label class="lq-consent full">
-                                <input type="checkbox" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : "") required />
-                                <span>I authorize the company to contact me regarding this request.</span>
-                            </label>
-                            <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
-                        </div>
-                        <div class="lq-field-row">
                             <div class="lq-field">
                                 <label for="State">What state do you live in? <span style="color:#f87171">*</span></label>
                                 <select id="State" name="State" class="form-select" autocomplete="address-level1">
@@ -431,8 +424,15 @@ body { background-color: #0f172a; color: #f8fafc; }
                                     <option value="WI">Wisconsin</option>
                                     <option value="WY">Wyoming</option>
                                 </select>
-                            <div class="lq-field-err" id="err-State">Please select your state.</div>
+                                <div class="lq-field-err" id="err-State">Please select your state.</div>
                             </div>
+                        </div>
+                        <div class="lq-field-row">
+                            <label class="lq-consent full">
+                                <input type="checkbox" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : "") required />
+                                <span>I authorize the company to contact me regarding this request.</span>
+                            </label>
+                            <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
                         </div>
                     </div>
                     <div class="lq-step-actions">
