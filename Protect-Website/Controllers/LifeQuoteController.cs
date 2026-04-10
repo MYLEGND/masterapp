@@ -243,9 +243,9 @@ namespace Protect_Website.Controllers
                 .Row("Product",          cfg.DisplayName)
                 .Row("Offer Key",        model.OfferKey)
                 .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
-            if (!string.IsNullOrWhiteSpace(model.Answer4))
+            if (!string.IsNullOrWhiteSpace(model.State))
             {
-                rows.Row("State", model.Answer4);
+                rows.Row("State", model.State);
             }
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());

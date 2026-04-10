@@ -563,9 +563,6 @@ body { background-color: #0f172a; color: #f8fafc; }
         setStep(totalSteps - 1);
         return;
     }
-    if (state) {
-        document.getElementById('Answer4').value = state.value;
-    }
     const consent = form.querySelector('input[name=\"MarketingEmailConsent\"]');
     if (!consent?.checked) {
       lifeError.textContent = 'Please authorize contact.';

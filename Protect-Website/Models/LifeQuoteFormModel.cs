@@ -19,6 +19,9 @@ namespace Protect_Website.Models
         [Phone(ErrorMessage = "Invalid phone number")]
         public required string Phone { get; set; }
 
+        [Required(ErrorMessage = "State is required")]
+        public string? State { get; set; }
+
         public string? AgeRange { get; set; }
 
         public string? ProtectFocus { get; set; }
