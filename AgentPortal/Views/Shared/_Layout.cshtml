@@ -906,17 +906,24 @@
             }
 
             .navbar-right .nav-link,
-            .navbar-right .btn-link{
-                width: 100%;
-                text-align: left;
-                justify-content: flex-start;
-            }
+        .navbar-right .btn-link{
+            width: 100%;
+            text-align: left;
+            justify-content: flex-start;
+        }
 
-            .mini-tools{
-                width: 100%;
-                max-width: none;
-                margin: 0;
-            }
+        .mini-tools{
+            width: 100%;
+            max-width: none;
+            margin: 0;
+        }
+
+        /* Desktop force layout (ensure hamburger stays hidden and nav is flex) */
+        @@media (min-width: 577px){
+            .nav-toggle{ display: none !important; }
+            .navbar-left{ display: flex !important; }
+            .navbar-right{ display: flex !important; }
+        }
 
             .explore-trigger,
             .explore-drawer{
