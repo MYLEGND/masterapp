@@ -270,10 +270,6 @@ body { background-color: #0f172a; color: #f8fafc; }
     <div class="lq-header">
         <h1>@cfg.Header</h1>
         <div class="lq-subtext">@cfg.Subheader</div>
-        <div class="lq-trust-row">
-            <span class="lq-trust-chip">Takes 60 Seconds</span>
-            <span class="lq-trust-chip">Private &amp; Secure</span>
-        </div>
     </div>
 
     <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@cfg.PageKey">
@@ -343,7 +339,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                 <div class="lq-step-helper" hidden></div>
                 <div class="lq-inner-block">
                     <div class="lq-contact-grid">
-                        <div class="lq-field-row two">
+                        <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
                                 <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
@@ -355,14 +351,14 @@ body { background-color: #0f172a; color: #f8fafc; }
                                 <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
-                        <div class="lq-field-row">
+                        <div class="lq-field-row full">
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                         </div>
-                        <div class="lq-field-row two">
+                        <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="Email">Email <span style="color:#f87171">*</span></label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
