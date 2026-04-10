@@ -37,7 +37,8 @@
       "Bash(zip -r ../ProtectWebsite.zip . -x \"*.pdb\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://protect.mylegnd.com/a/legend/Quote/Whole-Life\")",
       "Bash(zip -r ../protect-deploy.zip . -x \"*.pdb\")",
-      "Bash(curl -s -v -L https://client.mylegnd.com/)"
+      "Bash(curl -s -v -L https://client.mylegnd.com/)",
+      "Bash(ls -lart /Users/zacowen/MASTERAPP/Infrastructure/Migrations/*.cs)"
     ]
   }
 }
