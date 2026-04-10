@@ -44,19 +44,17 @@ namespace Protect_Website.Controllers
         [HttpPost("Home")]
         public async Task<IActionResult> SubmitHomeQuote(HomeQuoteFormModel model)
         {
-            // Normalize consent (HTML checkbox may be disabled in earlier steps and re-enabled before submit)
-            var ackRaw = Request.Form["AcknowledgedDisclaimer"].ToString();
-            if (!string.IsNullOrWhiteSpace(ackRaw))
-            {
-                model.AcknowledgedDisclaimer = ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase)
-                                             || ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase)
-                                             || ackRaw.Equals("1");
-                if (ModelState.ContainsKey(nameof(model.AcknowledgedDisclaimer)))
-                {
-                    ModelState[nameof(model.AcknowledgedDisclaimer)].Errors.Clear();
-                    ModelState[nameof(model.AcknowledgedDisclaimer)].ValidationState = Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Valid;
-                }
-            }
+            // Normalize disclaimer — wizard steps toggle disabled; read raw value directly
+            var ackRaw = Request?.Form?["AcknowledgedDisclaimer"].FirstOrDefault();
+            bool ack = !string.IsNullOrWhiteSpace(ackRaw) &&
+                       (ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("1"));
+            model.AcknowledgedDisclaimer = ack;
+            ModelState.Remove(nameof(model.AcknowledgedDisclaimer));
+            if (!ack)
+                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
+                    "Please check the authorization box so we can contact you about this quote.");
 
             if (!ModelState.IsValid)
                 return View("~/Views/Quote/Home.cshtml", model);

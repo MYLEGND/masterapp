@@ -1713,6 +1713,7 @@ function enforceRequiredByLabels() {
                 }
             });
 
+
             form.addEventListener('submit', function (e) {
                 // Strip $ and commas before submit so decimals bind clean
                 document.querySelectorAll('input').forEach(function (input) {
@@ -1720,6 +1721,23 @@ function enforceRequiredByLabels() {
                         input.value = input.value.replace(/[$,]/g, '');
                     }
                 });
+
+                // Always enable and set disclaimer value
+                var disclaimer = document.getElementById('AcknowledgedDisclaimer');
+                if (disclaimer) {
+                    disclaimer.disabled = false;
+                    disclaimer.value = disclaimer.checked ? 'true' : 'false';
+                    // hidden override to guarantee post even if main box toggled/disabled earlier
+                    var hidden = document.getElementById('AcknowledgedDisclaimerHidden');
+                    if (!hidden) {
+                        hidden = document.createElement('input');
+                        hidden.type = 'hidden';
+                        hidden.id = 'AcknowledgedDisclaimerHidden';
+                        hidden.name = 'AcknowledgedDisclaimer';
+                        form.appendChild(hidden);
+                    }
+                    hidden.value = disclaimer.checked ? 'true' : 'false';
+                }
 
                 // Hard-stop + jump to first missed required field anywhere
                 if (!validateAllStepsAndJumpToFirstInvalid()) {
@@ -1729,6 +1747,40 @@ function enforceRequiredByLabels() {
 
             // Initial step (supports postback keeping CurrentStep)
             setStep(getStep());
+
+            // Dev-only sticky form state (localhost only)
+            const storageKey = 'commercialQuoteForm-dev';
+            const isLocalHost = ['localhost', '127.0.0.1'].includes(location.hostname);
+            if (isLocalHost) {
+                function saveState() {
+                    const data = { step: currentStep, values: {} };
+                    form.querySelectorAll('input, select, textarea').forEach(el => {
+                        if (!el.name) return;
+                        data.values[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+                    });
+                    try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch { /* ignore */ }
+                }
+
+                function restoreState() {
+                    try {
+                        const raw = localStorage.getItem(storageKey);
+                        if (!raw) return;
+                        const data = JSON.parse(raw);
+                        const vals = data?.values ?? {};
+                        Object.keys(vals).forEach(name => {
+                            const el = form.querySelector(`[name="${name}"]`);
+                            if (!el) return;
+                            if (el.type === 'checkbox') el.checked = !!vals[name];
+                            else el.value = vals[name];
+                        });
+                        if (data?.step) setStep(parseInt(data.step) || 1);
+                    } catch { /* ignore */ }
+                }
+
+                restoreState();
+                form.addEventListener('input', saveState);
+                form.addEventListener('change', saveState);
+            }
         })();
     </script>
 }

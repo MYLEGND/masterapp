@@ -1614,24 +1614,67 @@
             });
             toggleHouseUpdateYearFields();
 
-            const form = document.getElementById("homeQuoteForm");
-            if (form) {
-                form.addEventListener("submit", function () {
-                    // Ensure conditional fields are correct, then allow submit
-                    togglePreviousAddress(true);
+        const form = document.getElementById("homeQuoteForm");
+        if (form) {
+            form.addEventListener("submit", function () {
+                // Ensure conditional fields are correct, then allow submit
+                togglePreviousAddress(true);
                     toggleHouseUpdateYearFields();
                     enableAllInputsForSubmit();
                     const disclaimer = document.getElementById("AcknowledgedDisclaimer");
                     if (disclaimer) {
                         disclaimer.disabled = false;
-                        if (disclaimer.checked) {
-                            disclaimer.value = "true";
-                        } else {
-                            disclaimer.removeAttribute("value");
+                        disclaimer.value = disclaimer.checked ? 'true' : 'false';
+                        // hidden override to guarantee post even if main box was disabled earlier
+                        let hidden = document.getElementById("AcknowledgedDisclaimerHidden");
+                        if (!hidden) {
+                            hidden = document.createElement("input");
+                            hidden.type = "hidden";
+                            hidden.id = "AcknowledgedDisclaimerHidden";
+                            hidden.name = "AcknowledgedDisclaimer";
+                            form.appendChild(hidden);
                         }
+                        hidden.value = disclaimer.checked ? 'true' : 'false';
                     }
                 });
             }
         });
+
+        // Dev-only sticky form state (localhost only)
+        (function () {
+            const form = document.getElementById("homeQuoteForm");
+            const storageKey = "homeQuoteForm-dev";
+            const isLocalHost = ["localhost", "127.0.0.1"].includes(location.hostname);
+            if (!isLocalHost || !form) return;
+
+            function saveState() {
+                const data = { step: currentStep, values: {} };
+                form.querySelectorAll("input, select, textarea").forEach(el => {
+                    if (!el.name) return;
+                    data.values[el.name] = el.type === "checkbox" ? el.checked : el.value;
+                });
+                try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch { /* ignore */ }
+            }
+
+            function restoreState() {
+                try {
+                    const raw = localStorage.getItem(storageKey);
+                    if (!raw) return;
+                    const data = JSON.parse(raw);
+                    const vals = data?.values ?? {};
+                    Object.keys(vals).forEach(name => {
+                        const el = form.querySelector(`[name=\"${name}\"]`);
+                        if (!el) return;
+                        if (el.type === "checkbox") el.checked = !!vals[name];
+                        else el.value = vals[name];
+                    });
+                    if (data?.step) setStep(parseInt(data.step) || 1);
+                } catch { /* ignore */ }
+            }
+
+            restoreState();
+            form.addEventListener("input", saveState);
+            form.addEventListener("change", saveState);
+        })();
     </script>
 }

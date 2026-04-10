@@ -2132,14 +2132,56 @@
                 const disclaimer = document.getElementById("AcknowledgedDisclaimer");
                 if (disclaimer) {
                     disclaimer.disabled = false;
-                    // force its value into the form data before submit
-                    if (disclaimer.checked) {
-                        disclaimer.value = "true";
-                    } else {
-                        disclaimer.removeAttribute("value");
+                    disclaimer.value = disclaimer.checked ? 'true' : 'false';
+                    // create/refresh hidden override to guarantee posting value
+                    let hidden = document.getElementById("AcknowledgedDisclaimerHidden");
+                    if (!hidden) {
+                        hidden = document.createElement("input");
+                        hidden.type = "hidden";
+                        hidden.id = "AcknowledgedDisclaimerHidden";
+                        hidden.name = "AcknowledgedDisclaimer";
+                        form.appendChild(hidden);
                     }
+                    hidden.value = disclaimer.checked ? "true" : "false";
                 }
             });
+        }
+
+        // Dev-only sticky form state (only on localhost to speed manual testing)
+        const storageKey = "autoQuoteForm-dev";
+        const isLocalHost = () => ["localhost", "127.0.0.1"].includes(location.hostname);
+
+        function saveFormState() {
+            if (!isLocalHost() || !form) return;
+            const data = { step: currentStep, values: {} };
+            form.querySelectorAll("input, select, textarea").forEach(el => {
+                if (!el.name) return;
+                data.values[el.name] = el.type === "checkbox" ? el.checked : el.value;
+            });
+            try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch { /* ignore */ }
+        }
+
+        function restoreFormState() {
+            if (!isLocalHost() || !form) return;
+            try {
+                const raw = localStorage.getItem(storageKey);
+                if (!raw) return;
+                const data = JSON.parse(raw);
+                const vals = data?.values ?? {};
+                Object.keys(vals).forEach(name => {
+                    const el = form.querySelector(`[name=\"${name}\"]`);
+                    if (!el) return;
+                    if (el.type === "checkbox") el.checked = !!vals[name];
+                    else el.value = vals[name];
+                });
+                if (data?.step) setStep(parseInt(data.step) || 1);
+            } catch { /* ignore */ }
+        }
+
+        restoreFormState();
+        if (form) {
+            form.addEventListener("input", saveFormState);
+            form.addEventListener("change", saveFormState);
         }
 
         // Visual cues: answered vs missing required
