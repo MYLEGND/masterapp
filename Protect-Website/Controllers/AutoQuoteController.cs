@@ -56,6 +56,20 @@ namespace Protect_Website.Controllers
         {
             NormalizeLists(model);
 
+            // Normalize consent checkbox (may be toggled/disabled across steps)
+            var ackRaw = Request.Form["AcknowledgedDisclaimer"].ToString();
+            if (!string.IsNullOrWhiteSpace(ackRaw))
+            {
+                model.AcknowledgedDisclaimer = ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase)
+                                             || ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase)
+                                             || ackRaw.Equals("1");
+                if (ModelState.ContainsKey(nameof(model.AcknowledgedDisclaimer)))
+                {
+                    ModelState[nameof(model.AcknowledgedDisclaimer)].Errors.Clear();
+                    ModelState[nameof(model.AcknowledgedDisclaimer)].ValidationState = Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Valid;
+                }
+            }
+
             var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
 
             // business rule
