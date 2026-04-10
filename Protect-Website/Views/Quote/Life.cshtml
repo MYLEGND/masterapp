@@ -305,11 +305,77 @@ body.life-landing header .navbar .nav-link:focus {
 .lq-error { color: #fca5a5; }
 .lq-success { color: #bbf7d0; }
 
+/* ── Mobile / tablet tightening (≤640px) ─────────────────────────────────── */
 @@media (max-width: 640px){
-    .lq-header h1 { font-size: 1.5rem; }
-    .lq-subtext { font-size: .95rem; }
+    .lq-header h1 { font-size: 1.45rem; }
+    .lq-subtext { font-size: .93rem; margin-bottom: 10px; }
     .lq-progress-rail { gap: 8px; }
     .lq-pill-step { padding: 10px; }
+
+    /* Hero shell — reclaim vertical space */
+    .lq-hero-shell {
+        padding: 12px 12px 10px;
+        margin: 6px auto 12px;
+        border-radius: 14px;
+    }
+
+    /* Hero header block */
+    .lq-header { margin-top: 10px; margin-bottom: 12px; }
+
+    /* Step panels */
+    .lq-step-panel { margin-bottom: 10px; }
+    .lq-step-panel-pad { padding: 12px; }
+    .lq-inner-block { padding: 14px 12px 10px; }
+    .lq-step-title { font-size: 1.08rem; margin-bottom: 4px; }
+    .lq-step-helper { margin-bottom: 10px; }
+    .lq-card { min-height: 52px; padding: 11px 8px; font-size: .9rem; }
+    .lq-choice-grid { gap: 8px; }
+    .lq-step-actions { margin-top: 12px; }
+
+    /* Contact step fields */
+    .lq-contact-grid { gap: 10px; }
+    .lq-field { gap: 4px; }
+    .form-control, .form-select { padding: 9px 10px; margin-bottom: 6px; }
+    .lq-submit-row { margin-top: 10px; }
+    .btn-gold { padding: 12px 20px; }
+}
+
+/* ── Phone-only tightening (≤480px) ─────────────────────────────────────── */
+@@media (max-width: 480px){
+    /* Header — reduce nav height and psalms bar */
+    .navbar { padding: 5px 10px 4px !important; }
+    .navbar-brand img { max-height: 28px !important; }
+    .header-bottom { margin-top: 3px !important; font-size: 0.76rem !important; letter-spacing: .6px !important; }
+    .header-psalms {
+        font-size: 0.76rem !important;
+        padding: 5px 10px !important;
+        letter-spacing: .5px !important;
+        gap: 5px !important;
+    }
+
+    /* Hero shell */
+    .lq-hero-shell {
+        padding: 10px 10px 8px !important;
+        margin: 4px auto 8px !important;
+        border-radius: 12px !important;
+    }
+
+    /* Hero header block */
+    .lq-header { margin-top: 6px !important; margin-bottom: 8px !important; }
+    .lq-header h1 { font-size: 1.3rem !important; letter-spacing: .2px !important; }
+    .lq-subtext { font-size: .86rem !important; margin-bottom: 6px !important; }
+
+    /* Step panel */
+    .lq-step-panel-pad { padding: 10px !important; }
+    .lq-inner-block { padding: 12px 10px 8px !important; }
+    .lq-step-title { font-size: 1rem !important; }
+    .lq-card { min-height: 46px !important; padding: 10px 7px !important; font-size: .87rem !important; }
+    .lq-choice-grid { gap: 7px !important; }
+
+    /* Contact step fields */
+    .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
+    .lq-field label { font-size: .88rem !important; }
+    .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
 }
 </style>
 
