@@ -904,7 +904,52 @@
         }
 
 
-        .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
+    .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
+
+    /* Hard override to keep nav hidden until hamburger opens (mobile) and visible on desktop */
+    @@media (max-width: 840px) {
+        .navbar {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .navbar-left,
+        .navbar-right {
+            display: none !important;
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 8px);
+            width: 100%;
+            margin-top: .5rem;
+            background: rgba(11,21,41,0.92);
+            border: 1px solid rgba(166,128,35,.35);
+            border-radius: 14px;
+            padding: 8px 10px;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+            z-index: 1060;
+        }
+        .navbar.mobile-open .navbar-left,
+        .navbar.mobile-open .navbar-right {
+            display: block !important;
+        }
+        header .navbar .navbar-left .nav-row {
+            width: 100%;
+            flex-direction: column !important;
+            gap: .4rem;
+            align-items: stretch;
+        }
+        .navbar-left .nav-link {
+            width: 100%;
+            text-align: center;
+        }
+        .nav-toggle { display: inline-flex !important; margin-left: auto; }
+    }
+
+    @@media (min-width: 841px) {
+        .nav-toggle { display: none !important; }
+        .navbar-left { display: flex !important; position: static !important; }
+        .navbar-right { display: flex !important; position: static !important; }
+    }
 
         /* =========================
            MOBILE: stay inside border,
