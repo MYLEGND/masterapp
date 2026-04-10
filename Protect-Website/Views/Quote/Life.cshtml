@@ -5,7 +5,7 @@
     var form = Model.Form;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = cfg.PageKey;
-    var totalSteps = cfg.Steps.Count + 2; // add name step + contact step
+    var totalSteps = cfg.Steps.Count + 1; // questions + combined contact step
     var path = Context?.Request?.Path.Value ?? string.Empty;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
     var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
@@ -326,11 +326,11 @@ body { background-color: #0f172a; color: #f8fafc; }
         </div>
         }
 
-        <!-- Name step -->
         <div class="lq-step-panel" data-step="@cfg.Steps.Count" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-meta">Step @(cfg.Steps.Count + 1) of @totalSteps</div>
-                <div class="lq-step-title">What is the best name to use for your review?</div>
+                <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
+                <div class="lq-step-title">How can we reach you?</div>
+                <div class="lq-step-helper">Enter your details to get your personalized review.</div>
                 <div class="lq-inner-block">
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two">
@@ -345,22 +345,6 @@ body { background-color: #0f172a; color: #f8fafc; }
                                 <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
-                    </div>
-                    <div class="lq-step-actions">
-                        <button type="button" class="btn-gold w-100" data-next="@cfg.Steps.Count">Next</button>
-                        <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="lq-step-panel" data-step="@cfg.Steps.Count + 1" hidden>
-            <div class="lq-step-panel-pad">
-                <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
-                <div class="lq-step-title">Where should we send your review?</div>
-                <div class="lq-step-helper">Enter your details below and we’ll follow up with personalized guidance.</div>
-                <div class="lq-inner-block">
-                    <div class="lq-contact-grid">
                         <div class="lq-field-row two">
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
@@ -437,7 +421,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                                     <option value="WI">Wisconsin</option>
                                     <option value="WY">Wyoming</option>
                                 </select>
-                                <div class="lq-field-err" id="err-State">Please select your state.</div>
+                            <div class="lq-field-err" id="err-State">Please select your state.</div>
                             </div>
                         </div>
                     </div>
@@ -447,7 +431,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count + 1">Back</button>
+                        <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
                     </div>
                     <div class="lq-reassurance">We only use your details to send your personalized review.</div>
                 </div>
@@ -558,20 +542,8 @@ body { background-color: #0f172a; color: #f8fafc; }
     }
 
     // contact validation
-    const requiredNames = ['FirstName','LastName'];
-    for (const name of requiredNames) {
-      const el = form.querySelector(`[name=\"${name}\"]`);
-      if (!el || !el.value.trim()) {
-        lifeError.textContent = 'Please fill all required contact fields.';
-        lifeError.style.display = 'block';
-        el?.focus();
-        document.getElementById(`err-${name}`)?.classList.add('visible');
-        setStep(@cfg.Steps.Count); // name step index
-        return;
-      }
-    }
-    const requiredContact = ['Phone','Email'];
-    for (const name of requiredContact) {
+    const requiredAll = ['FirstName','LastName','Phone','Email','State'];
+    for (const name of requiredAll) {
       const el = form.querySelector(`[name=\"${name}\"]`);
       if (!el || !el.value.trim()) {
         lifeError.textContent = 'Please fill all required contact fields.';
