@@ -588,8 +588,9 @@
   }
 
   function formatPct(v) {
-    const num = Number(v || 0);
-    return Number.isFinite(num) ? `${num.toFixed(2)}%` : '0.00%';
+    if (v == null) return '—';
+    const num = Number(v);
+    return Number.isFinite(num) ? `${num.toFixed(2)}%` : '—';
   }
 
   function formatMs(ms) {

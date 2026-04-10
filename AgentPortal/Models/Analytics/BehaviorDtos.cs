@@ -11,10 +11,12 @@ public sealed class EngagementSummaryDto
     public double MedianSessionDurationMs { get; set; }
     public double AvgTimeOnPageMs { get; set; }
     public double MedianTimeOnPageMs { get; set; }
-    /// <summary>% of page views that appear to be quick exits (dwell &lt; 10 s).</summary>
-    public decimal QuickExitRate { get; set; }
-    /// <summary>% of sessions with ≥30 s of accumulated engaged time.</summary>
-    public decimal EngagedSessionRate { get; set; }
+    /// <summary>% of page views that appear to be quick exits (dwell &lt; 10 s).
+    /// Null when no page_exit data exists yet (instrumentation not yet producing data).</summary>
+    public decimal? QuickExitRate { get; set; }
+    /// <summary>% of sessions with ≥30 s of accumulated engaged time.
+    /// Null when no engagement event or EngagedMilliseconds data exists yet.</summary>
+    public decimal? EngagedSessionRate { get; set; }
     public string? TopExitPage { get; set; }
     public string? TopLongDwellPage { get; set; }
     public string? HighestScrollCompletionPage { get; set; }

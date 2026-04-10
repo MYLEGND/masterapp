@@ -13,7 +13,11 @@
   const allowedEvents = new Set([
     'page_view','cta_click','quote_click','risk_assessment_click',
     'form_start','form_submit','outbound_click',
-    'lead_modal_open','lead_form_start','lead_form_submit_success','lead_form_submit_failed'
+    'lead_modal_open','lead_form_start','lead_form_submit_success','lead_form_submit_failed',
+    // Behavior Intelligence
+    'page_exit',
+    'page_engaged_10s','page_engaged_30s','page_engaged_60s',
+    'scroll_depth_25','scroll_depth_50','scroll_depth_75','scroll_depth_90','scroll_depth_100'
   ]);
 
   function uuid() {
@@ -76,7 +80,13 @@
         Environment: payload.Environment || null,
         Host: payload.Host || null,
         EventUtc: new Date().toISOString(),
-        IsInternal: false
+        IsInternal: false,
+        // Behavior fields
+        DwellMilliseconds: payload.DwellMilliseconds != null ? payload.DwellMilliseconds : null,
+        EngagedMilliseconds: payload.EngagedMilliseconds != null ? payload.EngagedMilliseconds : null,
+        ScrollPercent: payload.ScrollPercent != null ? payload.ScrollPercent : null,
+        IsBounceCandidate: payload.IsBounceCandidate != null ? payload.IsBounceCandidate : null,
+        IsExitPage: payload.IsExitPage || null
       };
 
       if (!allowedEvents.has(body.EventType)) return;
@@ -95,6 +105,124 @@
       /* swallow */
     }
   }
+
+  // ── Behavior Intelligence instrumentation ─────────────────────────────────
+  //
+  // All lifecycle tracking uses visibilitychange (not unload/beforeunload) because:
+  // - visibilitychange fires reliably on mobile Safari, iOS Chrome, and Meta/Facebook
+  //   in-app browsers where unload/beforeunload are suppressed or unreliable.
+  // - page_exit uses navigator.sendBeacon so the request survives navigation/close.
+
+  const _pageStart = Date.now();
+  let _maxScroll = 0;
+  let _activeMs = 0;          // accumulated engaged ms while page was visible
+  let _activeStart = document.visibilityState === 'visible' ? Date.now() : null;
+  let _exitFired = false;
+
+  // Snapshot current scroll depth (0–100)
+  function getScrollPct() {
+    const d = document.documentElement;
+    const scrollable = d.scrollHeight - d.clientHeight;
+    if (scrollable <= 0) return 100;
+    return Math.round((d.scrollTop / scrollable) * 100);
+  }
+
+  // ── Scroll milestone events ───────────────────────────────────────────────
+  // Each milestone fires once per page load. Passive listener for mobile perf.
+  const _scrollFired = new Set();
+  window.addEventListener('scroll', function () {
+    const pct = getScrollPct();
+    if (pct > _maxScroll) _maxScroll = pct;
+    [25, 50, 75, 90, 100].forEach(function (milestone) {
+      if (!_scrollFired.has(milestone) && pct >= milestone) {
+        _scrollFired.add(milestone);
+        sendEvent({ EventType: 'scroll_depth_' + milestone, ScrollPercent: milestone });
+      }
+    });
+  }, { passive: true });
+
+  // ── Engagement checkpoint timers ──────────────────────────────────────────
+  // Fire page_engaged_Xs only if the page is still visible at that time.
+  // These drive the "Engaged Sessions" metric in Behavior Intelligence.
+  [10000, 30000, 60000].forEach(function (ms) {
+    setTimeout(function () {
+      if (document.visibilityState === 'visible') {
+        sendEvent({
+          EventType: 'page_engaged_' + (ms / 1000) + 's',
+          EngagedMilliseconds: _activeMs + (Date.now() - (_activeStart || Date.now()))
+        });
+      }
+    }, ms);
+  });
+
+  // ── page_exit beacon ──────────────────────────────────────────────────────
+  // Sent via sendBeacon (survives tab close / navigation / app switch).
+  // Falls back to synchronous XHR for environments that lack sendBeacon
+  // (some older Meta/Facebook in-app WebView versions).
+  function firePageExit() {
+    if (_exitFired) return;
+    _exitFired = true;
+
+    // Flush any accumulated active time from the current visibility window
+    if (_activeStart !== null) {
+      _activeMs += Date.now() - _activeStart;
+      _activeStart = null;
+    }
+
+    const dwell = Date.now() - _pageStart;
+    const scrollPct = Math.max(_maxScroll, getScrollPct());
+
+    const body = {
+      ClientEventId: uuid(),
+      EventType: 'page_exit',
+      PageKey: PAGE_KEY,
+      Url: window.location.href,
+      Path: window.location.pathname,
+      Referrer: document.referrer || null,
+      SessionId: getSessionId(),
+      VisitorId: getVisitorId(),
+      AgentTrackingProfileId: AGENT_ID,
+      AgentSlug: AGENT_SLUG,
+      EventUtc: new Date().toISOString(),
+      IsInternal: false,
+      DwellMilliseconds: dwell,
+      EngagedMilliseconds: _activeMs,
+      ScrollPercent: scrollPct,
+      IsBounceCandidate: dwell < 10000,
+      IsExitPage: true
+    };
+
+    const json = JSON.stringify(body);
+    const blob = new Blob([json], { type: 'application/json' });
+
+    if (navigator.sendBeacon && navigator.sendBeacon(INGEST_URL, blob)) {
+      return;
+    }
+    // Synchronous XHR fallback (Meta in-app browser / older WebViews)
+    try {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', INGEST_URL, false);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.send(json);
+    } catch { /* swallow */ }
+  }
+
+  // ── Visibility lifecycle ──────────────────────────────────────────────────
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') {
+      if (_activeStart !== null) {
+        _activeMs += Date.now() - _activeStart;
+        _activeStart = null;
+      }
+      firePageExit();
+    } else {
+      // Page became visible again (tab switch back, app foreground)
+      _activeStart = Date.now();
+      _exitFired = false; // allow a new exit beacon on next hide
+    }
+  });
+
+  // ── Standard tracking ─────────────────────────────────────────────────────
 
   function trackPageView() {
     sendEvent({ EventType: 'page_view' });
@@ -133,28 +261,28 @@
   trackPageView();
 
   // Canonical CTA wiring (selectors per existing markup)
-  wireClick('[data-cta=\"hero_start_assessment\"]', 'hero_start_assessment', 'cta_click');
-  wireClick('[data-cta=\"hero_book_call\"]', 'hero_book_call', 'cta_click');
-  wireClick('[data-cta=\"hero_start_quote\"]', 'hero_start_quote', 'quote_click');
-  wireClick('[data-cta=\"footer_book_call\"]', 'footer_book_call', 'cta_click');
-  wireClick('[data-cta=\"nav_home\"]', 'nav_home', 'cta_click');
-  wireClick('[data-cta=\"nav_risk_assessment\"]', 'nav_risk_assessment', 'risk_assessment_click');
-  wireClick('[data-cta=\"nav_quote\"]', 'nav_quote', 'quote_click');
-  wireClick('[data-cta=\"nav_contact\"]', 'nav_contact', 'cta_click');
+  wireClick('[data-cta="hero_start_assessment"]', 'hero_start_assessment', 'cta_click');
+  wireClick('[data-cta="hero_book_call"]', 'hero_book_call', 'cta_click');
+  wireClick('[data-cta="hero_start_quote"]', 'hero_start_quote', 'quote_click');
+  wireClick('[data-cta="footer_book_call"]', 'footer_book_call', 'cta_click');
+  wireClick('[data-cta="nav_home"]', 'nav_home', 'cta_click');
+  wireClick('[data-cta="nav_risk_assessment"]', 'nav_risk_assessment', 'risk_assessment_click');
+  wireClick('[data-cta="nav_quote"]', 'nav_quote', 'quote_click');
+  wireClick('[data-cta="nav_contact"]', 'nav_contact', 'cta_click');
 
   // Quote tiles/buttons
-  wireClick('[data-cta=\"quote_index_auto_start\"]', 'quote_index_auto_start', 'quote_click');
-  wireClick('[data-cta=\"quote_index_home_start\"]', 'quote_index_home_start', 'quote_click');
-  wireClick('[data-cta=\"quote_index_commercial_start\"]', 'quote_index_commercial_start', 'quote_click');
-  wireClick('[data-cta=\"quote_index_life_start\"]', 'quote_index_life_start', 'quote_click');
-  wireClick('[data-cta=\"quote_index_disability_start\"]', 'quote_index_disability_start', 'quote_click');
-  wireClick('[data-cta=\"quote_index_health_start\"]', 'quote_index_health_start', 'quote_click');
+  wireClick('[data-cta="quote_index_auto_start"]', 'quote_index_auto_start', 'quote_click');
+  wireClick('[data-cta="quote_index_home_start"]', 'quote_index_home_start', 'quote_click');
+  wireClick('[data-cta="quote_index_commercial_start"]', 'quote_index_commercial_start', 'quote_click');
+  wireClick('[data-cta="quote_index_life_start"]', 'quote_index_life_start', 'quote_click');
+  wireClick('[data-cta="quote_index_disability_start"]', 'quote_index_disability_start', 'quote_click');
+  wireClick('[data-cta="quote_index_health_start"]', 'quote_index_health_start', 'quote_click');
 
   // Form start wiring (quote/risk forms keyed by data-form-key)
   document.querySelectorAll('form[data-form-key]').forEach(f => {
     const key = f.getAttribute('data-form-key');
     if (!key) return;
-    wireFormStart(`form[data-form-key=\"${key}\"]`, key);
+    wireFormStart(`form[data-form-key="${key}"]`, key);
   });
 
   // Expose helpers for other scripts (lead modal)

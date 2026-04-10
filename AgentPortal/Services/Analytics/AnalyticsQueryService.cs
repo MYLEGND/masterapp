@@ -605,12 +605,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var avgTimeOnPage = dwells.Count > 0 ? dwells.Average() : 0;
         var medianTimeOnPage = Median(dwells);
 
-        // Session duration: sum of all page dwell times per session (total time on site).
-        // Using Sum, not Max — Max would give longest single-page dwell, not total session time.
+        // Session duration: elapsed time from first to last event in each session.
+        // Using Max(EventUtc) - Min(EventUtc) is correct for multi-page sessions and works
+        // immediately from page_view events — no dependency on page_exit being present.
+        // Sum(DwellMilliseconds) was wrong: it summed per-page dwell across pages, which
+        // double-counts time and returns 0 when page_exit has not been emitted yet.
         var sessionDurations = events
-            .Where(e => (e.EventType == "page_exit" || e.EventType == "session_end") && !string.IsNullOrWhiteSpace(e.SessionId) && e.DwellMilliseconds.HasValue)
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
-            .Select(g => (double)g.Sum(x => x.DwellMilliseconds!.Value))
+            .Where(g => g.Count() > 1) // need at least 2 events for a meaningful duration
+            .Select(g => (g.Max(x => x.EventUtc) - g.Min(x => x.EventUtc)).TotalMilliseconds)
+            .Where(ms => ms > 0)
             .ToList();
         var avgSessionDuration = sessionDurations.Count > 0 ? sessionDurations.Average() : 0;
         var medianSessionDuration = Median(sessionDurations);
@@ -629,11 +634,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int quickExits = lastExitPerSession.Count(e =>
             e.IsBounceCandidate == true ||
             (e.DwellMilliseconds.HasValue && e.DwellMilliseconds.Value < 10_000));
-        // Denominator must match numerator source: sessions that fired an exit beacon.
-        // Using sessionEngagedMap.Count (all sessions) would understate the rate because
-        // sessions with no exit beacon are excluded from quickExits but counted in the denominator.
-        var quickExitDenominator = lastExitPerSession.Count > 0 ? lastExitPerSession.Count : sessionEngagedMap.Count;
-        var quickExitRate = quickExitDenominator > 0 ? Math.Round((decimal)quickExits / quickExitDenominator * 100, 2) : 0;
+        // Return null (not 0) when no page_exit data exists at all.
+        // A 0% quick exit rate is only meaningful when exit beacons are being received;
+        // showing 0.00% without data is misleading — the UI renders null as "—".
+        decimal? quickExitRate = lastExitPerSession.Count > 0
+            ? Math.Round((decimal)quickExits / lastExitPerSession.Count * 100, 2)
+            : (decimal?)null;
 
         // Engaged sessions: session has any page_engaged_* event (10s, 30s, or 60s checkpoint),
         // OR EngagedMilliseconds >= 30 s as a fallback for sessions where the event fired but
@@ -647,7 +653,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                   .Select(e => e.SessionId!));
         int engagedSessions = sessionEngagedMap.Count(kv =>
             sessionsWithEngagementEvent.Contains(kv.Key) || kv.Value >= 30_000);
-        var engagedSessionRate = sessionEngagedMap.Count > 0 ? Math.Round((decimal)engagedSessions / sessionEngagedMap.Count * 100, 2) : 0;
+        // Return null when neither engagement events nor EngagedMilliseconds data exists.
+        // This distinguishes "genuinely 0% engaged" from "instrumentation not yet producing data".
+        bool hasEngagementData = sessionsWithEngagementEvent.Count > 0 ||
+                                 sessionEngagedMap.Values.Any(v => v > 0);
+        decimal? engagedSessionRate = (hasEngagementData && sessionEngagedMap.Count > 0)
+            ? Math.Round((decimal)engagedSessions / sessionEngagedMap.Count * 100, 2)
+            : (decimal?)null;
 
         // Top exit page: last page_exit per session (which page did visitors actually leave from),
         // falling back to last page_view per session when no exit beacons exist.
