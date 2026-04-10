@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
 using static Protect_Website.Models.LifeOfferResolver;
 using Microsoft.Graph;
@@ -10,6 +11,7 @@ using ProtectWebsite.Services.Tracking;
 using System.Text;
 using System.Linq;
 using System.Collections.Generic;
+using System.Text.Json;
 using ProtectWebsite.Services;
 
 namespace Protect_Website.Controllers

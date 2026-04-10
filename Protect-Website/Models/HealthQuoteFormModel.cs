@@ -45,5 +45,17 @@ namespace Protect_Website.Models
                 [Display(Name = "Acknowledged Disclaimer")]
         [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
+
+        // ── Attribution (populated by JS before submit, persisted server-side) ──
+        public string? SessionId { get; set; }
+        public string? VisitorId { get; set; }
+        public string? UtmSource { get; set; }
+        public string? UtmMedium { get; set; }
+        public string? UtmCampaign { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
+        public string? Fbclid { get; set; }
+        public string? ReferrerUrl { get; set; }
+        public string? LandingPageUrl { get; set; }
     }
 }
