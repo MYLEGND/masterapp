@@ -283,29 +283,29 @@ namespace Protect_Website.Controllers
         {
             var rows = new LeadEmailTemplate.RowBuilder()
                 .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
-                .Row("Email", model.Email)
-                .Row("Phone", model.Phone);
+                .Row("Phone", model.Phone)
+                .Row("Email", model.Email);
 
-            // Wizard step answers
-            rows.Section("Responses");
+            // Add step responses for variants that still collect them
             var answers = new[] { model.Answer1, model.Answer2, model.Answer3, model.Answer4 };
-            for (var i = 0; i < cfg.Steps.Count && i < answers.Length; i++)
+            if (cfg.Steps.Any())
             {
-                var step = cfg.Steps[i];
-                var code = answers[i];
-                if (string.IsNullOrWhiteSpace(code)) continue;
-                var label = step.Options.FirstOrDefault(o => o.Code == code)?.Label ?? code;
-                rows.Row(step.Question, label);
+                rows.Section("Responses");
+                for (var i = 0; i < cfg.Steps.Count && i < answers.Length; i++)
+                {
+                    var step = cfg.Steps[i];
+                    var code = answers[i];
+                    if (string.IsNullOrWhiteSpace(code)) continue;
+                    var label = step.Options.FirstOrDefault(o => o.Code == code)?.Label ?? code;
+                    rows.Row(step.Question, label);
+                }
             }
 
             rows.Section("Details")
                 .Row("Product",          cfg.DisplayName)
                 .Row("Offer Key",        model.OfferKey)
+                .Row("State",            model.State)
                 .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
-            if (!string.IsNullOrWhiteSpace(model.State))
-            {
-                rows.Row("State", model.State);
-            }
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
@@ -348,7 +348,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect the People Who Count on You",
                     Subheader = "Request a personalized life insurance review based on your needs, goals, and budget.",
                     PageTitle = "Protect the People Who Count on You",
-                    SubmitButtonText = "Request My Review",
+                    SubmitButtonText = "REQUEST YOUR REVIEW",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
                     Steps = new List<LifeWizardStep>() // stripped to contact-only for faster lead capture

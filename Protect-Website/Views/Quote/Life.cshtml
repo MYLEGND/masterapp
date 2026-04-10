@@ -15,7 +15,17 @@
 /* ================================================================
    Shared Life Wizard — Mobile-first, micro-step, premium styling
    ================================================================ */
-body { background-color: #0f172a; color: #f8fafc; }
+body { background: radial-gradient(120% 140% at 50% 0%, #12203c 0%, #0b1529 40%, #0a1121 100%); color: #f8fafc; }
+
+.lq-hero-shell{
+    background: linear-gradient(180deg, #0b1529 0%, #0f1d38 60%, #101826 100%);
+    border: 1.4px solid rgba(199,153,49,.32);
+    border-radius: 18px;
+    box-shadow: 0 26px 48px rgba(0,0,0,0.28);
+    padding: 18px 18px 14px 18px;
+    max-width: 980px;
+    margin: 14px auto 18px auto;
+}
 
 .form-control,
 .form-select {
@@ -38,17 +48,19 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 
 .btn-gold {
-    background: linear-gradient(180deg, #c79931, #a68023);
-    color: #fff;
+    background: linear-gradient(175deg, #e2b85a, #b8851d);
+    color: #1c1303;
     font-weight: 900;
-    padding: 12px 24px;
-    border-radius: 10px;
-    font-size: 1rem;
-    border: 1.4px solid #c79931;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.24);
-    transition: opacity 0.15s, transform 0.12s;
+    padding: 13px 24px;
+    border-radius: 12px;
+    font-size: 1.02rem;
+    border: 1.5px solid #c79931;
+    box-shadow: 0 14px 32px rgba(0,0,0,0.28);
+    transition: opacity 0.15s, transform 0.12s, box-shadow .15s ease;
+    text-transform: uppercase;
+    letter-spacing: .35px;
 }
-.btn-gold:hover { opacity: 0.93; color: #fff; transform: translateY(-1px); }
+.btn-gold:hover { opacity: 0.94; color: #1c1303; transform: translateY(-1px); box-shadow: 0 18px 40px rgba(0,0,0,.32); }
 .text-gold { color: #c79931; }
 
 .btn-ghost {
@@ -63,7 +75,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 .btn-ghost:hover { border-color: #c79931; color: #dfb75a; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.18); }
 .btn-ghost:focus-visible { outline: 2px solid #dfb75a; outline-offset: 2px; }
 
-.lq-header { margin-top: 18px; margin-bottom: 16px; text-align: center; }
+.lq-header { margin-top: 18px; margin-bottom: 20px; text-align: center; }
 .lq-header h1 {
     font-weight: 900;
     font-size: 2rem;
@@ -71,11 +83,21 @@ body { background-color: #0f172a; color: #f8fafc; }
     letter-spacing: .5px;
     margin-bottom: 6px;
 }
+.lq-subtext { color: #c79931; font-weight: 700; font-size: 1.05rem; margin-bottom: 12px; }
+.lq-cta-note { color: rgba(248,250,252,0.72); font-weight: 800; font-size: .95rem; margin-top: 10px; }
 .lq-subtext {
     color: #c79931;
     font-weight: 700;
     font-size: 1.05rem;
-    margin-bottom: 6px;
+    margin-bottom: 16px;
+}
+.lq-trust-note{
+    text-align:center;
+    color: rgba(248,250,252,0.7);
+    font-weight: 780;
+    letter-spacing: .015em;
+    font-size: .9rem;
+    margin-top: 8px;
 }
 .lq-trust-row {
     display: flex;
@@ -101,19 +123,19 @@ body { background-color: #0f172a; color: #f8fafc; }
 .lq-step-panel {
     max-width: 760px;
     width: 100%;
-    margin: 0 auto 12px auto;
-    background: #0f172a;
-    border: 1.6px solid #c79931;
+    margin: 0 auto 14px auto;
+    background: #0c162d;
+    border: 1.5px solid rgba(199,153,49,.42);
     border-radius: 12px;
-    box-shadow: 0 18px 40px rgba(0,0,0,0.22);
+    box-shadow: 0 24px 50px rgba(0,0,0,0.32);
     animation: lqFadeIn 0.22s ease;
     position: relative;
 }
 .lq-inner-block {
     background: #111c32;
-    border: 1.4px solid rgba(199,153,49,0.35);
-    border-radius: 10px;
-    padding: 18px 16px 14px 16px;
+    border: 1.4px solid rgba(199,153,49,0.50);
+    border-radius: 12px;
+    padding: 20px 18px 16px 18px;
 }
 .lq-step-title {
     font-size: 1.2rem;
@@ -208,7 +230,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 .lq-contact-grid {
     display: grid;
-    gap: 12px;
+    gap: 14px;
     grid-template-columns: 1fr;
 }
 @@media (min-width: 600px) {
@@ -227,7 +249,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 .lq-submit-row { margin-top: 14px; }
 .lq-field-row{
     display: grid;
-    gap: 12px;
+    gap: 14px;
     grid-template-columns: 1fr;
 }
 @@media (min-width: 720px){
@@ -266,6 +288,7 @@ body { background-color: #0f172a; color: #f8fafc; }
 }
 </style>
 
+<div class="lq-hero-shell">
 <div class="container lq-container">
     <div class="lq-header">
         <h1>@cfg.Header</h1>
@@ -438,6 +461,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
+                        <div class="lq-trust-note">100% Secure • No Obligation</div>
                         @if (cfg.Steps.Count > 0)
                         {
                             <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
@@ -448,6 +472,7 @@ body { background-color: #0f172a; color: #f8fafc; }
             </div>
         </div>
     </form>
+</div>
 </div>
 
 <script>
