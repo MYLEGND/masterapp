@@ -185,6 +185,8 @@ footer.footer {
         border-radius: 16px;
         row-gap: 6px;
         position: relative;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     /* hide nav clusters until toggled */
@@ -218,12 +220,13 @@ footer.footer {
         gap: 0.35rem;
         align-items: stretch;
         margin: 0;
+        width: 100%;
     }
 
     .navbar-left .nav-link,
     .navbar-right .nav-link {
         width: 100%;
-        text-align: left;
+        text-align: center;
         padding: 0.55rem 0.95rem;
         border-radius: 12px;
         border: 1.2px solid rgba(166,128,35,.52);
@@ -242,6 +245,34 @@ footer.footer {
         text-align: center;
         font-size: 1.06rem;
         white-space: normal;
+    }
+}
+
+/* ------------------------------ Desktop reset (force inline nav) ------------------------------ */
+@media (min-width: 841px) {
+    .nav-toggle { display: none !important; }
+    .navbar {
+        flex-direction: row;
+        align-items: center;
+    }
+    .navbar-left,
+    .navbar-right {
+        display: flex !important;
+        position: static !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        padding: 0 !important;
+        margin-top: 0 !important;
+    }
+    .navbar-left .nav-row {
+        flex-direction: row !important;
+        flex-wrap: wrap;
+        gap: 2rem;
+    }
+    .navbar-left .nav-link {
+        width: auto;
+        text-align: left;
     }
 }
 
