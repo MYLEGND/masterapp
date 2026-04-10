@@ -65,6 +65,17 @@
         padding: 10px 12px;
     }
 
+    /* Answered vs missing (inline cues) */
+    .input-answered {
+        border-color: #a68023 !important;
+        box-shadow: 0 0 0 1px #a68023 !important;
+    }
+
+    .input-required-missing {
+        border-color: #dc3545 !important;
+        box-shadow: 0 0 10px rgba(220, 53, 69, 0.55) !important;
+    }
+
     .form-control:focus, .form-select:focus, textarea:focus {
         outline: none;
         box-shadow: 0 0 0 0.2rem rgba(166,128,35,0.20);
@@ -83,6 +94,20 @@
     }
 
     .btn-gold:hover { background-color: #8f6f1e; color: #fff; }
+
+    /* Back button styling (avoid flat white) */
+    .btn-secondary {
+        background: transparent;
+        color: #a68023;
+        border: 1.6px solid #a68023;
+        font-weight: 800;
+        box-shadow: none;
+    }
+    .btn-secondary:hover {
+        background: rgba(166,128,35,0.12);
+        color: #a68023;
+        border-color: #a68023;
+    }
 
     .mini-card {
         border: 1px solid rgba(0,0,0,0.10);
@@ -1676,5 +1701,26 @@
             form.addEventListener("input", saveState);
             form.addEventListener("change", saveState);
         })();
+
+        // Visual cues: answered vs missing required
+        function updateFieldState(el) {
+            if (!el) return;
+            el.classList.remove("input-answered", "input-required-missing");
+
+            const isRequired = el.hasAttribute("required") || el.dataset.originalRequired === "1";
+            const val = (el.value ?? "").trim();
+
+            if (val !== "") {
+                el.classList.add("input-answered");
+            } else if (isRequired) {
+                el.classList.add("input-required-missing");
+            }
+        }
+
+        document.querySelectorAll("input, select, textarea").forEach(el => {
+            updateFieldState(el);
+            el.addEventListener("input", () => updateFieldState(el));
+            el.addEventListener("change", () => updateFieldState(el));
+        });
     </script>
 }
