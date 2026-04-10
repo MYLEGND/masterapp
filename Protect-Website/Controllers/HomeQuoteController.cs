@@ -44,6 +44,20 @@ namespace Protect_Website.Controllers
         [HttpPost("Home")]
         public async Task<IActionResult> SubmitHomeQuote(HomeQuoteFormModel model)
         {
+            // Normalize consent (HTML checkbox may be disabled in earlier steps and re-enabled before submit)
+            var ackRaw = Request.Form["AcknowledgedDisclaimer"].ToString();
+            if (!string.IsNullOrWhiteSpace(ackRaw))
+            {
+                model.AcknowledgedDisclaimer = ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase)
+                                             || ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase)
+                                             || ackRaw.Equals("1");
+                if (ModelState.ContainsKey(nameof(model.AcknowledgedDisclaimer)))
+                {
+                    ModelState[nameof(model.AcknowledgedDisclaimer)].Errors.Clear();
+                    ModelState[nameof(model.AcknowledgedDisclaimer)].ValidationState = Microsoft.AspNetCore.Mvc.ModelBinding.ModelValidationState.Valid;
+                }
+            }
+
             if (!ModelState.IsValid)
                 return View("~/Views/Quote/Home.cshtml", model);
 
