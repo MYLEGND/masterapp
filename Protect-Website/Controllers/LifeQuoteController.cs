@@ -28,8 +28,11 @@ namespace Protect_Website.Controllers
         private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly ILogger<LifeQuoteController> _logger;
 
-        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
+        public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -38,6 +41,8 @@ namespace Protect_Website.Controllers
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
+            _db = db;
+            _logger = logger;
         }
 
         // ===================== GET =====================
@@ -109,7 +114,7 @@ namespace Protect_Website.Controllers
 
             try
             {
-                var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+                var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
@@ -149,6 +154,60 @@ namespace Protect_Website.Controllers
 
                 await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
+                // ── Lead persistence (separate try/catch — email success is preserved) ──────
+                try
+                {
+                    var lead = new WebsiteLead
+                    {
+                        LeadId        = Guid.NewGuid(),
+                        FirstName     = model.FirstName?.Trim() ?? "",
+                        LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                        Email         = model.Email?.Trim() ?? "",
+                        Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+                        InterestType  = cfg.ProductType,
+                        SourcePageKey = cfg.PageKey,
+                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                        MarketingEmailConsent = model.MarketingEmailConsent,
+                        CallTextConsent = model.MarketingEmailConsent && !string.IsNullOrWhiteSpace(model.Phone),
+                        TermsAccepted = true,
+                        Host          = Request?.Host.ToString(),
+                        Environment   = "production",
+                        CreatedUtc    = DateTime.UtcNow,
+                        Status        = "New",
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug     = agentSlug,
+                        MetadataJson  = JsonSerializer.Serialize(new
+                        {
+                            OfferKey       = model.OfferKey,
+                            ProductType    = model.ProductType,
+                            Answer1        = model.Answer1,
+                            Answer2        = model.Answer2,
+                            Answer3        = model.Answer3,
+                            Answer4        = model.Answer4,
+                            State          = model.State,
+                            AgeRange       = model.AgeRange,
+                            Fbclid         = model.Fbclid,
+                            UtmTerm        = model.UtmTerm,
+                            UtmContent     = model.UtmContent,
+                            ReferrerUrl    = model.ReferrerUrl,
+                            LandingPageUrl = model.LandingPageUrl,
+                        })
+                    };
+                    _db.WebsiteLeads.Add(lead);
+                    await _db.SaveChangesAsync();
+                    _logger.LogInformation("LifeQuote: lead {LeadId} persisted for {Email} offer={Offer}",
+                        lead.LeadId, lead.Email, model.OfferKey);
+                }
+                catch (Exception persistEx)
+                {
+                    _logger.LogError(persistEx,
+                        "LifeQuote: lead persistence failed for {Email} offer={Offer}", model.Email, model.OfferKey);
+                }
+
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = offerContent.DisplayName;
 
@@ -170,13 +229,13 @@ namespace Protect_Website.Controllers
             }
         }
 
-        private async Task<string> ResolveLeadRecipientEmailAsync()
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
                 !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
             {
-                return trackingProfile.AgentUpn.Trim();
+                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug);
             }
 
             string? slug = null;
@@ -195,12 +254,10 @@ namespace Protect_Website.Controllers
             {
                 var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
                 if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                {
-                    return bySlug.Profile.AgentUpn.Trim();
-                }
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug);
             }
 
-            return recipientEmail;
+            return (recipientEmail, null, null);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)

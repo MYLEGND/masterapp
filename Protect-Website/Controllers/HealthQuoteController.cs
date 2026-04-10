@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
+using System.Text.Json;
 using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
@@ -19,8 +21,11 @@ namespace Protect_Website.Controllers
         private readonly string recipientEmail;
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly ILogger<HealthQuoteController> _logger;
 
-        public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
+        public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, ILogger<HealthQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -29,6 +34,8 @@ namespace Protect_Website.Controllers
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
+            _db = db;
+            _logger = logger;
         }
 
         // ===================== GET =====================
@@ -43,7 +50,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     if (!ModelState.IsValid)
         return View("~/Views/Quote/Health.cshtml", model);
 
-    var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+    var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
 
     try
     {
@@ -132,6 +139,53 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
 
         await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
+        // ── Lead persistence (separate try/catch — email success is preserved) ──────
+        try
+        {
+            var lead = new WebsiteLead
+            {
+                LeadId        = Guid.NewGuid(),
+                FirstName     = model.FirstName?.Trim() ?? "",
+                LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                Email         = model.Email?.Trim() ?? "",
+                Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+                InterestType  = "health_insurance",
+                SourcePageKey = "quote_health",
+                UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
+                TermsAccepted = true,
+                Host          = Request?.Host.ToString(),
+                Environment   = "production",
+                CreatedUtc    = DateTime.UtcNow,
+                Status        = "New",
+                AgentTrackingProfileId = agentProfileId,
+                AgentSlug     = agentSlug,
+                MetadataJson  = JsonSerializer.Serialize(new
+                {
+                    HouseholdSize  = model.HouseholdSize,
+                    PrimaryConcern = model.PrimaryConcern,
+                    CoverageType   = model.CoverageType,
+                    Fbclid         = model.Fbclid,
+                    UtmTerm        = model.UtmTerm,
+                    UtmContent     = model.UtmContent,
+                    ReferrerUrl    = model.ReferrerUrl,
+                    LandingPageUrl = model.LandingPageUrl,
+                })
+            };
+            _db.WebsiteLeads.Add(lead);
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("HealthQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
+        }
+        catch (Exception persistEx)
+        {
+            _logger.LogError(persistEx, "HealthQuote: lead persistence failed for {Email}", model.Email);
+        }
+
         // ===================== SUCCESS REDIRECT =====================
         TempData["QuoteType"] = "Health";
         return RedirectToAction("Index", "ThankYou");
@@ -143,13 +197,13 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     }
 }
 
-        private async Task<string> ResolveLeadRecipientEmailAsync()
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
                 !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
             {
-                return trackingProfile.AgentUpn.Trim();
+                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug);
             }
 
             string? slug = null;
@@ -168,12 +222,10 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
             {
                 var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
                 if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                {
-                    return bySlug.Profile.AgentUpn.Trim();
-                }
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug);
             }
 
-            return recipientEmail;
+            return (recipientEmail, null, null);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)

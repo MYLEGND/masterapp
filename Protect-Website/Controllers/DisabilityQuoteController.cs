@@ -1,10 +1,12 @@
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
+using System.Text.Json;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
@@ -19,8 +21,11 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly ILogger<DisabilityQuoteController> _logger;
 
-        public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
+        public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -28,6 +33,8 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             _resolver = resolver;
+            _db = db;
+            _logger = logger;
         }
 
         // GET: /Quote/Disability
@@ -45,7 +52,7 @@ namespace Protect_Website.Controllers
                 return IsAjax() ? BadRequest(new { error = "Invalid form data" })
                                 : View("~/Views/Quote/Disability.cshtml", model);
 
-            var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
             var isAgentContext = IsAgentContext();
 
             try
@@ -107,6 +114,52 @@ namespace Protect_Website.Controllers
 
         await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
 
+        // ── Lead persistence (separate try/catch — email success is preserved) ──────
+        try
+        {
+            var lead = new WebsiteLead
+            {
+                LeadId        = Guid.NewGuid(),
+                FirstName     = model.FirstName?.Trim() ?? "",
+                LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                Email         = model.Email?.Trim() ?? "",
+                Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+                InterestType  = "disability_insurance",
+                SourcePageKey = "quote_disability",
+                UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
+                TermsAccepted = true,
+                Host          = Request?.Host.ToString(),
+                Environment   = "production",
+                CreatedUtc    = DateTime.UtcNow,
+                Status        = "New",
+                AgentTrackingProfileId = agentProfileId,
+                AgentSlug     = agentSlug,
+                MetadataJson  = JsonSerializer.Serialize(new
+                {
+                    EmploymentType = model.EmploymentType,
+                    Occupation     = model.Occupation,
+                    Fbclid         = model.Fbclid,
+                    UtmTerm        = model.UtmTerm,
+                    UtmContent     = model.UtmContent,
+                    ReferrerUrl    = model.ReferrerUrl,
+                    LandingPageUrl = model.LandingPageUrl,
+                })
+            };
+            _db.WebsiteLeads.Add(lead);
+            await _db.SaveChangesAsync();
+            _logger.LogInformation("DisabilityQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
+        }
+        catch (Exception persistEx)
+        {
+            _logger.LogError(persistEx, "DisabilityQuote: lead persistence failed for {Email}", model.Email);
+        }
+
         // ===================== REDIRECT =====================
         TempData["QuoteType"] = "Disability";
         return IsAjax() ? Ok(new { success = true }) : RedirectToAction("Index", "ThankYou");
@@ -121,13 +174,13 @@ namespace Protect_Website.Controllers
     }
 }
 
-        private async Task<string> ResolveLeadRecipientEmailAsync()
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
                 !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
             {
-                return trackingProfile.AgentUpn.Trim();
+                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug);
             }
 
             string? slug = null;
@@ -146,12 +199,10 @@ namespace Protect_Website.Controllers
             {
                 var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
                 if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                {
-                    return bySlug.Profile.AgentUpn.Trim();
-                }
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug);
             }
 
-            return recipientEmail;
+            return (recipientEmail, null, null);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)

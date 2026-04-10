@@ -291,6 +291,16 @@ body { background-color: #0f172a; color: #f8fafc; }
         <input type="hidden" name="Answer2" id="Answer2" />
         <input type="hidden" name="Answer3" id="Answer3" />
         <input type="hidden" name="Answer4" id="Answer4" />
+        <input type="hidden" name="SessionId" id="SessionId" />
+        <input type="hidden" name="VisitorId" id="VisitorId" />
+        <input type="hidden" name="UtmSource" id="UtmSource" />
+        <input type="hidden" name="UtmMedium" id="UtmMedium" />
+        <input type="hidden" name="UtmCampaign" id="UtmCampaign" />
+        <input type="hidden" name="UtmTerm" id="UtmTerm" />
+        <input type="hidden" name="UtmContent" id="UtmContent" />
+        <input type="hidden" name="Fbclid" id="Fbclid" />
+        <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
+        <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
 
         @for (var i = 0; i < cfg.Steps.Count; i++)
         {
@@ -330,7 +340,7 @@ body { background-color: #0f172a; color: #f8fafc; }
             <div class="lq-step-panel-pad">
                 <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
                 <div class="lq-step-title">How can we reach you?</div>
-                <div class="lq-step-helper">Enter your details to get your personalized review.</div>
+                <div class="lq-step-helper" hidden></div>
                 <div class="lq-inner-block">
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two">
@@ -433,7 +443,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
                     </div>
-                    <div class="lq-reassurance">We only use your details to send your personalized review.</div>
+                    <div class="lq-reassurance" hidden></div>
                 </div>
             </div>
         </div>
@@ -575,7 +585,26 @@ body { background-color: #0f172a; color: #f8fafc; }
 
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
-    window.legendTrack?.({ EventType: submitEvent.replace('_submit','_submit_attempt'), PageKey: pageKey, Offer: '@cfg.OfferKey' });
+
+    // Populate attribution fields immediately before submit
+    (function () {
+      var ids = window.legendTrackingIds;
+      var p = new URLSearchParams(window.location.search);
+      function set(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
+      set('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
+      set('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
+      set('UtmSource',    p.get('utm_source') || '');
+      set('UtmMedium',    p.get('utm_medium') || '');
+      set('UtmCampaign',  p.get('utm_campaign') || '');
+      set('UtmTerm',      p.get('utm_term') || '');
+      set('UtmContent',   p.get('utm_content') || '');
+      set('Fbclid',       p.get('fbclid') || '');
+      set('ReferrerUrl',  document.referrer || '');
+      set('LandingPageUrl', window.location.href || '');
+    })();
+
+    window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
+      SubmitOutcome: 'attempt', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', step: 'submit_attempt' }) });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -588,12 +617,14 @@ body { background-color: #0f172a; color: #f8fafc; }
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
-      window.legendTrack?.({ EventType: submitEvent, PageKey: pageKey, Offer: '@cfg.OfferKey' });
+      window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
+        SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey' }) });
       window.location.href = thankYouPath;
     } catch (err) {
       lifeError.textContent = 'We could not send this right now. Please try again.';
       lifeError.style.display = 'block';
-      window.legendTrack?.({ EventType: submitEvent.replace('_submit','_submit_error'), PageKey: pageKey, Offer: '@cfg.OfferKey' });
+      window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
+        SubmitOutcome: 'error', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey' }) });
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = submitLabel;

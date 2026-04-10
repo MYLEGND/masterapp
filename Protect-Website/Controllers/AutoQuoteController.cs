@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -10,6 +11,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Net;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using ProtectWebsite.Services;
@@ -27,8 +29,11 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly ILogger<AutoQuoteController> _logger;
 
-        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver)
+        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -37,6 +42,8 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? throw new ArgumentNullException("Contact:SenderEmail");
             recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
             _resolver = resolver;
+            _db = db;
+            _logger = logger;
         }
 
         [HttpGet("Auto")]
@@ -68,7 +75,7 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
                     "Please check the authorization box so we can contact you about this quote.");
 
-            var leadRecipientEmail = await ResolveLeadRecipientEmailAsync();
+            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
 
             // business rule
             if (model.Drivers.Count == 0)
@@ -279,6 +286,55 @@ namespace Protect_Website.Controllers
                     new SendMailPostRequestBody { Message = message, SaveToSentItems = true }
                 );
 
+                // ── Lead persistence (separate try/catch — email success is preserved) ──────
+                try
+                {
+                    var primaryDriver = model.Drivers.FirstOrDefault();
+                    var lead = new WebsiteLead
+                    {
+                        LeadId        = Guid.NewGuid(),
+                        FirstName     = model.FirstName?.Trim() ?? "",
+                        LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                        Email         = model.EmailAddress?.Trim() ?? "",
+                        Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
+                        InterestType  = "auto_insurance",
+                        SourcePageKey = "quote_auto",
+                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                        MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                        CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                        TermsAccepted = true,
+                        Host          = Request?.Host.ToString(),
+                        Environment   = "production",
+                        CreatedUtc    = DateTime.UtcNow,
+                        Status        = "New",
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug     = agentSlug,
+                        MetadataJson  = JsonSerializer.Serialize(new
+                        {
+                            AddressState   = model.AddressState,
+                            DriverCount    = model.Drivers.Count,
+                            VehicleCount   = model.Vehicles.Count,
+                            PriorCarrier   = model.PriorCarrier,
+                            Fbclid         = model.Fbclid,
+                            UtmTerm        = model.UtmTerm,
+                            UtmContent     = model.UtmContent,
+                            ReferrerUrl    = model.ReferrerUrl,
+                            LandingPageUrl = model.LandingPageUrl,
+                        })
+                    };
+                    _db.WebsiteLeads.Add(lead);
+                    await _db.SaveChangesAsync();
+                    _logger.LogInformation("AutoQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
+                }
+                catch (Exception persistEx)
+                {
+                    _logger.LogError(persistEx, "AutoQuote: lead persistence failed for {Email}", model.EmailAddress);
+                }
+
                 TempData["QuoteType"] = "Auto";
                 return RedirectToAction("Index", "ThankYou");
             }
@@ -291,13 +347,13 @@ namespace Protect_Website.Controllers
             }
         }
 
-        private async Task<string> ResolveLeadRecipientEmailAsync()
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
         {
             if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
                 trackingProfileObj is AgentTrackingProfile trackingProfile &&
                 !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
             {
-                return trackingProfile.AgentUpn.Trim();
+                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug);
             }
 
             string? slug = null;
@@ -316,12 +372,10 @@ namespace Protect_Website.Controllers
             {
                 var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
                 if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                {
-                    return bySlug.Profile.AgentUpn.Trim();
-                }
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug);
             }
 
-            return recipientEmail;
+            return (recipientEmail, null, null);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)

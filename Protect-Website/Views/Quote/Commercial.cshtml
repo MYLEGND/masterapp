@@ -1460,9 +1460,35 @@
                 </div>
             </div>
         </div>
-
+    <input type="hidden" name="SessionId" />
+    <input type="hidden" name="VisitorId" />
+    <input type="hidden" name="UtmSource" />
+    <input type="hidden" name="UtmMedium" />
+    <input type="hidden" name="UtmCampaign" />
+    <input type="hidden" name="UtmTerm" />
+    <input type="hidden" name="UtmContent" />
+    <input type="hidden" name="Fbclid" />
+    <input type="hidden" name="ReferrerUrl" />
+    <input type="hidden" name="LandingPageUrl" />
     </form>
 </div>
+<script>
+(function () {
+    var ids = window.legendTrackingIds;
+    var p = new URLSearchParams(window.location.search);
+    function sh(n, v) { var e = document.querySelector('input[name="' + n + '"]'); if (e && v) e.value = v; }
+    sh('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
+    sh('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
+    sh('UtmSource',    p.get('utm_source') || '');
+    sh('UtmMedium',    p.get('utm_medium') || '');
+    sh('UtmCampaign',  p.get('utm_campaign') || '');
+    sh('UtmTerm',      p.get('utm_term') || '');
+    sh('UtmContent',   p.get('utm_content') || '');
+    sh('Fbclid',       p.get('fbclid') || '');
+    sh('ReferrerUrl',  document.referrer || '');
+    sh('LandingPageUrl', window.location.href || '');
+})();
+</script>
 
 @section Scripts {
     <script>
