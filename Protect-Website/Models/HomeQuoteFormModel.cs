@@ -299,7 +299,7 @@ namespace Protect_Website.Models
         public string? EarthquakeDeductible { get; set; }
         public string? PercentVeneer { get; set; }
 
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the authorization to proceed.")]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Please check the authorization box so we can contact you about this quote.")]
         public bool AcknowledgedDisclaimer { get; set; }
     }
 }

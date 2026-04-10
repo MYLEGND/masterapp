@@ -109,7 +109,7 @@ namespace Protect_Website.Models
         [Required] public string ResidenceType { get; set; } = "";
 
         // ===================== DISCLAIMER / AUTH =====================
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the authorization to submit.")]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Please check the authorization box so we can contact you about this quote.")]
         public bool AcknowledgedDisclaimer { get; set; }
     }
 

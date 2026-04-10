@@ -74,7 +74,7 @@ namespace Protect_Website.Models
 
         // Disclaimer
         [Display(Name = "Acknowledged Disclaimer")]
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer.")]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "Please check the authorization box so we can contact you about this quote.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
 
         // ===================== OPTIONAL (NOT REQUIRED) =====================
