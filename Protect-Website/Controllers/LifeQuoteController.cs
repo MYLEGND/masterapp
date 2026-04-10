@@ -243,6 +243,10 @@ namespace Protect_Website.Controllers
                 .Row("Product",          cfg.DisplayName)
                 .Row("Offer Key",        model.OfferKey)
                 .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
+            if (!string.IsNullOrWhiteSpace(model.Answer4))
+            {
+                rows.Row("State", model.Answer4);
+            }
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
@@ -282,43 +286,38 @@ namespace Protect_Website.Controllers
                     DisplayName = "Life Insurance",
                     PageKey = "quote_life",
                     PostAction = "SubmitLifeQuote",
-                    Header = "Explore Your Life Insurance Options",
-                    Subheader = "Request a personalized review based on your needs, goals, and budget.",
-                    PageTitle = "Get Your Personalized Life Insurance Review",
+                    Header = "Protect the People Who Count on You",
+                    Subheader = "Request a personalized life insurance review based on your needs, goals, and budget.",
+                    PageTitle = "Protect the People Who Count on You",
+                    SubmitButtonText = "Request My Review",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
                     Steps = new List<LifeWizardStep>
                     {
-                        new("What are you mainly looking to protect?", new List<LifeWizardOption>
+                        new("Who are you looking to protect?", new List<LifeWizardOption>
                         {
-                            new("family_income","My Family / Income"),
-                            new("mortgage_debts","Mortgage / Debts"),
-                            new("final_expenses","Final Expenses"),
-                            new("business_legacy","Business / Legacy Planning"),
+                            new("spouse_partner","My Spouse / Partner"),
+                            new("children_family","My Children / Family"),
+                            new("mortgage_debts","My Mortgage / Debt"),
+                            new("business_legacy","My Business / Legacy"),
                             new("not_sure","Not Sure Yet"),
                         }, "ProtectFocus"),
-                        new("How old are you?", new List<LifeWizardOption>
+                        new("What matters most to you?", new List<LifeWizardOption>
                         {
-                            new("18-29","18–29"),
+                            new("replace_income","Replacing Income"),
+                            new("cover_debt","Covering Debt / Mortgage"),
+                            new("final_expenses","Final Expenses"),
+                            new("leave_legacy","Leaving a Legacy"),
+                            new("need_guidance","Need Guidance"),
+                        }),
+                        new("What is your age range?", new List<LifeWizardOption>
+                        {
+                            new("under30","Under 30"),
                             new("30-39","30–39"),
                             new("40-49","40–49"),
                             new("50-59","50–59"),
                             new("60plus","60+"),
                         }, "AgeRange"),
-                        new("What monthly budget feels comfortable?", new List<LifeWizardOption>
-                        {
-                            new("under50","Under $50"),
-                            new("50-100","$50–100"),
-                            new("100-250","$100–250"),
-                            new("250plus","$250+"),
-                        }),
-                        new("When are you looking to put coverage in place?", new List<LifeWizardOption>
-                        {
-                            new("asap","ASAP"),
-                            new("30days","Within 30 Days"),
-                            new("researching","Researching Options"),
-                            new("exploring","Just Exploring"),
-                        }),
                     }
                 },
                 [LifeOfferKeys.Term] = new LifeWizardConfig
