@@ -441,7 +441,10 @@ body { background-color: #0f172a; color: #f8fafc; }
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
+                        @if (cfg.Steps.Count > 0)
+                        {
+                            <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
+                        }
                     </div>
                     <div class="lq-reassurance" hidden></div>
                 </div>

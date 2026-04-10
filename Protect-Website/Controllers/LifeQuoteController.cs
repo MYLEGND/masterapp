@@ -351,33 +351,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Request My Review",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("Who are you looking to protect?", new List<LifeWizardOption>
-                        {
-                            new("spouse_partner","My Spouse / Partner"),
-                            new("children_family","My Children / Family"),
-                            new("mortgage_debts","My Mortgage / Debt"),
-                            new("business_legacy","My Business / Legacy"),
-                            new("not_sure","Not Sure Yet"),
-                        }, "ProtectFocus"),
-                        new("What matters most to you?", new List<LifeWizardOption>
-                        {
-                            new("replace_income","Replacing Income"),
-                            new("cover_debt","Covering Debt / Mortgage"),
-                            new("final_expenses","Final Expenses"),
-                            new("leave_legacy","Leaving a Legacy"),
-                            new("need_guidance","Need Guidance"),
-                        }),
-                        new("What is your age range?", new List<LifeWizardOption>
-                        {
-                            new("under30","Under 30"),
-                            new("30-39","30–39"),
-                            new("40-49","40–49"),
-                            new("50-59","50–59"),
-                            new("60plus","60+"),
-                        }, "AgeRange"),
-                    }
+                    Steps = new List<LifeWizardStep>() // stripped to contact-only for faster lead capture
                 },
                 [LifeOfferKeys.Term] = new LifeWizardConfig
                 {
