@@ -43,10 +43,17 @@ body.life-landing header .navbar .nav-link:focus {
 }
 
 .lq-hero-shell{
-    background: linear-gradient(180deg, #0b1529 0%, #0f1d38 60%, #101826 100%);
-    border: 1.4px solid rgba(199,153,49,.32);
+    /* Cinematic outer shell: deep navy base + very subtle warm gold breath at the crown.
+       Gives the ad-matched "premium dark" atmosphere without a flat slab look. */
+    background:
+        radial-gradient(ellipse 90% 38% at 50% 0%, rgba(199,153,49,0.07) 0%, transparent 68%),
+        linear-gradient(180deg, #080e1e 0%, #0b1528 50%, #090e1c 100%);
+    border: 1.5px solid rgba(199,153,49,.44);
     border-radius: 18px;
-    box-shadow: 0 26px 48px rgba(0,0,0,0.28);
+    /* Deeper drop-shadow + 1px inner top edge for glass/depth cue */
+    box-shadow:
+        0 32px 60px rgba(0,0,0,0.42),
+        inset 0 1px 0 rgba(199,153,49,0.09);
     padding: 18px 18px 14px 18px;
     max-width: 980px;
     margin: 14px auto 18px auto;
@@ -144,21 +151,21 @@ body.life-landing header .navbar .nav-link:focus {
 
 .lq-step-meta{ display:none; }
 
-/* Step panels */
+/* Step panels — slightly elevated above the deeper outer shell */
 .lq-step-panel {
     max-width: 760px;
     width: 100%;
     margin: 0 auto 14px auto;
-    background: #0c162d;
-    border: 1.5px solid rgba(199,153,49,.42);
+    background: #0f1e3a;
+    border: 1.5px solid rgba(199,153,49,.48);
     border-radius: 12px;
-    box-shadow: 0 24px 50px rgba(0,0,0,0.32);
+    box-shadow: 0 20px 44px rgba(0,0,0,0.34);
     animation: lqFadeIn 0.22s ease;
     position: relative;
 }
 .lq-inner-block {
-    background: #111c32;
-    border: 1.4px solid rgba(199,153,49,0.50);
+    background: #142038;
+    border: 1.4px solid rgba(199,153,49,0.54);
     border-radius: 12px;
     padding: 20px 18px 16px 18px;
 }
