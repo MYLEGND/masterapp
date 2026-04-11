@@ -251,7 +251,7 @@ namespace AgentPortal.Controllers;
                 }
             }
 
-            var summaryTask = SafeSnapshotLoadAsync(
+            var (summary, summaryWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetSummaryAsync(range, scope),
                 () => new SummaryKpiDto
                 {
@@ -260,60 +260,46 @@ namespace AgentPortal.Controllers;
                     IntentDenominatorLabel = "Quote Submits / Quote Starts"
                 },
                 "Summary metrics");
-            var trafficTask = SafeSnapshotLoadAsync(
+            var (traffic, trafficWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetTrafficAsync(range, scope),
                 () => new TrafficOverviewDto { RangeLabel = range.Label },
                 "Traffic metrics");
-            var quoteTask = SafeSnapshotLoadAsync(
+            var (quote, quoteWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetQuoteFunnelAsync(range, scope),
                 () => new QuoteFunnelDto { RangeLabel = range.Label },
                 "Quote funnel metrics");
-            var conversionsTask = SafeSnapshotLoadAsync(
+            var (conversions, conversionsWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetConversionsAsync(range, scope),
                 () => new ConversionCenterDto { RangeLabel = range.Label },
                 "Conversion metrics");
-            var leadsTask = SafeSnapshotLoadAsync(
+            var (leads, leadsWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetLeadsAsync(range, scope, 200),
                 () => new LeadSnapshotDto { RangeLabel = range.Label },
                 "Lead snapshot metrics");
-            var pagePerfTask = SafeSnapshotLoadAsync(
+            var (pagePerf, pagePerfWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetPagePerformanceAsync(range, scope),
                 () => new PagePerformanceDto { RangeLabel = range.Label },
                 "Page performance metrics");
-            var ctaPerfTask = SafeSnapshotLoadAsync(
+            var (ctaPerf, ctaPerfWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetCtaPerformanceAsync(range, scope),
                 () => new CtaPerformanceDto { RangeLabel = range.Label },
                 "CTA performance metrics");
-            var timeOnPageTask = SafeSnapshotLoadAsync(
+            var (timeOnPage, timeOnPageWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetTimeOnPageAsync(range, scope),
                 () => new TimeOnPageDto { RangeLabel = range.Label },
                 "Time-on-page metrics");
-            var exitTask = SafeSnapshotLoadAsync(
+            var (exit, exitWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetExitAnalysisAsync(range, scope),
                 () => new ExitAnalysisDto { RangeLabel = range.Label },
                 "Exit analysis metrics");
-            var sourceTask = SafeSnapshotLoadAsync(
+            var (source, sourceWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetSourcePerformanceAsync(range, scope),
                 () => new SourcePerformanceDto { RangeLabel = range.Label },
                 "Source performance metrics");
-            var abandonmentTask = SafeSnapshotLoadAsync(
+            var (abandonment, abandonmentWarning) = await SafeSnapshotLoadAsync(
                 () => _analytics.GetFormAbandonmentAsync(range, scope),
                 () => new FormAbandonmentDto { RangeLabel = range.Label },
                 "Form abandonment metrics");
-
-            await Task.WhenAll(summaryTask, trafficTask, quoteTask, conversionsTask, leadsTask, pagePerfTask, ctaPerfTask, timeOnPageTask, exitTask, sourceTask, abandonmentTask);
-
-            var (summary, summaryWarning) = await summaryTask;
-            var (traffic, trafficWarning) = await trafficTask;
-            var (quote, quoteWarning) = await quoteTask;
-            var (conversions, conversionsWarning) = await conversionsTask;
-            var (leads, leadsWarning) = await leadsTask;
-            var (pagePerf, pagePerfWarning) = await pagePerfTask;
-            var (ctaPerf, ctaPerfWarning) = await ctaPerfTask;
-            var (timeOnPage, timeOnPageWarning) = await timeOnPageTask;
-            var (exit, exitWarning) = await exitTask;
-            var (source, sourceWarning) = await sourceTask;
-            var (abandonment, abandonmentWarning) = await abandonmentTask;
             MetaCampaignsDto? metaCampaigns = null;
             string? activeCampaignWarning = null;
 
