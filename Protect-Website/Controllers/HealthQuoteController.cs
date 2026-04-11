@@ -7,6 +7,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
 using System.Text.Json;
+using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
 namespace Protect_Website.Controllers
@@ -83,7 +84,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
             CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
             TermsAccepted = true,
             Host          = Request?.Host.ToString(),
-            Environment   = "production",
+            Environment   = EnvironmentLabelResolver.Resolve(),
             CreatedUtc    = now,
             Status        = "New",
             AgentTrackingProfileId = agentProfileId,

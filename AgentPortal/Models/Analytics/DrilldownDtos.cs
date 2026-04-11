@@ -9,6 +9,7 @@ public sealed class TrafficOverviewDto
     public List<TrendPointDto> SessionTrend { get; set; } = new();
     public List<TrendPointDto> VisitorTrend { get; set; } = new();
     public List<KeyCountDto> TopPages { get; set; } = new();
+    public List<KeyCountDto> TopCtas { get; set; } = new();
     public List<KeyCountDto> EntryPages { get; set; } = new();
     public List<ActivityItemDto> RecentActivity { get; set; } = new();
     public List<KeyCountDto> TopSources { get; set; } = new();

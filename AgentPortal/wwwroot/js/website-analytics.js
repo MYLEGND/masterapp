@@ -520,7 +520,7 @@
     if (data.leads && data.leads.length) {
       const newest = data.leads[0];
       const meta = document.getElementById('mod-leads-meta');
-      if (meta) meta.textContent = `Most recent: ${formatDisplayDate(newest.createdUtc)} UTC`;
+      if (meta) meta.textContent = `Most recent (local): ${formatDisplayDate(newest.createdUtc)}`;
     }
     renderTable('leads-body', data.leads || [], [
       { render: r => formatDisplayDate(r.createdUtc) },

@@ -86,7 +86,7 @@ namespace Protect_Website.Controllers
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
                     TermsAccepted = true,
                     Host          = Request?.Host.ToString(),
-                    Environment   = "production",
+                    Environment   = EnvironmentLabelResolver.Resolve(),
                     CreatedUtc    = now,
                     Status        = "New",
                     AgentTrackingProfileId = agentProfileId,

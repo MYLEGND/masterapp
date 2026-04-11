@@ -54,6 +54,7 @@ public sealed class AgentPerformanceRow
     public string? Slug { get; set; }
     public int Leads { get; set; }
     public int Conversions { get; set; }
+    public int Sessions { get; set; }
     public decimal SessionConversionRate { get; set; }
     public decimal IntentConversionRate { get; set; }
     public string? TopSource { get; set; }

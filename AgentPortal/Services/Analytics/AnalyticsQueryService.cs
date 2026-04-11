@@ -16,6 +16,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 {
     private const int LowSampleThreshold = 20;
     private readonly string? _envFilter; // normalized ("prod","dev") or null for legacy fallback
+    private readonly bool _excludeLocalHosts;
     private static readonly HashSet<string> AllowedEnvironmentsFallback = new(StringComparer.OrdinalIgnoreCase)
     {
         "prod","production","dev","development", ""
@@ -28,6 +29,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         _db = db;
         _envFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
+        _excludeLocalHosts = ParseBool(config["Analytics:ExcludeLocalHosts"] ?? config["Analytics__ExcludeLocalHosts"]);
         _resolver = resolver;
     }
 
@@ -36,6 +38,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
             .Where(EnvPredicateEvents())
+            .Where(HostPredicateEvents())
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
     private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
@@ -43,6 +46,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(l => !l.IsInternal)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .Where(EnvPredicateLeads())
+            .Where(HostPredicateLeads())
             .Where(ScopePredicateLeads(scope, scopedAgentIds));
 
     private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
@@ -50,6 +54,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
             .Where(EnvPredicateEvents())
+            .Where(HostPredicateEvents())
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
     private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
@@ -57,6 +62,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(l => !l.IsInternal)
             .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
             .Where(EnvPredicateLeads())
+            .Where(HostPredicateLeads())
             .Where(ScopePredicateLeads(scope, scopedAgentIds));
 
     private bool EnvIncluded(string? env)
@@ -95,6 +101,28 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             l.Environment == null || l.Environment == "" ||
             l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production" ||
             l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
+    }
+
+    private Expression<Func<AnalyticsEvent, bool>> HostPredicateEvents()
+    {
+        if (!_excludeLocalHosts) return e => true;
+        return e =>
+            e.Host == null || e.Host == "" ||
+            (!e.Host.StartsWith("localhost") &&
+             !e.Host.StartsWith("127.0.0.1") &&
+             !e.Host.StartsWith("::1") &&
+             !e.Host.StartsWith("[::1]"));
+    }
+
+    private Expression<Func<WebsiteLead, bool>> HostPredicateLeads()
+    {
+        if (!_excludeLocalHosts) return l => true;
+        return l =>
+            l.Host == null || l.Host == "" ||
+            (!l.Host.StartsWith("localhost") &&
+             !l.Host.StartsWith("127.0.0.1") &&
+             !l.Host.StartsWith("::1") &&
+             !l.Host.StartsWith("[::1]"));
     }
 
     private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)
@@ -165,6 +193,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return null;
     }
 
+    private static bool ParseBool(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && bool.TryParse(value, out var parsed) && parsed;
+
     private static string BucketLabel(DateTime dt, TimeGrouping g) =>
         g switch
         {
@@ -225,8 +256,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
         int quoteFormStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase));
-        int quoteFormSubmits = events.Count(e => e.EventType == "form_submit" && e.FormKey != null && e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase));
-        int quoteStarts = events.Count(e => e.EventType == "quote_start");
+        int quoteFormSubmits = events.Count(e =>
+            e.EventType == "form_submit" &&
+            e.FormKey != null &&
+            e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
+        int quoteStarts = events.Count(e => e.EventType == "quote_click");
         int formStarts = events.Count(e => e.EventType == "form_start");
 
         int prevPageViews = prevEvents.Count(e => e.EventType == "page_view");
@@ -313,6 +348,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             VisitorTrend = TrendDistinct(events, e => e.VisitorId, range.Grouping, e => e.EventUtc),
             TopPages = events.Where(e => e.EventType == "page_view")
                 .GroupBy(e => e.PageKey ?? "unknown")
+                .OrderByDescending(g => g.Count())
+                .Take(10)
+                .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
+                .ToList(),
+            TopCtas = events.Where(e => e.EventType == "cta_click")
+                .GroupBy(e => e.ElementKey ?? "unknown")
                 .OrderByDescending(g => g.Count())
                 .Take(10)
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
@@ -425,7 +466,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         int starts = events.Count(e => e.EventType == "quote_click");
         int formStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_"));
-        int formSubmits = events.Count(e => e.EventType == "form_submit" && e.FormKey != null && e.FormKey.Contains("quote_"));
+        int formSubmits = events.Count(e =>
+            e.EventType == "form_submit" &&
+            e.FormKey != null &&
+            e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
 
         var byType = events
             .Where(e => e.EventType == "quote_click" && !string.IsNullOrWhiteSpace(e.QuoteType))
@@ -449,17 +494,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds)
+        var conversionsQuery = BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "lead_form_submit_success" ||
-                        (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success")))
+                        (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success")));
+
+        var totalConversions = await conversionsQuery.CountAsync();
+
+        var recentEvents = await conversionsQuery
             .OrderByDescending(e => e.EventUtc)
             .Take(100)
             .ToListAsync();
 
         var dto = new ConversionCenterDto
         {
-            TotalConversions = events.Count,
-            Recent = events.Select(e => new ConversionRow
+            TotalConversions = totalConversions,
+            Recent = recentEvents.Select(e => new ConversionRow
             {
                 EventType = e.EventType,
                 PageKey = e.PageKey,
@@ -564,6 +613,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 Slug = profile.Slug,
                 Leads = leadsCount,
                 Conversions = convCount,
+                Sessions = sessions,
                 SessionConversionRate = sessionConv,
                 IntentConversionRate = intentConv,
                 TopSource = topSourceByAgent.TryGetValue(id, out var ts) ? ts : null,
