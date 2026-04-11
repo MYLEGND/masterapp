@@ -958,12 +958,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "form_start" || e.EventType == "form_submit" ||
                         e.EventType == "form_field_focus" || e.EventType == "form_field_complete" ||
-                        e.EventType == "form_field_abandon").ToListAsync();
+                        e.EventType == "form_field_error").ToListAsync();
         Func<AnalyticsEvent, string> fKey = e => e.FormKey ?? e.FormId ?? "unknown";
         var starts = events.Where(e => e.EventType == "form_start").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var submits = events.Where(e => e.EventType == "form_submit").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var ffFocus = events.Where(e => e.EventType == "form_field_focus").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
-        var ffAbandon = events.Where(e => e.EventType == "form_field_abandon").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
+        var ffComplete = events.Where(e => e.EventType == "form_field_complete").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
+        var ffError = events.Where(e => e.EventType == "form_field_error").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var rows = starts.Keys.Select(fk =>
         {
             var startSids = events.Where(e => e.EventType == "form_start" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
@@ -978,13 +979,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 Abandons = startSids.Count(sid => !submitSids.Contains(sid)),
                 CompletionRate = s > 0 ? Math.Round((decimal)sub / s * 100, 2) : 0,
                 FieldFocuses = ffFocus.TryGetValue(fk, out var ff) ? ff : 0,
-                FieldAbandons = ffAbandon.TryGetValue(fk, out var fa) ? fa : 0
+                FieldCompletes = ffComplete.TryGetValue(fk, out var fc) ? fc : 0,
+                FieldErrors = ffError.TryGetValue(fk, out var fe) ? fe : 0
             };
         }).OrderByDescending(r => r.Starts).ToList();
-        var topAbandonFields = events.Where(e => e.EventType == "form_field_abandon" && !string.IsNullOrWhiteSpace(e.FieldName))
+        var topErrorFields = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName))
             .GroupBy(e => e.FieldName!).OrderByDescending(g => g.Count()).Take(10)
             .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() }).ToList();
-        return new FormFrictionDto { Rows = rows, TopAbandonFields = topAbandonFields, RangeLabel = range.Label };
+        return new FormFrictionDto { Rows = rows, TopErrorFields = topErrorFields, RangeLabel = range.Label };
     }
 
     public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope)

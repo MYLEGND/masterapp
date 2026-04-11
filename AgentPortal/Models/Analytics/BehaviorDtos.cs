@@ -170,13 +170,16 @@ public sealed class FormFrictionRow
     public int Abandons { get; set; }
     public decimal CompletionRate { get; set; }
     public int FieldFocuses { get; set; }
-    public int FieldAbandons { get; set; }
+    /// <summary>Count of form_field_complete events (unique field interactions that produced a value).</summary>
+    public int FieldCompletes { get; set; }
+    /// <summary>Count of form_field_error events (validation failures). Replaces the old form_field_abandon metric which was never emitted.</summary>
+    public int FieldErrors { get; set; }
 }
 
 public sealed class FormFrictionDto
 {
     public List<FormFrictionRow> Rows { get; set; } = new();
-    /// <summary>Fields most commonly abandoned, across all forms.</summary>
-    public List<KeyCountDto> TopAbandonFields { get; set; } = new();
+    /// <summary>Fields with the most validation errors (form_field_error), across all forms.</summary>
+    public List<KeyCountDto> TopErrorFields { get; set; } = new();
     public string RangeLabel { get; set; } = "";
 }
