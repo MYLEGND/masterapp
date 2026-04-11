@@ -220,6 +220,10 @@
   function formQuoteType(formKey) {
     if (!formKey) return null;
     const k = formKey.toLowerCase();
+    // Specific multi-word life products must be checked before the generic 'life' catch-all
+    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage_protection';
+    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'final_expense';
+    if (k.includes('iul'))                                                      return 'iul';
     if (k.includes('life'))        return 'life';
     if (k.includes('auto'))        return 'auto';
     if (k.includes('home'))        return 'home';

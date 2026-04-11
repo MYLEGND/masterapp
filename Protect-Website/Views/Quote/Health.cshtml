@@ -354,6 +354,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     form.addEventListener('submit', function(event) {
         if (!checkbox.checked) {
+            form._trackSubmitAttempt?.(false, 1);
             event.preventDefault();
             alert('Please acknowledge the disclaimer to proceed: You must authorize us to contact you regarding your health insurance inquiry and personalized coverage review.');
         }
@@ -369,6 +370,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     form.addEventListener("submit", function (event) {
         if (!form.checkValidity()) {
+            form._trackSubmitAttempt?.(false, form.querySelectorAll(':invalid').length);
             event.preventDefault();
 
             const firstInvalid = form.querySelector(":invalid");
@@ -379,6 +381,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 });
                 firstInvalid.focus();
             }
+        } else {
+            form._trackSubmitAttempt?.(true, 0);
         }
     });
 });

@@ -1767,7 +1767,10 @@ function enforceRequiredByLabels() {
 
                 // Hard-stop + jump to first missed required field anywhere
                 if (!validateAllStepsAndJumpToFirstInvalid()) {
+                    form._trackSubmitAttempt?.(false, form.querySelectorAll(':invalid').length || 1);
                     e.preventDefault();
+                } else {
+                    form._trackSubmitAttempt?.(true, 0);
                 }
             });
 

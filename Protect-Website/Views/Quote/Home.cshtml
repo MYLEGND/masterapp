@@ -1669,6 +1669,7 @@
         const form = document.getElementById("homeQuoteForm");
         if (form) {
             form.addEventListener("submit", function () {
+                form._trackSubmitAttempt?.(true, 0);
                 // Ensure conditional fields are correct, then allow submit
                 togglePreviousAddress(true);
                     toggleHouseUpdateYearFields();

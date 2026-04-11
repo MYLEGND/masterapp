@@ -668,6 +668,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                 if (consentErr) consentErr.classList.add('visible');
             } else if (consentErr) consentErr.classList.remove('visible');
 
+            form._trackSubmitAttempt?.(!valid ? false : true, valid ? 0 : 1);
             if (!valid) {
                 event.preventDefault();
                 return false;

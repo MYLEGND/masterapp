@@ -678,7 +678,7 @@ body.life-landing header .navbar .nav-link:focus {
 
     // validate all question steps
     for (let i = 0; i < totalSteps - 1; i++) {
-      if (!validateStep(i)) { setStep(i); return; }
+      if (!validateStep(i)) { form._trackSubmitAttempt?.(false, 1); setStep(i); return; }
       const selected = form.querySelector(`input[name=\"step-${i}-option\"]:checked`);
       if (selected) {
         storeAnswer(i, selected.value, selected.dataset.label || selected.value, steps[i].getAttribute('data-alias'));
@@ -695,6 +695,7 @@ body.life-landing header .navbar .nav-link:focus {
         el?.focus();
         document.getElementById(`err-${name}`)?.classList.add('visible');
         setStep(totalSteps - 1);
+        form._trackSubmitAttempt?.(false, 1);
         return;
       }
     }
@@ -705,6 +706,7 @@ body.life-landing header .navbar .nav-link:focus {
         state.focus();
         document.getElementById('err-State')?.classList.add('visible');
         setStep(totalSteps - 1);
+        form._trackSubmitAttempt?.(false, 1);
         return;
     }
     const consent = form.querySelector('input[name=\"MarketingEmailConsent\"]');
@@ -714,9 +716,11 @@ body.life-landing header .navbar .nav-link:focus {
       consent?.focus();
       document.getElementById('err-Consent')?.classList.add('visible');
       setStep(totalSteps - 1);
+      form._trackSubmitAttempt?.(false, 1);
       return;
     }
 
+    form._trackSubmitAttempt?.(true, 0);
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
 
