@@ -233,85 +233,187 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/ai-review-snapshot")]
     public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
-        var scope = await ResolveScopeAsync(agentProfileId, team);
-
-        var summaryTask = _analytics.GetSummaryAsync(range, scope);
-        var trafficTask = _analytics.GetTrafficAsync(range, scope);
-        var quoteTask = _analytics.GetQuoteFunnelAsync(range, scope);
-        var conversionsTask = _analytics.GetConversionsAsync(range, scope);
-        var leadsTask = _analytics.GetLeadsAsync(range, scope, 200);
-        var pagePerfTask = _analytics.GetPagePerformanceAsync(range, scope);
-        var ctaPerfTask = _analytics.GetCtaPerformanceAsync(range, scope);
-        var timeOnPageTask = _analytics.GetTimeOnPageAsync(range, scope);
-        var exitTask = _analytics.GetExitAnalysisAsync(range, scope);
-        var sourceTask = _analytics.GetSourcePerformanceAsync(range, scope);
-        var abandonmentTask = _analytics.GetFormAbandonmentAsync(range, scope);
-
-        await Task.WhenAll(summaryTask, trafficTask, quoteTask, conversionsTask, leadsTask, pagePerfTask, ctaPerfTask, timeOnPageTask, exitTask, sourceTask, abandonmentTask);
-
-        var summary = await summaryTask;
-        var traffic = await trafficTask;
-        var quote = await quoteTask;
-        var conversions = await conversionsTask;
-        var leads = await leadsTask;
-        var pagePerf = await pagePerfTask;
-        var ctaPerf = await ctaPerfTask;
-        var timeOnPage = await timeOnPageTask;
-        var exit = await exitTask;
-        var source = await sourceTask;
-        var abandonment = await abandonmentTask;
-        MetaCampaignsDto? metaCampaigns = null;
-        string? activeCampaignWarning = null;
-
         try
         {
-            metaCampaigns = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
-        }
-        catch (InvalidOperationException ex)
-        {
-            activeCampaignWarning = $"Active campaign performance unavailable: {ex.Message}";
-            _logger.LogInformation(ex, "AI snapshot active campaign section unavailable due to Meta connection/configuration.");
+            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+            var scope = await ResolveScopeAsync(agentProfileId, team);
+
+            async Task<(T Value, string? Warning)> SafeSnapshotLoadAsync<T>(Func<Task<T>> loader, Func<T> fallbackFactory, string area)
+            {
+                try
+                {
+                    return (await loader(), null);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "AI snapshot partial load failed for {Area}.", area);
+                    return (fallbackFactory(), $"{area} unavailable due to internal error.");
+                }
+            }
+
+            var summaryTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetSummaryAsync(range, scope),
+                () => new SummaryKpiDto
+                {
+                    RangeLabel = range.Label,
+                    EnvironmentLabel = "Environment: Mixed/Legacy",
+                    IntentDenominatorLabel = "Quote Submits / Quote Starts"
+                },
+                "Summary metrics");
+            var trafficTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetTrafficAsync(range, scope),
+                () => new TrafficOverviewDto { RangeLabel = range.Label },
+                "Traffic metrics");
+            var quoteTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetQuoteFunnelAsync(range, scope),
+                () => new QuoteFunnelDto { RangeLabel = range.Label },
+                "Quote funnel metrics");
+            var conversionsTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetConversionsAsync(range, scope),
+                () => new ConversionCenterDto { RangeLabel = range.Label },
+                "Conversion metrics");
+            var leadsTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetLeadsAsync(range, scope, 200),
+                () => new LeadSnapshotDto { RangeLabel = range.Label },
+                "Lead snapshot metrics");
+            var pagePerfTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetPagePerformanceAsync(range, scope),
+                () => new PagePerformanceDto { RangeLabel = range.Label },
+                "Page performance metrics");
+            var ctaPerfTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetCtaPerformanceAsync(range, scope),
+                () => new CtaPerformanceDto { RangeLabel = range.Label },
+                "CTA performance metrics");
+            var timeOnPageTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetTimeOnPageAsync(range, scope),
+                () => new TimeOnPageDto { RangeLabel = range.Label },
+                "Time-on-page metrics");
+            var exitTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetExitAnalysisAsync(range, scope),
+                () => new ExitAnalysisDto { RangeLabel = range.Label },
+                "Exit analysis metrics");
+            var sourceTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetSourcePerformanceAsync(range, scope),
+                () => new SourcePerformanceDto { RangeLabel = range.Label },
+                "Source performance metrics");
+            var abandonmentTask = SafeSnapshotLoadAsync(
+                () => _analytics.GetFormAbandonmentAsync(range, scope),
+                () => new FormAbandonmentDto { RangeLabel = range.Label },
+                "Form abandonment metrics");
+
+            await Task.WhenAll(summaryTask, trafficTask, quoteTask, conversionsTask, leadsTask, pagePerfTask, ctaPerfTask, timeOnPageTask, exitTask, sourceTask, abandonmentTask);
+
+            var (summary, summaryWarning) = await summaryTask;
+            var (traffic, trafficWarning) = await trafficTask;
+            var (quote, quoteWarning) = await quoteTask;
+            var (conversions, conversionsWarning) = await conversionsTask;
+            var (leads, leadsWarning) = await leadsTask;
+            var (pagePerf, pagePerfWarning) = await pagePerfTask;
+            var (ctaPerf, ctaPerfWarning) = await ctaPerfTask;
+            var (timeOnPage, timeOnPageWarning) = await timeOnPageTask;
+            var (exit, exitWarning) = await exitTask;
+            var (source, sourceWarning) = await sourceTask;
+            var (abandonment, abandonmentWarning) = await abandonmentTask;
+            MetaCampaignsDto? metaCampaigns = null;
+            string? activeCampaignWarning = null;
+
+            try
+            {
+                metaCampaigns = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
+            }
+            catch (InvalidOperationException ex)
+            {
+                activeCampaignWarning = $"Active campaign performance unavailable: {ex.Message}";
+                _logger.LogInformation(ex, "AI snapshot active campaign section unavailable due to Meta connection/configuration.");
+            }
+            catch (Exception ex)
+            {
+                activeCampaignWarning = "Active campaign performance unavailable due to Meta campaigns fetch error.";
+                _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
+            }
+
+            var generatedLocal = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
+            string scopeLabel;
+            string? scopeWarning = null;
+            try
+            {
+                scopeLabel = await ResolveScopeLabelAsync(scope, team);
+            }
+            catch (Exception ex)
+            {
+                scopeLabel = "Current Scope";
+                scopeWarning = "Scope label unavailable due to internal error.";
+                _logger.LogWarning(ex, "AI snapshot scope label resolution failed.");
+            }
+            var rangeLabel = !string.IsNullOrWhiteSpace(summary.RangeLabel) ? summary.RangeLabel : range.Label;
+
+            var warnings = BuildSnapshotWarnings(summary);
+            var partialWarnings = new[]
+            {
+                summaryWarning, trafficWarning, quoteWarning, conversionsWarning, leadsWarning,
+                pagePerfWarning, ctaPerfWarning, timeOnPageWarning, exitWarning, sourceWarning,
+                abandonmentWarning, scopeWarning
+            }.Where(w => !string.IsNullOrWhiteSpace(w)).Select(w => w!).ToList();
+            if (partialWarnings.Count > 0)
+                warnings.AddRange(partialWarnings);
+            if (!string.IsNullOrWhiteSpace(activeCampaignWarning))
+                warnings.Add(activeCampaignWarning);
+            var snapshotText = BuildAiReviewSnapshotText(
+                metaCampaigns,
+                summary,
+                traffic,
+                quote,
+                conversions,
+                leads,
+                pagePerf,
+                ctaPerf,
+                timeOnPage,
+                exit,
+                source,
+                abandonment,
+                generatedLocal,
+                scopeLabel,
+                rangeLabel,
+                warnings);
+
+            return Json(new AiReviewSnapshotDto
+            {
+                SnapshotText = snapshotText,
+                GeneratedAtLocal = generatedLocal,
+                ScopeLabel = scopeLabel,
+                RangeLabel = rangeLabel,
+                Warnings = warnings
+            });
         }
         catch (Exception ex)
         {
-            activeCampaignWarning = "Active campaign performance unavailable due to Meta campaigns fetch error.";
-            _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
+            var requestId = HttpContext.TraceIdentifier;
+            TimeRangeRequest fallbackRange;
+            try
+            {
+                fallbackRange = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+            }
+            catch
+            {
+                fallbackRange = TimeRangeRequest.FromPreset("30d");
+            }
+            var fallbackGenerated = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
+            var warnings = new List<string>
+            {
+                $"Snapshot generation failed. requestId={requestId}",
+                "Check Azure Log Stream / Application Logs for the full exception."
+            };
+            _logger.LogError(ex, "AI snapshot endpoint failed. requestId={RequestId}", requestId);
+
+            return Json(new AiReviewSnapshotDto
+            {
+                SnapshotText = BuildAiReviewSnapshotFailureText(fallbackGenerated, fallbackRange.Label, warnings),
+                GeneratedAtLocal = fallbackGenerated,
+                ScopeLabel = "Current Scope",
+                RangeLabel = fallbackRange.Label,
+                Warnings = warnings
+            });
         }
-
-        var generatedLocal = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
-        var scopeLabel = await ResolveScopeLabelAsync(scope, team);
-        var rangeLabel = !string.IsNullOrWhiteSpace(summary.RangeLabel) ? summary.RangeLabel : range.Label;
-
-        var warnings = BuildSnapshotWarnings(summary);
-        if (!string.IsNullOrWhiteSpace(activeCampaignWarning))
-            warnings.Add(activeCampaignWarning);
-        var snapshotText = BuildAiReviewSnapshotText(
-            metaCampaigns,
-            summary,
-            traffic,
-            quote,
-            conversions,
-            leads,
-            pagePerf,
-            ctaPerf,
-            timeOnPage,
-            exit,
-            source,
-            abandonment,
-            generatedLocal,
-            scopeLabel,
-            rangeLabel,
-            warnings);
-
-        return Json(new AiReviewSnapshotDto
-        {
-            SnapshotText = snapshotText,
-            GeneratedAtLocal = generatedLocal,
-            ScopeLabel = scopeLabel,
-            RangeLabel = rangeLabel,
-            Warnings = warnings
-        });
     }
 
     [HttpGet("meta-campaigns")]
@@ -567,6 +669,33 @@ namespace AgentPortal.Controllers;
         if (string.Equals(summary.EnvironmentLabel, "Environment: Mixed/Legacy", StringComparison.OrdinalIgnoreCase))
             warnings.Add("Environment filter is Mixed/Legacy; confirm production-only filtering before high-stakes decisions.");
         return warnings;
+    }
+
+    private static string BuildAiReviewSnapshotFailureText(string generatedAtLocal, string rangeLabel, IReadOnlyCollection<string> warnings)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("SECTION A — HEADER");
+        sb.AppendLine("WEBSITE ANALYTICS AI REVIEW SNAPSHOT");
+        sb.AppendLine($"Generated: {generatedAtLocal} (server local time)");
+        sb.AppendLine($"Range: {rangeLabel}");
+        sb.AppendLine("Scope: Current Scope");
+        sb.AppendLine();
+        sb.AppendLine("SECTION B — ACTIVE CAMPAIGN PERFORMANCE");
+        sb.AppendLine("No active campaigns in range.");
+        sb.AppendLine();
+        sb.AppendLine("SECTION I — DATA QUALITY / CONTEXT NOTES");
+        sb.AppendLine("- Snapshot generation encountered an internal error.");
+        if (warnings.Any())
+        {
+            sb.AppendLine("- Current warnings:");
+            foreach (var warning in warnings)
+                sb.AppendLine($"  - {warning}");
+        }
+        sb.AppendLine();
+        sb.AppendLine("SECTION J — CHATGPT COPY PROMPT FOOTER");
+        sb.AppendLine("CHATGPT ANALYSIS REQUEST");
+        sb.AppendLine("Analyze this snapshot and identify likely causes of tracking/reporting issues.");
+        return sb.ToString().TrimEnd();
     }
 
     private static string BuildAiReviewSnapshotText(
