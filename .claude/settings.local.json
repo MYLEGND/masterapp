@@ -44,7 +44,8 @@
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \".schema AnalyticsEvents\")",
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db ':*)",
       "Bash(sqlite3 /tmp/test_pk.db ':*)",
-      "Bash(rm /tmp/test_pk.db)"
+      "Bash(rm /tmp/test_pk.db)",
+      "Bash(grep -l \"WebsiteLeads.Add\\\\|_db.WebsiteLeads\" /Users/zacowen/MASTERAPP/Protect-Website/Controllers/*.cs)"
     ]
   }
 }
