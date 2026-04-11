@@ -9,6 +9,7 @@
     var path = Context?.Request?.Path.Value ?? string.Empty;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
     var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
+    var isGeneralLifeOffer = string.Equals(cfg.OfferKey, "life", StringComparison.OrdinalIgnoreCase);
 }
 
 <style>
@@ -495,12 +496,14 @@ body.life-landing header .navbar .nav-link:focus {
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="Email">Email <span style="color:#f87171">*</span></label>
+                                <label for="Email">Email @if (!isGeneralLifeOffer)
+                                {<span style="color:#f87171">*</span>}</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="State">What state do you live in? <span style="color:#f87171">*</span></label>
+                                <label for="State">What state do you live in? @if (!isGeneralLifeOffer)
+                                {<span style="color:#f87171">*</span>}</label>
                                 <select id="State" name="State" class="form-select" autocomplete="address-level1">
                                     <option value="">Select your state</option>
                                     <option value="AL">Alabama</option>
@@ -608,6 +611,7 @@ body.life-landing header .navbar .nav-link:focus {
   const pageKey = form.dataset.formKey || 'quote_life';
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
+  const isGeneralLifeOffer = '@(isGeneralLifeOffer ? "true" : "false")' === 'true';
 
   function setStep(idx) {
     steps.forEach((s, i) => s.hidden = i !== idx);
@@ -692,7 +696,9 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     // contact validation
-    const requiredAll = ['FirstName','LastName','Phone','Email','State'];
+    const requiredAll = isGeneralLifeOffer
+      ? ['FirstName','LastName','Phone']
+      : ['FirstName','LastName','Phone','Email','State'];
     for (const name of requiredAll) {
       const el = form.querySelector(`[name=\"${name}\"]`);
       if (!el || !el.value.trim()) {
@@ -705,15 +711,17 @@ body.life-landing header .navbar .nav-link:focus {
         return;
       }
     }
-    const state = document.getElementById('State');
-    if (state && !state.value) {
-        lifeError.textContent = 'Please select your state.';
-        lifeError.style.display = 'block';
-        state.focus();
-        document.getElementById('err-State')?.classList.add('visible');
-        setStep(totalSteps - 1);
-        form._trackSubmitAttempt?.(false, 1);
-        return;
+    if (!isGeneralLifeOffer) {
+      const state = document.getElementById('State');
+      if (state && !state.value) {
+          lifeError.textContent = 'Please select your state.';
+          lifeError.style.display = 'block';
+          state.focus();
+          document.getElementById('err-State')?.classList.add('visible');
+          setStep(totalSteps - 1);
+          form._trackSubmitAttempt?.(false, 1);
+          return;
+      }
     }
     const consent = form.querySelector('input[name=\"MarketingEmailConsent\"]');
     if (!consent?.checked) {

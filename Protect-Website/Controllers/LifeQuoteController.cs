@@ -97,6 +97,20 @@ namespace Protect_Website.Controllers
         private async Task<IActionResult> SubmitInternal(LifeQuoteFormModel model, string offerKey)
         {
             var cfg = GetWizardConfig(offerKey);
+            var requiresEmailAndState = !string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
+            if (requiresEmailAndState)
+            {
+                if (string.IsNullOrWhiteSpace(model.Email))
+                {
+                    ModelState.AddModelError(nameof(LifeQuoteFormModel.Email), "Email is required");
+                }
+
+                if (string.IsNullOrWhiteSpace(model.State))
+                {
+                    ModelState.AddModelError(nameof(LifeQuoteFormModel.State), "State is required");
+                }
+            }
+
             if (!ModelState.IsValid)
             {
                 if (IsAjax())

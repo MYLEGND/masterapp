@@ -11,15 +11,13 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Last Name is required")]
         public required string LastName { get; set; }
 
-        [Required(ErrorMessage = "Email is required")]
         [EmailAddress(ErrorMessage = "Invalid email address")]
-        public required string Email { get; set; }
+        public string? Email { get; set; }
 
         [Required(ErrorMessage = "Phone is required")]
         [Phone(ErrorMessage = "Invalid phone number")]
         public required string Phone { get; set; }
 
-        [Required(ErrorMessage = "State is required")]
         public string? State { get; set; }
 
         public string? AgeRange { get; set; }
