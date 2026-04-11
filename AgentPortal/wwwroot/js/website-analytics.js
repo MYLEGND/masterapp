@@ -546,6 +546,105 @@
     el.textContent = message || '';
   }
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function aiSectionClass(title) {
+    const match = /^SECTION\s+([A-I])\s+—/i.exec(String(title || '').trim());
+    if (!match) return 'ai-sec-default';
+    return `ai-sec-${match[1].toLowerCase()}`;
+  }
+
+  function aiNumberClass(token) {
+    const raw = String(token || '').replace(/,/g, '').replace('%', '');
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return 'ai-num';
+    if (n === 0) return 'ai-num ai-num-zero';
+    if (n > 0) return 'ai-num ai-num-pos';
+    return 'ai-num';
+  }
+
+  function decorateAiNumbers(text) {
+    const rx = /(^|[^A-Za-z0-9])(\d{1,3}(?:,\d{3})*(?:\.\d+)?%?)(?=[^A-Za-z0-9]|$)/g;
+    return text.replace(rx, (full, prefix, token) => {
+      return `${prefix}<span class="${aiNumberClass(token)}">${token}</span>`;
+    });
+  }
+
+  function renderAiSnapshotLine(line) {
+    const raw = String(line || '');
+    const trimmed = raw.trim();
+    if (!trimmed) return '<div class="ai-line ai-empty"></div>';
+
+    if (/^no data in range\./i.test(trimmed)) {
+      return `<div class="ai-line ai-no-data">${escapeHtml(trimmed)}</div>`;
+    }
+
+    const bullet = /^-\s+(.*)$/.exec(trimmed);
+    if (bullet) {
+      const content = decorateAiNumbers(escapeHtml(bullet[1]));
+      return `<div class="ai-line ai-bullet"><span class="ai-bullet-mark">•</span><span>${content}</span></div>`;
+    }
+
+    const numbered = /^(\d+)\.\s+(.*)$/.exec(trimmed);
+    if (numbered) {
+      const content = decorateAiNumbers(escapeHtml(numbered[2]));
+      return `<div class="ai-line ai-numbered"><span class="ai-step-no">${numbered[1]}.</span><span>${content}</span></div>`;
+    }
+
+    if (trimmed.endsWith(':')) {
+      return `<div class="ai-line ai-subhead">${escapeHtml(trimmed)}</div>`;
+    }
+
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx > 0 && colonIdx < trimmed.length - 1) {
+      const label = trimmed.substring(0, colonIdx);
+      const value = trimmed.substring(colonIdx + 1).trim();
+      return `<div class="ai-line ai-kv"><span class="ai-label">${escapeHtml(label)}:</span> <span class="ai-value">${decorateAiNumbers(escapeHtml(value))}</span></div>`;
+    }
+
+    return `<div class="ai-line">${decorateAiNumbers(escapeHtml(trimmed))}</div>`;
+  }
+
+  function renderAiSnapshotFormatted(snapshotText) {
+    const renderEl = document.getElementById('ai-snapshot-render');
+    if (!renderEl) return;
+
+    if (!snapshotText) {
+      renderEl.innerHTML = '<div class="fa-empty">No snapshot data.</div>';
+      return;
+    }
+
+    const lines = String(snapshotText).split(/\r?\n/);
+    const sections = [];
+    let current = null;
+
+    for (const line of lines) {
+      const trimmed = String(line || '').trim();
+      if (/^SECTION [A-I] —/i.test(trimmed)) {
+        if (current) sections.push(current);
+        current = { title: trimmed, lines: [] };
+      } else {
+        if (!current) current = { title: 'SNAPSHOT', lines: [] };
+        current.lines.push(line);
+      }
+    }
+    if (current) sections.push(current);
+
+    renderEl.innerHTML = sections.map(section => {
+      const lineHtml = (section.lines || []).map(renderAiSnapshotLine).join('');
+      return `<section class="ai-snapshot-section ${aiSectionClass(section.title)}"><div class="ai-section-title">${escapeHtml(section.title)}</div><div class="ai-section-body">${lineHtml}</div></section>`;
+    }).join('');
+
+    renderEl.scrollTop = 0;
+  }
+
   async function copyTextWithFallback(text) {
     if (!text) return false;
     if (navigator.clipboard?.writeText) {
@@ -580,6 +679,7 @@
 
     const textEl = document.getElementById('ai-snapshot-text');
     if (textEl) textEl.value = data.snapshotText || '';
+    renderAiSnapshotFormatted(data.snapshotText || '');
 
     const warnings = Array.isArray(data.warnings) ? data.warnings : [];
     if (warnings.length) {
@@ -595,8 +695,10 @@
   async function loadAiReviewSnapshot() {
     const textEl = document.getElementById('ai-snapshot-text');
     const copyBtn = document.getElementById('ai-snapshot-copy');
+    const renderEl = document.getElementById('ai-snapshot-render');
     if (textEl) textEl.value = '';
     if (copyBtn) copyBtn.disabled = true;
+    if (renderEl) renderEl.innerHTML = '<div class="fa-loading">Generating snapshot...</div>';
     setText('ai-snapshot-generated', '—');
     setText('ai-snapshot-range', '—');
     setText('ai-snapshot-scope', '—');
@@ -608,6 +710,7 @@
       renderAiReviewSnapshot(data);
     } catch (err) {
       if (textEl) textEl.value = '';
+      if (renderEl) renderEl.innerHTML = '<div class="fa-empty">Unable to render snapshot.</div>';
       setAiSnapshotStatus((err && err.message) ? err.message : 'Unable to generate snapshot.', 'error');
       console.error(err);
     }

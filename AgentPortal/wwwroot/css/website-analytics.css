@@ -622,6 +622,109 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 }
 
 /* AI Review Snapshot modal */
+#aiReviewSnapshotModal #ai-snapshot-render {
+    min-height: 440px;
+    max-height: 62vh;
+    overflow: auto;
+    background: var(--legend-navy-deep);
+    border: 1.5px solid rgba(199,153,49,.55);
+    border-radius: 12px;
+    box-shadow: 0 8px 18px rgba(0,0,0,.25);
+    padding: 12px;
+    font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-size: .95rem;
+    color: #f8fafc;
+}
+
+#aiReviewSnapshotModal .ai-snapshot-section {
+    --sec-color: #d8deea;
+    border-left: 4px solid var(--sec-color);
+    background: rgba(255,255,255,.02);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+}
+
+#aiReviewSnapshotModal .ai-sec-a { --sec-color: #93c5fd; }
+#aiReviewSnapshotModal .ai-sec-b { --sec-color: #67e8f9; }
+#aiReviewSnapshotModal .ai-sec-c { --sec-color: #fbbf24; }
+#aiReviewSnapshotModal .ai-sec-d { --sec-color: #86efac; }
+#aiReviewSnapshotModal .ai-sec-e { --sec-color: #fca5a5; }
+#aiReviewSnapshotModal .ai-sec-f { --sec-color: #fdba74; }
+#aiReviewSnapshotModal .ai-sec-g { --sec-color: #bef264; }
+#aiReviewSnapshotModal .ai-sec-h { --sec-color: #fde68a; }
+#aiReviewSnapshotModal .ai-sec-i { --sec-color: #cbd5e1; }
+
+#aiReviewSnapshotModal .ai-section-title {
+    color: var(--sec-color);
+    font-weight: 900;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    font-size: .76rem;
+    margin-bottom: 7px;
+}
+
+#aiReviewSnapshotModal .ai-line {
+    color: #f8fafc;
+    line-height: 1.45;
+    margin-bottom: 2px;
+}
+
+#aiReviewSnapshotModal .ai-empty {
+    height: 6px;
+}
+
+#aiReviewSnapshotModal .ai-subhead {
+    color: #cbd5e1;
+    font-weight: 800;
+    margin-top: 6px;
+}
+
+#aiReviewSnapshotModal .ai-kv .ai-label {
+    color: #a5b4fc;
+    font-weight: 700;
+}
+
+#aiReviewSnapshotModal .ai-kv .ai-value {
+    color: #f8fafc;
+    font-weight: 600;
+}
+
+#aiReviewSnapshotModal .ai-bullet,
+#aiReviewSnapshotModal .ai-numbered {
+    display: flex;
+    gap: 8px;
+}
+
+#aiReviewSnapshotModal .ai-bullet-mark {
+    color: #67e8f9;
+    font-weight: 900;
+}
+
+#aiReviewSnapshotModal .ai-step-no {
+    color: #fbbf24;
+    font-weight: 900;
+    min-width: 20px;
+}
+
+#aiReviewSnapshotModal .ai-no-data {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+#aiReviewSnapshotModal .ai-num {
+    font-weight: 800;
+    color: #f8fafc;
+}
+
+#aiReviewSnapshotModal .ai-num-zero {
+    color: #f87171;
+}
+
+#aiReviewSnapshotModal .ai-num-pos {
+    color: #4ade80;
+}
+
 #aiReviewSnapshotModal #ai-snapshot-text {
     min-height: 440px;
     line-height: 1.35;

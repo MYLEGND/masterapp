@@ -845,7 +845,8 @@
           <div><span class="text-warning">Scope:</span> <span id="ai-snapshot-scope">—</span></div>
         </div>
         <div class="fa-muted small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
-        <textarea id="ai-snapshot-text" class="form-control" rows="22" readonly spellcheck="false"></textarea>
+        <div id="ai-snapshot-render" aria-live="polite"></div>
+        <textarea id="ai-snapshot-text" class="d-none" rows="22" readonly spellcheck="false"></textarea>
       </div>
       <div class="modal-footer border-0 justify-content-between">
         <button type="button" class="btn btn-sm fa-export-btn" id="ai-snapshot-copy">Copy</button>
