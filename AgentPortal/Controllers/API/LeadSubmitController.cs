@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -65,6 +66,8 @@ public class LeadSubmitController : ControllerBase
         public string? Host { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
+        /// <summary>Product-specific metadata JSON (e.g. offer key, product type). Passed through from website proxy.</summary>
+        public string? MetadataJson { get; set; }
     }
 
     [HttpPost]
@@ -73,11 +76,17 @@ public class LeadSubmitController : ControllerBase
     [RequestSizeLimit(16 * 1024)] // 16 KB — well above any valid lead submission
     public async Task<IActionResult> Submit([FromBody] LeadSubmitRequest req)
     {
+        // Extract or generate correlation ID — used in all logs for this submit
+        var correlationId = Guid.TryParse(Request.Headers["X-Request-Id"].FirstOrDefault(), out var parsedId)
+            ? parsedId
+            : Guid.NewGuid();
+
         // Shared secret check
         var expected = _config["Analytics:SharedSecret"] ?? _config["LeadIngest:SharedSecret"];
         var provided = Request.Headers["X-Shared-Secret"].FirstOrDefault();
         if (string.IsNullOrWhiteSpace(expected) || !string.Equals(expected, provided, StringComparison.Ordinal))
         {
+            _logger.LogWarning("LeadSubmit [{CorrelationId}]: rejected — invalid shared secret", correlationId);
             return Unauthorized(new { error = "invalid_secret" });
         }
 
@@ -99,16 +108,33 @@ public class LeadSubmitController : ControllerBase
 
         if (!req.TermsAccepted)
         {
+            _logger.LogWarning("LeadSubmit [{CorrelationId}]: rejected — terms not accepted", correlationId);
             return BadRequest(new { error = "terms_not_accepted" });
         }
 
-        _logger.LogInformation("LeadSubmit: incoming attribution slug={Slug}, id={Id}", req.AgentSlug, req.AgentTrackingProfileId);
+        _logger.LogInformation(
+            "LeadSubmit [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} Host={Host}",
+            correlationId, req.InterestType, req.SourcePageKey, req.Host);
+
+        _logger.LogInformation(
+            "LeadSubmit [{CorrelationId}]: resolving attribution slug={Slug} profileId={Id}",
+            correlationId, req.AgentSlug, req.AgentTrackingProfileId);
+
         var resolved = await _resolver.ResolveAsync(req.AgentSlug, req.AgentTrackingProfileId, HttpContext.RequestAborted);
         if (!resolved.Found)
         {
-            _logger.LogInformation("LeadSubmit: unknown agent attribution slug={Slug} id={Id}", req.AgentSlug, req.AgentTrackingProfileId);
+            _logger.LogInformation(
+                "LeadSubmit [{CorrelationId}]: attribution not found for slug={Slug} id={Id} — using founder fallback",
+                correlationId, req.AgentSlug, req.AgentTrackingProfileId);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "LeadSubmit [{CorrelationId}]: attribution resolved to profileId={AttributedId} slug={Slug}",
+                correlationId, resolved.Profile.Id, resolved.CanonicalSlug);
         }
 
+        var now = DateTime.UtcNow;
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(),
@@ -132,15 +158,58 @@ public class LeadSubmitController : ControllerBase
             IsInternal = FounderGuard.IsFounder(User),
             Environment = ResolveEnvironment(req.Environment),
             Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
-            CreatedUtc = DateTime.UtcNow,
+            CreatedUtc = now,
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
-            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null
+            AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
+            MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson.Trim()
         };
 
         _db.WebsiteLeads.Add(lead);
         await _db.SaveChangesAsync();
-        _logger.LogInformation("LeadSubmit: saved lead {LeadId} attributedTo={AttributedId}", lead.LeadId, lead.AgentTrackingProfileId);
+        _logger.LogInformation(
+            "LeadSubmit [{CorrelationId}]: WebsiteLead {LeadId} saved attributedTo={AttributedId}",
+            correlationId, lead.LeadId, lead.AgentTrackingProfileId);
+
+        // ── Analytics event (server-side lead submission record) ──────────────────
+        try
+        {
+            var evt = new AnalyticsEvent
+            {
+                EventId    = Guid.NewGuid(),
+                EventType  = "website_lead_submitted",
+                PageKey    = lead.SourcePageKey,
+                FormKey    = lead.SourcePageKey,
+                QuoteType  = lead.InterestType,
+                SessionId  = lead.SessionId,
+                VisitorId  = lead.VisitorId,
+                UtmSource  = lead.UtmSource,
+                UtmMedium  = lead.UtmMedium,
+                UtmCampaign= lead.UtmCampaign,
+                AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                AgentSlug  = lead.AgentSlug,
+                Environment= lead.Environment,
+                Host       = lead.Host,
+                EventUtc   = now,
+                ReceivedUtc= now,
+                MetadataJson = JsonSerializer.Serialize(new
+                {
+                    LeadId        = lead.LeadId,
+                    CorrelationId = correlationId
+                })
+            };
+            _db.AnalyticsEvents.Add(evt);
+            await _db.SaveChangesAsync();
+            _logger.LogInformation(
+                "LeadSubmit [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+                correlationId, evt.EventId, lead.LeadId);
+        }
+        catch (Exception analyticsEx)
+        {
+            _logger.LogError(analyticsEx,
+                "LeadSubmit [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+                correlationId, lead.LeadId);
+        }
 
         // Determine recipient: agent if resolved, otherwise founder
         var recipient = resolved.Found && !string.IsNullOrWhiteSpace(resolved.Profile.AgentUpn)
@@ -226,18 +295,23 @@ Notes: {lead.Notes}";
                 subject,
                 htmlBody,
                 textBody);
-            _logger.LogInformation("LeadSubmit: email sent for lead {LeadId} to {Recipient} (attributedId={AttributedId})", lead.LeadId, recipient, lead.AgentTrackingProfileId);
+            _logger.LogInformation(
+                "LeadSubmit [{CorrelationId}]: email sent={EmailSent} for lead {LeadId} to {Recipient} attributedId={AttributedId}",
+                correlationId, emailSent, lead.LeadId, recipient, lead.AgentTrackingProfileId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "LeadSubmit: email send failed for lead {LeadId} to {Recipient}", lead.LeadId, recipient);
-            // continue; lead is already stored
+            _logger.LogError(ex,
+                "LeadSubmit [{CorrelationId}]: email send failed for lead {LeadId} to {Recipient} — lead is saved, continuing",
+                correlationId, lead.LeadId, recipient);
+            // lead is already persisted; do not fail the request
         }
 
         return Ok(new
         {
             status = "ok",
             leadId = lead.LeadId,
+            correlationId,
             attributedAgentTrackingProfileId = lead.AgentTrackingProfileId,
             recipient = recipient,
             emailSent

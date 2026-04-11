@@ -66,8 +66,73 @@ namespace Protect_Website.Controllers
             if (!ModelState.IsValid)
                 return View("~/Views/Quote/Home.cshtml", model);
 
-            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            var correlationId = Guid.NewGuid();
+            _logger.LogInformation(
+                "HomeQuote [{CorrelationId}]: request received Email={Email}",
+                correlationId, model.EmailAddress);
 
+            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "HomeQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+
+            // ── 1. Persist lead FIRST — never lost even if email or analytics fails ───
+            WebsiteLead lead;
+            try
+            {
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName?.Trim(),
+                    Email         = model.EmailAddress?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
+                    InterestType  = "home_insurance",
+                    SourcePageKey = "quote_home",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                    TermsAccepted = true,
+                    Host          = Request?.Host.ToString(),
+                    Environment   = "production",
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        PolicyFormType = model.PolicyFormType,
+                        DwellingType   = model.DwellingType,
+                        AddressState   = model.AddressState,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "HomeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "HomeQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.EmailAddress);
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+                return View("~/Views/Quote/Home.cshtml", model);
+            }
+
+            // ── 2. Send email (failure does not lose the lead) ────────────────────
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -223,64 +288,55 @@ namespace Protect_Website.Controllers
                 };
 
                 await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
-
-                // ── Lead persistence (separate try/catch — email success is preserved) ──────
-                try
-                {
-                    var lead = new WebsiteLead
-                    {
-                        LeadId        = Guid.NewGuid(),
-                        FirstName     = model.FirstName?.Trim() ?? "",
-                        LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName?.Trim(),
-                        Email         = model.EmailAddress?.Trim() ?? "",
-                        Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
-                        InterestType  = "home_insurance",
-                        SourcePageKey = "quote_home",
-                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                        MarketingEmailConsent = model.AcknowledgedDisclaimer,
-                        CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
-                        TermsAccepted = true,
-                        Host          = Request?.Host.ToString(),
-                        Environment   = "production",
-                        CreatedUtc    = DateTime.UtcNow,
-                        Status        = "New",
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug     = agentSlug,
-                        MetadataJson  = JsonSerializer.Serialize(new
-                        {
-                            PolicyFormType = model.PolicyFormType,
-                            DwellingType   = model.DwellingType,
-                            AddressState   = model.AddressState,
-                            Fbclid         = model.Fbclid,
-                            UtmTerm        = model.UtmTerm,
-                            UtmContent     = model.UtmContent,
-                            ReferrerUrl    = model.ReferrerUrl,
-                            LandingPageUrl = model.LandingPageUrl,
-                        })
-                    };
-                    _db.WebsiteLeads.Add(lead);
-                    await _db.SaveChangesAsync();
-                    _logger.LogInformation("HomeQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
-                }
-                catch (Exception persistEx)
-                {
-                    _logger.LogError(persistEx, "HomeQuote: lead persistence failed for {Email}", model.EmailAddress);
-                }
-
-            // Set the quote type so the Thank You page can display the correct name
-            TempData["QuoteType"] = "Home";
-
-                return RedirectToAction("Index", "ThankYou");
+                _logger.LogInformation(
+                    "HomeQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
             }
-            catch (Exception ex)
+            catch (Exception emailEx)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                return View("~/Views/Quote/Home.cshtml", model);
+                _logger.LogError(emailEx,
+                    "HomeQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
             }
+
+            // ── 3. Write analytics event (failure does not lose the lead or email) ─
+            try
+            {
+                var evt = new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "website_lead_submitted",
+                    PageKey    = "quote_home",
+                    FormKey    = "quote_home_form",
+                    QuoteType  = "home_insurance",
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
+                };
+                _db.AnalyticsEvents.Add(evt);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "HomeQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+                    correlationId, evt.EventId, lead.LeadId);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogError(analyticsEx,
+                    "HomeQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
+
+            TempData["QuoteType"] = "Home";
+            return RedirectToAction("Index", "ThankYou");
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

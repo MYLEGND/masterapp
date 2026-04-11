@@ -50,8 +50,73 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     if (!ModelState.IsValid)
         return View("~/Views/Quote/Health.cshtml", model);
 
-    var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+    var correlationId = Guid.NewGuid();
+    _logger.LogInformation(
+        "HealthQuote [{CorrelationId}]: request received Email={Email}",
+        correlationId, model.Email);
 
+    var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+    _logger.LogInformation(
+        "HealthQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+        correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+
+    // ── 1. Persist lead FIRST ──────────────────────────────────────────────────
+    WebsiteLead lead;
+    try
+    {
+        var now = DateTime.UtcNow;
+        lead = new WebsiteLead
+        {
+            LeadId        = Guid.NewGuid(),
+            FirstName     = model.FirstName?.Trim() ?? "",
+            LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+            Email         = model.Email?.Trim() ?? "",
+            Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+            InterestType  = "health_insurance",
+            SourcePageKey = "quote_health",
+            UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+            UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+            UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+            SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+            VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+            MarketingEmailConsent = model.AcknowledgedDisclaimer,
+            CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
+            TermsAccepted = true,
+            Host          = Request?.Host.ToString(),
+            Environment   = "production",
+            CreatedUtc    = now,
+            Status        = "New",
+            AgentTrackingProfileId = agentProfileId,
+            AgentSlug     = agentSlug,
+            MetadataJson  = JsonSerializer.Serialize(new
+            {
+                HouseholdSize  = model.HouseholdSize,
+                PrimaryConcern = model.PrimaryConcern,
+                CoverageType   = model.CoverageType,
+                Fbclid         = model.Fbclid,
+                UtmTerm        = model.UtmTerm,
+                UtmContent     = model.UtmContent,
+                ReferrerUrl    = model.ReferrerUrl,
+                LandingPageUrl = model.LandingPageUrl,
+                CorrelationId  = correlationId,
+            })
+        };
+        _db.WebsiteLeads.Add(lead);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation(
+            "HealthQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+            correlationId, lead.LeadId);
+    }
+    catch (Exception persistEx)
+    {
+        _logger.LogError(persistEx,
+            "HealthQuote [{CorrelationId}]: lead persistence failed for {Email}",
+            correlationId, model.Email);
+        ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+        return View("~/Views/Quote/Health.cshtml", model);
+    }
+
+    // ── 2. Send email ──────────────────────────────────────────────────────────
     try
     {
         var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -138,63 +203,55 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         };
 
         await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
-
-        // ── Lead persistence (separate try/catch — email success is preserved) ──────
-        try
-        {
-            var lead = new WebsiteLead
-            {
-                LeadId        = Guid.NewGuid(),
-                FirstName     = model.FirstName?.Trim() ?? "",
-                LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
-                Email         = model.Email?.Trim() ?? "",
-                Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
-                InterestType  = "health_insurance",
-                SourcePageKey = "quote_health",
-                UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                MarketingEmailConsent = model.AcknowledgedDisclaimer,
-                CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
-                TermsAccepted = true,
-                Host          = Request?.Host.ToString(),
-                Environment   = "production",
-                CreatedUtc    = DateTime.UtcNow,
-                Status        = "New",
-                AgentTrackingProfileId = agentProfileId,
-                AgentSlug     = agentSlug,
-                MetadataJson  = JsonSerializer.Serialize(new
-                {
-                    HouseholdSize  = model.HouseholdSize,
-                    PrimaryConcern = model.PrimaryConcern,
-                    CoverageType   = model.CoverageType,
-                    Fbclid         = model.Fbclid,
-                    UtmTerm        = model.UtmTerm,
-                    UtmContent     = model.UtmContent,
-                    ReferrerUrl    = model.ReferrerUrl,
-                    LandingPageUrl = model.LandingPageUrl,
-                })
-            };
-            _db.WebsiteLeads.Add(lead);
-            await _db.SaveChangesAsync();
-            _logger.LogInformation("HealthQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
-        }
-        catch (Exception persistEx)
-        {
-            _logger.LogError(persistEx, "HealthQuote: lead persistence failed for {Email}", model.Email);
-        }
-
-        // ===================== SUCCESS REDIRECT =====================
-        TempData["QuoteType"] = "Health";
-        return RedirectToAction("Index", "ThankYou");
+        _logger.LogInformation(
+            "HealthQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+            correlationId, leadRecipientEmail, lead.LeadId);
     }
-    catch (Exception ex)
+    catch (Exception emailEx)
     {
-        ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-        return View("~/Views/Quote/Health.cshtml", model);
+        _logger.LogError(emailEx,
+            "HealthQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+            correlationId, lead.LeadId);
     }
+
+    // ── 3. Write analytics event ───────────────────────────────────────────────
+    try
+    {
+        var evt = new AnalyticsEvent
+        {
+            EventId    = Guid.NewGuid(),
+            EventType  = "website_lead_submitted",
+            PageKey    = "quote_health",
+            FormKey    = "quote_health_form",
+            QuoteType  = "health_insurance",
+            SessionId  = lead.SessionId,
+            VisitorId  = lead.VisitorId,
+            UtmSource  = lead.UtmSource,
+            UtmMedium  = lead.UtmMedium,
+            UtmCampaign= lead.UtmCampaign,
+            AgentTrackingProfileId = lead.AgentTrackingProfileId,
+            AgentSlug  = lead.AgentSlug,
+            Environment= lead.Environment,
+            Host       = lead.Host,
+            EventUtc   = lead.CreatedUtc,
+            ReceivedUtc= DateTime.UtcNow,
+            MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
+        };
+        _db.AnalyticsEvents.Add(evt);
+        await _db.SaveChangesAsync();
+        _logger.LogInformation(
+            "HealthQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+            correlationId, evt.EventId, lead.LeadId);
+    }
+    catch (Exception analyticsEx)
+    {
+        _logger.LogError(analyticsEx,
+            "HealthQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+            correlationId, lead.LeadId);
+    }
+
+    TempData["QuoteType"] = "Health";
+    return RedirectToAction("Index", "ThankYou");
 }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

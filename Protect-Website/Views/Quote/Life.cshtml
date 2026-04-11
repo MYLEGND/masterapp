@@ -289,6 +289,9 @@ body.life-landing header .navbar .nav-link:focus {
     color: #f8fafc;
 }
 .lq-consent input { width: 18px; height: 18px; margin-top: 3px; flex-shrink: 0; }
+.consent-text { display: flex; flex-direction: column; gap: 3px; }
+.consent-main { font-size: .97rem; font-weight: 800; color: #f8fafc; line-height: 1.4; }
+.consent-sub  { font-size: .85rem; font-weight: 600; color: rgba(248,250,252,0.62); line-height: 1.4; }
 .lq-submit-row { margin-top: 14px; }
 .lq-field-row{
     display: grid;
@@ -557,18 +560,13 @@ body.life-landing header .navbar .nav-link:focus {
                         </div>
                     </div>
                     <div class="lq-field-row" style="margin-top: 8px;">
-<label class="lq-consent full">
-    <input type="checkbox" name="MarketingEmailConsent" value="true" required />
-    
-    <div class="consent-text">
-        <span class="consent-main">
-            I’d like help reviewing my life insurance options.
-        </span>
-        <span class="consent-sub">
-            You decide what happens next — no obligation.
-        </span>
-    </div>
-</label>
+                        <label class="lq-consent full">
+                            <input type="checkbox" name="MarketingEmailConsent" value="true" required />
+                            <div class="consent-text">
+                                <span class="consent-main">I’d like help reviewing my life insurance options.</span>
+                                <span class="consent-sub">You decide what happens next — no obligation.</span>
+                            </div>
+                        </label>
                         <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
                     </div>
 

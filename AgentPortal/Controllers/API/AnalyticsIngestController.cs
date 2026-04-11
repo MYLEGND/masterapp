@@ -70,7 +70,9 @@ public class AnalyticsIngestController : ControllerBase
         "file_download",
         "section_view",
         "page_visibility_hidden",
-        "page_visibility_return"
+        "page_visibility_return",
+        // Server-side canonical lead submission events (written by backend, not client JS)
+        "website_lead_submitted"
     };
 
     public sealed class AnalyticsEventRequest

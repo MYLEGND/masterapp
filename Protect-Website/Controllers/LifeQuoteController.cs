@@ -112,9 +112,84 @@ namespace Protect_Website.Controllers
             var offerContent = GetContent(offerKey);
             var isAgentContext = IsAgentContext();
 
+            var correlationId = Guid.NewGuid();
+            _logger.LogInformation(
+                "LifeQuote [{CorrelationId}]: request received offer={Offer} Email={Email}",
+                correlationId, offerKey, model.Email);
+
+            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "LifeQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
             try
             {
-                var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                    Email         = model.Email?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+                    InterestType  = cfg.ProductType,
+                    SourcePageKey = cfg.PageKey,
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.MarketingEmailConsent,
+                    CallTextConsent = model.MarketingEmailConsent && !string.IsNullOrWhiteSpace(model.Phone),
+                    TermsAccepted = true,
+                    Host          = Request?.Host.ToString(),
+                    Environment   = "production",
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        OfferKey       = model.OfferKey,
+                        ProductType    = model.ProductType,
+                        Answer1        = model.Answer1,
+                        Answer2        = model.Answer2,
+                        Answer3        = model.Answer3,
+                        Answer4        = model.Answer4,
+                        State          = model.State,
+                        AgeRange       = model.AgeRange,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "LifeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved offer={Offer}",
+                    correlationId, lead.LeadId, model.OfferKey);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "LifeQuote [{CorrelationId}]: lead persistence failed for {Email} offer={Offer}",
+                    correlationId, model.Email, model.OfferKey);
+                if (IsAjax())
+                    return StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message });
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+                var vmPersistErr = new LifeWizardViewModel { Config = cfg, Form = model };
+                ViewData["Title"] = cfg.PageTitle;
+                return View("~/Views/Quote/Life.cshtml", vmPersistErr);
+            }
+
+            // ── 2. Send email ─────────────────────────────────────────────────────
+            try
+            {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
@@ -129,7 +204,6 @@ namespace Protect_Website.Controllers
                     ToRecipients = new List<Recipient>()
                 };
 
-                // Always send to the resolved agent; also copy founder/owner as safety net
                 // Recipient routing: agent slug -> agent; default URL -> founder; if slug missing email, fall back to founder
                 string? primary = null;
                 if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
@@ -141,92 +215,78 @@ namespace Protect_Website.Controllers
                 else if (!string.IsNullOrWhiteSpace(senderEmail))
                     primary = senderEmail.Trim();
 
-                if (string.IsNullOrWhiteSpace(primary))
-                    throw new InvalidOperationException("No recipient email resolved.");
-
-                message.ToRecipients.Add(new Recipient { EmailAddress = new EmailAddress { Address = primary } });
-
-                var requestBody = new SendMailPostRequestBody
+                if (!string.IsNullOrWhiteSpace(primary))
                 {
-                    Message = message,
-                    SaveToSentItems = true
-                };
-
-                await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
-
-                // ── Lead persistence (separate try/catch — email success is preserved) ──────
-                try
+                    message.ToRecipients.Add(new Recipient { EmailAddress = new EmailAddress { Address = primary } });
+                    await graphClient.Users[senderEmail].SendMail.PostAsync(
+                        new SendMailPostRequestBody { Message = message, SaveToSentItems = true });
+                    _logger.LogInformation(
+                        "LifeQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId} offer={Offer}",
+                        correlationId, primary, lead.LeadId, model.OfferKey);
+                }
+                else
                 {
-                    var lead = new WebsiteLead
+                    _logger.LogWarning(
+                        "LifeQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} offer={Offer} — email skipped",
+                        correlationId, lead.LeadId, model.OfferKey);
+                }
+            }
+            catch (Exception emailEx)
+            {
+                _logger.LogError(emailEx,
+                    "LifeQuote [{CorrelationId}]: email send failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                    correlationId, lead.LeadId, model.OfferKey);
+            }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            try
+            {
+                var evt = new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "website_lead_submitted",
+                    PageKey    = cfg.PageKey,
+                    FormKey    = cfg.PageKey + "_form",
+                    QuoteType  = cfg.ProductType,
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new
                     {
-                        LeadId        = Guid.NewGuid(),
-                        FirstName     = model.FirstName?.Trim() ?? "",
-                        LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
-                        Email         = model.Email?.Trim() ?? "",
-                        Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
-                        InterestType  = cfg.ProductType,
-                        SourcePageKey = cfg.PageKey,
-                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                        MarketingEmailConsent = model.MarketingEmailConsent,
-                        CallTextConsent = model.MarketingEmailConsent && !string.IsNullOrWhiteSpace(model.Phone),
-                        TermsAccepted = true,
-                        Host          = Request?.Host.ToString(),
-                        Environment   = "production",
-                        CreatedUtc    = DateTime.UtcNow,
-                        Status        = "New",
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug     = agentSlug,
-                        MetadataJson  = JsonSerializer.Serialize(new
-                        {
-                            OfferKey       = model.OfferKey,
-                            ProductType    = model.ProductType,
-                            Answer1        = model.Answer1,
-                            Answer2        = model.Answer2,
-                            Answer3        = model.Answer3,
-                            Answer4        = model.Answer4,
-                            State          = model.State,
-                            AgeRange       = model.AgeRange,
-                            Fbclid         = model.Fbclid,
-                            UtmTerm        = model.UtmTerm,
-                            UtmContent     = model.UtmContent,
-                            ReferrerUrl    = model.ReferrerUrl,
-                            LandingPageUrl = model.LandingPageUrl,
-                        })
-                    };
-                    _db.WebsiteLeads.Add(lead);
-                    await _db.SaveChangesAsync();
-                    _logger.LogInformation("LifeQuote: lead {LeadId} persisted for {Email} offer={Offer}",
-                        lead.LeadId, lead.Email, model.OfferKey);
-                }
-                catch (Exception persistEx)
-                {
-                    _logger.LogError(persistEx,
-                        "LifeQuote: lead persistence failed for {Email} offer={Offer}", model.Email, model.OfferKey);
-                }
+                        LeadId        = lead.LeadId,
+                        CorrelationId = correlationId,
+                        OfferKey      = model.OfferKey
+                    })
+                };
+                _db.AnalyticsEvents.Add(evt);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "LifeQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId} offer={Offer}",
+                    correlationId, evt.EventId, lead.LeadId, model.OfferKey);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogError(analyticsEx,
+                    "LifeQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                    correlationId, lead.LeadId, model.OfferKey);
+            }
 
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = offerContent.DisplayName;
 
-                // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
-                if (IsAjax())
-                    return Ok(new { success = true });
+            // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
+            if (IsAjax())
+                return Ok(new { success = true });
 
-                return RedirectToAction("Index", "ThankYou");
-            }
-            catch (Exception ex)
-            {
-                if (IsAjax())
-                    return StatusCode(500, new { error = "Failed to send lead", detail = ex.Message });
-
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                var vmError = new LifeWizardViewModel { Config = cfg, Form = model };
-                ViewData["Title"] = cfg.PageTitle;
-                return View("~/Views/Quote/Life.cshtml", vmError);
-            }
+            return RedirectToAction("Index", "ThankYou");
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

@@ -38,7 +38,8 @@
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://protect.mylegnd.com/a/legend/Quote/Whole-Life\")",
       "Bash(zip -r ../protect-deploy.zip . -x \"*.pdb\")",
       "Bash(curl -s -v -L https://client.mylegnd.com/)",
-      "Bash(ls -lart /Users/zacowen/MASTERAPP/Infrastructure/Migrations/*.cs)"
+      "Bash(ls -lart /Users/zacowen/MASTERAPP/Infrastructure/Migrations/*.cs)",
+      "Bash(python3 -c \"import sys,json; [print\\(json.loads\\(l\\).get\\('content',''\\)[:2000] if isinstance\\(json.loads\\(l\\).get\\('content',''\\), str\\) else str\\(json.loads\\(l\\).get\\('content',''\\)\\)[:2000]\\) for l in sys.stdin]\")"
     ]
   }
 }

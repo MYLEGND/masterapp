@@ -75,7 +75,12 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
                     "Please check the authorization box so we can contact you about this quote.");
 
+            var correlationId = Guid.NewGuid();
+
             var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "AutoQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
 
             // business rule
             if (model.Drivers.Count == 0)
@@ -90,6 +95,66 @@ namespace Protect_Website.Controllers
                 return View("~/Views/Quote/Auto.cshtml", model);
             }
 
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
+            try
+            {
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                    Email         = model.EmailAddress?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
+                    InterestType  = "auto_insurance",
+                    SourcePageKey = "quote_auto",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                    TermsAccepted = true,
+                    Host          = Request?.Host.ToString(),
+                    Environment   = "production",
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        AddressState   = model.AddressState,
+                        DriverCount    = model.Drivers.Count,
+                        VehicleCount   = model.Vehicles.Count,
+                        PriorCarrier   = model.PriorCarrier,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "AutoQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "AutoQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.EmailAddress);
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+                EnsureIndexZero(model);
+                ViewData["StartStep"] = 5;
+                return View("~/Views/Quote/Auto.cshtml", model);
+            }
+
+            // ── 2. Send email ────────────────────────────────────────────────────
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -285,66 +350,55 @@ namespace Protect_Website.Controllers
                 await graphClient.Users[senderEmail].SendMail.PostAsync(
                     new SendMailPostRequestBody { Message = message, SaveToSentItems = true }
                 );
-
-                // ── Lead persistence (separate try/catch — email success is preserved) ──────
-                try
-                {
-                    var primaryDriver = model.Drivers.FirstOrDefault();
-                    var lead = new WebsiteLead
-                    {
-                        LeadId        = Guid.NewGuid(),
-                        FirstName     = model.FirstName?.Trim() ?? "",
-                        LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
-                        Email         = model.EmailAddress?.Trim() ?? "",
-                        Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
-                        InterestType  = "auto_insurance",
-                        SourcePageKey = "quote_auto",
-                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                        MarketingEmailConsent = model.AcknowledgedDisclaimer,
-                        CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
-                        TermsAccepted = true,
-                        Host          = Request?.Host.ToString(),
-                        Environment   = "production",
-                        CreatedUtc    = DateTime.UtcNow,
-                        Status        = "New",
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug     = agentSlug,
-                        MetadataJson  = JsonSerializer.Serialize(new
-                        {
-                            AddressState   = model.AddressState,
-                            DriverCount    = model.Drivers.Count,
-                            VehicleCount   = model.Vehicles.Count,
-                            PriorCarrier   = model.PriorCarrier,
-                            Fbclid         = model.Fbclid,
-                            UtmTerm        = model.UtmTerm,
-                            UtmContent     = model.UtmContent,
-                            ReferrerUrl    = model.ReferrerUrl,
-                            LandingPageUrl = model.LandingPageUrl,
-                        })
-                    };
-                    _db.WebsiteLeads.Add(lead);
-                    await _db.SaveChangesAsync();
-                    _logger.LogInformation("AutoQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
-                }
-                catch (Exception persistEx)
-                {
-                    _logger.LogError(persistEx, "AutoQuote: lead persistence failed for {Email}", model.EmailAddress);
-                }
-
-                TempData["QuoteType"] = "Auto";
-                return RedirectToAction("Index", "ThankYou");
+                _logger.LogInformation(
+                    "AutoQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
             }
-            catch (Exception ex)
+            catch (Exception emailEx)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                EnsureIndexZero(model);
-                ViewData["StartStep"] = 5;
-                return View("~/Views/Quote/Auto.cshtml", model);
+                _logger.LogError(emailEx,
+                    "AutoQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
             }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            try
+            {
+                var evt = new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "website_lead_submitted",
+                    PageKey    = "quote_auto",
+                    FormKey    = "quote_auto_form",
+                    QuoteType  = "auto_insurance",
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
+                };
+                _db.AnalyticsEvents.Add(evt);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "AutoQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+                    correlationId, evt.EventId, lead.LeadId);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogError(analyticsEx,
+                    "AutoQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
+
+            TempData["QuoteType"] = "Auto";
+            return RedirectToAction("Index", "ThankYou");
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

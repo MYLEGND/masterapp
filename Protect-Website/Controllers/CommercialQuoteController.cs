@@ -72,8 +72,70 @@ namespace Protect_Website.Controllers
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
 
-            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            var correlationId = Guid.NewGuid();
 
+            var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "CommercialQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
+            try
+            {
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.InsuredFirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.InsuredLastName) ? null : model.InsuredLastName.Trim(),
+                    Email         = model.BusinessEmail?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.BusinessPhone) ? null : model.BusinessPhone?.Trim(),
+                    InterestType  = "commercial_insurance",
+                    SourcePageKey = "quote_commercial",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.BusinessPhone),
+                    TermsAccepted = true,
+                    Host          = Request?.Host.ToString(),
+                    Environment   = "production",
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        BusinessName  = model.BusinessName,
+                        State         = model.State,
+                        Fbclid        = model.Fbclid,
+                        UtmTerm       = model.UtmTerm,
+                        UtmContent    = model.UtmContent,
+                        ReferrerUrl   = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "CommercialQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "CommercialQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.BusinessEmail);
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+                ViewData["StartStep"] = model.CurrentStep <= 0 ? 1 : model.CurrentStep;
+                return View("~/Views/Quote/Commercial.cshtml", model);
+            }
+
+            // ── 2. Send email ─────────────────────────────────────────────────────
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -218,62 +280,55 @@ namespace Protect_Website.Controllers
                 await graphClient.Users[senderEmail].SendMail.PostAsync(
                     new SendMailPostRequestBody { Message = message, SaveToSentItems = true }
                 );
-
-                // ── Lead persistence (separate try/catch — email success is preserved) ──────
-                try
-                {
-                    var lead = new WebsiteLead
-                    {
-                        LeadId        = Guid.NewGuid(),
-                        FirstName     = model.InsuredFirstName?.Trim() ?? "",
-                        LastName      = string.IsNullOrWhiteSpace(model.InsuredLastName) ? null : model.InsuredLastName.Trim(),
-                        Email         = model.BusinessEmail?.Trim() ?? "",
-                        Phone         = string.IsNullOrWhiteSpace(model.BusinessPhone) ? null : model.BusinessPhone?.Trim(),
-                        InterestType  = "commercial_insurance",
-                        SourcePageKey = "quote_commercial",
-                        UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                        UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                        UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                        SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                        VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                        MarketingEmailConsent = model.AcknowledgedDisclaimer,
-                        CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.BusinessPhone),
-                        TermsAccepted = true,
-                        Host          = Request?.Host.ToString(),
-                        Environment   = "production",
-                        CreatedUtc    = DateTime.UtcNow,
-                        Status        = "New",
-                        AgentTrackingProfileId = agentProfileId,
-                        AgentSlug     = agentSlug,
-                        MetadataJson  = JsonSerializer.Serialize(new
-                        {
-                            BusinessName  = model.BusinessName,
-                            State         = model.State,
-                            Fbclid        = model.Fbclid,
-                            UtmTerm       = model.UtmTerm,
-                            UtmContent    = model.UtmContent,
-                            ReferrerUrl   = model.ReferrerUrl,
-                            LandingPageUrl = model.LandingPageUrl,
-                        })
-                    };
-                    _db.WebsiteLeads.Add(lead);
-                    await _db.SaveChangesAsync();
-                    _logger.LogInformation("CommercialQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
-                }
-                catch (Exception persistEx)
-                {
-                    _logger.LogError(persistEx, "CommercialQuote: lead persistence failed for {Email}", model.BusinessEmail);
-                }
-
-                TempData["QuoteType"] = "Commercial";
-                return RedirectToAction("Index", "ThankYou");
+                _logger.LogInformation(
+                    "CommercialQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
             }
-            catch (Exception ex)
+            catch (Exception emailEx)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                ViewData["StartStep"] = model.CurrentStep <= 0 ? 1 : model.CurrentStep;
-                return View("~/Views/Quote/Commercial.cshtml", model);
+                _logger.LogError(emailEx,
+                    "CommercialQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
             }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            try
+            {
+                var evt = new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "website_lead_submitted",
+                    PageKey    = "quote_commercial",
+                    FormKey    = "quote_commercial_form",
+                    QuoteType  = "commercial_insurance",
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
+                };
+                _db.AnalyticsEvents.Add(evt);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "CommercialQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+                    correlationId, evt.EventId, lead.LeadId);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogError(analyticsEx,
+                    "CommercialQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
+
+            TempData["QuoteType"] = "Commercial";
+            return RedirectToAction("Index", "ThankYou");
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

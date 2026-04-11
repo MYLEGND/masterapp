@@ -52,9 +52,74 @@ namespace Protect_Website.Controllers
                 return IsAjax() ? BadRequest(new { error = "Invalid form data" })
                                 : View("~/Views/Quote/Disability.cshtml", model);
 
+            var correlationId = Guid.NewGuid();
+            _logger.LogInformation(
+                "DisabilityQuote [{CorrelationId}]: request received Email={Email}",
+                correlationId, model.Email);
+
             var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
             var isAgentContext = IsAgentContext();
+            _logger.LogInformation(
+                "DisabilityQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
 
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
+            try
+            {
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                    Email         = model.Email?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
+                    InterestType  = "disability_insurance",
+                    SourcePageKey = "quote_disability",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
+                    TermsAccepted = true,
+                    Host          = Request?.Host.ToString(),
+                    Environment   = "production",
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        EmploymentType = model.EmploymentType,
+                        Occupation     = model.Occupation,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "DisabilityQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "DisabilityQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.Email);
+                return IsAjax()
+                    ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message })
+                    : View("~/Views/Quote/Disability.cshtml", model);
+            }
+
+            // ── 2. Send email ─────────────────────────────────────────────────────
             try
             {
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
@@ -113,65 +178,55 @@ namespace Protect_Website.Controllers
         };
 
         await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
-
-        // ── Lead persistence (separate try/catch — email success is preserved) ──────
-        try
-        {
-            var lead = new WebsiteLead
+        _logger.LogInformation(
+            "DisabilityQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+            correlationId, leadRecipientEmail, lead.LeadId);
+            }
+            catch (Exception emailEx)
             {
-                LeadId        = Guid.NewGuid(),
-                FirstName     = model.FirstName?.Trim() ?? "",
-                LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
-                Email         = model.Email?.Trim() ?? "",
-                Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
-                InterestType  = "disability_insurance",
-                SourcePageKey = "quote_disability",
-                UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
-                UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
-                UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
-                SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
-                VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
-                MarketingEmailConsent = model.AcknowledgedDisclaimer,
-                CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
-                TermsAccepted = true,
-                Host          = Request?.Host.ToString(),
-                Environment   = "production",
-                CreatedUtc    = DateTime.UtcNow,
-                Status        = "New",
-                AgentTrackingProfileId = agentProfileId,
-                AgentSlug     = agentSlug,
-                MetadataJson  = JsonSerializer.Serialize(new
+                _logger.LogError(emailEx,
+                    "DisabilityQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            try
+            {
+                var evt = new AnalyticsEvent
                 {
-                    EmploymentType = model.EmploymentType,
-                    Occupation     = model.Occupation,
-                    Fbclid         = model.Fbclid,
-                    UtmTerm        = model.UtmTerm,
-                    UtmContent     = model.UtmContent,
-                    ReferrerUrl    = model.ReferrerUrl,
-                    LandingPageUrl = model.LandingPageUrl,
-                })
-            };
-            _db.WebsiteLeads.Add(lead);
-            await _db.SaveChangesAsync();
-            _logger.LogInformation("DisabilityQuote: lead {LeadId} persisted for {Email}", lead.LeadId, lead.Email);
-        }
-        catch (Exception persistEx)
-        {
-            _logger.LogError(persistEx, "DisabilityQuote: lead persistence failed for {Email}", model.Email);
-        }
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "website_lead_submitted",
+                    PageKey    = "quote_disability",
+                    FormKey    = "quote_disability_form",
+                    QuoteType  = "disability_insurance",
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
+                };
+                _db.AnalyticsEvents.Add(evt);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "DisabilityQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
+                    correlationId, evt.EventId, lead.LeadId);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogError(analyticsEx,
+                    "DisabilityQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
 
-        // ===================== REDIRECT =====================
-        TempData["QuoteType"] = "Disability";
-        return IsAjax() ? Ok(new { success = true }) : RedirectToAction("Index", "ThankYou");
-    }
-    catch (Exception ex)
-    {
-        if (IsAjax())
-            return StatusCode(500, new { error = "Failed to send lead", detail = ex.Message });
-
-        ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-        return View("~/Views/Quote/Disability.cshtml", model);
-    }
+            TempData["QuoteType"] = "Disability";
+            return IsAjax() ? Ok(new { success = true }) : RedirectToAction("Index", "ThankYou");
 }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

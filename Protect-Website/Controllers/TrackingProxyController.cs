@@ -75,14 +75,37 @@ public sealed class TrackingProxyController : ControllerBase
     [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> SubmitLead([FromBody] LeadSubmitRequest req, CancellationToken ct)
     {
-        var response = await ForwardAsync("/api/lead/submit", req, ct);
+        var correlationId = Guid.NewGuid();
+
+        _logger.LogInformation(
+            "LeadProxy [{CorrelationId}]: request received InterestType={InterestType} SourcePageKey={SourcePageKey} AgentSlug={Slug} Host={Host}",
+            correlationId, req.InterestType, req.SourcePageKey, req.AgentSlug, req.Host);
+
+        var response = await ForwardAsync("/api/lead/submit", req, ct, correlationId);
+
         if (response == null)
-            return StatusCode(StatusCodes.Status502BadGateway, new { error = "lead_forward_failed" });
+        {
+            _logger.LogError(
+                "LeadProxy [{CorrelationId}]: forward failed — no response from AgentPortal (proxy configuration or connectivity issue)",
+                correlationId);
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "lead_forward_failed", correlationId });
+        }
+
+        _logger.LogInformation(
+            "LeadProxy [{CorrelationId}]: downstream AgentPortal responded {StatusCode}",
+            correlationId, (int)response.StatusCode);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "LeadProxy [{CorrelationId}]: downstream non-success {StatusCode} for InterestType={InterestType}",
+                correlationId, (int)response.StatusCode, req.InterestType);
+        }
 
         return await BuildPassThroughResultAsync(response, ct);
     }
 
-    private async Task<HttpResponseMessage?> ForwardAsync(string path, object payload, CancellationToken ct)
+    private async Task<HttpResponseMessage?> ForwardAsync(string path, object payload, CancellationToken ct, Guid? callerCorrelationId = null)
     {
         var portalBase = (_config["Tracking:ApiBase"] ?? Environment.GetEnvironmentVariable("TRACKING_API_BASE") ?? string.Empty).Trim();
         var sharedSecret = (_config["Tracking:SharedSecret"] ?? Environment.GetEnvironmentVariable("TRACKING_SHARED_SECRET") ?? string.Empty).Trim();
@@ -125,8 +148,11 @@ public sealed class TrackingProxyController : ControllerBase
             var target = $"{baseUrl}{path}";
             try
             {
-                var requestId = Guid.NewGuid();
+                // Use callerCorrelationId if provided so X-Request-Id matches the caller's log context
+                var requestId = callerCorrelationId ?? Guid.NewGuid();
                 var timestamp = DateTimeOffset.UtcNow;
+
+                _logger.LogInformation("Tracking proxy forwarding to {Target} requestId={RequestId}", target, requestId);
 
                 using var request = new HttpRequestMessage(HttpMethod.Post, target);
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
@@ -374,5 +400,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? Host { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
+        /// <summary>Product-specific metadata JSON forwarded transparently to AgentPortal.</summary>
+        public string? MetadataJson { get; set; }
     }
 }
