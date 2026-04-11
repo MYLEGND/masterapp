@@ -7,6 +7,7 @@
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
+    var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
     var isFounder = agentOptionsJson != "[]";
     if (isFounder)
     {
@@ -104,7 +105,7 @@
                 <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
             </div>
             <div class="fa-env-badge" id="fa-env-label"></div>
-            @if(isFounder)
+            @if(canViewFounderTeamUi)
             {
             <div class="ms-auto">
                 <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
@@ -261,7 +262,7 @@
     </div>
 </div>
 
-@if (isFounder)
+@if (canViewFounderTeamUi)
 {
 <div class="modal fade" id="teamRollupModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width:1200px;">

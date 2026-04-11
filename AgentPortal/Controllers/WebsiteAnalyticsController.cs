@@ -63,7 +63,9 @@ namespace AgentPortal.Controllers;
         }
 
         var isViewingAsAgent = _effectiveContext.IsViewingAsAgent;
-        if (FounderGuard.IsFounder(User) && !isViewingAsAgent)
+        var canViewFounderTeamUi = FounderGuard.IsFounder(User) && !isViewingAsAgent;
+        ViewData["CanViewFounderTeamUi"] = canViewFounderTeamUi;
+        if (canViewFounderTeamUi)
         {
             // Ensure founder personal link is root
             var rootBase = _config["Protect:PublicBaseUrl"] ?? "https://protect.mylegnd.com";
