@@ -556,7 +556,7 @@
   }
 
   function aiSectionClass(title) {
-    const match = /^SECTION\s+([A-I])\s+—/i.exec(String(title || '').trim());
+    const match = /^SECTION\s+([A-J])\s+—/i.exec(String(title || '').trim());
     if (!match) return 'ai-sec-default';
     return `ai-sec-${match[1].toLowerCase()}`;
   }
@@ -627,7 +627,7 @@
 
     for (const line of lines) {
       const trimmed = String(line || '').trim();
-      if (/^SECTION [A-I] —/i.test(trimmed)) {
+      if (/^SECTION [A-J] —/i.test(trimmed)) {
         if (current) sections.push(current);
         current = { title: trimmed, lines: [] };
       } else {

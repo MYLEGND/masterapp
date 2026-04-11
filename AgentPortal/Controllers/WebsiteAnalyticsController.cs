@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using AgentPortal.Models.Analytics;
@@ -260,13 +261,33 @@ namespace AgentPortal.Controllers;
         var exit = await exitTask;
         var source = await sourceTask;
         var abandonment = await abandonmentTask;
+        MetaCampaignsDto? metaCampaigns = null;
+        string? activeCampaignWarning = null;
+
+        try
+        {
+            metaCampaigns = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
+        }
+        catch (InvalidOperationException ex)
+        {
+            activeCampaignWarning = $"Active campaign performance unavailable: {ex.Message}";
+            _logger.LogInformation(ex, "AI snapshot active campaign section unavailable due to Meta connection/configuration.");
+        }
+        catch (Exception ex)
+        {
+            activeCampaignWarning = "Active campaign performance unavailable due to Meta campaigns fetch error.";
+            _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
+        }
 
         var generatedLocal = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
         var scopeLabel = await ResolveScopeLabelAsync(scope, team);
         var rangeLabel = !string.IsNullOrWhiteSpace(summary.RangeLabel) ? summary.RangeLabel : range.Label;
 
         var warnings = BuildSnapshotWarnings(summary);
+        if (!string.IsNullOrWhiteSpace(activeCampaignWarning))
+            warnings.Add(activeCampaignWarning);
         var snapshotText = BuildAiReviewSnapshotText(
+            metaCampaigns,
             summary,
             traffic,
             quote,
@@ -549,6 +570,7 @@ namespace AgentPortal.Controllers;
     }
 
     private static string BuildAiReviewSnapshotText(
+        MetaCampaignsDto? metaCampaigns,
         SummaryKpiDto summary,
         TrafficOverviewDto traffic,
         QuoteFunnelDto quote,
@@ -574,6 +596,10 @@ namespace AgentPortal.Controllers;
 
         static string Pct(decimal? value) =>
             value.HasValue ? $"{value.Value:0.##}%" : "—";
+
+        static string Money(decimal value) => $"${value.ToString("0.00", CultureInfo.InvariantCulture)}";
+
+        static string Whole(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
         static string Duration(double ms)
         {
@@ -612,7 +638,45 @@ namespace AgentPortal.Controllers;
         Line($"Scope: {scopeLabel}");
         Line();
 
-        Line("SECTION B — TRAFFIC HEALTH");
+        var activeCampaigns = (metaCampaigns?.Rows ?? new List<MetaCampaignRow>())
+            .Where(r => string.Equals(r.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Spend)
+            .ThenByDescending(r => r.Impressions)
+            .ThenBy(r => r.CampaignName)
+            .ToList();
+
+        Line("SECTION B — ACTIVE CAMPAIGN PERFORMANCE");
+        Line($"Total active campaigns in range: {activeCampaigns.Count}");
+        Line($"Total active campaign spend in range: {Money(activeCampaigns.Sum(x => x.Spend))}");
+        if (activeCampaigns.Count == 0)
+        {
+            Line("- No active campaigns in range.");
+        }
+        else
+        {
+            foreach (var c in activeCampaigns)
+            {
+                Line($"- {Safe(c.CampaignName)} | {Safe(c.Status)} | {Safe(c.Objective)} | spend {Money(c.Spend)} | impr {Whole(c.Impressions)} | reach {Whole(c.Reach)} | clicks {Whole(c.Clicks)} | CTR {c.Ctr:0.##}% | CPC {Money(c.Cpc)} | CPM {Money(c.Cpm)} | leads {Whole(c.Leads)}");
+            }
+
+            var bestCtr = activeCampaigns
+                .OrderByDescending(x => x.Ctr)
+                .ThenByDescending(x => x.Impressions)
+                .FirstOrDefault();
+            if (bestCtr != null)
+                Line($"Best CTR campaign: {Safe(bestCtr.CampaignName)} ({bestCtr.Ctr:0.##}%)");
+
+            var lowestCpc = activeCampaigns
+                .Where(x => x.Cpc > 0)
+                .OrderBy(x => x.Cpc)
+                .ThenByDescending(x => x.Clicks)
+                .FirstOrDefault();
+            if (lowestCpc != null)
+                Line($"Lowest CPC campaign: {Safe(lowestCpc.CampaignName)} ({Money(lowestCpc.Cpc)})");
+        }
+        Line();
+
+        Line("SECTION C — TRAFFIC HEALTH");
         Line($"Page Views: {summary.PageViews}");
         Line($"Unique Visitors: {summary.UniqueVisitors}");
         Line($"Sessions: {summary.Sessions}");
@@ -622,7 +686,7 @@ namespace AgentPortal.Controllers;
         AddKeyCountBlock("Top Campaigns (Top 5):", traffic.TopCampaigns, 5);
         Line();
 
-        Line("SECTION C — FUNNEL HEALTH");
+        Line("SECTION D — FUNNEL HEALTH");
         Line($"Quote Starts: {quote.QuoteStarts}");
         Line($"Quote Form Starts: {quote.QuoteFormStarts}");
         Line($"Successful Quote Submits: {quote.QuoteFormSubmits}");
@@ -638,7 +702,7 @@ namespace AgentPortal.Controllers;
             .Take(5)
             .ToList();
 
-        Line("SECTION D — LEAD PICTURE");
+        Line("SECTION E — LEAD PICTURE");
         Line($"Total Leads in Range: {leads.Total}");
         Line("Lead volume by source page (Top 5):");
         if (leadPages.Count == 0)
@@ -656,7 +720,7 @@ namespace AgentPortal.Controllers;
         Line($"Top lead source page: {(leadPages.Count > 0 ? $"{Safe(leadPages[0].PageKey)} ({leadPages[0].Leads})" : "No data in range.")}");
         Line();
 
-        Line("SECTION E — PAGE + CTA PERFORMANCE");
+        Line("SECTION F — PAGE + CTA PERFORMANCE");
         Line($"Top Page: {Safe(summary.TopPage)}");
         Line($"Top CTA: {Safe(summary.TopCta)}");
         Line("Top 5 page performance rows:");
@@ -692,7 +756,7 @@ namespace AgentPortal.Controllers;
         var topSourceShare = topSourceTotal > 0 ? Math.Round((decimal)topSourceLeadCount / topSourceTotal * 100, 2) : 0;
         var topCampaignShare = topCampaignTotal > 0 ? Math.Round((decimal)topCampaignLeadCount / topCampaignTotal * 100, 2) : 0;
 
-        Line("SECTION F — CAMPAIGN / SOURCE READ");
+        Line("SECTION G — CAMPAIGN / SOURCE READ");
         if (topSources.Any())
         {
             Line($"Top source by events: {Safe(topSources[0].Key)} ({topSources[0].Count})");
@@ -725,7 +789,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION G — BEHAVIOR SIGNALS (DIRECTIONAL)");
+        Line("SECTION H — BEHAVIOR SIGNALS (DIRECTIONAL)");
         Line("Avg Time on Top Pages (Top 5):");
         var dwellRows = (timeOnPage.LongestAvgDwell ?? new List<DwellPageRow>()).Take(5).ToList();
         if (dwellRows.Count == 0)
@@ -772,7 +836,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION H — DATA QUALITY / CONTEXT NOTES");
+        Line("SECTION I — DATA QUALITY / CONTEXT NOTES");
         Line("- Metrics reflect the currently selected range and current scope.");
         Line("- Behavior signals are directional and should be interpreted with context.");
         Line("- Snapshot excludes sensitive lead details.");
@@ -786,7 +850,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION I — CHATGPT COPY PROMPT FOOTER");
+        Line("SECTION J — CHATGPT COPY PROMPT FOOTER");
         Line("CHATGPT ANALYSIS REQUEST");
         Line("Analyze this website and ad performance snapshot.");
         Line("Identify:");

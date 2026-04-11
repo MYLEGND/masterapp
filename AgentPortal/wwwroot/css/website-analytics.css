@@ -654,6 +654,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 #aiReviewSnapshotModal .ai-sec-g { --sec-color: #bef264; }
 #aiReviewSnapshotModal .ai-sec-h { --sec-color: #fde68a; }
 #aiReviewSnapshotModal .ai-sec-i { --sec-color: #cbd5e1; }
+#aiReviewSnapshotModal .ai-sec-j { --sec-color: #f0abfc; }
 
 #aiReviewSnapshotModal .ai-section-title {
     color: var(--sec-color);
