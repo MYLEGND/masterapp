@@ -558,15 +558,16 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-field-row" style="margin-top: 8px;">
 <label class="lq-consent full">
-    <input type="checkbox" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : "") required />
+    <input type="checkbox" name="MarketingEmailConsent" value="true" required />
     
-    <span class="consent-main">
-        I’m okay with being contacted to review my options.
-    </span>
-    
-    <span class="consent-sub">
-        You decide what happens next. No obligation.
-    </span>
+    <div class="consent-text">
+        <span class="consent-main">
+            I’d like help reviewing my life insurance options.
+        </span>
+        <span class="consent-sub">
+            You decide what happens next — no obligation.
+        </span>
+    </div>
 </label>
                         <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
                     </div>
