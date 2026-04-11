@@ -70,7 +70,8 @@
     behaviorTime: '/WebsiteAnalytics/behavior/time-on-page',
     behaviorExit: '/WebsiteAnalytics/behavior/exit-analysis',
     behaviorJourney: '/WebsiteAnalytics/behavior/journey',
-    behaviorSources: '/WebsiteAnalytics/behavior/source-performance'
+    behaviorSources: '/WebsiteAnalytics/behavior/source-performance',
+    quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment'
   };
 
   function abort(key) {
@@ -371,6 +372,39 @@
     setText('quote-range-label', data.rangeLabel || '');
   }
 
+  function renderAbandonment(data) {
+    if (!data) return;
+    renderTable('abandon-summary-body', data.summary || [], [
+      { key: 'quoteType' },
+      { key: 'abandons', align: 'text-end' },
+      { key: 'starts', align: 'text-end' },
+      { key: 'abandonRate', align: 'text-end', fmt: v => formatPct(v) },
+      { key: 'avgCompletedFields', align: 'text-end' },
+      { key: 'submitAttemptedAbandonCount', align: 'text-end' }
+    ]);
+    renderTable('abandon-fields-body', data.topAbandonedFields || [], [
+      { key: 'fieldName' },
+      { key: 'quoteType' },
+      { key: 'abandonCount', align: 'text-end' }
+    ]);
+    renderTable('abandon-last-completed-body', data.topLastCompletedFields || [], [
+      { key: 'fieldName' },
+      { key: 'quoteType' },
+      { key: 'count', align: 'text-end' }
+    ]);
+    renderTable('abandon-validation-body', data.validationFriction || [], [
+      { key: 'fieldName' },
+      { key: 'quoteType' },
+      { key: 'errorCount', align: 'text-end' }
+    ]);
+    const note = document.getElementById('abandon-consent-note');
+    if (note) {
+      note.textContent = data.consentFrictionCount > 0
+        ? `Consent friction: ${data.consentFrictionCount} session(s) attempted submit without interacting with the consent checkbox.`
+        : '';
+    }
+  }
+
   function renderBehavior(summary, time, exit, journey, sources) {
     const rangeLabel = summary?.rangeLabel || time?.rangeLabel || exit?.rangeLabel || journey?.rangeLabel || sources?.rangeLabel || '';
     setText('bhvr-range-label', rangeLabel);
@@ -538,9 +572,12 @@
     renderCtaPerf(data);
   }
   async function loadQuote() {
-    const data = await fetchJson('quote', endpoints.quote, rangeParams());
-    if (!data) return;
-    renderQuote(data);
+    const [data, abandon] = await Promise.all([
+      fetchJson('quote', endpoints.quote, rangeParams()),
+      fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams())
+    ]);
+    if (data) renderQuote(data);
+    if (abandon) renderAbandonment(abandon);
   }
   async function loadBehavior() {
     try {

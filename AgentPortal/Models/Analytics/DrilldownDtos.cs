@@ -94,3 +94,47 @@ public sealed class LeadSnapshotDto
     public int Total { get; set; }
     public string RangeLabel { get; set; } = "";
 }
+
+// ── Form Abandonment ──────────────────────────────────────────────────────────
+
+public sealed class TopAbandonedFieldRow
+{
+    public string FieldName { get; set; } = "";
+    public int AbandonCount { get; set; }
+    public string? QuoteType { get; set; }
+}
+
+public sealed class LastCompletedFieldRow
+{
+    public string FieldName { get; set; } = "";
+    public int Count { get; set; }
+    public string? QuoteType { get; set; }
+}
+
+public sealed class ValidationFrictionRow
+{
+    public string FieldName { get; set; } = "";
+    public int ErrorCount { get; set; }
+    public string? QuoteType { get; set; }
+}
+
+public sealed class FormAbandonSummaryRow
+{
+    public string QuoteType { get; set; } = "";
+    public int Abandons { get; set; }
+    public int Starts { get; set; }
+    public decimal AbandonRate { get; set; }
+    public double AvgCompletedFields { get; set; }
+    public int SubmitAttemptedAbandonCount { get; set; }
+}
+
+public sealed class FormAbandonmentDto
+{
+    public List<FormAbandonSummaryRow> Summary { get; set; } = new();
+    public List<TopAbandonedFieldRow> TopAbandonedFields { get; set; } = new();
+    public List<LastCompletedFieldRow> TopLastCompletedFields { get; set; } = new();
+    public List<ValidationFrictionRow> ValidationFriction { get; set; } = new();
+    /// <summary>Count of abandons where submit was attempted at least once before leaving.</summary>
+    public int ConsentFrictionCount { get; set; }
+    public string RangeLabel { get; set; } = "";
+}

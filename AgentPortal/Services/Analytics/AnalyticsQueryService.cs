@@ -987,6 +987,134 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new FormFrictionDto { Rows = rows, TopAbandonFields = topAbandonFields, RangeLabel = range.Label };
     }
 
+    public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope)
+    {
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+
+        // Fetch form_abandon and form_start for denominator, plus form_field_error for validation friction
+        var events = await BaseEvents(range, scope, scopedAgentIds)
+            .Where(e => e.EventType == "form_abandon" || e.EventType == "form_start" || e.EventType == "form_field_error")
+            .ToListAsync();
+
+        var abandonEvents = events.Where(e => e.EventType == "form_abandon").ToList();
+        var startEvents = events.Where(e => e.EventType == "form_start").ToList();
+        var errorEvents = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName)).ToList();
+
+        // Parse MetadataJson from form_abandon events
+        var parsed = abandonEvents
+            .Select(e =>
+            {
+                string? lastFocused = null, lastCompleted = null, quoteType = e.QuoteType;
+                bool submitAttempted = false, consentInteracted = false;
+                int completedCount = 0, errorCount = 0;
+                double timeOnFormMs = 0;
+
+                if (!string.IsNullOrWhiteSpace(e.MetadataJson))
+                {
+                    try
+                    {
+                        var doc = System.Text.Json.JsonDocument.Parse(e.MetadataJson);
+                        var root = doc.RootElement;
+                        if (root.TryGetProperty("lastFocusedField", out var lff) && lff.ValueKind == System.Text.Json.JsonValueKind.String)
+                            lastFocused = lff.GetString();
+                        if (root.TryGetProperty("lastCompletedField", out var lcf) && lcf.ValueKind == System.Text.Json.JsonValueKind.String)
+                            lastCompleted = lcf.GetString();
+                        if (root.TryGetProperty("quoteType", out var qt) && qt.ValueKind == System.Text.Json.JsonValueKind.String)
+                            quoteType = qt.GetString() ?? quoteType;
+                        if (root.TryGetProperty("submitAttempted", out var sa))
+                            submitAttempted = sa.ValueKind == System.Text.Json.JsonValueKind.True;
+                        if (root.TryGetProperty("consentInteracted", out var ci))
+                            consentInteracted = ci.ValueKind == System.Text.Json.JsonValueKind.True;
+                        if (root.TryGetProperty("completedFieldCount", out var cfc) && cfc.TryGetInt32(out var cfcVal))
+                            completedCount = cfcVal;
+                        if (root.TryGetProperty("errorCount", out var ec) && ec.TryGetInt32(out var ecVal))
+                            errorCount = ecVal;
+                        if (root.TryGetProperty("timeOnFormMs", out var tfm) && tfm.TryGetDouble(out var tfmVal))
+                            timeOnFormMs = tfmVal;
+                    }
+                    catch { /* malformed JSON — skip */ }
+                }
+
+                return new
+                {
+                    Event = e,
+                    LastFocused = lastFocused,
+                    LastCompleted = lastCompleted,
+                    QuoteType = quoteType ?? "unknown",
+                    SubmitAttempted = submitAttempted,
+                    ConsentInteracted = consentInteracted,
+                    CompletedCount = completedCount,
+                    ErrorCount = errorCount,
+                    TimeOnFormMs = timeOnFormMs
+                };
+            })
+            .ToList();
+
+        // Summary per quote type
+        var startsByType = startEvents
+            .GroupBy(e => e.QuoteType ?? "unknown")
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var summary = parsed
+            .GroupBy(p => p.QuoteType)
+            .Select(g =>
+            {
+                var abandons = g.Count();
+                var starts = startsByType.TryGetValue(g.Key, out var s) ? s : abandons;
+                var total = Math.Max(starts, abandons);
+                return new FormAbandonSummaryRow
+                {
+                    QuoteType = g.Key,
+                    Abandons = abandons,
+                    Starts = total,
+                    AbandonRate = total > 0 ? Math.Round((decimal)abandons / total * 100, 2) : 0,
+                    AvgCompletedFields = abandons > 0 ? Math.Round(g.Average(p => (double)p.CompletedCount), 1) : 0,
+                    SubmitAttemptedAbandonCount = g.Count(p => p.SubmitAttempted)
+                };
+            })
+            .OrderByDescending(r => r.Abandons)
+            .ToList();
+
+        // Top last-focused fields (where drop-off happens)
+        var topAbandoned = parsed
+            .Where(p => !string.IsNullOrWhiteSpace(p.LastFocused))
+            .GroupBy(p => new { Field = p.LastFocused!, p.QuoteType })
+            .Select(g => new TopAbandonedFieldRow { FieldName = g.Key.Field, QuoteType = g.Key.QuoteType, AbandonCount = g.Count() })
+            .OrderByDescending(r => r.AbandonCount)
+            .Take(15)
+            .ToList();
+
+        // Top last-completed fields (furthest progress before abandon)
+        var topLastCompleted = parsed
+            .Where(p => !string.IsNullOrWhiteSpace(p.LastCompleted))
+            .GroupBy(p => new { Field = p.LastCompleted!, p.QuoteType })
+            .Select(g => new LastCompletedFieldRow { FieldName = g.Key.Field, QuoteType = g.Key.QuoteType, Count = g.Count() })
+            .OrderByDescending(r => r.Count)
+            .Take(15)
+            .ToList();
+
+        // Validation friction from form_field_error events
+        var validationFriction = errorEvents
+            .GroupBy(e => new { FieldName = e.FieldName!, QuoteType = e.QuoteType ?? "unknown" })
+            .Select(g => new ValidationFrictionRow { FieldName = g.Key.FieldName, QuoteType = g.Key.QuoteType, ErrorCount = g.Count() })
+            .OrderByDescending(r => r.ErrorCount)
+            .Take(15)
+            .ToList();
+
+        // Consent friction: abandons where consentInteracted = false and submitAttempted = true
+        var consentFriction = parsed.Count(p => p.SubmitAttempted && !p.ConsentInteracted);
+
+        return new FormAbandonmentDto
+        {
+            Summary = summary,
+            TopAbandonedFields = topAbandoned,
+            TopLastCompletedFields = topLastCompleted,
+            ValidationFriction = validationFriction,
+            ConsentFrictionCount = consentFriction,
+            RangeLabel = range.Label
+        };
+    }
+
     /// <summary>Computes the median of a list of doubles. Returns 0 for empty list.</summary>
     private static double Median(List<double> values)
     {

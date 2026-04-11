@@ -684,33 +684,76 @@
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Quote Funnel · <span id="quote-range-label"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="row g-3">
-            <div class="col-4">
-                <div class="fa-kpi-title">Starts</div>
-                <div class="fa-kpi-value" id="quote-starts">0</div>
+        <ul class="nav nav-tabs mb-3" id="quoteTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="quote-funnel-tab" data-bs-toggle="tab" data-bs-target="#quote-funnel-panel" type="button" role="tab">Funnel</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="quote-abandon-tab" data-bs-toggle="tab" data-bs-target="#quote-abandon-panel" type="button" role="tab">Abandonment</button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <!-- Funnel Tab -->
+          <div class="tab-pane fade show active" id="quote-funnel-panel" role="tabpanel">
+            <div class="row g-3">
+                <div class="col-4">
+                    <div class="fa-kpi-title">Starts</div>
+                    <div class="fa-kpi-value" id="quote-starts">0</div>
+                </div>
+                <div class="col-4">
+                    <div class="fa-kpi-title">Form Starts</div>
+                    <div class="fa-kpi-value" id="quote-form-starts">0</div>
+                </div>
+                <div class="col-4">
+                    <div class="fa-kpi-title">Submits</div>
+                    <div class="fa-kpi-value" id="quote-form-submits">0</div>
+                </div>
             </div>
-            <div class="col-4">
-                <div class="fa-kpi-title">Form Starts</div>
-                <div class="fa-kpi-value" id="quote-form-starts">0</div>
-            </div>
-            <div class="col-4">
-                <div class="fa-kpi-title">Submits</div>
-                <div class="fa-kpi-value" id="quote-form-submits">0</div>
-            </div>
+            <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
+            <h6 class="text-warning mt-3">By Quote Type</h6>
+            <table class="table table-sm">
+                <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="quote-type-body"></tbody>
+            </table>
+          </div>
+          <!-- Abandonment Tab -->
+          <div class="tab-pane fade" id="quote-abandon-panel" role="tabpanel">
+            <div id="abandon-loading" class="text-muted small py-3 text-center" style="display:none">Loading…</div>
+            <!-- Summary by quote type -->
+            <h6 class="text-warning">Abandonment by Quote Type</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Type</th><th class="text-end">Abandons</th><th class="text-end">Starts</th><th class="text-end">Rate</th><th class="text-end">Avg Fields</th><th class="text-end">Submit→Left</th></tr></thead>
+                <tbody id="abandon-summary-body"></tbody>
+            </table>
+            <!-- Top abandoned fields -->
+            <h6 class="text-warning">Where Users Drop Off (Last Focused Field)</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Field</th><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="abandon-fields-body"></tbody>
+            </table>
+            <!-- Last completed field -->
+            <h6 class="text-warning">Furthest Progress Before Abandon</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Last Completed Field</th><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="abandon-last-completed-body"></tbody>
+            </table>
+            <!-- Validation friction -->
+            <h6 class="text-warning">Validation Friction (Field Errors)</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Field</th><th>Type</th><th class="text-end">Errors</th></tr></thead>
+                <tbody id="abandon-validation-body"></tbody>
+            </table>
+            <!-- Consent friction -->
+            <div class="small text-muted" id="abandon-consent-note"></div>
+          </div>
         </div>
-        <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
-        <h6 class="text-warning mt-3">By Quote Type</h6>
-        <table class="table table-sm">
-            <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
-            <tbody id="quote-type-body"></tbody>
-        </table>
       </div>
     </div>
   </div>

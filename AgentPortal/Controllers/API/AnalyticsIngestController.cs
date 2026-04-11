@@ -62,6 +62,9 @@ public class AnalyticsIngestController : ControllerBase
         "form_field_focus",
         "form_field_complete",
         "form_field_abandon",
+        "form_field_error",
+        "form_submit_attempt",
+        "form_abandon",
         "rage_click",
         "dead_click",
         "file_download",
@@ -293,7 +296,8 @@ public class AnalyticsIngestController : ControllerBase
         eventType != null && (
             eventType.Equals("form_field_focus", StringComparison.OrdinalIgnoreCase) ||
             eventType.Equals("form_field_complete", StringComparison.OrdinalIgnoreCase) ||
-            eventType.Equals("form_field_abandon", StringComparison.OrdinalIgnoreCase)
+            eventType.Equals("form_field_abandon", StringComparison.OrdinalIgnoreCase) ||
+            eventType.Equals("form_field_error", StringComparison.OrdinalIgnoreCase)
         );
 
     // Preflight responder for CORS

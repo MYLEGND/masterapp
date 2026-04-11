@@ -23,4 +23,5 @@ public interface IAnalyticsQueryService
     Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope);
     Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope);
     Task<FormFrictionDto> GetFormFrictionAsync(TimeRangeRequest range, ScopeContext scope);
+    Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope);
 }

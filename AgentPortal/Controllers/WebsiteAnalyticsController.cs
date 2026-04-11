@@ -215,6 +215,15 @@ namespace AgentPortal.Controllers;
         return Json(result);
     }
 
+    [HttpGet("quote-funnel/abandonment")]
+    public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetFormAbandonmentAsync(range, scope);
+        return Json(result);
+    }
+
     [HttpGet("meta-campaigns")]
     [HttpGet("/website-analytics/meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null)
