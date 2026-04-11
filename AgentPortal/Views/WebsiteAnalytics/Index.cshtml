@@ -105,15 +105,18 @@
                 <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
             </div>
             <div class="fa-env-badge" id="fa-env-label"></div>
-            @if(canViewFounderTeamUi)
-            {
-            <div class="ms-auto">
+            <div class="d-flex align-items-center gap-2 ms-auto">
+                <button class="btn btn-sm btn-outline-light" id="ai-review-snapshot-btn" type="button" data-bs-toggle="modal" data-bs-target="#aiReviewSnapshotModal">
+                    Copy AI Review Snapshot
+                </button>
+                @if(canViewFounderTeamUi)
+                {
                 <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
                         style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
                     Team Performance
                 </button>
+                }
             </div>
-            }
         </div>
     </div>
 
@@ -816,6 +819,36 @@
             <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th></tr></thead>
             <tbody id="leads-body"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1">AI Review Snapshot</h5>
+          <div class="fa-muted small">A clean copy-ready performance summary for the current analytics range and scope. No data is sent anywhere until you choose to paste it externally.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2 small">
+          <div><span class="text-warning">Generated:</span> <span id="ai-snapshot-generated">—</span></div>
+          <div><span class="text-warning">Range:</span> <span id="ai-snapshot-range">—</span></div>
+          <div><span class="text-warning">Scope:</span> <span id="ai-snapshot-scope">—</span></div>
+        </div>
+        <div class="small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
+        <textarea id="ai-snapshot-text" class="form-control font-monospace" rows="22" readonly spellcheck="false"></textarea>
+      </div>
+      <div class="modal-footer border-0 justify-content-between">
+        <button type="button" class="btn btn-sm fa-export-btn" id="ai-snapshot-copy">Copy</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-light" id="ai-snapshot-refresh">Refresh</button>
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        </div>
       </div>
     </div>
   </div>

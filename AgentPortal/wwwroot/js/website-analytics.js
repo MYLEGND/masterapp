@@ -16,7 +16,8 @@
       agentPerf: null,
       traffic: null,
       metaCampaigns: null,
-      behaviorSources: null
+      behaviorSources: null,
+      aiSnapshot: null
     },
     agentProfileId: null,
     scope: {
@@ -71,7 +72,8 @@
     behaviorExit: '/WebsiteAnalytics/behavior/exit-analysis',
     behaviorJourney: '/WebsiteAnalytics/behavior/journey',
     behaviorSources: '/WebsiteAnalytics/behavior/source-performance',
-    quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment'
+    quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment',
+    aiReviewSnapshot: '/WebsiteAnalytics/ai-review-snapshot'
   };
 
   function abort(key) {
@@ -531,6 +533,84 @@
       { key: 'source' }
     ]);
     setText('leads-range-label', data.rangeLabel || '');
+  }
+
+  function setAiSnapshotStatus(message, tone = 'muted') {
+    const el = document.getElementById('ai-snapshot-status');
+    if (!el) return;
+    el.classList.remove('text-muted', 'text-success', 'text-warning', 'text-danger');
+    if (tone === 'success') el.classList.add('text-success');
+    else if (tone === 'warning') el.classList.add('text-warning');
+    else if (tone === 'error') el.classList.add('text-danger');
+    else el.classList.add('text-muted');
+    el.textContent = message || '';
+  }
+
+  async function copyTextWithFallback(text) {
+    if (!text) return false;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // fall through to execCommand fallback
+      }
+    }
+    try {
+      const tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.setAttribute('readonly', 'readonly');
+      tmp.style.position = 'absolute';
+      tmp.style.left = '-9999px';
+      document.body.appendChild(tmp);
+      tmp.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(tmp);
+      return !!ok;
+    } catch {
+      return false;
+    }
+  }
+
+  function renderAiReviewSnapshot(data) {
+    state.cache.aiSnapshot = data;
+    setText('ai-snapshot-generated', data.generatedAtLocal || '—');
+    setText('ai-snapshot-range', data.rangeLabel || '—');
+    setText('ai-snapshot-scope', data.scopeLabel || '—');
+
+    const textEl = document.getElementById('ai-snapshot-text');
+    if (textEl) textEl.value = data.snapshotText || '';
+
+    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    if (warnings.length) {
+      setAiSnapshotStatus(`Snapshot ready with warnings: ${warnings.join(' ')}`, 'warning');
+    } else {
+      setAiSnapshotStatus('Snapshot ready to copy.', 'success');
+    }
+
+    const copyBtn = document.getElementById('ai-snapshot-copy');
+    if (copyBtn) copyBtn.disabled = !(data.snapshotText && data.snapshotText.length);
+  }
+
+  async function loadAiReviewSnapshot() {
+    const textEl = document.getElementById('ai-snapshot-text');
+    const copyBtn = document.getElementById('ai-snapshot-copy');
+    if (textEl) textEl.value = '';
+    if (copyBtn) copyBtn.disabled = true;
+    setText('ai-snapshot-generated', '—');
+    setText('ai-snapshot-range', '—');
+    setText('ai-snapshot-scope', '—');
+    setAiSnapshotStatus('Generating snapshot…');
+
+    try {
+      const data = await fetchJson('ai-review-snapshot', endpoints.aiReviewSnapshot, rangeParams());
+      if (!data) return;
+      renderAiReviewSnapshot(data);
+    } catch (err) {
+      if (textEl) textEl.value = '';
+      setAiSnapshotStatus((err && err.message) ? err.message : 'Unable to generate snapshot.', 'error');
+      console.error(err);
+    }
   }
 
   function formatDisplayDate(utcString) {
@@ -1074,6 +1154,7 @@
       case 'agentPerfModal': loadAgentPerf(); break;
       case 'metaCampaignsModal': loadMetaCampaigns(); break;
       case 'behaviorModal': loadBehavior(); break;
+      case 'aiReviewSnapshotModal': loadAiReviewSnapshot(); break;
       default: loadSummary(); break;
     }
   }
@@ -1149,6 +1230,7 @@
     attachModal('leadsModal', loadLeads);
     attachModal('metaCampaignsModal', loadMetaCampaigns);
     attachModal('behaviorModal', loadBehavior);
+    attachModal('aiReviewSnapshotModal', loadAiReviewSnapshot);
     if (isFounder) {
       attachModal('agentPerfModal', loadAgentPerf);
     }
@@ -1162,6 +1244,36 @@
       });
       teamModal.addEventListener('show.bs.modal', () => {
         loadTeamRollup();
+      });
+    }
+
+    const aiSnapshotRefresh = document.getElementById('ai-snapshot-refresh');
+    if (aiSnapshotRefresh) {
+      aiSnapshotRefresh.addEventListener('click', () => {
+        loadAiReviewSnapshot();
+      });
+    }
+
+    const aiSnapshotCopy = document.getElementById('ai-snapshot-copy');
+    if (aiSnapshotCopy) {
+      aiSnapshotCopy.addEventListener('click', async () => {
+        const textEl = document.getElementById('ai-snapshot-text');
+        const snapshotText = (textEl && textEl.value) ? textEl.value : (state.cache.aiSnapshot?.snapshotText || '');
+        if (!snapshotText) {
+          setAiSnapshotStatus('No snapshot text available to copy.', 'warning');
+          return;
+        }
+        const copied = await copyTextWithFallback(snapshotText);
+        if (copied) {
+          const original = aiSnapshotCopy.textContent;
+          aiSnapshotCopy.textContent = 'Copied';
+          setAiSnapshotStatus('Snapshot copied to clipboard.', 'success');
+          setTimeout(() => {
+            aiSnapshotCopy.textContent = original || 'Copy';
+          }, 1200);
+        } else {
+          setAiSnapshotStatus('Clipboard copy failed in this browser context.', 'error');
+        }
       });
     }
 
