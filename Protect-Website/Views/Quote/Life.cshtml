@@ -316,6 +316,14 @@ body.life-landing header .navbar .nav-link:focus {
 .consent-main { font-size: .97rem; font-weight: 800; color: #f8fafc; line-height: 1.4; }
 .consent-sub  { font-size: .85rem; font-weight: 600; color: rgba(248,250,252,0.62); line-height: 1.4; }
 .lq-submit-row { margin-top: 14px; }
+.lq-reach-note {
+    text-align: center;
+    color: rgba(248,250,252,0.82);
+    font-size: .92rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
 .lq-field-row{
     display: grid;
     gap: 14px;
@@ -517,6 +525,10 @@ body.life-landing header .navbar .nav-link:focus {
         padding: 11px 14px !important;
         font-size: .92rem !important;
     }
+    body.life-landing .lq-reach-note {
+        font-size: .84rem !important;
+        margin-bottom: 8px !important;
+    }
     body.life-landing .lq-trust-note {
         margin-top: 6px !important;
         font-size: .82rem !important;
@@ -575,6 +587,7 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="Fbclid" id="Fbclid" />
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
+        <input type="hidden" name="MarketingEmailConsent" value="true" />
 
         @for (var i = 0; i < viewSteps.Count; i++)
         {
@@ -705,18 +718,8 @@ body.life-landing header .navbar .nav-link:focus {
                             </div>
                         }
                     </div>
-                    <div class="lq-field-row" style="margin-top: 8px;">
-                        <label class="lq-consent full">
-                            <input type="checkbox" name="MarketingEmailConsent" value="true" required />
-                            <div class="consent-text">
-                                <span class="consent-main">I’d like to see my options.</span>
-                                <span class="consent-sub">You decide what happens next — no obligation.</span>
-                            </div>
-                        </label>
-                        <div class="lq-field-err" id="err-Consent">Please authorize contact.</div>
-                    </div>
-
                     <div class="lq-step-actions">
+                        <div class="lq-reach-note">We’ll reach out to go over your options — no pressure.</div>
                         <div class="lq-submit-row">
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
@@ -832,7 +835,6 @@ body.life-landing header .navbar .nav-link:focus {
     lifeError.style.display = 'none';
     lifeSuccess.style.display = 'none';
     ['FirstName','LastName','Phone','Email','State'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
-    document.getElementById('err-Consent')?.classList.remove('visible');
 
     // validate all question steps
     for (let i = 0; i < totalSteps - 1; i++) {
@@ -871,17 +873,6 @@ body.life-landing header .navbar .nav-link:focus {
           return;
       }
     }
-    const consent = form.querySelector('input[name=\"MarketingEmailConsent\"]');
-    if (!consent?.checked) {
-      lifeError.textContent = 'Please authorize contact.';
-      lifeError.style.display = 'block';
-      consent?.focus();
-      document.getElementById('err-Consent')?.classList.add('visible');
-      setStep(totalSteps - 1);
-      form._trackSubmitAttempt?.(false, 1);
-      return;
-    }
-
     form._trackSubmitAttempt?.(true, 0);
     submitBtn.disabled = true;
     submitBtn.textContent = 'Sending...';
