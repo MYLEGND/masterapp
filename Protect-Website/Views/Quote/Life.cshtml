@@ -296,6 +296,13 @@ body.life-landing header .navbar .nav-link:focus {
     grid-template-columns: 1fr;
 }
 .lq-choice-grid.lq-grid-2 { grid-template-columns: 1fr 1fr; }
+.lq-choice-grid.lq-step1-twoup .lq-card {
+    min-height: 64px;
+    padding: 12px 8px;
+}
+.lq-choice-grid.lq-step1-twoup .lq-card span {
+    overflow-wrap: anywhere;
+}
 @@media (min-width: 600px) {
     .lq-choice-grid.lq-grid-2 { grid-template-columns: repeat(2, 1fr); }
 }
@@ -490,6 +497,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-inner-block { padding: 10px 10px 8px !important; }
     .lq-step-title { font-size: 1rem !important; }
     .lq-card { min-height: 46px !important; padding: 10px 7px !important; font-size: .87rem !important; }
+    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 54px !important; }
     .lq-choice-grid { gap: 7px !important; }
 
     /* Contact step fields */
@@ -669,7 +677,7 @@ body.life-landing header .navbar .nav-link:focus {
                 <div class="lq-inner-block">
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
                         <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
-                        <div class="lq-choice-grid">
+                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in protectStep.Options)
                             {
                                 var isChecked =
@@ -686,7 +694,7 @@ body.life-landing header .navbar .nav-link:focus {
 
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
                         <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
-                        <div class="lq-choice-grid">
+                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in goalStep.Options)
                             {
                                 var isChecked =
