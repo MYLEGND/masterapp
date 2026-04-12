@@ -40,6 +40,12 @@ body.life-landing header .navbar {
     background: #0b1529 !important;
     border-color: rgba(166,128,35,.55) !important;
 }
+body.life-landing header .nav-links,
+body.life-landing header .nav-toggle,
+body.life-landing header .header-bottom,
+body.life-landing header .header-psalms {
+    display: none !important;
+}
 body.life-landing header .navbar .nav-link {
     background: transparent;
     border-color: rgba(199,153,49,.45);
@@ -409,6 +415,113 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
 }
+
+/* ── Landing Mobile Fast Path (paid traffic) ─────────────────────────────── */
+@@media (max-width: 767.98px){
+    body.life-landing main.layout-content {
+        padding-top: .35rem !important;
+        padding-bottom: 2rem;
+    }
+    body.life-landing header .navbar {
+        min-height: 64px !important;
+        padding: 6px 12px !important;
+        border-radius: 0 0 12px 12px;
+        box-shadow: 0 6px 14px rgba(0,0,0,0.22);
+        background: linear-gradient(180deg, #0a1326 0%, #0b162c 100%) !important;
+    }
+    body.life-landing header .navbar-top { min-height: 0 !important; }
+    body.life-landing header .navbar-brand img {
+        max-height: 38px !important;
+        filter: drop-shadow(0 3px 8px rgba(0,0,0,.28));
+    }
+
+    body.life-landing .lq-container {
+        padding: 2px 10px 14px !important;
+    }
+    body.life-landing .lq-hero-shell {
+        margin: 4px auto 10px !important;
+        padding: 8px 10px 10px !important;
+        border-radius: 12px !important;
+        border-color: rgba(199,153,49,.34);
+        background:
+            radial-gradient(ellipse 120% 32% at 50% -8%, rgba(199,153,49,0.06) 0%, transparent 60%),
+            linear-gradient(180deg, #081122 0%, #0a1325 100%);
+        box-shadow:
+            0 14px 28px rgba(0,0,0,.34),
+            inset 0 1px 0 rgba(199,153,49,.08);
+    }
+
+    body.life-landing .lq-header {
+        margin-top: 2px !important;
+        margin-bottom: 8px !important;
+    }
+    body.life-landing .lq-header h1 {
+        font-size: 1.18rem !important;
+        line-height: 1.2 !important;
+        margin-bottom: 4px !important;
+        letter-spacing: .2px !important;
+    }
+    body.life-landing .lq-subtext {
+        font-size: .83rem !important;
+        line-height: 1.35 !important;
+        margin-bottom: 6px !important;
+    }
+
+    body.life-landing .lq-step-panel {
+        margin-bottom: 8px !important;
+        border-radius: 10px;
+    }
+    body.life-landing .lq-step-panel-pad { padding: 10px !important; }
+    body.life-landing .lq-inner-block { padding: 12px 10px 10px !important; }
+    body.life-landing .lq-step-title {
+        font-size: 1rem !important;
+        margin-bottom: 4px !important;
+    }
+    body.life-landing .lq-step-helper { margin-bottom: 8px !important; }
+    body.life-landing .lq-choice-grid { gap: 7px !important; }
+    body.life-landing .lq-card {
+        min-height: 46px !important;
+        padding: 10px 7px !important;
+        font-size: .86rem !important;
+    }
+    body.life-landing .lq-step-actions { margin-top: 10px !important; }
+
+    body.life-landing .lq-contact-grid { gap: 8px !important; }
+    body.life-landing .lq-field-row { gap: 10px !important; }
+    body.life-landing .form-control,
+    body.life-landing .form-select {
+        padding: 8px 10px !important;
+        margin-bottom: 5px !important;
+        font-size: .9rem !important;
+    }
+    body.life-landing .lq-field label { font-size: .86rem !important; }
+    body.life-landing .lq-submit-row { margin-top: 8px !important; }
+    body.life-landing .btn-gold {
+        padding: 11px 14px !important;
+        font-size: .92rem !important;
+    }
+    body.life-landing .lq-trust-note {
+        margin-top: 6px !important;
+        font-size: .82rem !important;
+    }
+}
+
+@@media (max-width: 390px){
+    body.life-landing header .navbar {
+        min-height: 56px !important;
+        padding: 5px 10px !important;
+    }
+    body.life-landing header .navbar-brand img { max-height: 34px !important; }
+    body.life-landing .lq-hero-shell {
+        margin-top: 2px !important;
+        padding-top: 6px !important;
+    }
+    body.life-landing .lq-header h1 { font-size: 1.08rem !important; }
+    body.life-landing .lq-subtext {
+        font-size: .78rem !important;
+        margin-bottom: 5px !important;
+    }
+}
 </style>
 
 <div class="lq-hero-shell">
@@ -626,11 +739,14 @@ body.life-landing header .navbar .nav-link:focus {
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
   const isGeneralLifeOffer = '@(isGeneralLifeOffer ? "true" : "false")' === 'true';
+  const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
 
   function setStep(idx) {
     steps.forEach((s, i) => s.hidden = i !== idx);
     const target = steps[idx];
-    setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    const scrollBehavior = (isLandingMobile && idx === 0) ? 'auto' : 'smooth';
+    const scrollBlock = isLandingMobile ? 'start' : 'center';
+    setTimeout(() => target.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock }), 50);
   }
 
   function storeAnswer(stepIndex, code, label, alias) {
