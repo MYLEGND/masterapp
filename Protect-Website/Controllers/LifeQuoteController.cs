@@ -106,11 +106,9 @@ namespace Protect_Website.Controllers
         {
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
-            // Landing routes use the lean general-life contact requirements for conversion speed.
-            // Keep stricter email/state requirements on non-landing product pages.
-            var requiresEmailAndState =
-                !pageMode.IsLandingPage &&
-                !string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
+            // Shared intake across all life product types:
+            // First/Last/Phone required, Email/State optional.
+            var requiresEmailAndState = false;
             if (requiresEmailAndState)
             {
                 if (string.IsNullOrWhiteSpace(model.Email))

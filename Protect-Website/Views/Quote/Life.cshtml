@@ -19,10 +19,9 @@
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
     ViewData["BodyClass"] = isLandingView ? $"life-landing landing-mode {offerBodyClass}" : $"site-mode {offerBodyClass}";
-    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = isLandingView
-        ? Array.Empty<Protect_Website.Models.LifeWizardStep>()
-        : cfg.Steps;
-    var usesLeanContactFields = isLandingView || string.Equals(cfg.OfferKey, "life", StringComparison.OrdinalIgnoreCase);
+    // Shared intake for all life product types: contact-only flow.
+    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = Array.Empty<Protect_Website.Models.LifeWizardStep>();
+    var usesLeanContactFields = true;
     var totalSteps = viewSteps.Count + 1; // questions + combined contact step
     var path = requestPath;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
