@@ -482,8 +482,13 @@ body.legal-theme .legal-page-wrap {
     background: transparent !important;
 }
 
-body.legal-theme .legal-page-wrap section {
-    background: transparent !important;
+/* Keep page canvas white, but force legal containers dark/premium */
+body.legal-theme .legal-page-wrap .legal-hero {
+    background: linear-gradient(160deg, #080d1a, #0a1020) !important;
+}
+
+body.legal-theme .legal-page-wrap .legal-card {
+    background: linear-gradient(180deg, #0f1b33, #0c162b) !important;
 }
 
 .legal-page-wrap {
