@@ -106,7 +106,11 @@ namespace Protect_Website.Controllers
         {
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
-            var requiresEmailAndState = !string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
+            // Landing routes use the lean general-life contact requirements for conversion speed.
+            // Keep stricter email/state requirements on non-landing product pages.
+            var requiresEmailAndState =
+                !pageMode.IsLandingPage &&
+                !string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
             if (requiresEmailAndState)
             {
                 if (string.IsNullOrWhiteSpace(model.Email))

@@ -5,6 +5,7 @@
     var form = Model.Form;
     var pageKey = string.IsNullOrWhiteSpace(Model.EffectivePageKey) ? cfg.PageKey : Model.EffectivePageKey;
     var isLandingPage = Model.IsLandingPage;
+    var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
     var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingPage ? "landing" : "website") : Model.PageVariant;
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingPage ? "paid_landing" : "site_mode") : Model.PageMode;
     ViewData["Title"] = cfg.PageTitle;
@@ -14,12 +15,15 @@
     ViewData["PageMode"] = pageMode;
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
-    ViewData["BodyClass"] = isLandingPage ? "life-landing landing-mode" : "site-mode";
-    var totalSteps = cfg.Steps.Count + 1; // questions + combined contact step
+    ViewData["BodyClass"] = isLandingPage ? $"life-landing landing-mode {offerBodyClass}" : $"site-mode {offerBodyClass}";
+    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = isLandingPage
+        ? Array.Empty<Protect_Website.Models.LifeWizardStep>()
+        : cfg.Steps;
+    var usesLeanContactFields = isLandingPage || string.Equals(cfg.OfferKey, "life", StringComparison.OrdinalIgnoreCase);
+    var totalSteps = viewSteps.Count + 1; // questions + combined contact step
     var path = Context?.Request?.Path.Value ?? string.Empty;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
     var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
-    var isGeneralLifeOffer = string.Equals(cfg.OfferKey, "life", StringComparison.OrdinalIgnoreCase);
 }
 
 <style>
@@ -466,6 +470,14 @@ body.life-landing header .navbar .nav-link:focus {
         line-height: 1.35 !important;
         margin-bottom: 6px !important;
     }
+    body.life-landing .hero-title {
+        font-size: clamp(20px, 5.2vw, 24px) !important;
+        line-height: 1.15 !important;
+        letter-spacing: -0.3px !important;
+    }
+    body.life-landing.life-offer-life .hero-title {
+        white-space: nowrap;
+    }
 
     body.life-landing .lq-step-panel {
         margin-bottom: 8px !important;
@@ -527,7 +539,7 @@ body.life-landing header .navbar .nav-link:focus {
 <div class="lq-hero-shell">
 <div class="container lq-container">
     <div class="lq-header">
-        <h1>@cfg.Header</h1>
+        <h1 class="hero-title">@cfg.Header</h1>
         <div class="lq-subtext">@cfg.Subheader</div>
     </div>
 
@@ -559,9 +571,9 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
 
-        @for (var i = 0; i < cfg.Steps.Count; i++)
+        @for (var i = 0; i < viewSteps.Count; i++)
         {
-            var step = cfg.Steps[i];
+            var step = viewSteps[i];
             var gridClass = step.Options.Count >= 4 ? "lq-grid-2" : "";
         <div class="lq-step-panel" data-step="@i" data-alias="@step.FieldAlias" @(i == 0 ? "" : "hidden")>
             <div class="lq-step-panel-pad">
@@ -593,7 +605,7 @@ body.life-landing header .navbar .nav-link:focus {
         </div>
         }
 
-        <div class="lq-step-panel" data-step="@cfg.Steps.Count" hidden>
+        <div class="lq-step-panel" data-step="@viewSteps.Count" hidden>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
                 <div class="lq-step-title">How can we reach you?</div>
@@ -618,13 +630,13 @@ body.life-landing header .navbar .nav-link:focus {
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Email">Best email to send your options (Optional) @if (!isGeneralLifeOffer)
+                                <label for="Email">Best email to send your options (Optional) @if (!usesLeanContactFields)
                                 {<span style="color:#f87171">*</span>}</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email.</div>
                             </div>
                         </div>
-                        @if (!isGeneralLifeOffer)
+                        @if (!usesLeanContactFields)
                         {
                             <div class="lq-field-row full">
                                 <div class="lq-field">
@@ -706,9 +718,9 @@ body.life-landing header .navbar .nav-link:focus {
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <div class="lq-trust-note">100% Secure • No Obligation</div>
-                        @if (cfg.Steps.Count > 0)
+                        @if (viewSteps.Count > 0)
                         {
-                            <button type="button" class="btn-ghost w-100 mt-2" data-back="@cfg.Steps.Count">Back</button>
+                            <button type="button" class="btn-ghost w-100 mt-2" data-back="@viewSteps.Count">Back</button>
                         }
                     </div>
                     <div class="lq-reassurance" hidden></div>
@@ -738,7 +750,7 @@ body.life-landing header .navbar .nav-link:focus {
   const pageMode = '@pageMode';
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
-  const isGeneralLifeOffer = '@(isGeneralLifeOffer ? "true" : "false")' === 'true';
+  const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
 
   function setStep(idx) {
@@ -826,7 +838,7 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     // contact validation
-    const requiredAll = isGeneralLifeOffer
+    const requiredAll = usesLeanContactFields
       ? ['FirstName','LastName','Phone']
       : ['FirstName','LastName','Phone','Email','State'];
     for (const name of requiredAll) {
@@ -841,7 +853,7 @@ body.life-landing header .navbar .nav-link:focus {
         return;
       }
     }
-    if (!isGeneralLifeOffer) {
+    if (!usesLeanContactFields) {
       const state = document.getElementById('State');
       if (state && !state.value) {
           lifeError.textContent = 'Please select your state.';
