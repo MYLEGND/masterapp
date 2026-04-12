@@ -534,7 +534,7 @@ namespace Protect_Website.Controllers
                     Header = "Make sure the people you love are protected.",
                     Subheader = "We’ll help you understand what protection could look like for your situation.",
                     PageTitle = "Protect the People Who Count on You",
-                    SubmitButtonText = "GET MY OPTIONS",
+                    SubmitButtonText = "SEE MY OPTIONS",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
                     Steps = new List<LifeWizardStep>() // stripped to contact-only for faster lead capture
