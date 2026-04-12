@@ -48,6 +48,8 @@ namespace Protect_Website.Controllers
         // ===================== GET =====================
         [HttpGet("Life")]
         public IActionResult LifeQuote([FromQuery] string? offer = null) => RenderWizard(string.IsNullOrWhiteSpace(offer) ? "life" : offer);
+        [HttpGet("Life/landing")]
+        public IActionResult LifeLandingQuote() => RenderWizard(LifeOfferKeys.Life, isLandingPage: true);
         [HttpGet("Term-Life")]
         public IActionResult TermLifeQuote() => RenderWizard("term");
         [HttpGet("Whole-Life")]
@@ -73,30 +75,27 @@ namespace Protect_Website.Controllers
         [HttpPost("IUL")]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
 
-        private IActionResult RenderWizard(string offerKey)
+        private IActionResult RenderWizard(string offerKey, bool isLandingPage = false)
         {
             var cfg = GetWizardConfig(offerKey);
-            var vm = new LifeWizardViewModel
+            var mode = ResolvePageMode(cfg, isLandingPage, model: null);
+            var vm = BuildWizardViewModel(cfg, new LifeQuoteFormModel
             {
-                Config = cfg,
-                Form = new LifeQuoteFormModel
-                {
-                    FirstName = "",
-                    LastName = "",
-                    Email = "",
-                    Phone = "",
-                    OfferKey = cfg.OfferKey,
-                    ProductType = cfg.ProductType,
-                    PageKey = cfg.PageKey
-                }
-            };
-            ViewData["Title"] = cfg.PageTitle;
+                FirstName = "",
+                LastName = "",
+                Email = "",
+                Phone = "",
+                OfferKey = cfg.OfferKey,
+                ProductType = cfg.ProductType
+            }, mode);
+            ApplyWizardViewData(vm);
             return View("~/Views/Quote/Life.cshtml", vm);
         }
 
         private async Task<IActionResult> SubmitInternal(LifeQuoteFormModel model, string offerKey)
         {
             var cfg = GetWizardConfig(offerKey);
+            var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
             var requiresEmailAndState = !string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
             if (requiresEmailAndState)
             {
@@ -116,13 +115,18 @@ namespace Protect_Website.Controllers
                 if (IsAjax())
                     return BadRequest(new { error = "Invalid form data" });
 
-                var vmInvalid = new LifeWizardViewModel { Config = cfg, Form = model };
-                ViewData["Title"] = cfg.PageTitle;
+                model.OfferKey = cfg.OfferKey;
+                model.ProductType = cfg.ProductType;
+                var vmInvalid = BuildWizardViewModel(cfg, model, pageMode);
+                ApplyWizardViewData(vmInvalid);
                 return View("~/Views/Quote/Life.cshtml", vmInvalid);
             }
 
             model.OfferKey = offerKey;
             model.ProductType = cfg.ProductType;
+            model.PageKey = pageMode.EffectivePageKey;
+            model.PageVariant = pageMode.PageVariant;
+            model.PageMode = pageMode.PageMode;
             var offerContent = GetContent(offerKey);
             var isAgentContext = IsAgentContext();
 
@@ -149,7 +153,7 @@ namespace Protect_Website.Controllers
                     Email         = model.Email?.Trim() ?? "",
                     Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
                     InterestType  = cfg.ProductType,
-                    SourcePageKey = cfg.PageKey,
+                    SourcePageKey = pageMode.EffectivePageKey,
                     UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
                     UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
                     UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
@@ -179,6 +183,9 @@ namespace Protect_Website.Controllers
                         UtmContent     = model.UtmContent,
                         ReferrerUrl    = model.ReferrerUrl,
                         LandingPageUrl = model.LandingPageUrl,
+                        PageVariant    = pageMode.PageVariant,
+                        PageMode       = pageMode.PageMode,
+                        PagePath       = Request?.Path.Value,
                         CorrelationId  = correlationId,
                     })
                 };
@@ -196,8 +203,8 @@ namespace Protect_Website.Controllers
                 if (IsAjax())
                     return StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message });
                 ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
-                var vmPersistErr = new LifeWizardViewModel { Config = cfg, Form = model };
-                ViewData["Title"] = cfg.PageTitle;
+                var vmPersistErr = BuildWizardViewModel(cfg, model, pageMode);
+                ApplyWizardViewData(vmPersistErr);
                 return View("~/Views/Quote/Life.cshtml", vmPersistErr);
             }
 
@@ -259,8 +266,8 @@ namespace Protect_Website.Controllers
                 {
                     EventId    = Guid.NewGuid(),
                     EventType  = "website_lead_submitted",
-                    PageKey    = cfg.PageKey,
-                    FormKey    = cfg.PageKey + "_form",
+                    PageKey    = pageMode.EffectivePageKey,
+                    FormKey    = pageMode.EffectivePageKey + "_form",
                     QuoteType  = cfg.ProductType,
                     SessionId  = lead.SessionId,
                     VisitorId  = lead.VisitorId,
@@ -277,7 +284,10 @@ namespace Protect_Website.Controllers
                     {
                         LeadId        = lead.LeadId,
                         CorrelationId = correlationId,
-                        OfferKey      = model.OfferKey
+                        OfferKey      = model.OfferKey,
+                        PageVariant   = pageMode.PageVariant,
+                        PageMode      = pageMode.PageMode,
+                        PagePath      = Request?.Path.Value
                     })
                 };
                 _db.AnalyticsEvents.Add(evt);
@@ -402,11 +412,78 @@ namespace Protect_Website.Controllers
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
+        private static string BuildVariantPageKey(string basePageKey, bool isLandingPage) =>
+            isLandingPage ? $"{basePageKey}_landing" : basePageKey;
+
+        private static WizardPageMode ResolvePageMode(LifeWizardConfig cfg, bool isLandingPage, LifeQuoteFormModel? model)
+        {
+            var requestedVariant = model?.PageVariant?.Trim();
+            var requestedMode = model?.PageMode?.Trim();
+            var postedPageKey = model?.PageKey?.Trim();
+
+            var isLandingRequested =
+                isLandingPage ||
+                string.Equals(requestedVariant, "landing", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(requestedMode, "paid_landing", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(postedPageKey, BuildVariantPageKey(cfg.PageKey, true), StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(model?.LandingPageUrl) &&
+                 model.LandingPageUrl.Contains("/Quote/Life/landing", StringComparison.OrdinalIgnoreCase));
+
+            // Restrict paid landing mode to supported route(s) for now.
+            if (!string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase))
+            {
+                isLandingRequested = false;
+            }
+
+            return new WizardPageMode(
+                IsLandingPage: isLandingRequested,
+                PageVariant: isLandingRequested ? "landing" : "website",
+                PageMode: isLandingRequested ? "paid_landing" : "site_mode",
+                EffectivePageKey: BuildVariantPageKey(cfg.PageKey, isLandingRequested)
+            );
+        }
+
+        private static LifeWizardViewModel BuildWizardViewModel(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)
+        {
+            model.OfferKey = string.IsNullOrWhiteSpace(model.OfferKey) ? cfg.OfferKey : model.OfferKey;
+            model.ProductType = string.IsNullOrWhiteSpace(model.ProductType) ? cfg.ProductType : model.ProductType;
+            model.PageKey = pageMode.EffectivePageKey;
+            model.PageVariant = pageMode.PageVariant;
+            model.PageMode = pageMode.PageMode;
+
+            return new LifeWizardViewModel
+            {
+                Config = cfg,
+                Form = model,
+                IsLandingPage = pageMode.IsLandingPage,
+                PageVariant = pageMode.PageVariant,
+                PageMode = pageMode.PageMode,
+                EffectivePageKey = pageMode.EffectivePageKey
+            };
+        }
+
+        private void ApplyWizardViewData(LifeWizardViewModel vm)
+        {
+            ViewData["Title"] = vm.Config.PageTitle;
+            ViewData["PageKey"] = vm.EffectivePageKey;
+            ViewData["IsLandingPage"] = vm.IsLandingPage;
+            ViewData["PageVariant"] = vm.PageVariant;
+            ViewData["PageMode"] = vm.PageMode;
+            ViewData["PageCategory"] = "quote";
+            ViewData["QuoteTypeForTracking"] = vm.Config.OfferKey;
+        }
+
         private static LifeWizardConfig GetWizardConfig(string rawOfferKey)
         {
             var key = LifeOfferResolver.Normalize(rawOfferKey);
             return WizardConfigs.TryGetValue(key, out var cfg) ? cfg : WizardConfigs[LifeOfferKeys.Life];
         }
+
+        private readonly record struct WizardPageMode(
+            bool IsLandingPage,
+            string PageVariant,
+            string PageMode,
+            string EffectivePageKey);
 
         private static IReadOnlyDictionary<string, LifeWizardConfig> BuildConfigs()
         {

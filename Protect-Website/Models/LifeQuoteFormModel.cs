@@ -34,6 +34,8 @@ namespace Protect_Website.Models
         public bool MarketingEmailConsent { get; set; } = false;
 
         public string? PageKey { get; set; }
+        public string? PageVariant { get; set; }
+        public string? PageMode { get; set; }
 
         /// <summary>Product type for downstream routing/analytics (life/term/wholelife/finalexpense/mortgage/iul).</summary>
         [Required]

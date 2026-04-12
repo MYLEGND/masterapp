@@ -562,22 +562,36 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 }
 .product-link-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
     gap: 8px;
     padding: 5px 2px;
     border-bottom: 1px solid rgba(199,153,49,.1);
 }
 .product-link-row:last-child { border-bottom: 0; }
+.product-link-copyblock {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    flex: 1;
+}
 .product-link-label {
     font-size: .8rem;
-    font-weight: 700;
+    font-weight: 800;
     color: var(--legend-silver);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    flex: 1;
+    white-space: normal;
+    line-height: 1.25;
+}
+.product-link-intent {
+    font-size: .66rem;
+    font-weight: 800;
+    color: rgba(199,153,49,.8);
+    letter-spacing: .05em;
+    text-transform: uppercase;
 }
 .product-link-actions{
     display:flex;

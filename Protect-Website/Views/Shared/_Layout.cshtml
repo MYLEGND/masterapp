@@ -4,6 +4,13 @@
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
     var isFounderPath = ViewData["IsFounderPath"] as bool? ?? false;
+    var isLandingPage = ViewData["IsLandingPage"] as bool? ?? false;
+    var pageVariant = (ViewData["PageVariant"]?.ToString() ?? (isLandingPage ? "landing" : "website")).Trim();
+    var pageMode = (ViewData["PageMode"]?.ToString() ?? (isLandingPage ? "paid_landing" : "site_mode")).Trim();
+    var extraBodyClass = ViewData["BodyClass"]?.ToString() ?? string.Empty;
+    var variantClass = string.IsNullOrWhiteSpace(pageVariant) ? "website" : pageVariant.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
+    var modeClass = string.IsNullOrWhiteSpace(pageMode) ? "site-mode" : pageMode.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
+    var bodyClasses = $"{extraBodyClass} {(isLandingPage ? "landing-mode" : "site-mode")} page-variant-{variantClass} page-mode-{modeClass}".Trim();
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -21,6 +28,9 @@
         window.AGENT_TRACKING_PROFILE_ID = "@trackingProfileId";
         window.AGENT_TRACKING_SLUG = "@trackingSlug";
         window.IS_FOUNDER_PATH = @isFounderPath.ToString().ToLowerInvariant();
+        window.IS_LANDING_PAGE = @isLandingPage.ToString().ToLowerInvariant();
+        window.PAGE_VARIANT = "@pageVariant";
+        window.PAGE_MODE = "@pageMode";
     </script>
 
     <style>
@@ -155,6 +165,23 @@ footer.footer {
             max-width: 100%;
             display: block;
             filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
+        }
+
+        body.landing-mode .navbar {
+            height: auto;
+            min-height: 104px;
+            padding: 10px 18px;
+        }
+        body.landing-mode .navbar-top {
+            justify-content: center;
+            gap: 0;
+        }
+        body.landing-mode .navbar-brand {
+            margin: 0 auto;
+            pointer-events: none;
+        }
+        body.landing-mode .navbar-brand img {
+            max-height: 82px;
         }
 
         .nav-links {
@@ -338,6 +365,14 @@ footer.footer {
             .navbar-brand img {
                 max-height: 38px;
                 filter: drop-shadow(0 4px 10px rgba(0,0,0,.25));
+            }
+
+            body.landing-mode .navbar {
+                min-height: 74px;
+                padding: 8px 12px;
+            }
+            body.landing-mode .navbar-brand img {
+                max-height: 42px;
             }
 
             .nav-toggle { display: inline-flex; width: 36px; height: 36px; }
@@ -553,35 +588,47 @@ footer.footer {
 
 </head>
 
-<body>
+<body class="@bodyClasses">
 <header>
     <nav class="navbar">
         <div class="navbar-top">
-            <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                <img src="~/images/company-icons/legend-protect.png" alt="Legend™" />
-            </a>
+            @if (isLandingPage)
+            {
+                <div class="navbar-brand" aria-label="Legend">
+                    <img src="~/images/company-icons/legend-protect.png" alt="Legend™" />
+                </div>
+            }
+            else
+            {
+                <a class="navbar-brand" asp-controller="Home" asp-action="Index">
+                    <img src="~/images/company-icons/legend-protect.png" alt="Legend™" />
+                </a>
 
-            <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
-                <span class="nav-toggle-bars"></span>
-            </button>
+                <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
+                    <span class="nav-toggle-bars"></span>
+                </button>
 
-            <div class="nav-links" id="navLinks">
-                <a class="nav-link" asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
-                <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
-                <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
-                <a class="nav-link" asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                <div class="nav-links" id="navLinks">
+                    <a class="nav-link" asp-controller="Home" asp-action="Index" data-cta="nav_home">Home</a>
+                    <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
+                    <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
+                    <a class="nav-link" asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                </div>
+            }
+        </div>
+
+        @if (!isLandingPage)
+        {
+            <div class="header-bottom">
+                <button type="button"
+                        class="header-psalms"
+                        id="psalmsTrigger"
+                        aria-haspopup="dialog"
+                        aria-controls="psalmsModal">
+                    LIFE HAC | GOD ABOVE ALL
+                </button>
             </div>
-        </div>
-
-        <div class="header-bottom">
-            <button type="button"
-                    class="header-psalms"
-                    id="psalmsTrigger"
-                    aria-haspopup="dialog"
-                    aria-controls="psalmsModal">
-                LIFE HAC | GOD ABOVE ALL
-            </button>
-        </div>
+        }
     </nav>
 </header>
 
@@ -688,6 +735,10 @@ footer.footer {
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         document.body.dataset.pageKey = "@ViewData["PageKey"]";
+        document.body.dataset.pageVariant = "@ViewData["PageVariant"]";
+        document.body.dataset.pageMode = "@ViewData["PageMode"]";
+        document.body.dataset.pageCategory = "@ViewData["PageCategory"]";
+        document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
     </script>
     <script src="~/js/tracking.js" asp-append-version="true"></script>
     <script src="~/js/lead-modal.js" asp-append-version="true"></script>

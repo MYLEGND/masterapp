@@ -3,8 +3,18 @@
 @{
     var cfg = Model.Config;
     var form = Model.Form;
+    var pageKey = string.IsNullOrWhiteSpace(Model.EffectivePageKey) ? cfg.PageKey : Model.EffectivePageKey;
+    var isLandingPage = Model.IsLandingPage;
+    var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingPage ? "landing" : "website") : Model.PageVariant;
+    var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingPage ? "paid_landing" : "site_mode") : Model.PageMode;
     ViewData["Title"] = cfg.PageTitle;
-    ViewData["PageKey"] = cfg.PageKey;
+    ViewData["PageKey"] = pageKey;
+    ViewData["IsLandingPage"] = isLandingPage;
+    ViewData["PageVariant"] = pageVariant;
+    ViewData["PageMode"] = pageMode;
+    ViewData["PageCategory"] = "quote";
+    ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
+    ViewData["BodyClass"] = isLandingPage ? "life-landing landing-mode" : "site-mode";
     var totalSteps = cfg.Steps.Count + 1; // questions + combined contact step
     var path = Context?.Request?.Path.Value ?? string.Empty;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -408,7 +418,7 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-subtext">@cfg.Subheader</div>
     </div>
 
-    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@cfg.PageKey">
+    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
         @Html.AntiForgeryToken()
         @if (!string.IsNullOrWhiteSpace(agentSlug))
         {
@@ -416,7 +426,9 @@ body.life-landing header .navbar .nav-link:focus {
         }
         <input type="hidden" name="OfferKey" id="OfferKey" value="@cfg.OfferKey" />
         <input type="hidden" name="ProductType" id="ProductType" value="@cfg.ProductType" />
-        <input type="hidden" name="PageKey" value="@cfg.PageKey" />
+        <input type="hidden" name="PageKey" value="@pageKey" />
+        <input type="hidden" name="PageVariant" value="@pageVariant" />
+        <input type="hidden" name="PageMode" value="@pageMode" />
         <input type="hidden" name="AgeRange" id="AgeRange" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" />
@@ -609,6 +621,8 @@ body.life-landing header .navbar .nav-link:focus {
   const submitBtn = document.getElementById('submitLife');
   const submitLabel = submitBtn?.dataset.defaultLabel || 'Submit';
   const pageKey = form.dataset.formKey || 'quote_life';
+  const pageVariant = '@pageVariant';
+  const pageMode = '@pageMode';
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
   const isGeneralLifeOffer = '@(isGeneralLifeOffer ? "true" : "false")' === 'true';
@@ -756,7 +770,7 @@ body.life-landing header .navbar .nav-link:focus {
     })();
 
     window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-      SubmitOutcome: 'attempt', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', step: 'submit_attempt' }) });
+      SubmitOutcome: 'attempt', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', step: 'submit_attempt', pageVariant, pageMode, pagePath: window.location.pathname }) });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -770,13 +784,13 @@ body.life-landing header .navbar .nav-link:focus {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey' }) });
+        SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
       window.location.href = thankYouPath;
     } catch (err) {
       lifeError.textContent = 'We could not send this right now. Please try again.';
       lifeError.style.display = 'block';
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'error', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey' }) });
+        SubmitOutcome: 'error', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
     } finally {
       submitBtn.disabled = false;
       submitBtn.textContent = submitLabel;
@@ -784,7 +798,7 @@ body.life-landing header .navbar .nav-link:focus {
   });
 
   // fire start event once
-  window.legendTrack?.({ EventType: startEvent, PageKey: pageKey, Offer: '@cfg.OfferKey' });
+  window.legendTrack?.({ EventType: startEvent, PageKey: pageKey, Offer: '@cfg.OfferKey', MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname }) });
 
   // initial position
   setStep(0);

@@ -1,6 +1,10 @@
 (() => {
   const INGEST_URL = '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
+  const PAGE_VARIANT = document.body.dataset.pageVariant || '';
+  const PAGE_MODE = document.body.dataset.pageMode || '';
+  const PAGE_CATEGORY = document.body.dataset.pageCategory || '';
+  const PAGE_QUOTE_TYPE = document.body.dataset.quoteType || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
 
@@ -46,6 +50,17 @@
   }
 
   // ── Shared body builder (used by both sendEvent and beaconSend) ───────────
+  function buildPageContextMetadata() {
+    const metadata = {
+      pageVariant: PAGE_VARIANT || null,
+      pageMode: PAGE_MODE || null,
+      pageCategory: PAGE_CATEGORY || null,
+      pagePath: window.location.pathname || null
+    };
+    const hasMetadata = Object.values(metadata).some(v => v !== null && v !== '');
+    return hasMetadata ? JSON.stringify(metadata) : null;
+  }
+
   function buildBody(payload) {
     return {
       ClientEventId: uuid(),
@@ -55,7 +70,7 @@
       ElementKey: payload.ElementKey || null,
       ButtonLabel: payload.ButtonLabel || null,
       FormKey: payload.FormKey || null,
-      QuoteType: payload.QuoteType || null,
+      QuoteType: payload.QuoteType || PAGE_QUOTE_TYPE || null,
       Url: window.location.href,
       Path: window.location.pathname,
       Referrer: document.referrer || null,
@@ -428,7 +443,10 @@
   // ── Standard tracking ─────────────────────────────────────────────────────
 
   function trackPageView() {
-    sendEvent({ EventType: 'page_view' });
+    sendEvent({
+      EventType: 'page_view',
+      MetadataJson: buildPageContextMetadata()
+    });
   }
 
   function wireClick(selector, elementKey, eventType) {

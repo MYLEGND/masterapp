@@ -1465,28 +1465,44 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  // ── Product-specific offer links ──────────────────────────────────
-  const OFFER_VARIANTS = [
-    { key: 'life',         label: 'General Life' },
-    { key: 'mortgage',     label: 'Mortgage Protection' },
-    { key: 'finalexpense', label: 'Final Expense' },
-    { key: 'term',         label: 'Term Life' },
-    { key: 'wholelife',    label: 'Whole Life' },
-    { key: 'iul',          label: 'Indexed Universal Life (IUL)' },
+  // ── Product-specific links (website + paid landing) ───────────────────────
+  const PRODUCT_ROUTE_GROUPS = [
+    { key: 'life', label: 'Life Insurance', websiteRoute: 'Quote/Life', adLandingRoute: 'Quote/Life/landing' },
+    { key: 'mortgage', label: 'Mortgage Protection', websiteRoute: 'Quote/Mortgage-Protection' },
+    { key: 'term', label: 'Term Life', websiteRoute: 'Quote/Term-Life' },
+    { key: 'wholelife', label: 'Whole Life', websiteRoute: 'Quote/Whole-Life' },
+    { key: 'finalexpense', label: 'Final Expense', websiteRoute: 'Quote/Final-Expense' },
+    { key: 'iul', label: 'Indexed Universal Life (IUL)', websiteRoute: 'Quote/IUL' }
   ];
 
-  function buildOfferUrl(baseLink, offerKey) {
+  const PRODUCT_LINK_VARIANTS = PRODUCT_ROUTE_GROUPS.reduce((rows, group) => {
+    rows.push({
+      id: `${group.key}_website`,
+      label: `${group.label} — Website`,
+      intentLabel: 'Website Link',
+      route: group.websiteRoute
+    });
+    if (group.adLandingRoute) {
+      rows.push({
+        id: `${group.key}_ad_landing`,
+        label: `${group.label} — Ad Landing`,
+        intentLabel: 'Ad Landing Link',
+        route: group.adLandingRoute
+      });
+    }
+    return rows;
+  }, []);
+
+  function buildProductUrl(baseLink, route) {
     if (!baseLink) return '';
+    if (!route) return '';
     try {
-      // Ensure trailing slash so 'Quote/Life' resolves relative to base, not parent dir
       const base = baseLink.endsWith('/') ? baseLink : baseLink + '/';
-      const url = new URL('Quote/Life', base);
-      url.searchParams.set('offer', offerKey);
-      return url.toString();
+      return new URL(route, base).toString();
     } catch {
-      // Fallback for unusual base URLs
       const clean = baseLink.replace(/\/$/, '');
-      return `${clean}/Quote/Life?offer=${encodeURIComponent(offerKey)}`;
+      const normalizedRoute = String(route || '').replace(/^\/+/, '');
+      return normalizedRoute ? `${clean}/${normalizedRoute}` : clean;
     }
   }
 
@@ -1497,13 +1513,16 @@
     const display = document.getElementById('product-link-display');
     if (!toggle || !section || !list) return;
 
-    // Render offer rows
-    list.innerHTML = OFFER_VARIANTS.map(v =>
+    // Render product rows
+    list.innerHTML = PRODUCT_LINK_VARIANTS.map(v =>
       `<div class="product-link-row">` +
-        `<span class="product-link-label">${v.label}</span>` +
+        `<div class="product-link-copyblock">` +
+          `<span class="product-link-label">${v.label}</span>` +
+          `<span class="product-link-intent">${v.intentLabel}</span>` +
+        `</div>` +
         `<div class="product-link-actions">` +
-          `<button type="button" class="product-link-open" data-offer="${v.key}">Open</button>` +
-          `<button type="button" class="product-link-copy" data-offer="${v.key}">Copy</button>` +
+          `<button type="button" class="product-link-open" data-link-id="${v.id}">Open</button>` +
+          `<button type="button" class="product-link-copy" data-link-id="${v.id}">Copy</button>` +
         `</div>` +
       `</div>`
     ).join('');
@@ -1520,8 +1539,10 @@
       const copyBtn = e.target.closest('.product-link-copy');
       const openBtn = e.target.closest('.product-link-open');
       if (!copyBtn && !openBtn) return;
-      const offerKey = (copyBtn || openBtn).dataset.offer;
-      const url = buildOfferUrl(currentBaseLink(), offerKey);
+      const linkId = (copyBtn || openBtn).dataset.linkId;
+      const selectedLink = PRODUCT_LINK_VARIANTS.find(v => v.id === linkId);
+      if (!selectedLink) return;
+      const url = buildProductUrl(currentBaseLink(), selectedLink.route);
       if (display) display.value = url;
       if (copyBtn) {
         copyToClipboard(url);
