@@ -1480,14 +1480,18 @@
       id: `${group.key}_website`,
       label: `${group.label} — Website`,
       intentLabel: 'Website Link',
-      route: group.websiteRoute
+      route: group.websiteRoute,
+      variantType: 'website',
+      isAdLanding: false
     });
     if (group.adLandingRoute) {
       rows.push({
         id: `${group.key}_ad_landing`,
         label: `${group.label} — Ad Landing`,
         intentLabel: 'Ad Landing Link',
-        route: group.adLandingRoute
+        route: group.adLandingRoute,
+        variantType: 'landing',
+        isAdLanding: true
       });
     }
     return rows;
@@ -1514,18 +1518,24 @@
     if (!toggle || !section || !list) return;
 
     // Render product rows
-    list.innerHTML = PRODUCT_LINK_VARIANTS.map(v =>
-      `<div class="product-link-row">` +
+    list.innerHTML = PRODUCT_LINK_VARIANTS.map(v => {
+      const toneClass = v.isAdLanding ? 'link-landing' : 'link-website';
+      const badge = v.isAdLanding ? `<span class="badge-landing">AD</span>` : '';
+      const helper = v.isAdLanding ? `<span class="product-link-helper">Optimized for campaigns</span>` : '';
+      return (
+      `<div class="product-link-row ${toneClass}" data-link-tone="${v.variantType}">` +
         `<div class="product-link-copyblock">` +
-          `<span class="product-link-label">${v.label}</span>` +
+          `<span class="product-link-label">${v.label}${badge}</span>` +
           `<span class="product-link-intent">${v.intentLabel}</span>` +
+          `${helper}` +
         `</div>` +
         `<div class="product-link-actions">` +
-          `<button type="button" class="product-link-open" data-link-id="${v.id}">Open</button>` +
-          `<button type="button" class="product-link-copy" data-link-id="${v.id}">Copy</button>` +
+          `<button type="button" class="product-link-open ${toneClass}" data-link-id="${v.id}">Open</button>` +
+          `<button type="button" class="product-link-copy ${toneClass}" data-link-id="${v.id}">Copy</button>` +
         `</div>` +
       `</div>`
-    ).join('');
+      );
+    }).join('');
 
     // Toggle expand/collapse
     toggle.addEventListener('click', () => {
