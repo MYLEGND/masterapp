@@ -467,14 +467,15 @@ header {
 
 /* ========================= Legal Pages ========================= */
 body.legal-theme {
-    background: radial-gradient(120% 140% at 50% 0%, #12203c 0%, #0b1529 40%, #0a1121 100%) !important;
-    color: #f8fafc !important;
+    background: #fff !important;
+    background-color: #fff !important;
+    color: #111 !important;
 }
 
 body.legal-theme main.layout-content,
 body.legal-theme main.container.layout-content {
-    background: transparent !important;
-    background-color: transparent !important;
+    background: #fff !important;
+    background-color: #fff !important;
 }
 
 body.legal-theme .legal-page-wrap {
