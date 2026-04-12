@@ -739,7 +739,7 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-title">Tell us a little about what you need.</div>
+                <div class="lq-step-title">Tell us a little about what you need</div>
                 <div class="lq-step-helper">This takes less than 30 seconds.</div>
                 <div class="lq-step-progress" id="lifeStep1Progress" aria-live="polite">Step 1 of 4</div>
 
@@ -825,6 +825,38 @@ body.life-landing header .navbar .nav-link:focus {
                         <button type="button" class="btn-gold flex-fill" id="step1Continue">CONTINUE TO MY OPTIONS</button>
                     </div>
                     <div class="lq-trust-note">No obligation • 100% secure</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
+            <div class="lq-step-panel-pad">
+                <div class="lq-step-progress">Almost done</div>
+                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Building your personalized protection options…</div>
+                <div class="lq-step-helper">We’re using what you shared to prepare options that fit your goals, budget, and situation.</div>
+                <div class="lq-processing-bridge" aria-hidden="true">
+                    <div class="lq-processing-track">
+                        <div class="lq-processing-fill" id="lifeProcessingFill"></div>
+                    </div>
+                    <div class="lq-processing-note">Preparing your review...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="lq-step-panel" id="lifeValuePanel" data-funnel-step="1.6" hidden>
+            <div class="lq-step-panel-pad">
+                <div class="lq-step-progress">Almost done</div>
+                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">Here’s what we’ll help you review</div>
+                <div class="lq-step-helper">Based on what you shared, we’ll prepare personalized protection options and walk you through what may fit your needs best.</div>
+                <div class="lq-value-list">
+                    <div class="lq-value-item"><strong>Options aligned with your goals</strong></div>
+                    <div class="lq-value-item"><strong>Guidance based on your situation</strong></div>
+                    <div class="lq-value-item"><strong>No obligation to move forward</strong></div>
+                </div>
+                <div class="lq-value-note">Quick. Clear. Built around what matters most to you.</div>
+                <div class="lq-step-actions dual">
+                    <button type="button" class="btn-ghost" id="valueBridgeBackBtn">Back</button>
+                    <button type="button" class="btn-gold flex-fill" id="valueBridgeContinueBtn">CONTINUE</button>
                 </div>
             </div>
         </div>
@@ -948,11 +980,18 @@ body.life-landing header .navbar .nav-link:focus {
   if (!form) return;
 
   const step1Panel = document.getElementById('lifeStep1Panel');
+  const processingPanel = document.getElementById('lifeProcessingPanel');
+  const valuePanel = document.getElementById('lifeValuePanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
+  const processingHeading = document.getElementById('lifeProcessingHeading');
+  const valueHeading = document.getElementById('lifeValueHeading');
   const step2Heading = document.getElementById('lifeStep2Heading');
+  const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
+  const valueBridgeBackBtn = document.getElementById('valueBridgeBackBtn');
+  const valueBridgeContinueBtn = document.getElementById('valueBridgeContinueBtn');
   const step2BackBtn = document.getElementById('step2BackBtn');
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answerHidden = [
@@ -975,6 +1014,7 @@ body.life-landing header .navbar .nav-link:focus {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
+  const PROCESSING_BRIDGE_MS = 1500;
   const microStepViewEvents = [
     'life_step1_protecting_view',
     'life_step1_goal_view',
@@ -983,6 +1023,7 @@ body.life-landing header .navbar .nav-link:focus {
   ];
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
+  let processingTimer = null;
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
@@ -1009,6 +1050,32 @@ body.life-landing header .navbar .nav-link:focus {
     const el = document.getElementById(errorId);
     if (!el) return;
     el.classList.toggle('visible', !!show);
+  }
+
+  function clearAutoAdvanceTimer() {
+    if (autoAdvanceTimer) {
+      window.clearTimeout(autoAdvanceTimer);
+      autoAdvanceTimer = null;
+    }
+  }
+
+  function clearProcessingTimer(resetBar = false) {
+    if (processingTimer) {
+      window.clearTimeout(processingTimer);
+      processingTimer = null;
+    }
+    if (processingFill && resetBar) {
+      processingFill.style.transition = 'none';
+      processingFill.style.width = '0%';
+      void processingFill.offsetWidth;
+    }
+  }
+
+  function setActivePanel(activePanel) {
+    [step1Panel, processingPanel, valuePanel, step2Panel].forEach((panel) => {
+      if (!panel) return;
+      panel.hidden = panel !== activePanel;
+    });
   }
 
   function scrollIntoViewAndFocus(target, shouldFocus = false) {
@@ -1070,15 +1137,55 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function showStep1(microStepIndex = 0, shouldScroll = false) {
-    step1Panel.hidden = false;
-    step2Panel.hidden = true;
+    clearAutoAdvanceTimer();
+    clearProcessingTimer(true);
+    setActivePanel(step1Panel);
     trackEvent('life_step1_intro_view');
     showMicroStep(microStepIndex, shouldScroll);
   }
 
+  function animateProcessingBar() {
+    if (!processingFill) return;
+    processingFill.style.transition = 'none';
+    processingFill.style.width = '0%';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        processingFill.style.transition = `width ${PROCESSING_BRIDGE_MS}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+        processingFill.style.width = '100%';
+      });
+    });
+  }
+
+  function showProcessingBridge(shouldScroll = true) {
+    clearAutoAdvanceTimer();
+    clearProcessingTimer(true);
+    setActivePanel(processingPanel);
+    trackEvent('life_processing_bridge_view');
+    animateProcessingBar();
+    if (shouldScroll) {
+      scrollIntoViewAndFocus(processingHeading || processingPanel, true);
+    }
+    processingTimer = window.setTimeout(() => {
+      processingTimer = null;
+      trackEvent('life_processing_bridge_complete');
+      showValueBridge(true);
+    }, PROCESSING_BRIDGE_MS + 80);
+  }
+
+  function showValueBridge(shouldScroll = true) {
+    clearAutoAdvanceTimer();
+    clearProcessingTimer(false);
+    setActivePanel(valuePanel);
+    trackEvent('life_value_bridge_view');
+    if (shouldScroll) {
+      scrollIntoViewAndFocus(valueHeading || valuePanel, true);
+    }
+  }
+
   function showStep2(shouldScroll = true) {
-    step1Panel.hidden = true;
-    step2Panel.hidden = false;
+    clearAutoAdvanceTimer();
+    clearProcessingTimer(false);
+    setActivePanel(step2Panel);
     trackEvent('life_step2_view');
     if (shouldScroll) {
       scrollIntoViewAndFocus(step2Heading || step2Panel, true);
@@ -1144,7 +1251,7 @@ body.life-landing header .navbar .nav-link:focus {
 
   function queueMicroAdvance(expectedStep, nextStep) {
     if (step1Panel.hidden || currentMicroStep !== expectedStep) return;
-    window.clearTimeout(autoAdvanceTimer);
+    clearAutoAdvanceTimer();
     autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
   }
 
@@ -1195,12 +1302,27 @@ body.life-landing header .navbar .nav-link:focus {
       tobaccoUse: answerHidden[2]?.value || '',
       age: answerHidden[3]?.value || ''
     });
+    showProcessingBridge(true);
+  });
+
+  valueBridgeBackBtn?.addEventListener('click', () => {
+    showStep1(3, true);
+  });
+
+  valueBridgeContinueBtn?.addEventListener('click', () => {
+    syncStepOneAnswersFromUI();
+    trackEvent('life_value_bridge_continue', {
+      protectingWho: answerHidden[0]?.value || '',
+      coverageGoal: answerHidden[1]?.value || '',
+      tobaccoUse: answerHidden[2]?.value || '',
+      age: answerHidden[3]?.value || ''
+    });
     showStep2(true);
   });
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
-    showStep1(3, true);
+    showValueBridge(true);
   });
 
   // form submission

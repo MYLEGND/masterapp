@@ -24,7 +24,18 @@
     'scroll_depth_25','scroll_depth_50','scroll_depth_75','scroll_depth_90','scroll_depth_100',
     // Form Abandonment Intelligence
     'form_field_focus','form_field_complete','form_field_error',
-    'form_submit_attempt','form_abandon'
+    'form_submit_attempt','form_abandon',
+    // Life quote funnel micro-step + bridge events
+    'life_step1_intro_view',
+    'life_step1_protecting_view','life_step1_protecting_select',
+    'life_step1_goal_view','life_step1_goal_select',
+    'life_step1_tobacco_view','life_step1_tobacco_select',
+    'life_step1_age_view','life_step1_age_continue',
+    'step1_age_entered',
+    'life_processing_bridge_view','life_processing_bridge_complete',
+    'life_value_bridge_view','life_value_bridge_continue',
+    'life_step2_view','life_step2_back',
+    'life_step2_submit_attempt','life_step2_submit_success'
   ]);
 
   function uuid() {
