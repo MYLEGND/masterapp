@@ -108,6 +108,10 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
             NormalizeDiscoveryAnswers(model);
+            if (model.Age.HasValue && (model.Age.Value < 18 || model.Age.Value > 85))
+            {
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.Age), "Age must be between 18 and 85.");
+            }
             // Shared intake across all life product types:
             // First/Last/Phone required, Email/State optional.
             var requiresEmailAndState = false;

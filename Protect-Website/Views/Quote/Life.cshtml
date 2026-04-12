@@ -813,12 +813,12 @@ body.life-landing header .navbar .nav-link:focus {
                                 class="form-control"
                                 inputmode="numeric"
                                 min="18"
-                                max="99"
+                                max="85"
                                 step="1"
                                 placeholder="Enter your age"
                                 value="@ageValue" />
                         </div>
-                        <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 99.</div>
+                        <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 85.</div>
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" data-step1-back="2">Back</button>
@@ -1114,7 +1114,7 @@ body.life-landing header .navbar .nav-link:focus {
   function validateAgeOnly() {
     const ageValue = asTrimmed(ageInput?.value);
     const ageNum = Number.parseInt(ageValue, 10);
-    const hasValidAge = Number.isFinite(ageNum) && ageNum >= 18 && ageNum <= 99;
+    const hasValidAge = Number.isFinite(ageNum) && ageNum >= 18 && ageNum <= 85;
     showChoiceError('err-step1-age', !hasValidAge);
     return hasValidAge;
   }
