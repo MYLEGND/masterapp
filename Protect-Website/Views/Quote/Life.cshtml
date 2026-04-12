@@ -240,6 +240,20 @@ body.life-landing header .navbar .nav-link:focus {
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 
 .lq-step-meta{ display:none; }
+.lq-step-progress{
+    display: inline-block;
+    color: rgba(248,250,252,0.68);
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+.lq-micro-step[hidden]{ display:none !important; }
+.lq-micro-back{
+    margin-top: 6px;
+    min-width: 96px;
+}
 
 /* Step panels — frame layer sits between outer shell and inner surface */
 .lq-step-panel {
@@ -674,77 +688,89 @@ body.life-landing header .navbar .nav-link:focus {
             <div class="lq-step-panel-pad">
                 <div class="lq-step-title">Tell us a little about what you need.</div>
                 <div class="lq-step-helper">This takes less than 30 seconds.</div>
-                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
-                    <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
-                    <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                        @foreach (var opt in protectStep.Options)
-                        {
-                            var isChecked =
-                                string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            <label class="lq-card">
-                                <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span>@opt.Label</span>
-                            </label>
-                        }
+                <div class="lq-step-progress" id="lifeStep1Progress" aria-live="polite">Step 1 of 4</div>
+
+                <div class="lq-micro-step" data-micro-step="0">
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
+                        <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                            @foreach (var opt in protectStep.Options)
+                            {
+                                var isChecked =
+                                    string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
                     </div>
-                    <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
                 </div>
 
-                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
-                    <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
-                    <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                        @foreach (var opt in goalStep.Options)
-                        {
-                            var isChecked =
-                                string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            <label class="lq-card">
-                                <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span>@opt.Label</span>
-                            </label>
-                        }
+                <div class="lq-micro-step" data-micro-step="1" hidden>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
+                        <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                            @foreach (var opt in goalStep.Options)
+                            {
+                                var isChecked =
+                                    string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
                     </div>
-                    <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
+                    <button type="button" class="btn-ghost lq-micro-back" data-step1-back="0">Back</button>
                 </div>
 
-                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
-                    <div class="lq-choice-label" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                    <div class="lq-choice-grid lq-grid-2">
-                        @foreach (var opt in tobaccoStep.Options)
-                        {
-                            var isChecked =
-                                string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            <label class="lq-card">
-                                <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span>@opt.Label</span>
-                            </label>
-                        }
+                <div class="lq-micro-step" data-micro-step="2" hidden>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                        <div class="lq-choice-label" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2">
+                            @foreach (var opt in tobaccoStep.Options)
+                            {
+                                var isChecked =
+                                    string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use status.</div>
                     </div>
-                    <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use status.</div>
+                    <button type="button" class="btn-ghost lq-micro-back" data-step1-back="1">Back</button>
                 </div>
 
-                <div class="lq-choice-group">
-                    <div class="lq-choice-label" id="lbl-step1-age">@ageStep.Question</div>
-                    <div class="lq-field">
-                        <input
-                            type="number"
-                            id="Age"
-                            name="Age"
-                            class="form-control"
-                            inputmode="numeric"
-                            min="18"
-                            max="99"
-                            step="1"
-                            placeholder="Enter your age"
-                            value="@ageValue" />
+                <div class="lq-micro-step" data-micro-step="3" hidden>
+                    <div class="lq-choice-group">
+                        <div class="lq-choice-label" id="lbl-step1-age">@ageStep.Question</div>
+                        <div class="lq-field">
+                            <input
+                                type="number"
+                                id="Age"
+                                name="Age"
+                                class="form-control"
+                                inputmode="numeric"
+                                min="18"
+                                max="99"
+                                step="1"
+                                placeholder="Enter your age"
+                                value="@ageValue" />
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 99.</div>
                     </div>
-                    <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 99.</div>
-                </div>
-
-                <div class="lq-step-actions">
-                    <button type="button" class="btn-gold w-100" id="step1Continue">CONTINUE TO MY OPTIONS</button>
+                    <div class="lq-step-actions dual">
+                        <button type="button" class="btn-ghost" data-step1-back="2">Back</button>
+                        <button type="button" class="btn-gold flex-fill" id="step1Continue">CONTINUE TO MY OPTIONS</button>
+                    </div>
                     <div class="lq-trust-note">No obligation • 100% secure</div>
                 </div>
             </div>
@@ -752,6 +778,7 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
+                <div class="lq-step-progress">Final step</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Where should we send or review your options?</div>
                 <div class="lq-step-helper">Based on what you shared, we’ll prepare your personalized review and walk through what fits your needs best.</div>
                     <div class="lq-contact-grid">
@@ -865,9 +892,13 @@ body.life-landing header .navbar .nav-link:focus {
 <script>
 (() => {
   const form = document.getElementById('lifeWizardForm');
+  if (!form) return;
+
   const step1Panel = document.getElementById('lifeStep1Panel');
   const step2Panel = document.getElementById('lifeStep2Panel');
   const step2Heading = document.getElementById('lifeStep2Heading');
+  const step1Progress = document.getElementById('lifeStep1Progress');
+  const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
@@ -891,7 +922,14 @@ body.life-landing header .navbar .nav-link:focus {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
-  const firedStepEvents = { step1View: false, step2View: false };
+  const microStepViewEvents = [
+    'life_step1_protecting_view',
+    'life_step1_goal_view',
+    'life_step1_tobacco_view',
+    'life_step1_age_view'
+  ];
+  let currentMicroStep = 0;
+  let autoAdvanceTimer = null;
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
@@ -920,6 +958,18 @@ body.life-landing header .navbar .nav-link:focus {
     el.classList.toggle('visible', !!show);
   }
 
+  function scrollIntoViewAndFocus(target, shouldFocus = false) {
+    if (!target) return;
+    const scrollBehavior = (isLandingMobile && target === step1Panel) ? 'auto' : 'smooth';
+    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
+    setTimeout(() => {
+      target.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
+      if (shouldFocus && target instanceof HTMLElement) {
+        target.focus({ preventScroll: true });
+      }
+    }, 40);
+  }
+
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
@@ -941,32 +991,81 @@ body.life-landing header .navbar .nav-link:focus {
     ageHidden.value = ageValue;
   }
 
-  function validateStepOne() {
-    const protecting = selectedRadio('ProtectingWho');
-    const goal = selectedRadio('CoverageGoal');
-    const tobacco = selectedRadio('TobaccoUse');
+  function validateAgeOnly() {
     const ageValue = asTrimmed(ageInput?.value);
     const ageNum = Number.parseInt(ageValue, 10);
     const hasValidAge = Number.isFinite(ageNum) && ageNum >= 18 && ageNum <= 99;
+    showChoiceError('err-step1-age', !hasValidAge);
+    return hasValidAge;
+  }
+
+  function showMicroStep(stepIndex, shouldScroll = false) {
+    const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
+    currentMicroStep = bounded;
+    microSteps.forEach((stepEl, i) => {
+      stepEl.hidden = i !== bounded;
+    });
+
+    if (step1Progress) {
+      step1Progress.textContent = `Step ${bounded + 1} of 4`;
+    }
+    trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
+
+    if (shouldScroll) {
+      scrollIntoViewAndFocus(step1Panel, false);
+    }
+  }
+
+  function showStep1(microStepIndex = 0, shouldScroll = false) {
+    step1Panel.hidden = false;
+    step2Panel.hidden = true;
+    trackEvent('life_step1_intro_view');
+    showMicroStep(microStepIndex, shouldScroll);
+  }
+
+  function showStep2(shouldScroll = true) {
+    step1Panel.hidden = true;
+    step2Panel.hidden = false;
+    trackEvent('life_step2_view');
+    if (shouldScroll) {
+      scrollIntoViewAndFocus(step2Heading || step2Panel, true);
+    }
+  }
+
+  function resolveInitialMicroStep() {
+    if (!selectedRadio('ProtectingWho')) return 0;
+    if (!selectedRadio('CoverageGoal')) return 1;
+    if (!selectedRadio('TobaccoUse')) return 2;
+    return 3;
+  }
+
+  function validateStepOneComplete() {
+    const protecting = selectedRadio('ProtectingWho');
+    const goal = selectedRadio('CoverageGoal');
+    const tobacco = selectedRadio('TobaccoUse');
+    const hasValidAge = validateAgeOnly();
 
     showChoiceError('err-step1-protecting-who', !protecting);
     showChoiceError('err-step1-coverage-goal', !goal);
     showChoiceError('err-step1-tobacco-use', !tobacco);
-    showChoiceError('err-step1-age', !hasValidAge);
 
     if (!protecting) {
+      showStep1(0, true);
       form.querySelector('input[name="ProtectingWho"]')?.focus();
       return false;
     }
     if (!goal) {
+      showStep1(1, true);
       form.querySelector('input[name="CoverageGoal"]')?.focus();
       return false;
     }
     if (!tobacco) {
+      showStep1(2, true);
       form.querySelector('input[name="TobaccoUse"]')?.focus();
       return false;
     }
     if (!hasValidAge) {
+      showStep1(3, true);
       ageInput?.focus();
       return false;
     }
@@ -990,54 +1089,32 @@ body.life-landing header .navbar .nav-link:focus {
     }
   }
 
-  function showStep(step, shouldScroll = true) {
-    const showingStep2 = step === 2;
-    step1Panel.hidden = showingStep2;
-    step2Panel.hidden = !showingStep2;
-
-    if (showingStep2) {
-      if (!firedStepEvents.step2View) {
-        trackEvent('life_step2_view');
-        firedStepEvents.step2View = true;
-      }
-    } else if (!firedStepEvents.step1View) {
-      trackEvent('life_step1_view');
-      firedStepEvents.step1View = true;
-    }
-
-    if (!shouldScroll) return;
-    const target = showingStep2 ? (step2Heading || step2Panel) : step1Panel;
-    const scrollBehavior = (isLandingMobile && !showingStep2) ? 'auto' : 'smooth';
-    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
-    setTimeout(() => {
-      target?.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
-      if (showingStep2) {
-        step2Heading?.focus({ preventScroll: true });
-      }
-    }, 40);
+  function queueMicroAdvance(expectedStep, nextStep) {
+    if (step1Panel.hidden || currentMicroStep !== expectedStep) return;
+    window.clearTimeout(autoAdvanceTimer);
+    autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
   }
 
-  form.querySelectorAll('input[name="ProtectingWho"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      showChoiceError('err-step1-protecting-who', false);
-      syncStepOneAnswersFromUI();
-      trackEvent('step1_protecting_who_selected', { choice: radio.dataset.label || radio.value, code: radio.value });
+  function wireAutoAdvanceGroup(groupName, errorId, selectEvent, expectedStep, nextStep) {
+    form.querySelectorAll(`input[name="${groupName}"]`).forEach((radio) => {
+      radio.addEventListener('change', () => {
+        showChoiceError(errorId, false);
+        syncStepOneAnswersFromUI();
+        trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
+        queueMicroAdvance(expectedStep, nextStep);
+      });
+      radio.closest('label')?.addEventListener('click', () => {
+        // Allow forward movement when revisiting a step where the choice is already selected.
+        setTimeout(() => {
+          if (radio.checked) queueMicroAdvance(expectedStep, nextStep);
+        }, 0);
+      });
     });
-  });
-  form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      showChoiceError('err-step1-coverage-goal', false);
-      syncStepOneAnswersFromUI();
-      trackEvent('step1_coverage_goal_selected', { choice: radio.dataset.label || radio.value, code: radio.value });
-    });
-  });
-  form.querySelectorAll('input[name="TobaccoUse"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      showChoiceError('err-step1-tobacco-use', false);
-      syncStepOneAnswersFromUI();
-      trackEvent('step1_tobacco_use_selected', { choice: radio.dataset.label || radio.value, code: radio.value });
-    });
-  });
+  }
+
+  wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', 0, 1);
+  wireAutoAdvanceGroup('CoverageGoal', 'err-step1-coverage-goal', 'life_step1_goal_select', 1, 2);
+  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', 2, 3);
   ageInput?.addEventListener('input', () => {
     showChoiceError('err-step1-age', false);
     syncStepOneAnswersFromUI();
@@ -1048,30 +1125,36 @@ body.life-landing header .navbar .nav-link:focus {
       trackEvent('step1_age_entered', { age: ageValue });
     }
   });
+  document.querySelectorAll('[data-step1-back]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const target = Number.parseInt(btn.getAttribute('data-step1-back') || '0', 10);
+      showMicroStep(Number.isFinite(target) ? target : 0, true);
+    });
+  });
 
   step1ContinueBtn?.addEventListener('click', () => {
-    if (!validateStepOne()) return;
     syncStepOneAnswersFromUI();
-    trackEvent('life_step1_continue', {
+    if (!validateStepOneComplete()) return;
+    syncStepOneAnswersFromUI();
+    trackEvent('life_step1_age_continue', {
       protectingWho: answerHidden[0]?.value || '',
       coverageGoal: answerHidden[1]?.value || '',
       tobaccoUse: answerHidden[2]?.value || '',
       age: answerHidden[3]?.value || ''
     });
-    showStep(2);
+    showStep2(true);
   });
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
-    showStep(1);
+    showStep1(3, true);
   });
 
   // form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     syncStepOneAnswersFromUI();
-    if (!validateStepOne()) {
-      showStep(1);
+    if (!validateStepOneComplete()) {
       form._trackSubmitAttempt?.(false, 1);
       return;
     }
@@ -1081,7 +1164,7 @@ body.life-landing header .navbar .nav-link:focus {
     if (lifeError) lifeError.style.display = 'none';
     if (lifeSuccess) lifeSuccess.style.display = 'none';
     ['FirstName','LastName','Phone','Email','State'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
-    showStep(2, false);
+    showStep2(false);
 
     // contact validation
     const requiredAll = usesLeanContactFields
@@ -1096,7 +1179,7 @@ body.life-landing header .navbar .nav-link:focus {
         }
         el?.focus();
         document.getElementById(`err-${name}`)?.classList.add('visible');
-        showStep(2, false);
+        showStep2(false);
         form._trackSubmitAttempt?.(false, 1);
         return;
       }
@@ -1110,7 +1193,7 @@ body.life-landing header .navbar .nav-link:focus {
           }
           state.focus();
           document.getElementById('err-State')?.classList.add('visible');
-          showStep(2, false);
+          showStep2(false);
           form._trackSubmitAttempt?.(false, 1);
           return;
       }
@@ -1200,7 +1283,11 @@ body.life-landing header .navbar .nav-link:focus {
   });
 
   syncStepOneAnswersFromUI();
-  showStep(showContactStepByDefault ? 2 : 1, false);
+  if (showContactStepByDefault) {
+    showStep2(false);
+  } else {
+    showStep1(resolveInitialMicroStep(), false);
+  }
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }
