@@ -570,7 +570,7 @@ namespace Protect_Website.Controllers
                     PageKey = "quote_life",
                     PostAction = "SubmitLifeQuote",
                     Header = "Protect the people who count on you",
-                    Subheader = "Let’s help you understand what protection could look like based on your needs, goals, and budget.",
+                    Subheader = "Get a clear picture of coverage options that match your needs, goals, and budget — before making any decisions.",
                     PageTitle = "Protect the People Who Count on You",
                     SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_general_form_start",
