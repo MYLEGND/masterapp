@@ -52,14 +52,24 @@ namespace Protect_Website.Controllers
         public IActionResult LifeLandingQuote() => RenderWizard(LifeOfferKeys.Life, isLandingPage: true);
         [HttpGet("Term-Life")]
         public IActionResult TermLifeQuote() => RenderWizard("term");
+        [HttpGet("Term-Life/landing")]
+        public IActionResult TermLifeLandingQuote() => RenderWizard(LifeOfferKeys.Term, isLandingPage: true);
         [HttpGet("Whole-Life")]
         public IActionResult WholeLifeQuote() => RenderWizard("wholelife");
+        [HttpGet("Whole-Life/landing")]
+        public IActionResult WholeLifeLandingQuote() => RenderWizard(LifeOfferKeys.WholeLife, isLandingPage: true);
         [HttpGet("Final-Expense")]
         public IActionResult FinalExpenseQuote() => RenderWizard("finalexpense");
+        [HttpGet("Final-Expense/landing")]
+        public IActionResult FinalExpenseLandingQuote() => RenderWizard(LifeOfferKeys.FinalExpense, isLandingPage: true);
         [HttpGet("Mortgage-Protection")]
         public IActionResult MortgageQuote() => RenderWizard("mortgage");
+        [HttpGet("Mortgage-Protection/landing")]
+        public IActionResult MortgageLandingQuote() => RenderWizard(LifeOfferKeys.Mortgage, isLandingPage: true);
         [HttpGet("IUL")]
         public IActionResult IulQuote() => RenderWizard("iul");
+        [HttpGet("IUL/landing")]
+        public IActionResult IulLandingQuote() => RenderWizard(LifeOfferKeys.Iul, isLandingPage: true);
 
         // ===================== POST =====================
         [HttpPost("Life")]
@@ -420,20 +430,14 @@ namespace Protect_Website.Controllers
             var requestedVariant = model?.PageVariant?.Trim();
             var requestedMode = model?.PageMode?.Trim();
             var postedPageKey = model?.PageKey?.Trim();
+            var landingRoutePath = GetLandingRoutePath(cfg.OfferKey);
 
             var isLandingRequested =
                 isLandingPage ||
                 string.Equals(requestedVariant, "landing", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(requestedMode, "paid_landing", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(postedPageKey, BuildVariantPageKey(cfg.PageKey, true), StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(model?.LandingPageUrl) &&
-                 model.LandingPageUrl.Contains("/Quote/Life/landing", StringComparison.OrdinalIgnoreCase));
-
-            // Restrict paid landing mode to supported route(s) for now.
-            if (!string.Equals(cfg.OfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase))
-            {
-                isLandingRequested = false;
-            }
+                IsLandingRouteForOffer(model?.LandingPageUrl, landingRoutePath);
 
             return new WizardPageMode(
                 IsLandingPage: isLandingRequested,
@@ -441,6 +445,35 @@ namespace Protect_Website.Controllers
                 PageMode: isLandingRequested ? "paid_landing" : "site_mode",
                 EffectivePageKey: BuildVariantPageKey(cfg.PageKey, isLandingRequested)
             );
+        }
+
+        private static bool IsLandingRouteForOffer(string? landingPageUrl, string landingRoutePath)
+        {
+            if (string.IsNullOrWhiteSpace(landingPageUrl) || string.IsNullOrWhiteSpace(landingRoutePath))
+                return false;
+
+            if (Uri.TryCreate(landingPageUrl, UriKind.Absolute, out var absolute))
+                return absolute.AbsolutePath.Contains(landingRoutePath, StringComparison.OrdinalIgnoreCase);
+
+            if (Uri.TryCreate(landingPageUrl, UriKind.Relative, out var relative))
+                return relative.OriginalString.Contains(landingRoutePath, StringComparison.OrdinalIgnoreCase);
+
+            return landingPageUrl.Contains(landingRoutePath, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string GetLandingRoutePath(string offerKey)
+        {
+            var normalized = LifeOfferResolver.Normalize(offerKey);
+            return normalized switch
+            {
+                LifeOfferKeys.Life => "/Quote/Life/landing",
+                LifeOfferKeys.Mortgage => "/Quote/Mortgage-Protection/landing",
+                LifeOfferKeys.FinalExpense => "/Quote/Final-Expense/landing",
+                LifeOfferKeys.Term => "/Quote/Term-Life/landing",
+                LifeOfferKeys.WholeLife => "/Quote/Whole-Life/landing",
+                LifeOfferKeys.Iul => "/Quote/IUL/landing",
+                _ => "/Quote/Life/landing"
+            };
         }
 
         private static LifeWizardViewModel BuildWizardViewModel(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)

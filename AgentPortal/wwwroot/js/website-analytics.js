@@ -1468,11 +1468,11 @@
   // ── Product-specific links (website + paid landing) ───────────────────────
   const PRODUCT_ROUTE_GROUPS = [
     { key: 'life', label: 'Life Insurance', websiteRoute: 'Quote/Life', adLandingRoute: 'Quote/Life/landing' },
-    { key: 'mortgage', label: 'Mortgage Protection', websiteRoute: 'Quote/Mortgage-Protection' },
-    { key: 'term', label: 'Term Life', websiteRoute: 'Quote/Term-Life' },
-    { key: 'wholelife', label: 'Whole Life', websiteRoute: 'Quote/Whole-Life' },
-    { key: 'finalexpense', label: 'Final Expense', websiteRoute: 'Quote/Final-Expense' },
-    { key: 'iul', label: 'Indexed Universal Life (IUL)', websiteRoute: 'Quote/IUL' }
+    { key: 'mortgage', label: 'Mortgage Protection', websiteRoute: 'Quote/Mortgage-Protection', adLandingRoute: 'Quote/Mortgage-Protection/landing' },
+    { key: 'term', label: 'Term Life', websiteRoute: 'Quote/Term-Life', adLandingRoute: 'Quote/Term-Life/landing' },
+    { key: 'wholelife', label: 'Whole Life', websiteRoute: 'Quote/Whole-Life', adLandingRoute: 'Quote/Whole-Life/landing' },
+    { key: 'finalexpense', label: 'Final Expense', websiteRoute: 'Quote/Final-Expense', adLandingRoute: 'Quote/Final-Expense/landing' },
+    { key: 'iul', label: 'Indexed Universal Life (IUL)', websiteRoute: 'Quote/IUL', adLandingRoute: 'Quote/IUL/landing' }
   ];
 
   const PRODUCT_LINK_VARIANTS = PRODUCT_ROUTE_GROUPS.reduce((rows, group) => {
