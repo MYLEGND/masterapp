@@ -456,19 +456,19 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     body.life-landing .lq-header {
-        margin-top: 2px !important;
-        margin-bottom: 8px !important;
+        margin-top: 3px !important;
+        margin-bottom: 7px !important;
     }
     body.life-landing .lq-header h1 {
-        font-size: 1.18rem !important;
-        line-height: 1.2 !important;
-        margin-bottom: 4px !important;
+        font-size: 1.24rem !important;
+        line-height: 1.16 !important;
+        margin-bottom: 3px !important;
         letter-spacing: .2px !important;
     }
     body.life-landing .lq-subtext {
-        font-size: .83rem !important;
-        line-height: 1.35 !important;
-        margin-bottom: 6px !important;
+        font-size: .88rem !important;
+        line-height: 1.32 !important;
+        margin-bottom: 5px !important;
     }
     body.life-landing .hero-title {
         font-size: clamp(20px, 5.2vw, 24px) !important;
@@ -480,10 +480,13 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     body.life-landing .lq-step-panel {
-        margin-bottom: 8px !important;
+        margin-bottom: 7px !important;
         border-radius: 10px;
     }
-    body.life-landing .lq-step-panel-pad { padding: 10px !important; }
+    body.life-landing .lq-step-panel-pad { padding: 9px !important; }
+    body.life-landing .lq-contact-step .lq-step-title { display: none; }
+    body.life-landing .lq-contact-step .lq-step-helper { display: none !important; }
+    body.life-landing .lq-contact-step .lq-contact-grid { margin-top: 0 !important; }
     body.life-landing .lq-inner-block { padding: 12px 10px 10px !important; }
     body.life-landing .lq-step-title {
         font-size: 1rem !important;
@@ -530,8 +533,15 @@ body.life-landing header .navbar .nav-link:focus {
     }
     body.life-landing .lq-header h1 { font-size: 1.08rem !important; }
     body.life-landing .lq-subtext {
-        font-size: .78rem !important;
-        margin-bottom: 5px !important;
+        font-size: .82rem !important;
+        margin-bottom: 4px !important;
+    }
+}
+
+@@media (max-width: 359.98px){
+    body.life-landing.life-offer-life .hero-title {
+        white-space: normal;
+        font-size: 1.02rem !important;
     }
 }
 </style>
@@ -605,7 +615,7 @@ body.life-landing header .navbar .nav-link:focus {
         </div>
         }
 
-        <div class="lq-step-panel" data-step="@viewSteps.Count" hidden>
+        <div class="lq-step-panel lq-contact-step" data-step="@viewSteps.Count" @(viewSteps.Count == 0 ? "" : "hidden")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
                 <div class="lq-step-title">How can we reach you?</div>
@@ -753,11 +763,12 @@ body.life-landing header .navbar .nav-link:focus {
   const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
 
-  function setStep(idx) {
+  function setStep(idx, shouldScroll = true) {
     steps.forEach((s, i) => s.hidden = i !== idx);
     const target = steps[idx];
+    if (!shouldScroll) return;
     const scrollBehavior = (isLandingMobile && idx === 0) ? 'auto' : 'smooth';
-    const scrollBlock = isLandingMobile ? 'start' : 'center';
+    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
     setTimeout(() => target.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock }), 50);
   }
 
@@ -929,6 +940,6 @@ body.life-landing header .navbar .nav-link:focus {
   window.legendTrack?.({ EventType: startEvent, PageKey: pageKey, Offer: '@cfg.OfferKey', MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname }) });
 
   // initial position
-  setStep(0);
+  setStep(0, false);
 })();
 </script>
