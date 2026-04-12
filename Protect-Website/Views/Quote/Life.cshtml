@@ -674,80 +674,78 @@ body.life-landing header .navbar .nav-link:focus {
             <div class="lq-step-panel-pad">
                 <div class="lq-step-title">Tell us a little about what you need.</div>
                 <div class="lq-step-helper">This takes less than 30 seconds.</div>
-                <div class="lq-inner-block">
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
-                        <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
-                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                            @foreach (var opt in protectStep.Options)
-                            {
-                                var isChecked =
-                                    string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
-                                    <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
-                                </label>
-                            }
-                        </div>
-                        <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
+                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
+                    <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
+                    <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                        @foreach (var opt in protectStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            <label class="lq-card">
+                                <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span>@opt.Label</span>
+                            </label>
+                        }
                     </div>
+                    <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
+                </div>
 
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
-                        <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
-                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                            @foreach (var opt in goalStep.Options)
-                            {
-                                var isChecked =
-                                    string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
-                                    <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
-                                </label>
-                            }
-                        </div>
-                        <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
+                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
+                    <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
+                    <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                        @foreach (var opt in goalStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            <label class="lq-card">
+                                <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span>@opt.Label</span>
+                            </label>
+                        }
                     </div>
+                    <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
+                </div>
 
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
-                        <div class="lq-choice-label" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                        <div class="lq-choice-grid lq-grid-2">
-                            @foreach (var opt in tobaccoStep.Options)
-                            {
-                                var isChecked =
-                                    string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
-                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
-                                </label>
-                            }
-                        </div>
-                        <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use status.</div>
+                <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                    <div class="lq-choice-label" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                    <div class="lq-choice-grid lq-grid-2">
+                        @foreach (var opt in tobaccoStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            <label class="lq-card">
+                                <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span>@opt.Label</span>
+                            </label>
+                        }
                     </div>
+                    <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use status.</div>
+                </div>
 
-                    <div class="lq-choice-group">
-                        <div class="lq-choice-label" id="lbl-step1-age">@ageStep.Question</div>
-                        <div class="lq-field">
-                            <input
-                                type="number"
-                                id="Age"
-                                name="Age"
-                                class="form-control"
-                                inputmode="numeric"
-                                min="18"
-                                max="99"
-                                step="1"
-                                placeholder="Enter your age"
-                                value="@ageValue" />
-                        </div>
-                        <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 99.</div>
+                <div class="lq-choice-group">
+                    <div class="lq-choice-label" id="lbl-step1-age">@ageStep.Question</div>
+                    <div class="lq-field">
+                        <input
+                            type="number"
+                            id="Age"
+                            name="Age"
+                            class="form-control"
+                            inputmode="numeric"
+                            min="18"
+                            max="99"
+                            step="1"
+                            placeholder="Enter your age"
+                            value="@ageValue" />
                     </div>
+                    <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 99.</div>
+                </div>
 
-                    <div class="lq-step-actions">
-                        <button type="button" class="btn-gold w-100" id="step1Continue">CONTINUE TO MY OPTIONS</button>
-                        <div class="lq-trust-note">No obligation • 100% secure</div>
-                    </div>
+                <div class="lq-step-actions">
+                    <button type="button" class="btn-gold w-100" id="step1Continue">CONTINUE TO MY OPTIONS</button>
+                    <div class="lq-trust-note">No obligation • 100% secure</div>
                 </div>
             </div>
         </div>
