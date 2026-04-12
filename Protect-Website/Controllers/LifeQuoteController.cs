@@ -12,6 +12,7 @@ using System.Text;
 using System.Linq;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Globalization;
 using ProtectWebsite.Services;
 
 namespace Protect_Website.Controllers
@@ -106,6 +107,7 @@ namespace Protect_Website.Controllers
         {
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
+            NormalizeDiscoveryAnswers(model);
             // Shared intake across all life product types:
             // First/Last/Phone required, Email/State optional.
             var requiresEmailAndState = false;
@@ -184,6 +186,10 @@ namespace Protect_Website.Controllers
                     {
                         OfferKey       = model.OfferKey,
                         ProductType    = model.ProductType,
+                        ProtectingWho  = model.ProtectingWho,
+                        CoverageGoal   = model.CoverageGoal,
+                        TobaccoUse     = model.TobaccoUse,
+                        Age            = model.Age,
                         Answer1        = model.Answer1,
                         Answer2        = model.Answer2,
                         Answer3        = model.Answer3,
@@ -382,7 +388,13 @@ namespace Protect_Website.Controllers
                 .Row("Phone", model.Phone)
                 .Row("Email", model.Email);
 
-            // Add step responses for variants that still collect them
+            rows.Section("Discovery")
+                .Row("Protecting Who", model.ProtectingWho)
+                .Row("Coverage Goal", model.CoverageGoal)
+                .Row("Tobacco Use", model.TobaccoUse)
+                .Row("Age", model.Age?.ToString(CultureInfo.InvariantCulture));
+
+            // Keep legacy answer mapping for backward-compatible relay/analytics context.
             var answers = new[] { model.Answer1, model.Answer2, model.Answer3, model.Answer4 };
             if (cfg.Steps.Any())
             {
@@ -404,6 +416,32 @@ namespace Protect_Website.Controllers
                 .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
+        }
+
+        private static void NormalizeDiscoveryAnswers(LifeQuoteFormModel model)
+        {
+            static string? Clean(string? value) =>
+                string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+            model.ProtectingWho = Clean(model.ProtectingWho) ?? Clean(model.Answer1);
+            model.CoverageGoal = Clean(model.CoverageGoal) ?? Clean(model.Answer2) ?? Clean(model.ProtectFocus);
+            model.TobaccoUse = Clean(model.TobaccoUse) ?? Clean(model.Answer3);
+
+            if (!model.Age.HasValue)
+            {
+                if (int.TryParse(Clean(model.Answer4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedAnswerAge))
+                    model.Age = parsedAnswerAge;
+                else if (int.TryParse(Clean(model.AgeRange), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedRangeAge))
+                    model.Age = parsedRangeAge;
+            }
+
+            model.Answer1 = Clean(model.Answer1) ?? model.ProtectingWho;
+            model.Answer2 = Clean(model.Answer2) ?? model.CoverageGoal;
+            model.Answer3 = Clean(model.Answer3) ?? model.TobaccoUse;
+            model.Answer4 = Clean(model.Answer4) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
+
+            model.ProtectFocus = Clean(model.ProtectFocus) ?? model.CoverageGoal;
+            model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
         private bool IsAgentContext()
@@ -620,15 +658,6 @@ namespace Protect_Website.Controllers
         private static List<LifeWizardStep> BuildSharedDiscoverySteps() =>
             new()
             {
-                new("Your age range", new List<LifeWizardOption>
-                {
-                    new("18-24","18–24"),
-                    new("25-34","25–34"),
-                    new("35-44","35–44"),
-                    new("45-54","45–54"),
-                    new("55-64","55–64"),
-                    new("65plus","65+"),
-                }, "AgeRange"),
                 new("Who are you looking to protect?", new List<LifeWizardOption>
                 {
                     new("just_me","Just me"),
@@ -636,7 +665,7 @@ namespace Protect_Website.Controllers
                     new("children","My children"),
                     new("family","My family"),
                     new("not_sure","I’m not sure yet"),
-                }),
+                }, "ProtectingWho"),
                 new("What would you like this coverage to help with most?", new List<LifeWizardOption>
                 {
                     new("replace_income","Replace income for my family"),
@@ -644,7 +673,13 @@ namespace Protect_Website.Controllers
                     new("mortgage_or_bills","Help with mortgage or bills"),
                     new("leave_something","Leave something behind"),
                     new("not_sure","I’m not sure yet"),
-                }, "ProtectFocus"),
+                }, "CoverageGoal"),
+                new("Tobacco use", new List<LifeWizardOption>
+                {
+                    new("non_smoker","Non-smoker"),
+                    new("smoker","Smoker"),
+                }, "TobaccoUse"),
+                new("Your age", new List<LifeWizardOption>(), "Age"),
             };
     }
 }
