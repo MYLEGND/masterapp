@@ -531,13 +531,13 @@ namespace Protect_Website.Controllers
                     DisplayName = "Life Insurance",
                     PageKey = "quote_life",
                     PostAction = "SubmitLifeQuote",
-                    Header = "Make sure the people you love are protected.",
-                    Subheader = "We’ll help you understand what protection could look like for your situation.",
+                    Header = "Protect the people who count on you",
+                    Subheader = "Let’s help you understand what protection could look like based on your needs, goals, and budget.",
                     PageTitle = "Protect the People Who Count on You",
-                    SubmitButtonText = "SEE MY OPTIONS",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
-                    Steps = new List<LifeWizardStep>() // stripped to contact-only for faster lead capture
+                    Steps = BuildSharedDiscoverySteps(),
                 },
                 [LifeOfferKeys.Term] = new LifeWizardConfig
                 {
@@ -546,41 +546,13 @@ namespace Protect_Website.Controllers
                     DisplayName = "Term Life",
                     PageKey = "quote_term_life",
                     PostAction = "SubmitTermLifeQuote",
-                    Header = "Explore Term Life Insurance Options",
-                    Subheader = "Review temporary coverage options designed to help protect your income and family.",
-                    PageTitle = "Term Life Insurance Review",
+                    Header = "Protect the years your family depends on most.",
+                    Subheader = "Let’s help you compare term life protection based on your needs, goals, and budget.",
+                    PageTitle = "Term Life Protection Review",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_term_form_start",
                     SubmitEvent = "life_term_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("How much coverage are you looking for?", new List<LifeWizardOption>
-                        {
-                            new("100-250k","$100k–250k"),
-                            new("250-500k","$250k–500k"),
-                            new("500k-1m","$500k–1M"),
-                            new("1mplus","$1M+"),
-                        }),
-                        new("How long do you want coverage for?", new List<LifeWizardOption>
-                        {
-                            new("10yr","10 Years"),
-                            new("20yr","20 Years"),
-                            new("30yr","30 Years"),
-                            new("not_sure","Not Sure Yet"),
-                        }),
-                        new("How old are you?", new List<LifeWizardOption>
-                        {
-                            new("18-29","18–29"),
-                            new("30-39","30–39"),
-                            new("40-49","40–49"),
-                            new("50-59","50–59"),
-                            new("60plus","60+"),
-                        }, "AgeRange"),
-                        new("Do you currently use tobacco or nicotine products?", new List<LifeWizardOption>
-                        {
-                            new("yes","Yes"),
-                            new("no","No"),
-                        }),
-                    }
+                    Steps = BuildSharedDiscoverySteps(),
                 },
                 [LifeOfferKeys.WholeLife] = new LifeWizardConfig
                 {
@@ -589,43 +561,13 @@ namespace Protect_Website.Controllers
                     DisplayName = "Whole Life",
                     PageKey = "quote_whole_life",
                     PostAction = "SubmitWholeLifeQuote",
-                    Header = "Explore Whole Life Insurance Options",
-                    Subheader = "Review permanent coverage options built around long-term protection and legacy goals.",
-                    PageTitle = "Whole Life Insurance Review",
+                    Header = "Build lifelong protection for the people you love.",
+                    Subheader = "Let’s shape whole life protection around your needs, goals, and long-term legacy plans.",
+                    PageTitle = "Whole Life Protection Review",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_whole_form_start",
                     SubmitEvent = "life_whole_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("What interests you most about whole life insurance?", new List<LifeWizardOption>
-                        {
-                            new("lifetime_protection","Lifetime Protection"),
-                            new("guaranteed_db","Guaranteed Death Benefit"),
-                            new("cash_value","Build Cash Value"),
-                            new("legacy","Legacy / Estate Planning"),
-                        }),
-                        new("How much coverage are you considering?", new List<LifeWizardOption>
-                        {
-                            new("under50k","Under $50k"),
-                            new("50-100k","$50k–100k"),
-                            new("100-250k","$100k–250k"),
-                            new("250kplus","$250k+"),
-                        }),
-                        new("How old are you?", new List<LifeWizardOption>
-                        {
-                            new("18-29","18–29"),
-                            new("30-39","30–39"),
-                            new("40-49","40–49"),
-                            new("50-59","50–59"),
-                            new("60plus","60+"),
-                        }, "AgeRange"),
-                        new("When are you looking to get coverage in place?", new List<LifeWizardOption>
-                        {
-                            new("asap","ASAP"),
-                            new("30days","Within 30 Days"),
-                            new("researching","Researching"),
-                            new("exploring","Just Exploring"),
-                        }),
-                    }
+                    Steps = BuildSharedDiscoverySteps(),
                 },
                 [LifeOfferKeys.FinalExpense] = new LifeWizardConfig
                 {
@@ -634,40 +576,13 @@ namespace Protect_Website.Controllers
                     DisplayName = "Final Expense",
                     PageKey = "quote_final_expense",
                     PostAction = "SubmitFinalExpenseQuote",
-                    Header = "Explore Final Expense Coverage Options",
-                    Subheader = "Review coverage options designed to help with burial and final expense planning.",
-                    PageTitle = "Final Expense Coverage Review",
+                    Header = "Protect your loved ones from final expense stress.",
+                    Subheader = "Let’s review final expense protection based on your needs, goals, and budget comfort.",
+                    PageTitle = "Final Expense Protection Review",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_finalexpense_form_start",
                     SubmitEvent = "life_finalexpense_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("How old are you?", new List<LifeWizardOption>
-                        {
-                            new("50-59","50–59"),
-                            new("60-69","60–69"),
-                            new("70-79","70–79"),
-                            new("80plus","80+"),
-                        }, "AgeRange"),
-                        new("How much coverage are you looking for?", new List<LifeWizardOption>
-                        {
-                            new("5-10k","$5k–10k"),
-                            new("10-25k","$10k–25k"),
-                            new("25kplus","$25k+"),
-                        }),
-                        new("Do you currently use tobacco or nicotine?", new List<LifeWizardOption>
-                        {
-                            new("yes","Yes"),
-                            new("no","No"),
-                        }),
-                        new("Have you had any major health concerns in the last 5 years?", new List<LifeWizardOption>
-                        {
-                            new("none","No Major Concerns"),
-                            new("diabetes","Diabetes"),
-                            new("heart","Heart Condition"),
-                            new("cancer","Cancer History"),
-                            new("discuss","Prefer to Discuss"),
-                        }),
-                    }
+                    Steps = BuildSharedDiscoverySteps(),
                 },
                 [LifeOfferKeys.Mortgage] = new LifeWizardConfig
                 {
@@ -676,42 +591,13 @@ namespace Protect_Website.Controllers
                     DisplayName = "Mortgage Protection",
                     PageKey = "quote_mortgage_protection",
                     PostAction = "SubmitMortgageQuote",
-                    Header = "Protect What You’ve Built",
-                    Subheader = "Review coverage options designed to help protect your mortgage and family.",
-                    PageTitle = "Mortgage Protection Review",
+                    Header = "Protect what you’ve built for your family.",
+                    Subheader = "Let’s map mortgage protection options around your needs, goals, and monthly reality.",
+                    PageTitle = "Mortgage Protection Options Review",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_mp_form_start",
                     SubmitEvent = "life_mp_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("How much is left on your mortgage?", new List<LifeWizardOption>
-                        {
-                            new("under100k","Under $100k"),
-                            new("100-250k","$100k–250k"),
-                            new("250-500k","$250k–500k"),
-                            new("500kplus","$500k+"),
-                        }),
-                        new("How many years remain on your mortgage?", new List<LifeWizardOption>
-                        {
-                            new("under10","Under 10"),
-                            new("10-20","10–20"),
-                            new("20-30","20–30"),
-                            new("not_sure","Not Sure"),
-                        }),
-                        new("How old are you?", new List<LifeWizardOption>
-                        {
-                            new("18-29","18–29"),
-                            new("30-39","30–39"),
-                            new("40-49","40–49"),
-                            new("50-59","50–59"),
-                            new("60plus","60+"),
-                        }, "AgeRange"),
-                        new("When was your home purchased or refinanced?", new List<LifeWizardOption>
-                        {
-                            new("within12","Within 12 Months"),
-                            new("1-5years","1–5 Years Ago"),
-                            new("5plus","5+ Years Ago"),
-                        }),
-                    }
+                    Steps = BuildSharedDiscoverySteps(),
                 },
                 [LifeOfferKeys.Iul] = new LifeWizardConfig
                 {
@@ -720,45 +606,45 @@ namespace Protect_Website.Controllers
                     DisplayName = "Indexed Universal Life",
                     PageKey = "quote_iul",
                     PostAction = "SubmitIulQuote",
-                    Header = "Explore Indexed Universal Life Options",
-                    Subheader = "Review protection strategies designed for long-term goals and cash value potential.",
-                    PageTitle = "Indexed Universal Life Review",
+                    Header = "Protect now while building for tomorrow.",
+                    Subheader = "Let’s explore indexed universal life options based on your needs, goals, and long-term plans.",
+                    PageTitle = "Indexed Universal Life Options Review",
+                    SubmitButtonText = "GET MY OPTIONS",
                     StartEvent = "life_iul_form_start",
                     SubmitEvent = "life_iul_submit",
-                    Steps = new List<LifeWizardStep>
-                    {
-                        new("What is your primary goal?", new List<LifeWizardOption>
-                        {
-                            new("tax_free_income","Tax-Free Retirement Income"),
-                            new("cash_growth","Cash Value Growth"),
-                            new("legacy","Estate / Legacy Planning"),
-                            new("business","Business Strategy"),
-                        }),
-                        new("What is your annual household income?", new List<LifeWizardOption>
-                        {
-                            new("under75k","Under $75k"),
-                            new("75-150k","$75k–150k"),
-                            new("150-250k","$150k–250k"),
-                            new("250kplus","$250k+"),
-                        }),
-                        new("How much could you comfortably contribute monthly?", new List<LifeWizardOption>
-                        {
-                            new("100-250","$100–250"),
-                            new("250-500","$250–500"),
-                            new("500-1000","$500–1,000"),
-                            new("1000plus","$1,000+"),
-                        }),
-                        new("How old are you?", new List<LifeWizardOption>
-                        {
-                            new("18-29","18–29"),
-                            new("30-39","30–39"),
-                            new("40-49","40–49"),
-                            new("50-59","50–59"),
-                            new("60plus","60+"),
-                        }, "AgeRange"),
-                    }
+                    Steps = BuildSharedDiscoverySteps(),
                 },
             };
         }
+
+        private static List<LifeWizardStep> BuildSharedDiscoverySteps() =>
+            new()
+            {
+                new("Your age range", new List<LifeWizardOption>
+                {
+                    new("18-24","18–24"),
+                    new("25-34","25–34"),
+                    new("35-44","35–44"),
+                    new("45-54","45–54"),
+                    new("55-64","55–64"),
+                    new("65plus","65+"),
+                }, "AgeRange"),
+                new("Who are you looking to protect?", new List<LifeWizardOption>
+                {
+                    new("just_me","Just me"),
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children"),
+                    new("family","My family"),
+                    new("not_sure","I’m not sure yet"),
+                }),
+                new("What would you like this coverage to help with most?", new List<LifeWizardOption>
+                {
+                    new("replace_income","Replace income for my family"),
+                    new("final_expenses","Cover final expenses"),
+                    new("mortgage_or_bills","Help with mortgage or bills"),
+                    new("leave_something","Leave something behind"),
+                    new("not_sure","I’m not sure yet"),
+                }, "ProtectFocus"),
+            };
     }
 }

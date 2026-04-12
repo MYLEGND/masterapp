@@ -19,10 +19,50 @@
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
     ViewData["BodyClass"] = isLandingView ? $"life-landing landing-mode {offerBodyClass}" : $"site-mode {offerBodyClass}";
-    // Shared intake for all life product types: contact-only flow.
-    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = Array.Empty<Protect_Website.Models.LifeWizardStep>();
+    // Shared two-step intake for all life product types.
+    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(3).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
+    if (viewSteps.Count < 3)
+    {
+        viewSteps = new List<Protect_Website.Models.LifeWizardStep>
+        {
+            new("Your age range", new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("18-24","18–24"),
+                new("25-34","25–34"),
+                new("35-44","35–44"),
+                new("45-54","45–54"),
+                new("55-64","55–64"),
+                new("65plus","65+"),
+            }, "AgeRange"),
+            new("Who are you looking to protect?", new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("just_me","Just me"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family"),
+                new("not_sure","I’m not sure yet"),
+            }),
+            new("What would you like this coverage to help with most?", new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("replace_income","Replace income for my family"),
+                new("final_expenses","Cover final expenses"),
+                new("mortgage_or_bills","Help with mortgage or bills"),
+                new("leave_something","Leave something behind"),
+                new("not_sure","I’m not sure yet"),
+            }, "ProtectFocus"),
+        };
+    }
+    var ageStep = viewSteps[0];
+    var protectStep = viewSteps[1];
+    var goalStep = viewSteps[2];
     var usesLeanContactFields = true;
-    var totalSteps = viewSteps.Count + 1; // questions + combined contact step
+    var hasContactInput =
+        !string.IsNullOrWhiteSpace(form.FirstName) ||
+        !string.IsNullOrWhiteSpace(form.LastName) ||
+        !string.IsNullOrWhiteSpace(form.Phone) ||
+        !string.IsNullOrWhiteSpace(form.Email) ||
+        !string.IsNullOrWhiteSpace(form.State);
+    var showContactStepByDefault = !ViewData.ModelState.IsValid || hasContactInput;
     var path = requestPath;
     var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
     var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
@@ -365,6 +405,12 @@ body.life-landing header .navbar .nav-link:focus {
     color: #f8fafc;
     letter-spacing: .01em;
 }
+.lq-field-help{
+    color: rgba(248,250,252,0.68);
+    font-size: .8rem;
+    font-weight: 700;
+    margin-top: -2px;
+}
 .lq-field-err{
     color: #f87171;
     font-size: .82rem;
@@ -599,12 +645,12 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="PageKey" value="@pageKey" />
         <input type="hidden" name="PageVariant" value="@pageVariant" />
         <input type="hidden" name="PageMode" value="@pageMode" />
-        <input type="hidden" name="AgeRange" id="AgeRange" />
-        <input type="hidden" name="ProtectFocus" id="ProtectFocus" />
-        <input type="hidden" name="Answer1" id="Answer1" />
-        <input type="hidden" name="Answer2" id="Answer2" />
-        <input type="hidden" name="Answer3" id="Answer3" />
-        <input type="hidden" name="Answer4" id="Answer4" />
+        <input type="hidden" name="AgeRange" id="AgeRange" value="@form.AgeRange" />
+        <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
+        <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
+        <input type="hidden" name="Answer2" id="Answer2" value="@form.Answer2" />
+        <input type="hidden" name="Answer3" id="Answer3" value="@form.Answer3" />
+        <input type="hidden" name="Answer4" id="Answer4" value="@form.Answer4" />
         <input type="hidden" name="SessionId" id="SessionId" />
         <input type="hidden" name="VisitorId" id="VisitorId" />
         <input type="hidden" name="UtmSource" id="UtmSource" />
@@ -617,45 +663,70 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
         <input type="hidden" name="MarketingEmailConsent" value="true" />
 
-        @for (var i = 0; i < viewSteps.Count; i++)
-        {
-            var step = viewSteps[i];
-            var gridClass = step.Options.Count >= 4 ? "lq-grid-2" : "";
-        <div class="lq-step-panel" data-step="@i" data-alias="@step.FieldAlias" @(i == 0 ? "" : "hidden")>
+        <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-meta">Step @(i + 1) of @totalSteps</div>
-                <div class="lq-step-title">@step.Question</div>
+                <div class="lq-step-title">Tell us a little about what you need.</div>
+                <div class="lq-step-helper">This takes less than 30 seconds.</div>
                 <div class="lq-inner-block">
-                    <div class="lq-choice-group">
-                        <div class="lq-choice-grid @gridClass">
-                            @foreach (var opt in step.Options)
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-age">
+                        <div class="lq-choice-label" id="lbl-step1-age">@ageStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2">
+                            @foreach (var opt in ageStep.Options)
                             {
-                                var inputName = $"step-{i}-option";
+                                var isChecked = string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(form.AgeRange, opt.Label, StringComparison.OrdinalIgnoreCase);
                                 <label class="lq-card">
-                                    <input type="radio" name="@inputName" value="@opt.Code" data-label="@opt.Label" />
+                                    <input type="radio" name="step1-age-range" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
                                     <span>@opt.Label</span>
                                 </label>
                             }
                         </div>
-                        <div class="lq-choice-error" id="error-step-@i">Please choose an option.</div>
+                        <div class="lq-choice-error" id="err-step1-age">Please select your age range.</div>
                     </div>
-                    <div class="lq-step-actions dual">
-                        @if (i > 0)
-                        {
-                            <button type="button" class="btn-ghost" data-back="@i">Back</button>
-                        }
-                        <!-- Auto-advance handles forward navigation; Next button hidden for clarity -->
+
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
+                        <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
+                        <div class="lq-choice-grid">
+                            @foreach (var opt in protectStep.Options)
+                            {
+                                var isChecked = string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="step1-protecting" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-protect">Please choose who you want to protect.</div>
+                    </div>
+
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
+                        <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
+                        <div class="lq-choice-grid">
+                            @foreach (var opt in goalStep.Options)
+                            {
+                                var isChecked = string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase)
+                                    || string.Equals(form.ProtectFocus, opt.Label, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="step1-goal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-goal">Please select what matters most right now.</div>
+                    </div>
+
+                    <div class="lq-step-actions">
+                        <button type="button" class="btn-gold w-100" id="step1Continue">SEE MY OPTIONS</button>
+                        <div class="lq-trust-note">No obligation • 100% secure</div>
                     </div>
                 </div>
             </div>
         </div>
-        }
 
-        <div class="lq-step-panel lq-contact-step" data-step="@viewSteps.Count" @(viewSteps.Count == 0 ? "" : "hidden")>
+        <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-meta">Step @totalSteps of @totalSteps</div>
-                <div class="lq-step-title">How can we reach you?</div>
-                <div class="lq-step-helper" hidden></div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Where should we send or review your options?</div>
+                <div class="lq-step-helper">Based on what you shared, we’ll prepare your personalized review and walk through what fits your needs best.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -673,6 +744,7 @@ body.life-landing header .navbar .nav-link:focus {
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                <div class="lq-field-help">Best for a quick review of your options.</div>
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
@@ -687,7 +759,7 @@ body.life-landing header .navbar .nav-link:focus {
                             <div class="lq-field-row full">
                                 <div class="lq-field">
                                     <label for="State">What state do you live in? (Optional) <span style="color:#f87171">*</span></label>
-                                    <select id="State" name="State" class="form-select" autocomplete="address-level1">
+                                    <select id="State" name="State" class="form-select" autocomplete="address-level1" data-selected="@form.State">
                                         <option value="">Select your state</option>
                                         <option value="AL">Alabama</option>
                                         <option value="AK">Alaska</option>
@@ -754,10 +826,7 @@ body.life-landing header .navbar .nav-link:focus {
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <div class="lq-trust-note">100% Secure • No Obligation</div>
-                        @if (viewSteps.Count > 0)
-                        {
-                            <button type="button" class="btn-ghost w-100 mt-2" data-back="@viewSteps.Count">Back</button>
-                        }
+                        <button type="button" class="btn-ghost w-100 mt-2" id="step2BackBtn">Back</button>
                     </div>
                     <div class="lq-reassurance" hidden></div>
             </div>
@@ -769,8 +838,12 @@ body.life-landing header .navbar .nav-link:focus {
 <script>
 (() => {
   const form = document.getElementById('lifeWizardForm');
-  const steps = Array.from(document.querySelectorAll('[data-step]'));
-  const totalSteps = steps.length;
+  const step1Panel = document.getElementById('lifeStep1Panel');
+  const step2Panel = document.getElementById('lifeStep2Panel');
+  const step2Heading = document.getElementById('lifeStep2Heading');
+  const step1ContinueBtn = document.getElementById('step1Continue');
+  const step2BackBtn = document.getElementById('step2BackBtn');
+  const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answerHidden = [
     document.getElementById('Answer1'),
     document.getElementById('Answer2'),
@@ -788,90 +861,152 @@ body.life-landing header .navbar .nav-link:focus {
   const submitEvent = '@cfg.SubmitEvent';
   const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
+  const stateSelect = document.getElementById('State');
+  const firedStepEvents = { step1View: false, step2View: false };
 
-  function setStep(idx, shouldScroll = true) {
-    steps.forEach((s, i) => s.hidden = i !== idx);
-    const target = steps[idx];
-    if (!shouldScroll) return;
-    const scrollBehavior = (isLandingMobile && idx === 0) ? 'auto' : 'smooth';
-    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
-    setTimeout(() => target.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock }), 50);
+  if (stateSelect?.dataset.selected) {
+    stateSelect.value = stateSelect.dataset.selected;
   }
 
-  function storeAnswer(stepIndex, code, label, alias) {
-    if (stepIndex < answerHidden.length) {
-      answerHidden[stepIndex].value = code;
+  function trackEvent(eventType, metadata = {}) {
+    window.legendTrack?.({
+      EventType: eventType,
+      PageKey: pageKey,
+      Offer: '@cfg.OfferKey',
+      MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname, ...metadata })
+    });
+  }
+
+  function selectedRadio(name) {
+    return form.querySelector(`input[name="${name}"]:checked`);
+  }
+
+  function showChoiceError(errorId, show) {
+    const el = document.getElementById(errorId);
+    if (!el) return;
+    el.classList.toggle('visible', !!show);
+  }
+
+  function syncStepOneAnswersFromUI() {
+    const age = selectedRadio('step1-age-range');
+    const protecting = selectedRadio('step1-protecting');
+    const goal = selectedRadio('step1-goal');
+    if (age) {
+      answerHidden[0].value = age.value;
+      ageHidden.value = age.dataset.label || age.value;
     }
-    if (alias === 'AgeRange') ageHidden.value = label;
-    if (alias === 'ProtectFocus') focusHidden.value = label;
+    if (protecting) {
+      answerHidden[1].value = protecting.value;
+    }
+    if (goal) {
+      answerHidden[2].value = goal.value;
+      focusHidden.value = goal.dataset.label || goal.value;
+    }
   }
 
-  function validateStep(idx) {
-    const errorEl = document.getElementById(`error-step-${idx}`);
-    const radios = form.querySelectorAll(`input[name=\"step-${idx}-option\"]`);
-    if (radios.length === 0) return true; // non-radio step (e.g., name)
-    const selected = form.querySelector(`input[name=\"step-${idx}-option\"]:checked`);
-    if (!selected) {
-      errorEl?.classList.add('visible');
+  function validateStepOne() {
+    const age = selectedRadio('step1-age-range');
+    const protecting = selectedRadio('step1-protecting');
+    const goal = selectedRadio('step1-goal');
+    showChoiceError('err-step1-age', !age);
+    showChoiceError('err-step1-protect', !protecting);
+    showChoiceError('err-step1-goal', !goal);
+    if (!age) {
+      form.querySelector('input[name="step1-age-range"]')?.focus();
       return false;
     }
-    errorEl?.classList.remove('visible');
+    if (!protecting) {
+      form.querySelector('input[name="step1-protecting"]')?.focus();
+      return false;
+    }
+    if (!goal) {
+      form.querySelector('input[name="step1-goal"]')?.focus();
+      return false;
+    }
     return true;
   }
 
-  // wire option clicks
-  steps.forEach((stepEl, idx) => {
-    if (idx >= totalSteps - 1) return; // skip contact
-    const alias = stepEl.dataset.alias;
-    stepEl.querySelectorAll('input[type=\"radio\"]').forEach(r => {
-      r.addEventListener('change', (e) => {
-        const code = r.value;
-        const label = r.dataset.label || r.value;
-        storeAnswer(idx, code, label, stepEl.getAttribute('data-alias'));
-        window.legendTrack?.({ EventType: startEvent, Step: idx + 1, Choice: label, Code: code, PageKey: pageKey });
-        setTimeout(() => setStep(idx + 1), 120);
-      });
+  function showStep(step, shouldScroll = true) {
+    const showingStep2 = step === 2;
+    step1Panel.hidden = showingStep2;
+    step2Panel.hidden = !showingStep2;
+
+    if (showingStep2) {
+      if (!firedStepEvents.step2View) {
+        trackEvent('life_step2_view');
+        firedStepEvents.step2View = true;
+      }
+    } else if (!firedStepEvents.step1View) {
+      trackEvent('life_step1_view');
+      firedStepEvents.step1View = true;
+    }
+
+    if (!shouldScroll) return;
+    const target = showingStep2 ? (step2Heading || step2Panel) : step1Panel;
+    const scrollBehavior = (isLandingMobile && !showingStep2) ? 'auto' : 'smooth';
+    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
+    setTimeout(() => {
+      target?.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
+      if (showingStep2) {
+        step2Heading?.focus({ preventScroll: true });
+      }
+    }, 40);
+  }
+
+  form.querySelectorAll('input[name="step1-age-range"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      showChoiceError('err-step1-age', false);
+      syncStepOneAnswersFromUI();
+      trackEvent('step1_age_range', { choice: radio.dataset.label || radio.value, code: radio.value });
+    });
+  });
+  form.querySelectorAll('input[name="step1-protecting"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      showChoiceError('err-step1-protect', false);
+      syncStepOneAnswersFromUI();
+      trackEvent('step1_protecting', { choice: radio.dataset.label || radio.value, code: radio.value });
+    });
+  });
+  form.querySelectorAll('input[name="step1-goal"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      showChoiceError('err-step1-goal', false);
+      syncStepOneAnswersFromUI();
+      trackEvent('step1_goal', { choice: radio.dataset.label || radio.value, code: radio.value });
     });
   });
 
-  // back / next buttons
-  document.querySelectorAll('[data-back]').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const idx = parseInt(btn.getAttribute('data-back'));
-      const prev = Math.max(0, idx - 1);
-      window.legendTrack?.({ EventType: 'life_quote_back_click', FromStep: idx + 1, PageKey: pageKey });
-      setStep(prev);
+  step1ContinueBtn?.addEventListener('click', () => {
+    if (!validateStepOne()) return;
+    syncStepOneAnswersFromUI();
+    trackEvent('life_step1_continue', {
+      ageRange: ageHidden.value,
+      protectingCode: answerHidden[1]?.value || '',
+      protectFocus: focusHidden.value
     });
+    showStep(2);
   });
-  document.querySelectorAll('[data-next]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.getAttribute('data-next'));
-      if (!validateStep(idx)) return;
-      const selected = form.querySelector(`input[name=\"step-${idx}-option\"]:checked`);
-      if (selected) {
-        storeAnswer(idx, selected.value, selected.dataset.label || selected.value, steps[idx].getAttribute('data-alias'));
-      }
-      setStep(Math.min(totalSteps - 1, idx + 1));
-    });
+
+  step2BackBtn?.addEventListener('click', () => {
+    trackEvent('life_step2_back');
+    showStep(1);
   });
 
   // form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    syncStepOneAnswersFromUI();
+    if (!validateStepOne()) {
+      showStep(1);
+      form._trackSubmitAttempt?.(false, 1);
+      return;
+    }
+
     const lifeError = document.getElementById('lifeError');
     const lifeSuccess = document.getElementById('lifeSuccess');
-    lifeError.style.display = 'none';
-    lifeSuccess.style.display = 'none';
+    if (lifeError) lifeError.style.display = 'none';
+    if (lifeSuccess) lifeSuccess.style.display = 'none';
     ['FirstName','LastName','Phone','Email','State'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
-
-    // validate all question steps
-    for (let i = 0; i < totalSteps - 1; i++) {
-      if (!validateStep(i)) { form._trackSubmitAttempt?.(false, 1); setStep(i); return; }
-      const selected = form.querySelector(`input[name=\"step-${i}-option\"]:checked`);
-      if (selected) {
-        storeAnswer(i, selected.value, selected.dataset.label || selected.value, steps[i].getAttribute('data-alias'));
-      }
-    }
+    showStep(2, false);
 
     // contact validation
     const requiredAll = usesLeanContactFields
@@ -880,11 +1015,13 @@ body.life-landing header .navbar .nav-link:focus {
     for (const name of requiredAll) {
       const el = form.querySelector(`[name=\"${name}\"]`);
       if (!el || !el.value.trim()) {
-        lifeError.textContent = 'Please fill all required contact fields.';
-        lifeError.style.display = 'block';
+        if (lifeError) {
+          lifeError.textContent = 'Please fill all required contact fields.';
+          lifeError.style.display = 'block';
+        }
         el?.focus();
         document.getElementById(`err-${name}`)?.classList.add('visible');
-        setStep(totalSteps - 1);
+        showStep(2, false);
         form._trackSubmitAttempt?.(false, 1);
         return;
       }
@@ -892,18 +1029,24 @@ body.life-landing header .navbar .nav-link:focus {
     if (!usesLeanContactFields) {
       const state = document.getElementById('State');
       if (state && !state.value) {
-          lifeError.textContent = 'Please select your state.';
-          lifeError.style.display = 'block';
+          if (lifeError) {
+            lifeError.textContent = 'Please select your state.';
+            lifeError.style.display = 'block';
+          }
           state.focus();
           document.getElementById('err-State')?.classList.add('visible');
-          setStep(totalSteps - 1);
+          showStep(2, false);
           form._trackSubmitAttempt?.(false, 1);
           return;
       }
     }
+
+    trackEvent('life_step2_submit_attempt');
     form._trackSubmitAttempt?.(true, 0);
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Sending...';
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Sending...';
+    }
 
     // Populate attribution fields immediately before submit
     (function () {
@@ -922,8 +1065,21 @@ body.life-landing header .navbar .nav-link:focus {
       set('LandingPageUrl', window.location.href || '');
     })();
 
-    window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-      SubmitOutcome: 'attempt', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', step: 'submit_attempt', pageVariant, pageMode, pagePath: window.location.pathname }) });
+    window.legendTrack?.({
+      EventType: 'form_submit',
+      FormKey: pageKey,
+      PageKey: pageKey,
+      SubmitOutcome: 'attempt',
+      MetadataJson: JSON.stringify({
+        offer: '@cfg.OfferKey',
+        step: 'submit_attempt',
+        pageVariant,
+        pageMode,
+        pagePath: window.location.pathname,
+        ageRange: ageHidden.value,
+        protectFocus: focusHidden.value
+      })
+    });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -936,24 +1092,35 @@ body.life-landing header .navbar .nav-link:focus {
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
+      trackEvent('life_step2_submit_success');
+      trackEvent(submitEvent, { submitOutcome: 'success' });
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
         SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
       window.location.href = thankYouPath;
     } catch (err) {
-      lifeError.textContent = 'We could not send this right now. Please try again.';
-      lifeError.style.display = 'block';
+      if (lifeError) {
+        lifeError.textContent = 'We could not send this right now. Please try again.';
+        lifeError.style.display = 'block';
+      }
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
         SubmitOutcome: 'error', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
     } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = submitLabel;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitLabel;
+      }
     }
   });
 
   // fire start event once
-  window.legendTrack?.({ EventType: startEvent, PageKey: pageKey, Offer: '@cfg.OfferKey', MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname }) });
+  window.legendTrack?.({
+    EventType: startEvent,
+    PageKey: pageKey,
+    Offer: '@cfg.OfferKey',
+    MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname })
+  });
 
-  // initial position
-  setStep(0, false);
+  syncStepOneAnswersFromUI();
+  showStep(showContactStepByDefault ? 2 : 1, false);
 })();
 </script>
