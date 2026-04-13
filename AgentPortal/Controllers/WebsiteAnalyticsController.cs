@@ -261,27 +261,27 @@ namespace AgentPortal.Controllers;
                 },
                 "Summary metrics");
             var (traffic, trafficWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetTrafficAsync(range, scope),
+                () => _analytics.GetTrafficAsync(range, scope, TrafficType.PaidAds),
                 () => new TrafficOverviewDto { RangeLabel = range.Label },
                 "Traffic metrics");
             var (quote, quoteWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetQuoteFunnelAsync(range, scope),
+                () => _analytics.GetQuoteFunnelAsync(range, scope, TrafficType.PaidAds),
                 () => new QuoteFunnelDto { RangeLabel = range.Label },
                 "Quote funnel metrics");
             var (conversions, conversionsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetConversionsAsync(range, scope),
+                () => _analytics.GetConversionsAsync(range, scope, TrafficType.PaidAds),
                 () => new ConversionCenterDto { RangeLabel = range.Label },
                 "Conversion metrics");
             var (leads, leadsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetLeadsAsync(range, scope),
+                () => _analytics.GetLeadsAsync(range, scope, TrafficType.PaidAds),
                 () => new LeadSnapshotDto { RangeLabel = range.Label },
                 "Lead snapshot metrics");
             var (pagePerf, pagePerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetPagePerformanceAsync(range, scope),
+                () => _analytics.GetPagePerformanceAsync(range, scope, TrafficType.PaidAds),
                 () => new PagePerformanceDto { RangeLabel = range.Label },
                 "Page performance metrics");
             var (ctaPerf, ctaPerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetCtaPerformanceAsync(range, scope),
+                () => _analytics.GetCtaPerformanceAsync(range, scope, TrafficType.PaidAds),
                 () => new CtaPerformanceDto { RangeLabel = range.Label },
                 "CTA performance metrics");
             var (timeOnPage, timeOnPageWarning) = await SafeSnapshotLoadAsync(
@@ -293,7 +293,7 @@ namespace AgentPortal.Controllers;
                 () => new ExitAnalysisDto { RangeLabel = range.Label },
                 "Exit analysis metrics");
             var (source, sourceWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetSourcePerformanceAsync(range, scope),
+                () => _analytics.GetSourcePerformanceAsync(range, scope, TrafficType.PaidAds),
                 () => new SourcePerformanceDto { RangeLabel = range.Label },
                 "Source performance metrics");
             var (abandonment, abandonmentWarning) = await SafeSnapshotLoadAsync(
