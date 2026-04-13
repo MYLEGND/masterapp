@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Infrastructure.Data;
 
 #nullable disable
 
@@ -12,6 +14,8 @@ namespace Infrastructure.Migrations
     ///
     /// On SQL Server the bigint IDENTITY column works correctly, so no change is needed there.
     /// </summary>
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260411000000_FixWebsiteLeadSqlitePrimaryKey")]
     public partial class FixWebsiteLeadSqlitePrimaryKey : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

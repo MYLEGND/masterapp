@@ -45,7 +45,11 @@
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db ':*)",
       "Bash(sqlite3 /tmp/test_pk.db ':*)",
       "Bash(rm /tmp/test_pk.db)",
-      "Bash(grep -l \"WebsiteLeads.Add\\\\|_db.WebsiteLeads\" /Users/zacowen/MASTERAPP/Protect-Website/Controllers/*.cs)"
+      "Bash(grep -l \"WebsiteLeads.Add\\\\|_db.WebsiteLeads\" /Users/zacowen/MASTERAPP/Protect-Website/Controllers/*.cs)",
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/agentportal_masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;\")",
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;\")",
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT * FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 3;\")",
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"PRAGMA table_info\\(WebsiteLeads\\);\")"
     ]
   }
 }

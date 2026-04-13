@@ -1,10 +1,13 @@
 using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Infrastructure.Data;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
-    /// <inheritdoc />
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260413000000_AddFbclidColumns")]
     public partial class AddFbclidColumns : Migration
     {
         /// <inheritdoc />
