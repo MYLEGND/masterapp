@@ -21,6 +21,11 @@ public sealed class ClientCrmMeta
     public string? LoanAmount { get; set; }
     public string? Gender { get; set; }
     public DateTime? DOB { get; set; }
+    public string? CrmPriority { get; set; }
+    public DateTime? CrmNextDate { get; set; }
+    public string? CrmNextText { get; set; }
+    public string? CrmTags { get; set; }
+    public string? AgentNotes { get; set; }
 
     // Aggregate counters (helpful when migrating to/from WorkstationLeadProfiles)
     public int AttemptsLifetime { get; set; }
@@ -207,6 +212,12 @@ public static class ClientCrmMetaSerializer
         meta.Gender = Clean(meta.Gender);
         if (meta.DOB.HasValue)
             meta.DOB = meta.DOB.Value.Date;
+        meta.CrmPriority = NormalizePriority(meta.CrmPriority);
+        if (meta.CrmNextDate.HasValue)
+            meta.CrmNextDate = meta.CrmNextDate.Value.Date;
+        meta.CrmNextText = Clean(meta.CrmNextText);
+        meta.CrmTags = Clean(meta.CrmTags);
+        meta.AgentNotes = Clean(meta.AgentNotes);
         if (meta.AttemptsLifetime < 0)
             meta.AttemptsLifetime = 0;
 
@@ -306,6 +317,18 @@ public static class ClientCrmMetaSerializer
 
         var match = AllowedWaitingOnStates.FirstOrDefault(x => x.Equals(cleaned, StringComparison.OrdinalIgnoreCase));
         return match ?? ClientCrmMeta.DefaultWaitingOn;
+    }
+
+    private static string NormalizePriority(string? value)
+    {
+        var cleaned = Clean(value);
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return "Normal";
+
+        if (cleaned.Equals("Low", StringComparison.OrdinalIgnoreCase)) return "Low";
+        if (cleaned.Equals("High", StringComparison.OrdinalIgnoreCase)) return "High";
+        if (cleaned.Equals("Urgent", StringComparison.OrdinalIgnoreCase)) return "Urgent";
+        return "Normal";
     }
 
     private static string? NormalizeMeetingTime(string? time)

@@ -154,6 +154,50 @@ public class LeadsController : Controller
         return PipelineStages.FirstOrDefault(x => x.Equals(stage.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
+    private static bool LooksLikeLeadMetaJson(string? raw)
+        => !string.IsNullOrWhiteSpace(raw) && raw.TrimStart().StartsWith("{", StringComparison.Ordinal);
+
+    private static ClientCrmMeta ReadLeadMeta(WorkstationLeadProfile lead)
+    {
+        var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+        if (!LooksLikeLeadMetaJson(lead.CrmNotes))
+        {
+            var legacyNote = (lead.CrmNotes ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(legacyNote) && string.IsNullOrWhiteSpace(meta.AgentNotes))
+                meta.AgentNotes = legacyNote;
+        }
+
+        if (string.IsNullOrWhiteSpace(meta.CrmPriority))
+            meta.CrmPriority = "Normal";
+        if (meta.StageEnteredUtc == default)
+            meta.StageEnteredUtc = lead.CreatedUtc;
+        if (string.IsNullOrWhiteSpace(meta.CrmTags))
+            meta.CrmTags = lead.Bucket;
+        if (meta.MeetingDurationMinutes <= 0)
+            meta.MeetingDurationMinutes = 30;
+        if (string.IsNullOrWhiteSpace(meta.MeetingTime))
+            meta.MeetingTime = "09:00";
+
+        return meta;
+    }
+
+    private static int CompletedLeadDocCount(ClientCrmDocChecklist? checklist)
+    {
+        if (checklist == null) return 0;
+        var count = 0;
+        if (checklist.IdReceived) count++;
+        if (checklist.AppSent) count++;
+        if (checklist.AppSigned) count++;
+        if (checklist.PolicyDelivered) count++;
+        if (checklist.ReviewBooked) count++;
+        return count;
+    }
+
+    private static string LeadWatchersCsv(ClientCrmMeta meta)
+        => string.Join(", ", (meta.Collaboration?.Watchers ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase));
+
     public sealed class ReorderRequest
     {
         public string? Bucket { get; set; }
@@ -297,6 +341,8 @@ public class LeadsController : Controller
                 var stage = string.IsNullOrWhiteSpace(lead.Bucket) ? "Contacted" : lead.Bucket;
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket);
+                var crmMeta = ReadLeadMeta(lead);
+                var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
                 productionLookup.TryGetValue(lead.LeadId, out var prod);
                 return new ClientListItemViewModel
                 {
@@ -309,12 +355,12 @@ public class LeadsController : Controller
                     Phone2 = FormatPhoneDisplay(lead.Phone2),
                     RecordType = "Lead",
                     CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus!,
-                    CrmPriority = "Normal",
+                    CrmPriority = string.IsNullOrWhiteSpace(crmMeta.CrmPriority) ? "Normal" : crmMeta.CrmPriority!,
                     CrmLastTouch = lead.UpdatedUtc,
-                    CrmNextDate = null,
-                    CrmNextText = null,
-                    CrmTags = lead.Bucket,
-                    AgentNotes = lead.CrmNotes,
+                    CrmNextDate = crmMeta.CrmNextDate,
+                    CrmNextText = crmMeta.CrmNextText,
+                    CrmTags = crmMeta.CrmTags ?? lead.Bucket,
+                    AgentNotes = crmMeta.AgentNotes ?? "",
                     AddressLine = lead.AddressLine,
                     City = lead.City,
                     State = lead.State,
@@ -327,21 +373,27 @@ public class LeadsController : Controller
                     OriginalLeadType = originalLeadType,
                     PipelineStage = stage,
                     PipelineOrder = lead.CrmOrder,
-                    WaitingOn = ClientCrmMeta.DefaultWaitingOn,
-                    StageEnteredUtc = lead.CreatedUtc,
-                    StageAgeDays = Math.Max(0, (DateTime.UtcNow.Date - lead.CreatedUtc.Date).Days),
+                    MeetingLocation = crmMeta.MeetingLocation,
+                    ZoomJoinUrl = crmMeta.ZoomJoinUrl,
+                    UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
+                    MeetingTime = crmMeta.MeetingTime,
+                    MeetingDurationMinutes = crmMeta.MeetingDurationMinutes,
+                    WaitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
+                    PinnedBrief = crmMeta.PinnedBrief,
+                    StageEnteredUtc = stageEnteredUtc,
+                    StageAgeDays = Math.Max(0, (DateTime.UtcNow.Date - stageEnteredUtc.Date).Days),
                     AttemptsToday = attempts.Today,
                     AttemptsThisWeek = attempts.Week,
                     AttemptsThisMonth = attempts.Month,
                     AttemptsYear = attempts.Year,
                     AttemptsLifetime = attempts.Lifetime,
-                    LastContactChannel = "Call",
-                    DocChecklistCompletedCount = 0,
+                    LastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
+                    DocChecklistCompletedCount = CompletedLeadDocCount(crmMeta.DocChecklist),
                     HasDuplicateEmail = false,
                     HasDuplicatePhone = false,
                     HasDuplicateHousehold = false,
-                    AssignedOwner = "",
-                    WatchersCsv = "",
+                    AssignedOwner = crmMeta.Collaboration?.Owner ?? "",
+                    WatchersCsv = LeadWatchersCsv(crmMeta),
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
@@ -540,6 +592,7 @@ public class LeadsController : Controller
             var attempts = CrmAttemptTracking.GetLeadAttemptCounts(x, nowUtc, dialTimeZone);
             var originalLeadType = ResolveOriginalLeadType(x.OriginalLeadType, x.Bucket, normalizedBucket);
             var state = ResolveLeadState(x, fallbackStatesByPhone);
+            var crmMeta = ReadLeadMeta(x);
             return new
             {
             x.LeadId,
@@ -552,9 +605,13 @@ public class LeadsController : Controller
             OriginalLeadType = originalLeadType,
             x.CrmStage,
             x.CrmStatus,
+            CrmPriority = crmMeta.CrmPriority ?? "Normal",
+            CrmNextDate = crmMeta.CrmNextDate,
+            CrmNextText = crmMeta.CrmNextText ?? "",
+            CrmTags = crmMeta.CrmTags ?? x.Bucket ?? "",
             x.CallCount,
             x.CrmOrder,
-            x.CrmNotes,
+            CrmNotes = crmMeta.AgentNotes ?? "",
             x.AddressLine,
             x.City,
             State = state,
@@ -574,6 +631,13 @@ public class LeadsController : Controller
             AttemptsThisMonth = attempts.Month,
             AttemptsThisYear = attempts.Year,
             AttemptsLifetime = attempts.Lifetime,
+            WaitingOn = crmMeta.WaitingOn,
+            PinnedBrief = crmMeta.PinnedBrief,
+            MeetingLocation = crmMeta.MeetingLocation,
+            ZoomJoinUrl = crmMeta.ZoomJoinUrl,
+            UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
+            MeetingTime = crmMeta.MeetingTime,
+            MeetingDurationMinutes = crmMeta.MeetingDurationMinutes,
             DialsToday = attempts.Today,
             DialsWeek = attempts.Week,
             DialsTodayAgentWide = agentWideDialTotals.Today,
@@ -666,13 +730,10 @@ public class LeadsController : Controller
     private static bool MatchesLeadQueue(WorkstationLeadProfile lead, string queueKey)
     {
         var stage = NormalizePipelineStage(lead.Bucket) ?? lead.Bucket;
-        var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+        var meta = ReadLeadMeta(lead);
         var waitingOn = (meta.WaitingOn ?? ClientCrmMeta.DefaultWaitingOn).Trim();
-
-        // Leads currently do not persist CrmNextDate/CrmPriority fields in WorkstationLeadProfile.
-        // Keep placeholders for forward compatibility if these fields are added later.
-        DateTime? nextDate = null;
-        var priority = (lead.CrmStatus ?? string.Empty).Trim();
+        var nextDate = meta.CrmNextDate?.Date;
+        var priority = (meta.CrmPriority ?? "Normal").Trim();
         var isHighPriority = priority.Equals("High", StringComparison.OrdinalIgnoreCase)
             || priority.Equals("Urgent", StringComparison.OrdinalIgnoreCase);
 
@@ -787,7 +848,8 @@ public class LeadsController : Controller
             {
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(l, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(l.OriginalLeadType, l.Bucket);
-                var crmMeta = ClientCrmMetaSerializer.Deserialize(l.CrmNotes);
+                var crmMeta = ReadLeadMeta(l);
+                var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? l.CreatedUtc : crmMeta.StageEnteredUtc;
                 productionLookup.TryGetValue(l.LeadId, out var prod);
 
                 return new ClientListItemViewModel
@@ -801,12 +863,12 @@ public class LeadsController : Controller
                     Phone2 = FormatPhoneDisplay(l.Phone2),
                     RecordType = "Lead",
                     CrmStatus = string.IsNullOrWhiteSpace(l.CrmStatus) ? "Lead" : l.CrmStatus!,
-                    CrmPriority = "Normal",
+                    CrmPriority = string.IsNullOrWhiteSpace(crmMeta.CrmPriority) ? "Normal" : crmMeta.CrmPriority!,
                     CrmLastTouch = l.UpdatedUtc,
-                    CrmNextDate = null,
-                    CrmNextText = null,
-                    CrmTags = l.Bucket,
-                    AgentNotes = l.CrmNotes,
+                    CrmNextDate = crmMeta.CrmNextDate,
+                    CrmNextText = crmMeta.CrmNextText,
+                    CrmTags = crmMeta.CrmTags ?? l.Bucket,
+                    AgentNotes = crmMeta.AgentNotes ?? "",
                     AddressLine = l.AddressLine,
                     City = l.City,
                     State = l.State,
@@ -819,21 +881,27 @@ public class LeadsController : Controller
                     OriginalLeadType = originalLeadType,
                     PipelineStage = string.IsNullOrWhiteSpace(l.Bucket) ? "Contacted" : l.Bucket,
                     PipelineOrder = l.CrmOrder,
+                    MeetingLocation = crmMeta.MeetingLocation,
+                    ZoomJoinUrl = crmMeta.ZoomJoinUrl,
+                    UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
+                    MeetingTime = crmMeta.MeetingTime,
+                    MeetingDurationMinutes = crmMeta.MeetingDurationMinutes,
                     WaitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
-                    StageEnteredUtc = l.CreatedUtc,
-                    StageAgeDays = Math.Max(0, (DateTime.UtcNow.Date - l.CreatedUtc.Date).Days),
+                    PinnedBrief = crmMeta.PinnedBrief,
+                    StageEnteredUtc = stageEnteredUtc,
+                    StageAgeDays = Math.Max(0, (DateTime.UtcNow.Date - stageEnteredUtc.Date).Days),
                     AttemptsToday = attempts.Today,
                     AttemptsThisWeek = attempts.Week,
                     AttemptsThisMonth = attempts.Month,
                     AttemptsYear = attempts.Year,
                     AttemptsLifetime = attempts.Lifetime,
-                    LastContactChannel = "Call",
-                    DocChecklistCompletedCount = 0,
+                    LastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
+                    DocChecklistCompletedCount = CompletedLeadDocCount(crmMeta.DocChecklist),
                     HasDuplicateEmail = false,
                     HasDuplicatePhone = false,
                     HasDuplicateHousehold = false,
-                    AssignedOwner = "",
-                    WatchersCsv = "",
+                    AssignedOwner = crmMeta.Collaboration?.Owner ?? "",
+                    WatchersCsv = LeadWatchersCsv(crmMeta),
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
@@ -1028,6 +1096,13 @@ public class LeadsController : Controller
     {
         var effectiveUtcNow = utcNow ?? DateTime.UtcNow;
         var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, effectiveUtcNow, dialTimeZone);
+        var crmMeta = ReadLeadMeta(lead);
+        var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
+        var crmPriority = string.IsNullOrWhiteSpace(crmMeta.CrmPriority) ? "Normal" : crmMeta.CrmPriority;
+        var watchers = (crmMeta.Collaboration?.Watchers ?? new List<string>())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         return new
         {
             lead.LeadId,
@@ -1049,27 +1124,42 @@ public class LeadsController : Controller
             age = lead.Age,
             btc = lead.Btc,
             crmStatus = lead.CrmStatus,
-            crmPriority = "Normal",
+            crmPriority,
             crmLastTouch = lead.UpdatedUtc.ToString("yyyy-MM-dd"),
             updatedUtc = lead.UpdatedUtc,
-            crmNextDate = (DateTime?)null,
-            crmNextText = lead.CrmNotes,
-            crmNotes = lead.CrmNotes,
+            crmNextDate = crmMeta.CrmNextDate?.ToString("yyyy-MM-dd"),
+            crmNextText = crmMeta.CrmNextText ?? "",
+            crmTags = crmMeta.CrmTags ?? "",
+            agentNotes = crmMeta.AgentNotes ?? "",
+            crmNotes = crmMeta.AgentNotes ?? "",
             pipelineStage = lead.Bucket,
             bucket = lead.Bucket,
-            waitingOn = ClientCrmMeta.DefaultWaitingOn,
-            meetingLocation = lead.AddressLine,
-            zoomJoinUrl = "",
-            usePersonalZoomLink = false,
-            meetingTime = "09:00",
-            meetingDurationMinutes = 30,
-            pinnedBrief = lead.CrmNotes,
-            docChecklist = new { completedCount = 0 },
-            collaboration = new { watchers = Array.Empty<string>() },
-            activities = Array.Empty<object>(),
-            stageEnteredUtc = lead.CreatedUtc,
+            waitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
+            meetingLocation = crmMeta.MeetingLocation ?? lead.AddressLine,
+            zoomJoinUrl = crmMeta.ZoomJoinUrl ?? "",
+            usePersonalZoomLink = crmMeta.UsePersonalZoomLink,
+            meetingTime = crmMeta.MeetingTime ?? "09:00",
+            meetingDurationMinutes = crmMeta.MeetingDurationMinutes <= 0 ? 30 : crmMeta.MeetingDurationMinutes,
+            pinnedBrief = crmMeta.PinnedBrief ?? "",
+            docChecklist = new
+            {
+                idReceived = crmMeta.DocChecklist?.IdReceived ?? false,
+                appSent = crmMeta.DocChecklist?.AppSent ?? false,
+                appSigned = crmMeta.DocChecklist?.AppSigned ?? false,
+                policyDelivered = crmMeta.DocChecklist?.PolicyDelivered ?? false,
+                reviewBooked = crmMeta.DocChecklist?.ReviewBooked ?? false,
+                completedCount = CompletedLeadDocCount(crmMeta.DocChecklist)
+            },
+            collaboration = new
+            {
+                owner = crmMeta.Collaboration?.Owner ?? "",
+                watchers,
+                mentionNotes = crmMeta.Collaboration?.MentionNotes ?? new List<ClientCrmMentionNote>()
+            },
+            activities = crmMeta.Activities ?? new List<ClientCrmActivity>(),
+            stageEnteredUtc,
             createdUtc = lead.CreatedUtc,
-            stageAgeDays = Math.Max(0, (effectiveUtcNow.Date - lead.CreatedUtc.Date).Days),
+            stageAgeDays = Math.Max(0, (effectiveUtcNow.Date - stageEnteredUtc.Date).Days),
             attemptsToday = attempts.Today,
             attemptsThisWeek = attempts.Week,
             attemptsThisMonth = attempts.Month,
@@ -1080,7 +1170,7 @@ public class LeadsController : Controller
             dialsTodayAgentWide,
             dialsWeekAgentWide,
             callCount = lead.CallCount,
-            lastContactChannel = "Call",
+            lastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
             originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket)
         };
     }
@@ -1098,6 +1188,7 @@ public class LeadsController : Controller
         if (lead == null) return NotFound();
 
         PreserveOriginalLeadType(lead);
+        var meta = ReadLeadMeta(lead);
         lead.Email = string.IsNullOrWhiteSpace(req.email) ? lead.Email : req.email;
         lead.Phone = string.IsNullOrWhiteSpace(req.phone) ? lead.Phone : req.phone;
         lead.Phone2 = string.IsNullOrWhiteSpace(req.phone2) ? lead.Phone2 : req.phone2;
@@ -1119,8 +1210,77 @@ public class LeadsController : Controller
         lead.Age = string.IsNullOrWhiteSpace(req.age) ? lead.Age : req.age;
         lead.Btc = string.IsNullOrWhiteSpace(req.btc) ? lead.Btc : req.btc;
         lead.CrmStatus = req.crmStatus ?? lead.CrmStatus ?? "Lead";
-        lead.CrmNotes = req.agentNotes ?? lead.CrmNotes;
-        lead.Bucket = NormalizePipelineStage(req.pipelineStage) ?? lead.Bucket;
+        var allowedPriority = new[] { "Low", "Normal", "High", "Urgent" };
+        var normalizedPriority = (req.crmPriority ?? "").Trim();
+        if (!allowedPriority.Contains(normalizedPriority, StringComparer.OrdinalIgnoreCase))
+            normalizedPriority = string.IsNullOrWhiteSpace(meta.CrmPriority) ? "Normal" : meta.CrmPriority!;
+        else
+            normalizedPriority = allowedPriority.First(x => x.Equals(normalizedPriority, StringComparison.OrdinalIgnoreCase));
+
+        DateTime? normalizedNextDate = meta.CrmNextDate;
+        if (string.IsNullOrWhiteSpace(req.crmNextDate))
+        {
+            normalizedNextDate = null;
+        }
+        else if (DateTime.TryParse(req.crmNextDate, out var parsedNextDate))
+        {
+            normalizedNextDate = parsedNextDate.Date;
+        }
+
+        var normalizedNextText = string.IsNullOrWhiteSpace(req.crmNextText) ? null : req.crmNextText.Trim();
+        if (normalizedNextDate.HasValue && string.IsNullOrWhiteSpace(normalizedNextText))
+            normalizedNextDate = null;
+        if (!normalizedNextDate.HasValue && !string.IsNullOrWhiteSpace(normalizedNextText))
+            normalizedNextText = null;
+
+        var normalizedStage = NormalizePipelineStage(req.pipelineStage) ?? lead.Bucket;
+        if (!string.Equals(lead.Bucket, normalizedStage, StringComparison.OrdinalIgnoreCase))
+            meta.StageEnteredUtc = DateTime.UtcNow;
+        lead.Bucket = normalizedStage;
+
+        meta.CrmPriority = normalizedPriority;
+        meta.CrmNextDate = normalizedNextDate;
+        meta.CrmNextText = normalizedNextText;
+        meta.CrmTags = string.IsNullOrWhiteSpace(req.crmTags) ? null : req.crmTags.Trim();
+        meta.AgentNotes = string.IsNullOrWhiteSpace(req.agentNotes) ? null : req.agentNotes.Trim();
+        meta.WaitingOn = ClientCrmMetaSerializer.NormalizeWaitingOn(req.waitingOn);
+        meta.PinnedBrief = string.IsNullOrWhiteSpace(req.pinnedBrief) ? null : req.pinnedBrief.Trim();
+        if (req.meetingLocation != null)
+            meta.MeetingLocation = string.IsNullOrWhiteSpace(req.meetingLocation) ? null : req.meetingLocation.Trim();
+        if (req.zoomJoinUrl != null)
+            meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(req.zoomJoinUrl) ? null : req.zoomJoinUrl.Trim();
+        if (req.usePersonalZoomLink.HasValue)
+            meta.UsePersonalZoomLink = req.usePersonalZoomLink.Value;
+        if (req.meetingTime != null)
+            meta.MeetingTime = string.IsNullOrWhiteSpace(req.meetingTime) ? "09:00" : req.meetingTime.Trim();
+        if (req.meetingDurationMinutes.HasValue)
+            meta.MeetingDurationMinutes = req.meetingDurationMinutes.Value <= 0 ? 30 : req.meetingDurationMinutes.Value;
+
+        meta.DocChecklist ??= new ClientCrmDocChecklist();
+        meta.DocChecklist.IdReceived = req.docIdReceived ?? meta.DocChecklist.IdReceived;
+        meta.DocChecklist.AppSent = req.docAppSent ?? meta.DocChecklist.AppSent;
+        meta.DocChecklist.AppSigned = req.docAppSigned ?? meta.DocChecklist.AppSigned;
+        meta.DocChecklist.PolicyDelivered = req.docPolicyDelivered ?? meta.DocChecklist.PolicyDelivered;
+        meta.DocChecklist.ReviewBooked = req.docReviewBooked ?? meta.DocChecklist.ReviewBooked;
+
+        meta.Collaboration ??= new ClientCrmCollaboration();
+        meta.Collaboration.Watchers = (req.watchers ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(x => x.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        meta.Collaboration.MentionNotes ??= new List<ClientCrmMentionNote>();
+        if (!string.IsNullOrWhiteSpace(req.mentionNote))
+        {
+            meta.Collaboration.MentionNotes.Insert(0, new ClientCrmMentionNote
+            {
+                Note = req.mentionNote.Trim(),
+                MentionedUser = meta.Collaboration.Watchers.FirstOrDefault(),
+                CreatedBy = agentId
+            });
+        }
+        lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
 
@@ -1145,9 +1305,14 @@ public class LeadsController : Controller
             return BadRequest("Invalid outcomeCode");
 
         PreserveOriginalLeadType(lead);
+        var meta = ReadLeadMeta(lead);
         lead.CrmStage = stage;
+        if (!string.Equals(lead.Bucket, stage, StringComparison.OrdinalIgnoreCase))
+            meta.StageEnteredUtc = DateTime.UtcNow;
         lead.Bucket = stage; // keep pipeline bucket in sync with outcome
-        lead.CrmNotes = req.customNote ?? lead.CrmNotes;
+        if (!string.IsNullOrWhiteSpace(req.customNote))
+            meta.AgentNotes = req.customNote.Trim();
+        lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         lead.AgentUserId = agentId;
         lead.UpdatedUtc = DateTime.UtcNow;
         await _db.SaveChangesAsync();

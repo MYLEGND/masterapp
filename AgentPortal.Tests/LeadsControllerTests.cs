@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
@@ -12,7 +13,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
-using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 
@@ -285,6 +285,97 @@ public class LeadsControllerTests
         Assert.Equal("Updated", canonical.FirstName);
         var stale = rows.OrderBy(r => r.UpdatedUtc).First();
         Assert.Equal("Old", stale.FirstName); // untouched
+    }
+
+    [Fact]
+    public async Task SaveQuickView_PersistsLeadCrmMetadataInCrmNotesJson()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-meta",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            FirstName = "Meta",
+            LastName = "Lead",
+            Email = "meta@example.com",
+            Phone = "6025550101",
+            UpdatedUtc = now,
+            CreatedUtc = now.AddHours(-1),
+            CrmNotes = "legacy note"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+        var req = new LeadsController.LeadQuickViewRequest(
+            "L-meta",
+            "Meta",
+            "Lead",
+            "meta@example.com",
+            "6025550101",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "Lead",
+            "High",
+            now.ToString("yyyy-MM-dd"),
+            now.AddDays(1).ToString("yyyy-MM-dd"),
+            "Follow up on docs",
+            "Mortgage, Priority",
+            "Agent note",
+            "Booked",
+            "Zoom Call",
+            "https://zoom.us/j/meta",
+            true,
+            "10:30",
+            45,
+            "WaitingOnClient",
+            "Pinned summary",
+            true,
+            true,
+            false,
+            false,
+            false,
+            "teammate@contoso.com",
+            "Please jump in",
+            null
+        );
+
+        var result = await controller.SaveQuickView(req);
+        var json = Assert.IsType<JsonResult>(result);
+        dynamic payload = ((dynamic)json.Value!).payload;
+        Assert.Equal("High", (string)payload.crmPriority);
+        Assert.Equal("Follow up on docs", (string)payload.crmNextText);
+        Assert.Equal("Agent note", (string)payload.agentNotes);
+        Assert.Equal("Zoom Call", (string)payload.meetingLocation);
+
+        var persisted = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-meta");
+        var meta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("High", meta.CrmPriority);
+        Assert.Equal("Follow up on docs", meta.CrmNextText);
+        Assert.Equal("Agent note", meta.AgentNotes);
+        Assert.Equal("Mortgage, Priority", meta.CrmTags);
+        Assert.Equal("Zoom Call", meta.MeetingLocation);
+        Assert.Equal("https://zoom.us/j/meta", meta.ZoomJoinUrl);
+        Assert.True(meta.UsePersonalZoomLink);
+        Assert.Equal("10:30", meta.MeetingTime);
+        Assert.Equal(45, meta.MeetingDurationMinutes);
+        Assert.Equal("WaitingOnClient", meta.WaitingOn);
+        Assert.Equal("Pinned summary", meta.PinnedBrief);
+        Assert.True(meta.DocChecklist.IdReceived);
+        Assert.True(meta.DocChecklist.AppSent);
+        Assert.Single(meta.Collaboration.Watchers);
+        Assert.Single(meta.Collaboration.MentionNotes);
     }
 
     [Fact]
