@@ -221,11 +221,11 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("quote-funnel/abandonment")]
-    public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetFormAbandonmentAsync(range, scope);
+        var result = await _analytics.GetFormAbandonmentAsync(range, scope, trafficType);
         return Json(result);
     }
 
@@ -297,7 +297,7 @@ namespace AgentPortal.Controllers;
                 () => new SourcePerformanceDto { RangeLabel = range.Label },
                 "Source performance metrics");
             var (abandonment, abandonmentWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetFormAbandonmentAsync(range, scope),
+                () => _analytics.GetFormAbandonmentAsync(range, scope, TrafficType.PaidAds),
                 () => new FormAbandonmentDto { RangeLabel = range.Label },
                 "Form abandonment metrics");
             MetaCampaignsDto? metaCampaigns = null;

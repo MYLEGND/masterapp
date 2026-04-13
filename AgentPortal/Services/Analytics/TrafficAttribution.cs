@@ -63,7 +63,12 @@ namespace AgentPortal.Services.Analytics
         {
             if (filter == TrafficType.All) return true;
             if (filter == TrafficType.PaidAds) return rowType == TrafficType.PaidAds;
-            if (filter == TrafficType.NonPaid) return rowType != TrafficType.PaidAds;
+            if (filter == TrafficType.NonPaid)
+            {
+                return rowType == TrafficType.Organic
+                    || rowType == TrafficType.Direct
+                    || rowType == TrafficType.Referral;
+            }
             return rowType == filter;
         }
     }

@@ -834,7 +834,7 @@
   async function loadQuote() {
     const [data, abandon] = await Promise.all([
       fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
-      fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams())
+      fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams({ modal: 'quoteModal' }))
     ]);
     if (data) renderQuote(data);
     if (abandon) renderAbandonment(abandon);

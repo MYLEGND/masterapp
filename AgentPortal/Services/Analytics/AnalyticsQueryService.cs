@@ -245,6 +245,44 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
     }
 
+    private static bool IsQuoteFormKey(string? formKey) =>
+        !string.IsNullOrWhiteSpace(formKey) &&
+        formKey.Contains("quote_", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsQuoteSubmitSuccess(AnalyticsEvent e) =>
+        e.EventType == "form_submit" &&
+        IsQuoteFormKey(e.FormKey) &&
+        string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase);
+
+    private static string BuildInteractionUnitKey(AnalyticsEvent e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.SessionId))
+            return $"sid:{e.SessionId}";
+        if (!string.IsNullOrWhiteSpace(e.VisitorId))
+            return $"vid:{e.VisitorId}";
+        if (e.ClientEventId.HasValue)
+            return $"cid:{e.ClientEventId.Value:D}";
+        return $"eid:{e.EventId:D}";
+    }
+
+    private static int CountDistinctUnits(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, bool> predicate)
+    {
+        return events
+            .Where(predicate)
+            .Select(BuildInteractionUnitKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+    }
+
+    private static int CountQuoteIntentStarts(IEnumerable<AnalyticsEvent> events)
+    {
+        return CountDistinctUnits(events, e =>
+            e.EventType == "quote_click" ||
+            (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)));
+    }
+
+    private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
+
     public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
@@ -262,14 +300,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
-        int quoteFormStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase));
-        int quoteFormSubmits = events.Count(e =>
-            e.EventType == "form_submit" &&
-            e.FormKey != null &&
-            e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
-        int quoteStarts = events.Count(e => e.EventType == "quote_click");
-        int formStarts = events.Count(e => e.EventType == "form_start");
+        int quoteFormStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
+        int quoteFormSubmits = CountDistinctUnits(events, IsQuoteSubmitSuccess);
+        int quoteStarts = CountQuoteIntentStarts(events);
 
         int prevPageViews = prevEvents.Count(e => e.EventType == "page_view");
         int prevSessions = prevEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
@@ -493,18 +526,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
         }
 
-        int starts = events.Count(e => e.EventType == "quote_click");
-        int formStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_"));
-        int formSubmits = events.Count(e =>
-            e.EventType == "form_submit" &&
-            e.FormKey != null &&
-            e.FormKey.Contains("quote_", StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
+        int starts = CountQuoteIntentStarts(events);
+        int formStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
+        int formSubmits = CountDistinctUnits(events, IsQuoteSubmitSuccess);
 
         var byType = events
             .Where(e => e.EventType == "quote_click" && !string.IsNullOrWhiteSpace(e.QuoteType))
             .GroupBy(e => e.QuoteType!)
-            .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
+            .Select(g => new KeyCountDto
+            {
+                Key = g.Key,
+                Count = g.Select(BuildInteractionUnitKey).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+            })
             .OrderByDescending(x => x.Count)
             .ToList();
 
@@ -515,8 +548,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             QuoteFormSubmits = formSubmits,
             ByQuoteType = byType,
             RangeLabel = range.Label,
-            DropOffStartsToFormStarts = starts > 0 ? Math.Round((decimal)(starts - formStarts) / starts * 100, 2) : null,
-            DropOffFormStartsToSubmits = formStarts > 0 ? Math.Round((decimal)(formStarts - formSubmits) / formStarts * 100, 2) : null
+            TrafficType = trafficType,
+            DropOffStartsToFormStarts = starts > 0
+                ? Math.Round(ClampPercent((decimal)(starts - formStarts) / starts * 100), 2)
+                : null,
+            DropOffFormStartsToSubmits = formStarts > 0
+                ? Math.Round(ClampPercent((decimal)(formStarts - formSubmits) / formStarts * 100), 2)
+                : null
         };
     }
 
@@ -1143,7 +1181,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new FormFrictionDto { Rows = rows, TopErrorFields = topErrorFields, RangeLabel = range.Label };
     }
 
-    public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
 
@@ -1156,6 +1194,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         e.EventType == "lead_form_submit_success" ||
                         e.EventType == "form_submit")
             .ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
 
         var submitSuccessEvents = events
             .Where(e => e.EventType == "lead_form_submit_success" ||

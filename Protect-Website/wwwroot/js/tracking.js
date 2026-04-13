@@ -11,6 +11,8 @@
   const STORAGE_VISITOR = 'legend_visitor_id';
   const STORAGE_SESSION = 'legend_session_id';
   const STORAGE_SESSION_TS = 'legend_session_ts';
+  const STORAGE_ATTR_SESSION = 'legend_attr_session';
+  const STORAGE_ATTR_FIRST_TOUCH = 'legend_attr_first_touch';
   const SESSION_TIMEOUT_MIN = 30;
   const DEBOUNCE_MS = 2000;
   const _formTrackStateByKey = new Map();
@@ -62,6 +64,96 @@
     return sid;
   }
 
+  function sanitizeAttributionValue(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+
+  function normalizeAttribution(raw) {
+    return {
+      utmSource: sanitizeAttributionValue(raw?.utmSource),
+      utmMedium: sanitizeAttributionValue(raw?.utmMedium),
+      utmCampaign: sanitizeAttributionValue(raw?.utmCampaign),
+      fbclid: sanitizeAttributionValue(raw?.fbclid)
+    };
+  }
+
+  function hasAttribution(attribution) {
+    if (!attribution) return false;
+    return !!(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign || attribution.fbclid);
+  }
+
+  function readAttributionFromStorage(storage, key) {
+    try {
+      const raw = storage.getItem(key);
+      if (!raw) return null;
+      return normalizeAttribution(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  function writeAttributionToStorage(storage, key, attribution) {
+    try {
+      storage.setItem(key, JSON.stringify(normalizeAttribution(attribution)));
+    } catch { /* ignore */ }
+  }
+
+  function getStoredAttribution(key) {
+    const sessionValue = readAttributionFromStorage(sessionStorage, key);
+    if (hasAttribution(sessionValue)) return sessionValue;
+    const localValue = readAttributionFromStorage(localStorage, key);
+    return hasAttribution(localValue) ? localValue : null;
+  }
+
+  function rememberAttribution(attribution) {
+    if (!hasAttribution(attribution)) return;
+    writeAttributionToStorage(sessionStorage, STORAGE_ATTR_SESSION, attribution);
+    writeAttributionToStorage(localStorage, STORAGE_ATTR_SESSION, attribution);
+
+    const firstTouch = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
+    if (!hasAttribution(firstTouch)) {
+      writeAttributionToStorage(sessionStorage, STORAGE_ATTR_FIRST_TOUCH, attribution);
+      writeAttributionToStorage(localStorage, STORAGE_ATTR_FIRST_TOUCH, attribution);
+    }
+  }
+
+  function readAttributionFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeAttribution({
+      utmSource: params.get('utm_source'),
+      utmMedium: params.get('utm_medium'),
+      utmCampaign: params.get('utm_campaign'),
+      fbclid: params.get('fbclid')
+    });
+  }
+
+  const queryAttribution = readAttributionFromQuery();
+  rememberAttribution(queryAttribution);
+
+  function resolveAttribution(payload) {
+    const payloadAttribution = normalizeAttribution({
+      utmSource: payload.UtmSource,
+      utmMedium: payload.UtmMedium,
+      utmCampaign: payload.UtmCampaign,
+      fbclid: payload.Fbclid
+    });
+    if (hasAttribution(payloadAttribution)) {
+      rememberAttribution(payloadAttribution);
+    }
+
+    const sessionAttribution = getStoredAttribution(STORAGE_ATTR_SESSION);
+    const firstTouchAttribution = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
+
+    return normalizeAttribution({
+      utmSource: payloadAttribution.utmSource || sessionAttribution?.utmSource || firstTouchAttribution?.utmSource || queryAttribution.utmSource,
+      utmMedium: payloadAttribution.utmMedium || sessionAttribution?.utmMedium || firstTouchAttribution?.utmMedium || queryAttribution.utmMedium,
+      utmCampaign: payloadAttribution.utmCampaign || sessionAttribution?.utmCampaign || firstTouchAttribution?.utmCampaign || queryAttribution.utmCampaign,
+      fbclid: payloadAttribution.fbclid || sessionAttribution?.fbclid || firstTouchAttribution?.fbclid || queryAttribution.fbclid
+    });
+  }
+
   // ── Shared body builder (used by both sendEvent and beaconSend) ───────────
   function buildPageContextMetadata() {
     const metadata = {
@@ -75,6 +167,7 @@
   }
 
   function buildBody(payload) {
+    const attribution = resolveAttribution(payload);
     return {
       ClientEventId: uuid(),
       EventType: payload.EventType,
@@ -89,9 +182,10 @@
       Referrer: document.referrer || null,
       SessionId: getSessionId(),
       VisitorId: getVisitorId(),
-      UtmSource: payload.UtmSource || null,
-      UtmMedium: payload.UtmMedium || null,
-      UtmCampaign: payload.UtmCampaign || null,
+      UtmSource: attribution.utmSource || null,
+      UtmMedium: attribution.utmMedium || null,
+      UtmCampaign: attribution.utmCampaign || null,
+      Fbclid: attribution.fbclid || null,
       SubmitOutcome: payload.SubmitOutcome || null,
       MetadataJson: payload.MetadataJson || null,
       AgentTrackingProfileId: AGENT_ID,
