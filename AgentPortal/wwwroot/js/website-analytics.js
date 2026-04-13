@@ -570,29 +570,43 @@
     ]);
     setText('leads-range-label', data.rangeLabel || '');
   }
+  // Maps each modal id to the badge <span> id that shows "Viewing: ..."
+  const trafficTypeBadgeIds = {
+    trafficModal:  'traffic-active-mode',
+    pagePerfModal: 'pageperf-active-mode',
+    ctaPerfModal:  'ctaperf-active-mode',
+    quoteModal:    'quote-active-mode',
+    convModal:     'conv-active-mode',
+    leadsModal:    'leads-active-mode'
+  };
+
   // Traffic type UI controls and modal header update
   function updateTrafficTypeHeader(modalId) {
-    const header = document.querySelector(`#${modalId} .traffic-type-header`);
-    if (!header) return;
     const t = state.trafficType[modalId] || 'all';
     let label = 'All Traffic';
     if (t === 'paid') label = 'Ads Only';
     else if (t === 'non_paid') label = 'Non-Ads Only';
-    header.textContent = label;
+
+    // Update the badge text
+    const badgeId = trafficTypeBadgeIds[modalId];
+    if (badgeId) {
+      const badge = document.getElementById(badgeId);
+      if (badge) badge.textContent = `Viewing: ${label}`;
+    }
+
+    // Sync active class on the buttons
+    document.querySelectorAll(`#${modalId} .traffic-type-btn`).forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.type === t);
+    });
   }
 
   function initTrafficTypeControls() {
-    const modals = [
-      'trafficModal', 'pagePerfModal', 'ctaPerfModal', 'quoteModal', 'convModal', 'leadsModal'
-    ];
-    modals.forEach(modalId => {
-      document.querySelectorAll(`#${modalId} .traffic-type-control input[type=radio]`).forEach(radio => {
-        radio.addEventListener('change', e => {
-          if (radio.checked) {
-            state.trafficType[modalId] = radio.value;
-            updateTrafficTypeHeader(modalId);
-            refreshOpenModal();
-          }
+    Object.keys(trafficTypeBadgeIds).forEach(modalId => {
+      document.querySelectorAll(`#${modalId} .traffic-type-btn`).forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.trafficType[modalId] = btn.dataset.type;
+          updateTrafficTypeHeader(modalId);
+          refreshOpenModal();
         });
       });
     });
