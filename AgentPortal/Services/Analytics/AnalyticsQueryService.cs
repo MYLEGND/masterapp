@@ -570,14 +570,31 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         {
             Total = total,
             RangeLabel = range.Label,
-            Leads = leads.Select(l => new LeadSnapshotRow
+            TrafficType = trafficType,
+            Leads = leads.Select(l =>
             {
-                CreatedUtc = l.CreatedUtc,
-                Name = $"{l.FirstName} {l.LastName}".Trim(),
-                Email = l.Email,
-                Phone = l.Phone,
-                Interest = l.InterestType,
-                Source = $"{l.SourcePageKey}/{l.SourceCtaKey}".Trim('/')
+                var classified = TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid);
+                return new LeadSnapshotRow
+                {
+                    CreatedUtc  = l.CreatedUtc,
+                    Name        = $"{l.FirstName} {l.LastName}".Trim(),
+                    Email       = l.Email,
+                    Phone       = l.Phone,
+                    Interest    = l.InterestType,
+                    Source      = $"{l.SourcePageKey}/{l.SourceCtaKey}".Trim('/'),
+                    UtmSource   = l.UtmSource,
+                    UtmMedium   = l.UtmMedium,
+                    UtmCampaign = l.UtmCampaign,
+                    Fbclid      = l.Fbclid,
+                    SourcePage  = l.SourcePageKey,
+                    TrafficType = classified,
+                    Attribution = new LeadAttributionDto
+                    {
+                        IsPaid    = classified == TrafficType.PaidAds,
+                        IsNonPaid = classified != TrafficType.PaidAds && classified != TrafficType.Unknown,
+                        TrafficType = classified
+                    }
+                };
             }).ToList()
         };
         return dto;

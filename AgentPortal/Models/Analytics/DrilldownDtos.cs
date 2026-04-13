@@ -85,6 +85,20 @@ public sealed class ConversionCenterDto
     public TrafficType TrafficType { get; set; }
 }
 
+/// <summary>
+/// Pre-classified attribution state for a single lead row.
+/// Serialises to { isPaid, isNonPaid, trafficType } for the frontend trafficBadge() function.
+/// </summary>
+public sealed class LeadAttributionDto
+{
+    /// <summary>True when the lead arrived via a paid-ads channel (PPC, Meta click, etc.).</summary>
+    public bool IsPaid { get; set; }
+    /// <summary>True when the lead arrived via any non-paid channel (organic, direct, referral).</summary>
+    public bool IsNonPaid { get; set; }
+    /// <summary>Granular classification for display/debugging.</summary>
+    public TrafficType TrafficType { get; set; }
+}
+
 public sealed class LeadSnapshotRow
 {
     public DateTime CreatedUtc { get; set; }
@@ -100,6 +114,8 @@ public sealed class LeadSnapshotRow
     public string? Fbclid { get; set; }
     public string? LandingPage { get; set; }
     public string? SourcePage { get; set; }
+    /// <summary>Server-classified attribution — consumed by trafficBadge() in the frontend.</summary>
+    public LeadAttributionDto? Attribution { get; set; }
 }
 
 public sealed class LeadSnapshotDto

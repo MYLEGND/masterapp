@@ -237,7 +237,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.SubmitOutcome).HasMaxLength(40);
-            e.Property(x => x.MetadataJson).HasColumnType("nvarchar(max)");
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
             e.Property(x => x.EventUtc).IsRequired();
             e.Property(x => x.ReceivedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
@@ -656,7 +656,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.Status).HasMaxLength(40).IsRequired();
-            e.Property(x => x.MetadataJson).HasColumnType("nvarchar(max)");
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
             e.Property(x => x.CreatedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
 
