@@ -799,7 +799,7 @@
     renderSummary(data);
   }
   async function loadTraffic() {
-    const data = await fetchJson('traffic', endpoints.traffic, rangeParams());
+    const data = await fetchJson('traffic', endpoints.traffic, rangeParams({ modal: 'trafficModal' }));
     if (!data) return;
     renderTraffic(data);
     state.cache.traffic = data;
@@ -808,18 +808,18 @@
     }
   }
   async function loadPagePerf() {
-    const data = await fetchJson('pageperf', endpoints.pagePerf, rangeParams());
+    const data = await fetchJson('pageperf', endpoints.pagePerf, rangeParams({ modal: 'pagePerfModal' }));
     if (!data) return;
     renderPagePerf(data);
   }
   async function loadCtaPerf() {
-    const data = await fetchJson('ctaperf', endpoints.ctaPerf, rangeParams());
+    const data = await fetchJson('ctaperf', endpoints.ctaPerf, rangeParams({ modal: 'ctaPerfModal' }));
     if (!data) return;
     renderCtaPerf(data);
   }
   async function loadQuote() {
     const [data, abandon] = await Promise.all([
-      fetchJson('quote', endpoints.quote, rangeParams()),
+      fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
       fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams())
     ]);
     if (data) renderQuote(data);
@@ -841,12 +841,12 @@
     }
   }
   async function loadConv() {
-    const data = await fetchJson('conv', endpoints.conversions, rangeParams());
+    const data = await fetchJson('conv', endpoints.conversions, rangeParams({ modal: 'convModal' }));
     if (!data) return;
     renderConversions(data);
   }
   async function loadLeads() {
-    const data = await fetchJson('leads', endpoints.leads, rangeParams());
+    const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
     if (!data) return;
     renderLeads(data);
   }
