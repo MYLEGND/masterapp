@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Logging;
 
 namespace AgentPortal.Controllers
 {
@@ -15,10 +16,55 @@ namespace AgentPortal.Controllers
     public class AvatarController : Controller
     {
         private readonly IWebHostEnvironment _env;
+        private readonly ILogger<AvatarController> _logger;
+        private static readonly object AvatarRootLogSync = new();
+        private static string? _loggedConfiguredRoot;
+        private static string? _loggedFallbackRoot;
 
-        public AvatarController(IWebHostEnvironment env)
+        public AvatarController(IWebHostEnvironment env, ILogger<AvatarController> logger)
         {
             _env = env;
+            _logger = logger;
+        }
+
+        private void LogAvatarRootOnce(string root, bool fromEnvVar)
+        {
+            lock (AvatarRootLogSync)
+            {
+                if (fromEnvVar)
+                {
+                    if (string.Equals(_loggedConfiguredRoot, root, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    _loggedConfiguredRoot = root;
+                    _logger.LogInformation(
+                        "Avatar storage root resolved from LEGEND_AVATAR_ROOT: {AvatarRoot}",
+                        root);
+                    return;
+                }
+
+                if (string.Equals(_loggedFallbackRoot, root, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+
+                _loggedFallbackRoot = root;
+                if (_env.IsDevelopment())
+                {
+                    _logger.LogWarning(
+                        "LEGEND_AVATAR_ROOT is not set. Falling back to {AvatarRoot}. This path may be deployment-scoped.",
+                        root);
+                }
+                else
+                {
+                    _logger.LogError(
+                        "LEGEND_AVATAR_ROOT is not set in {EnvironmentName}. Avatars are using fallback path {AvatarRoot}, which can reset after publish.",
+                        _env.EnvironmentName,
+                        root);
+                }
+            }
         }
 
         private string GetAvatarRoot()
@@ -26,12 +72,15 @@ namespace AgentPortal.Controllers
             var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
             if (!string.IsNullOrWhiteSpace(configured))
             {
-                Directory.CreateDirectory(configured);
-                return configured;
+                var root = Path.GetFullPath(configured.Trim());
+                Directory.CreateDirectory(root);
+                LogAvatarRootOnce(root, fromEnvVar: true);
+                return root;
             }
 
             var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "avatars");
             Directory.CreateDirectory(fallback);
+            LogAvatarRootOnce(fallback, fromEnvVar: false);
             return fallback;
         }
 
