@@ -4909,13 +4909,21 @@ async function saveQuickViewForRow(row, overrides, successMessage){
 
   const response = await postJson("/Leads/SaveQuickView", payload);
   const data = response.payload || response;
+  const payloadNextText = payload.crmNextText ?? "";
+  const resolvedAgentNotes = data.agentNotes ?? data.crmNotes ?? payload.agentNotes ?? row.dataset.sNotes ?? "";
+  const resolvedNextDate = data.crmNextDate ?? payload.crmNextDate ?? row.dataset.sNextdate ?? "";
+  const resolvedTags = data.crmTags ?? payload.crmTags ?? row.dataset.sTags ?? "";
+  let resolvedNextText = data.crmNextText ?? payloadNextText ?? row.dataset.sNexttext ?? "";
+  if ((data.crmNotes ?? null) !== null && data.crmNextText === data.crmNotes && payloadNextText && payloadNextText !== data.crmNotes){
+    resolvedNextText = payloadNextText;
+  }
   row.dataset.sStatus = data.crmStatus || "Lead";
   row.dataset.sPriority = data.crmPriority || "Normal";
   row.dataset.sLasttouch = data.crmLastTouch || "";
-  row.dataset.sNextdate = data.crmNextDate || "";
-  row.dataset.sNexttext = data.crmNextText || "";
-  row.dataset.sTags = data.crmTags || "";
-  row.dataset.sNotes = data.agentNotes || "";
+  row.dataset.sNextdate = resolvedNextDate || "";
+  row.dataset.sNexttext = resolvedNextText || "";
+  row.dataset.sTags = resolvedTags || "";
+  row.dataset.sNotes = resolvedAgentNotes || "";
   row.dataset.sPipeline = normalizePipelineStageValue(data.pipelineStage, "MortgageProtection");
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
@@ -4979,14 +4987,21 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   if (dBtc) dBtc.value = row.dataset.btc || dBtc.value;
 
   if (activeClientId === row.dataset.clientId){
-    activeClientDetail = { ...(activeClientDetail || {}), ...data };
+    activeClientDetail = {
+      ...(activeClientDetail || {}),
+      ...data,
+      crmNextDate: resolvedNextDate || null,
+      crmNextText: resolvedNextText,
+      crmTags: resolvedTags,
+      agentNotes: resolvedAgentNotes
+    };
     dStatus.value = data.crmStatus || dStatus.value;
     dPriority.value = data.crmPriority || dPriority.value;
     dLastTouch.value = data.crmLastTouch || dLastTouch.value;
-    setDrawerNextActionDate(data.crmNextDate || dNextDate.value);
-    dNextText.value = data.crmNextText || dNextText.value;
-    dTags.value = data.crmTags || dTags.value;
-    dNotes.value = data.agentNotes || dNotes.value;
+    setDrawerNextActionDate(resolvedNextDate || dNextDate.value);
+    dNextText.value = resolvedNextText || dNextText.value;
+    dTags.value = resolvedTags || dTags.value;
+    dNotes.value = resolvedAgentNotes || dNotes.value;
     if (dFirst) dFirst.value = data.firstName || dFirst.value || "";
     if (dLast) dLast.value = data.lastName || dLast.value || "";
     if (dEmailInput) dEmailInput.value = data.email || dEmailInput.value;

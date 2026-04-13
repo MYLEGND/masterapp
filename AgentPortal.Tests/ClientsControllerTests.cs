@@ -1,10 +1,13 @@
+using System;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using Xunit;
 
@@ -12,6 +15,35 @@ namespace AgentPortal.Tests;
 
 public class ClientsControllerTests
 {
+    private static async Task SeedOwnedClientAsync(
+        MasterAppDbContext db,
+        string agentId,
+        string clientUserId,
+        string email,
+        string crmNotesJson)
+    {
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = clientUserId,
+            FirstName = "Client",
+            LastName = "One",
+            Email = email,
+            NormalizedEmail = email.ToLowerInvariant(),
+            CrmStatus = "Active",
+            CrmPriority = "Normal",
+            CrmNotes = crmNotesJson,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = agentId,
+            ClientUserId = clientUserId,
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task CreateAction_Redirects_ForClient()
     {
@@ -35,5 +67,97 @@ public class ClientsControllerTests
         Assert.Equal(nameof(ClientsController.Actions), redirect.ActionName);
         Assert.NotNull(captured);
         Assert.Equal(ActionSurface.CommandCenter, captured!.ActionSurface);
+    }
+
+    [Fact]
+    public async Task SaveQuickView_OmittedMeetingFields_PreservesExistingMeetingValues()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string clientUserId = "client-keep";
+        const string email = "keep@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            MeetingLocation = "Main Office",
+            ZoomJoinUrl = "https://zoom.us/j/123",
+            UsePersonalZoomLink = true,
+            MeetingTime = "14:15",
+            MeetingDurationMinutes = 45
+        };
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.SaveQuickView(new ClientsController.QuickViewRequest
+        {
+            ClientUserId = clientUserId,
+            Email = email,
+            CrmStatus = "Active",
+            CrmPriority = "Normal"
+            // Meeting fields intentionally omitted (null)
+        });
+
+        Assert.IsType<JsonResult>(result);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("Main Office", persistedMeta.MeetingLocation);
+        Assert.Equal("https://zoom.us/j/123", persistedMeta.ZoomJoinUrl);
+        Assert.True(persistedMeta.UsePersonalZoomLink);
+        Assert.Equal("14:15", persistedMeta.MeetingTime);
+        Assert.Equal(45, persistedMeta.MeetingDurationMinutes);
+    }
+
+    [Fact]
+    public async Task SaveQuickView_ExplicitMeetingFields_UpdateMeetingValues()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string clientUserId = "client-update";
+        const string email = "update@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            MeetingLocation = "Old Location",
+            ZoomJoinUrl = "https://zoom.us/j/old",
+            UsePersonalZoomLink = true,
+            MeetingTime = "16:00",
+            MeetingDurationMinutes = 60
+        };
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.SaveQuickView(new ClientsController.QuickViewRequest
+        {
+            ClientUserId = clientUserId,
+            Email = email,
+            CrmStatus = "Active",
+            CrmPriority = "Normal",
+            MeetingLocation = "",
+            ZoomJoinUrl = "",
+            UsePersonalZoomLink = false,
+            MeetingTime = "10:30",
+            MeetingDurationMinutes = 30
+        });
+
+        Assert.IsType<JsonResult>(result);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Null(persistedMeta.MeetingLocation);
+        Assert.Null(persistedMeta.ZoomJoinUrl);
+        Assert.False(persistedMeta.UsePersonalZoomLink);
+        Assert.Equal("10:30", persistedMeta.MeetingTime);
+        Assert.Equal(30, persistedMeta.MeetingDurationMinutes);
     }
 }

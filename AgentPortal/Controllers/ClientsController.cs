@@ -3057,9 +3057,9 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public double? PipelineOrder { get; set; }
         public string? MeetingLocation { get; set; }
         public string? ZoomJoinUrl { get; set; }
-        public bool UsePersonalZoomLink { get; set; }
+        public bool? UsePersonalZoomLink { get; set; }
         public string? MeetingTime { get; set; }
-        public int MeetingDurationMinutes { get; set; } = 30;
+        public int? MeetingDurationMinutes { get; set; }
         public string? WaitingOn { get; set; }
         public string? PinnedBrief { get; set; }
         public bool DocIdReceived { get; set; }
@@ -4421,11 +4421,16 @@ meta.Activities ??= new List<ClientCrmActivity>();
         meta.PipelineOrder = request.PipelineOrder ?? meta.PipelineOrder;
         meta.WaitingOn = NormalizeWaitingOn(request.WaitingOn);
         meta.PinnedBrief = string.IsNullOrWhiteSpace(request.PinnedBrief) ? null : request.PinnedBrief.Trim();
-        meta.MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation) ? null : request.MeetingLocation.Trim();
-        meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(request.ZoomJoinUrl) ? null : request.ZoomJoinUrl.Trim();
-        meta.UsePersonalZoomLink = request.UsePersonalZoomLink;
-        meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime) ? "09:00" : request.MeetingTime.Trim();
-        meta.MeetingDurationMinutes = request.MeetingDurationMinutes <= 0 ? 30 : request.MeetingDurationMinutes;
+        if (request.MeetingLocation != null)
+            meta.MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation) ? null : request.MeetingLocation.Trim();
+        if (request.ZoomJoinUrl != null)
+            meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(request.ZoomJoinUrl) ? null : request.ZoomJoinUrl.Trim();
+        if (request.UsePersonalZoomLink.HasValue)
+            meta.UsePersonalZoomLink = request.UsePersonalZoomLink.Value;
+        if (request.MeetingTime != null)
+            meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime) ? "09:00" : request.MeetingTime.Trim();
+        if (request.MeetingDurationMinutes.HasValue)
+            meta.MeetingDurationMinutes = request.MeetingDurationMinutes.Value <= 0 ? 30 : request.MeetingDurationMinutes.Value;
         meta.DocChecklist.IdReceived = request.DocIdReceived;
         meta.DocChecklist.AppSent = request.DocAppSent;
         meta.DocChecklist.AppSigned = request.DocAppSigned;

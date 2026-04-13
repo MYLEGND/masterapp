@@ -2191,6 +2191,12 @@ const dZoomWrap = $("#dZoomWrap") || { style: {}, classList: { add(){}, remove()
 const dUsePersonalZoomLink = $("#dUsePersonalZoomLink") || { checked: false, addEventListener(){} };
 const dZoomJoinUrl = $("#dZoomJoinUrl") || { value: "", addEventListener(){} };
 const dZoomStatus = $("#dZoomStatus") || { textContent: "" };
+const hasMeetingTypeInput = !!document.getElementById("dMeetingType");
+const hasMeetingTimeInput = !!document.getElementById("dMeetingTime");
+const hasMeetingDurationInput = !!document.getElementById("dMeetingDuration");
+const hasMeetingLocationInput = !!document.getElementById("dMeetingLocation");
+const hasZoomJoinUrlInput = !!document.getElementById("dZoomJoinUrl");
+const hasUsePersonalZoomInput = !!document.getElementById("dUsePersonalZoomLink");
 const btnZoomSavePersonal = $("#btnZoomSavePersonal");
 const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
@@ -2268,7 +2274,7 @@ function calculateAgeFromDOB(dobString) {
 }
 
 function buildClientQuickViewOverrides(){
-  return {
+  const overrides = {
     crmStatus: norm(dStatus.value) || "Active",
     crmPriority: norm(dPriority.value) || "Normal",
     crmLastTouch: norm(dLastTouch.value) || null,
@@ -2288,6 +2294,12 @@ function buildClientQuickViewOverrides(){
     mentionNote: norm(dMentionNote.value),
     opportunityPlanning: buildOpportunityPlanningPayload()
   };
+  if (hasMeetingLocationInput) overrides.meetingLocation = norm(dMeetingLocation.value);
+  if (hasZoomJoinUrlInput) overrides.zoomJoinUrl = norm(dZoomJoinUrl.value);
+  if (hasUsePersonalZoomInput) overrides.usePersonalZoomLink = !!dUsePersonalZoomLink.checked;
+  if (hasMeetingTimeInput) overrides.meetingTime = norm(dMeetingTime.value) || "09:00";
+  if (hasMeetingDurationInput) overrides.meetingDurationMinutes = parseInt(dMeetingDuration.value || "30", 10) || 30;
+  return overrides;
 }
 
 async function performQuickViewAutosave(){
@@ -2325,6 +2337,7 @@ function wireQuickViewAutosave(){
     // They will autosave on blur instead (see wireContactFieldBlur below).
     dDob,dAge,dGender,dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
     dPipelineStage,
+    dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,dUsePersonalZoomLink,
     dWaitingOn,dPinnedBrief,dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
     dAssignedOwner,dWatchers,dMentionNote
   ];
@@ -3535,6 +3548,13 @@ async function openDrawerForRow(row){
   dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
   dOutcomeSuggestion.textContent = "Use one-click outcomes to log activity, move the record forward, and queue the next move.";
   setAdvancedMarketsActionState(row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible);
+  dMeetingLocation.value = row.dataset.sMeetingLocation || "";
+  dZoomJoinUrl.value = row.dataset.sZoom || "";
+  dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
+  if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
+  applyMeetingType(inferMeetingType(null, row), row);
+  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
+  dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
   renderPortalActions(row, null);
   renderProtectionSnapshotSummary(null, { loading: true });
@@ -3578,6 +3598,13 @@ async function openDrawerForRow(row){
     if (dBtc) dBtc.value = detail.btc || row.dataset.btc || "";
     if (dLender) dLender.value = detail.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = detail.loanAmount || "";
+    dMeetingLocation.value = detail.meetingLocation || row.dataset.sMeetingLocation || "";
+    dZoomJoinUrl.value = detail.zoomJoinUrl || row.dataset.sZoom || "";
+    dUsePersonalZoomLink.checked = !!detail.usePersonalZoomLink;
+    if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
+    applyMeetingType(inferMeetingType(detail, row), row);
+    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "09:00";
+    dMeetingDuration.value = String(detail.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
     syncDrawerEmailDisplay(detail.email || email);
     dPhone.textContent = detail.phone || phone || "No phone";
     dWaitingOn.value = detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent";
@@ -4597,7 +4624,20 @@ btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
   dSaved.textContent = "Next action set — saving…";
   queueQuickViewAutosave();
+  refreshCalendarBusyPanel();
 });
+
+dMeetingType?.addEventListener("change", () => {
+  if (!hasMeetingTypeInput) return;
+  const row = rows.find(r => r.dataset.clientId === activeClientId);
+  applyMeetingType(dMeetingType.value, row);
+  refreshCalendarBusyPanel();
+  queueQuickViewAutosave();
+});
+
+dNextDate?.addEventListener("change", refreshCalendarBusyPanel);
+dMeetingTime?.addEventListener("change", refreshCalendarBusyPanel);
+dMeetingDuration?.addEventListener("change", refreshCalendarBusyPanel);
 
 
 $$("[data-schedulepreset]").forEach(btn => {
@@ -5195,6 +5235,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   const clientId = row?.dataset.clientId;
   // Keep a local alias for any legacy references that still expect `id`.
   const id = clientId;
+  const fallbackMeetingDuration = parseInt(row.dataset.sMeetingDuration || "30", 10) || 30;
   const payload = {
     clientUserId: row.dataset.clientId,
     email: dEmailInput?.value || "",
@@ -5219,6 +5260,11 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     crmTags: overrides?.crmTags ?? norm(row.dataset.crmTags),
     agentNotes: overrides?.agentNotes ?? norm(row.dataset.crmNotes),
     pipelineStage: (overrides?.pipelineStage ?? norm(row.dataset.crmPipeline)) || "NewLead",
+    meetingLocation: overrides?.meetingLocation ?? (hasMeetingLocationInput ? norm(dMeetingLocation.value) : norm(row.dataset.sMeetingLocation)),
+    zoomJoinUrl: overrides?.zoomJoinUrl ?? (hasZoomJoinUrlInput ? norm(dZoomJoinUrl.value) : norm(row.dataset.sZoom)),
+    usePersonalZoomLink: overrides?.usePersonalZoomLink ?? (hasUsePersonalZoomInput ? !!dUsePersonalZoomLink.checked : ((row.dataset.sUsezoom || "false") === "true")),
+    meetingTime: (overrides?.meetingTime ?? (hasMeetingTimeInput ? norm(dMeetingTime.value) : norm(row.dataset.sMeetingTime))) || "09:00",
+    meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? (hasMeetingDurationInput ? (parseInt(dMeetingDuration.value || "30", 10) || 30) : fallbackMeetingDuration)) || 30,
     waitingOn: overrides?.waitingOn ?? norm(row.dataset.crmWaitingOn),
     pinnedBrief: overrides?.pinnedBrief ?? norm(row.dataset.crmPinnedBrief),
     docIdReceived: overrides?.docIdReceived ?? !!dDocIdReceived?.checked,
@@ -5243,6 +5289,11 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sRecordtype = data.recordType || row.dataset.sRecordtype || "";
   row.dataset.advancedMarketsEligible = ((data.advancedMarketsEligible ?? isAdvancedMarketsEligible(data.recordType || row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible)) ? "true" : "false");
   row.dataset.sPipeline = data.pipelineStage || "NewLead";
+  row.dataset.sMeetingLocation = data.meetingLocation || "";
+  row.dataset.sZoom = data.zoomJoinUrl || "";
+  row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
+  row.dataset.sMeetingTime = data.meetingTime || "09:00";
+  row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || 30);
   row.dataset.sWaiting = data.waitingOn || "WaitingOnAgent";
   row.dataset.sPinnedbrief = data.pinnedBrief || "";
   row.dataset.sStageentered = (data.stageEnteredUtc || "").toString().slice(0, 10) || todayISO();
