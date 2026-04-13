@@ -1508,15 +1508,16 @@
 (function () {
     var ids = window.legendTrackingIds;
     var p = new URLSearchParams(window.location.search);
+    var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
     function sh(n, v) { var e = document.querySelector('input[name="' + n + '"]'); if (e && v) e.value = v; }
     sh('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
     sh('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
-    sh('UtmSource',    p.get('utm_source') || '');
-    sh('UtmMedium',    p.get('utm_medium') || '');
-    sh('UtmCampaign',  p.get('utm_campaign') || '');
-    sh('UtmTerm',      p.get('utm_term') || '');
-    sh('UtmContent',   p.get('utm_content') || '');
-    sh('Fbclid',       p.get('fbclid') || '');
+    sh('UtmSource',    attr.utmSource || p.get('utm_source') || '');
+    sh('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
+    sh('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
+    sh('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
+    sh('UtmContent',   attr.utmContent || p.get('utm_content') || '');
+    sh('Fbclid',       attr.fbclid || p.get('fbclid') || '');
     sh('ReferrerUrl',  document.referrer || '');
     sh('LandingPageUrl', window.location.href || '');
 })();

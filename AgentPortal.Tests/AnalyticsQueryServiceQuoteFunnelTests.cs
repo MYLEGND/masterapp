@@ -46,6 +46,9 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         string? quoteType = null,
         string? submitOutcome = null,
         string? utmMedium = null,
+        string? utmSource = null,
+        string? utmCampaign = null,
+        string? fbclid = null,
         string? metadataJson = null)
         => new()
         {
@@ -57,7 +60,10 @@ public class AnalyticsQueryServiceQuoteFunnelTests
             FormKey = formKey,
             QuoteType = quoteType,
             SubmitOutcome = submitOutcome,
+            UtmSource = utmSource,
             UtmMedium = utmMedium,
+            UtmCampaign = utmCampaign,
+            Fbclid = fbclid,
             MetadataJson = metadataJson,
             Environment = "production",
             Host = "portal.mylegnd.com"
@@ -137,6 +143,68 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal((3, 3, 2), (all.QuoteStarts, all.QuoteFormStarts, all.QuoteFormSubmits));
         Assert.Equal((1, 1, 1), (paid.QuoteStarts, paid.QuoteFormStarts, paid.QuoteFormSubmits));
         Assert.Equal((1, 1, 0), (nonPaid.QuoteStarts, nonPaid.QuoteFormStarts, nonPaid.QuoteFormSubmits));
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_PaidFilter_InheritsPaidFromSessionLandingAttribution()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            // Paid session where only landing has paid signals (Meta click id + campaign)
+            E("page_view", now.AddMinutes(-30), "paid-1", formKey: null, quoteType: "life",
+                utmCampaign: "120246895965190404", fbclid: "fbclid_paid_1"),
+            E("form_start", now.AddMinutes(-29), "paid-1", formKey: "quote_life_form", quoteType: "life"),
+            E("form_submit", now.AddMinutes(-28), "paid-1", formKey: "quote_life_form", quoteType: "life", submitOutcome: "success"),
+
+            // Organic session
+            E("page_view", now.AddMinutes(-27), "organic-1", quoteType: "life", utmMedium: "organic", utmSource: "google"),
+            E("form_start", now.AddMinutes(-26), "organic-1", formKey: "quote_life_form", quoteType: "life")
+        );
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var range = BuildRange(now);
+
+        var paid = await service.GetQuoteFunnelAsync(range, ScopeContext.Global, TrafficType.PaidAds);
+        var nonPaid = await service.GetQuoteFunnelAsync(range, ScopeContext.Global, TrafficType.NonPaid);
+
+        Assert.Equal((1, 1, 1), (paid.QuoteStarts, paid.QuoteFormStarts, paid.QuoteFormSubmits));
+        Assert.Equal((1, 1, 0), (nonPaid.QuoteStarts, nonPaid.QuoteFormStarts, nonPaid.QuoteFormSubmits));
+    }
+
+    [Fact]
+    public async Task GetTrafficAsync_TopCampaigns_UsesSessionLandingAttribution_NotEventVolume()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        const string activeCampaignId = "120246895965190404";
+        const string staleCampaignId = "120246773387880404";
+
+        db.AnalyticsEvents.AddRange(
+            // Active campaign sessions (2 sessions)
+            E("page_view", now.AddMinutes(-50), "active-1", utmCampaign: activeCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("form_start", now.AddMinutes(-49), "active-1", formKey: "quote_life_form", quoteType: "life"),
+            E("page_view", now.AddMinutes(-48), "active-2", utmCampaign: activeCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("form_start", now.AddMinutes(-47), "active-2", formKey: "quote_life_form", quoteType: "life"),
+
+            // Stale campaign session (1 session) but many stale-volume events
+            E("page_view", now.AddMinutes(-46), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("cta_click", now.AddMinutes(-45), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("cta_click", now.AddMinutes(-44), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("cta_click", now.AddMinutes(-43), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("cta_click", now.AddMinutes(-42), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc"),
+            E("cta_click", now.AddMinutes(-41), "stale-1", utmCampaign: staleCampaignId, utmSource: "facebook", utmMedium: "cpc")
+        );
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var traffic = await service.GetTrafficAsync(BuildRange(now), ScopeContext.Global, TrafficType.PaidAds);
+
+        var topCampaign = Assert.Single(traffic.TopCampaigns.Take(1));
+        Assert.Equal(activeCampaignId, topCampaign.Key);
+        Assert.Equal(2, topCampaign.Count);
     }
 
     [Fact]

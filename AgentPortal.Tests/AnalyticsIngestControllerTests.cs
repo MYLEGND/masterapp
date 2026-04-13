@@ -81,4 +81,37 @@ public class AnalyticsIngestControllerTests
         Assert.Equal("duplicate_ignored", ReadStatus(ok2.Value));
         Assert.Single(db.AnalyticsEvents);
     }
+
+    [Fact]
+    public async Task Ingest_Persists_Fbclid_And_UtmDetailFields()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+
+        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            EventType = "page_view",
+            Host = "test",
+            Path = "/quote/life",
+            EventUtc = DateTime.UtcNow,
+            UtmSource = "facebook",
+            UtmMedium = "cpc",
+            UtmCampaign = "120246895965190404",
+            UtmTerm = "life+insurance",
+            UtmContent = "creative_a",
+            Fbclid = "fbclid_test_123"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("ok", ReadStatus(ok.Value));
+
+        var ev = Assert.Single(db.AnalyticsEvents);
+        Assert.Equal("facebook", ev.UtmSource);
+        Assert.Equal("cpc", ev.UtmMedium);
+        Assert.Equal("120246895965190404", ev.UtmCampaign);
+        Assert.Equal("life+insurance", ev.UtmTerm);
+        Assert.Equal("creative_a", ev.UtmContent);
+        Assert.Equal("fbclid_test_123", ev.Fbclid);
+    }
 }

@@ -1482,15 +1482,16 @@ body.life-landing header .navbar .nav-link:focus {
     (function () {
       var ids = window.legendTrackingIds;
       var p = new URLSearchParams(window.location.search);
+      var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
       function set(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
       set('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
       set('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
-      set('UtmSource',    p.get('utm_source') || '');
-      set('UtmMedium',    p.get('utm_medium') || '');
-      set('UtmCampaign',  p.get('utm_campaign') || '');
-      set('UtmTerm',      p.get('utm_term') || '');
-      set('UtmContent',   p.get('utm_content') || '');
-      set('Fbclid',       p.get('fbclid') || '');
+      set('UtmSource',    attr.utmSource || p.get('utm_source') || '');
+      set('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
+      set('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
+      set('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
+      set('UtmContent',   attr.utmContent || p.get('utm_content') || '');
+      set('Fbclid',       attr.fbclid || p.get('fbclid') || '');
       set('ReferrerUrl',  document.referrer || '');
       set('LandingPageUrl', window.location.href || '');
     })();

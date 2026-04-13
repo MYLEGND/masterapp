@@ -56,6 +56,7 @@ public class LeadSubmitController : ControllerBase
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }
+        public string? Fbclid { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
@@ -150,6 +151,7 @@ public class LeadSubmitController : ControllerBase
             UtmSource = string.IsNullOrWhiteSpace(req.UtmSource) ? null : req.UtmSource.Trim(),
             UtmMedium = string.IsNullOrWhiteSpace(req.UtmMedium) ? null : req.UtmMedium.Trim(),
             UtmCampaign = string.IsNullOrWhiteSpace(req.UtmCampaign) ? null : req.UtmCampaign.Trim(),
+            Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
             MarketingEmailConsent = req.MarketingEmailConsent,
@@ -186,6 +188,7 @@ public class LeadSubmitController : ControllerBase
                 UtmSource  = lead.UtmSource,
                 UtmMedium  = lead.UtmMedium,
                 UtmCampaign= lead.UtmCampaign,
+                Fbclid     = lead.Fbclid,
                 AgentTrackingProfileId = lead.AgentTrackingProfileId,
                 AgentSlug  = lead.AgentSlug,
                 Environment= lead.Environment,

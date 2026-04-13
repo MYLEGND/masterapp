@@ -56,8 +56,14 @@
     const now = Date.now();
     const lastTs = parseInt(localStorage.getItem(STORAGE_SESSION_TS) || '0', 10);
     let sid = localStorage.getItem(STORAGE_SESSION);
-    if (!sid || isNaN(lastTs) || (now - lastTs) > SESSION_TIMEOUT_MIN * 60 * 1000) {
+    const sessionExpired = !sid || isNaN(lastTs) || (now - lastTs) > SESSION_TIMEOUT_MIN * 60 * 1000;
+    if (sessionExpired) {
       sid = uuid();
+      // Prevent stale attribution from a prior session leaking into a new session.
+      try {
+        sessionStorage.removeItem(STORAGE_ATTR_SESSION);
+        localStorage.removeItem(STORAGE_ATTR_SESSION);
+      } catch { /* ignore */ }
     }
     localStorage.setItem(STORAGE_SESSION, sid);
     localStorage.setItem(STORAGE_SESSION_TS, String(now));
@@ -75,13 +81,22 @@
       utmSource: sanitizeAttributionValue(raw?.utmSource),
       utmMedium: sanitizeAttributionValue(raw?.utmMedium),
       utmCampaign: sanitizeAttributionValue(raw?.utmCampaign),
+      utmTerm: sanitizeAttributionValue(raw?.utmTerm),
+      utmContent: sanitizeAttributionValue(raw?.utmContent),
       fbclid: sanitizeAttributionValue(raw?.fbclid)
     };
   }
 
   function hasAttribution(attribution) {
     if (!attribution) return false;
-    return !!(attribution.utmSource || attribution.utmMedium || attribution.utmCampaign || attribution.fbclid);
+    return !!(
+      attribution.utmSource ||
+      attribution.utmMedium ||
+      attribution.utmCampaign ||
+      attribution.utmTerm ||
+      attribution.utmContent ||
+      attribution.fbclid
+    );
   }
 
   function readAttributionFromStorage(storage, key) {
@@ -125,6 +140,8 @@
       utmSource: params.get('utm_source'),
       utmMedium: params.get('utm_medium'),
       utmCampaign: params.get('utm_campaign'),
+      utmTerm: params.get('utm_term'),
+      utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid')
     });
   }
@@ -137,20 +154,34 @@
       utmSource: payload.UtmSource,
       utmMedium: payload.UtmMedium,
       utmCampaign: payload.UtmCampaign,
+      utmTerm: payload.UtmTerm,
+      utmContent: payload.UtmContent,
       fbclid: payload.Fbclid
     });
-    if (hasAttribution(payloadAttribution)) {
-      rememberAttribution(payloadAttribution);
-    }
 
     const sessionAttribution = getStoredAttribution(STORAGE_ATTR_SESSION);
-    const firstTouchAttribution = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
+    const currentAttribution = normalizeAttribution({
+      utmSource: payloadAttribution.utmSource || queryAttribution.utmSource || sessionAttribution?.utmSource,
+      utmMedium: payloadAttribution.utmMedium || queryAttribution.utmMedium || sessionAttribution?.utmMedium,
+      utmCampaign: payloadAttribution.utmCampaign || queryAttribution.utmCampaign || sessionAttribution?.utmCampaign,
+      utmTerm: payloadAttribution.utmTerm || queryAttribution.utmTerm || sessionAttribution?.utmTerm,
+      utmContent: payloadAttribution.utmContent || queryAttribution.utmContent || sessionAttribution?.utmContent,
+      fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid
+    });
 
+    if (hasAttribution(currentAttribution)) {
+      rememberAttribution(currentAttribution);
+      return currentAttribution;
+    }
+
+    const firstTouchAttribution = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
     return normalizeAttribution({
-      utmSource: payloadAttribution.utmSource || sessionAttribution?.utmSource || firstTouchAttribution?.utmSource || queryAttribution.utmSource,
-      utmMedium: payloadAttribution.utmMedium || sessionAttribution?.utmMedium || firstTouchAttribution?.utmMedium || queryAttribution.utmMedium,
-      utmCampaign: payloadAttribution.utmCampaign || sessionAttribution?.utmCampaign || firstTouchAttribution?.utmCampaign || queryAttribution.utmCampaign,
-      fbclid: payloadAttribution.fbclid || sessionAttribution?.fbclid || firstTouchAttribution?.fbclid || queryAttribution.fbclid
+      utmSource: firstTouchAttribution?.utmSource,
+      utmMedium: firstTouchAttribution?.utmMedium,
+      utmCampaign: firstTouchAttribution?.utmCampaign,
+      utmTerm: firstTouchAttribution?.utmTerm,
+      utmContent: firstTouchAttribution?.utmContent,
+      fbclid: firstTouchAttribution?.fbclid
     });
   }
 
@@ -185,6 +216,8 @@
       UtmSource: attribution.utmSource || null,
       UtmMedium: attribution.utmMedium || null,
       UtmCampaign: attribution.utmCampaign || null,
+      UtmTerm: attribution.utmTerm || null,
+      UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
       SubmitOutcome: payload.SubmitOutcome || null,
       MetadataJson: payload.MetadataJson || null,
@@ -644,5 +677,17 @@
   });
 
   window.legendTrack = (payload) => sendEvent(payload);
-  window.legendTrackingIds = { getVisitorId, getSessionId };
+  function getAttribution() {
+    const attribution = resolveAttribution({});
+    return {
+      utmSource: attribution.utmSource || null,
+      utmMedium: attribution.utmMedium || null,
+      utmCampaign: attribution.utmCampaign || null,
+      utmTerm: attribution.utmTerm || null,
+      utmContent: attribution.utmContent || null,
+      fbclid: attribution.fbclid || null
+    };
+  }
+
+  window.legendTrackingIds = { getVisitorId, getSessionId, getAttribution };
 })();

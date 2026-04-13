@@ -138,6 +138,8 @@
     submitBtn.textContent = 'Sending...';
 
     const phone = getField('Phone');
+    const query = new URLSearchParams(location.search);
+    const attribution = (ids.getAttribution && ids.getAttribution()) || {};
     const payload = {
       FirstName: getField('FirstName'),
       LastName: getField('LastName'),
@@ -153,9 +155,10 @@
       SourceCtaKey: pendingCta,
       SessionId: (ids.getSessionId && ids.getSessionId()) || null,
       VisitorId: (ids.getVisitorId && ids.getVisitorId()) || null,
-      UtmSource: new URLSearchParams(location.search).get('utm_source'),
-      UtmMedium: new URLSearchParams(location.search).get('utm_medium'),
-      UtmCampaign: new URLSearchParams(location.search).get('utm_campaign'),
+      UtmSource: attribution.utmSource || query.get('utm_source'),
+      UtmMedium: attribution.utmMedium || query.get('utm_medium'),
+      UtmCampaign: attribution.utmCampaign || query.get('utm_campaign'),
+      Fbclid: attribution.fbclid || query.get('fbclid'),
       Host: location.host,
       AgentTrackingProfileId: AGENT_ID,
       AgentSlug: AGENT_SLUG

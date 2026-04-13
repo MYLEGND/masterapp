@@ -341,6 +341,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? UtmCampaign { get; set; }
         public string? UtmTerm { get; set; }
         public string? UtmContent { get; set; }
+        public string? Fbclid { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
         public string? Environment { get; set; }
@@ -389,6 +390,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }
+        public string? Fbclid { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
         public bool MarketingEmailConsent { get; set; }
