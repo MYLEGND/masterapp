@@ -456,6 +456,12 @@ body.life-landing header .navbar .nav-link:focus {
     gap: 10px;
     flex-wrap: wrap;
 }
+#step2BackBtn{
+    display: block;
+    width: auto;
+    min-width: 120px;
+    margin: 10px auto 0;
+}
 .lq-reassurance {
     text-align: center;
     font-size: .84rem;
@@ -629,11 +635,17 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-step-actions.dual .btn-gold { min-height: 50px !important; }
     .lq-value-item { font-size: .87rem; padding: 10px; }
     .lq-processing-track { height: 9px; }
+    #step2BackBtn { min-width: 108px; margin-top: 8px; }
 
     /* Contact step fields */
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
+}
+
+@@media (max-width: 430px){
+    .lq-choice-grid.lq-step1-twoup { grid-template-columns: 1fr !important; }
+    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 54px !important; }
 }
 
 /* ── Landing Mobile Fast Path (paid traffic) ─────────────────────────────── */
@@ -709,6 +721,9 @@ body.life-landing header .navbar .nav-link:focus {
         margin-bottom: 4px !important;
     }
     body.life-landing .lq-step-helper { margin-bottom: 8px !important; }
+    body.life-landing .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
+    body.life-landing .lq-step-progress { font-size: .69rem !important; padding: 3px 8px !important; }
+    body.life-landing .lq-step-progress-track { height: 5px !important; }
     body.life-landing .lq-choice-grid { gap: 7px !important; }
     body.life-landing .lq-card {
         min-height: 46px !important;
@@ -716,6 +731,16 @@ body.life-landing header .navbar .nav-link:focus {
         font-size: .86rem !important;
     }
     body.life-landing .lq-step-actions { margin-top: 10px !important; }
+    body.life-landing .lq-step-actions.dual { gap: 8px !important; align-items: stretch !important; }
+    body.life-landing .lq-step-actions.dual .btn-ghost {
+        min-width: 82px !important;
+        min-height: 42px !important;
+        padding: 8px 11px !important;
+    }
+    body.life-landing .lq-step-actions.dual .btn-gold { min-height: 50px !important; }
+    body.life-landing .lq-processing-bridge { margin: 8px 0 5px !important; }
+    body.life-landing .lq-value-list { gap: 8px !important; margin: 4px 0 10px !important; }
+    body.life-landing .lq-value-note { font-size: .82rem !important; margin-bottom: 2px !important; }
 
     body.life-landing .lq-contact-grid { gap: 8px !important; }
     body.life-landing .lq-field-row { gap: 10px !important; }
@@ -728,9 +753,9 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-field label { font-size: .86rem !important; }
     body.life-landing .lq-submit-row { margin-top: 8px !important; }
     body.life-landing .btn-gold {
-        padding: 12px 14px !important;
-        font-size: .95rem !important;
-        min-height: 56px !important;
+        padding: 11px 14px !important;
+        font-size: .93rem !important;
+        min-height: 52px !important;
         border-width: 2px !important;
         box-shadow:
             0 12px 24px rgba(0,0,0,.30),
@@ -804,7 +829,12 @@ body.life-landing header .navbar .nav-link:focus {
             <div class="lq-step-panel-pad">
                 <div class="lq-step-title">Tell us a little about what you need</div>
                 <div class="lq-step-helper">This takes less than 30 seconds.</div>
-                <div class="lq-step-progress" id="lifeStep1Progress" aria-live="polite">Step 1 of 4</div>
+                <div class="lq-step-progress-wrap" aria-live="polite">
+                    <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 4</div>
+                    <div class="lq-step-progress-track" aria-hidden="true">
+                        <span class="lq-step-progress-fill" id="lifeStep1ProgressFill"></span>
+                    </div>
+                </div>
 
                 <div class="lq-micro-step" data-micro-step="0">
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
@@ -1028,7 +1058,7 @@ body.life-landing header .navbar .nav-link:focus {
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <div class="lq-trust-note">100% Secure • No Obligation</div>
-                        <button type="button" class="btn-ghost w-100 mt-2" id="step2BackBtn">Back</button>
+                        <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
                     </div>
                     <div class="lq-reassurance" hidden></div>
             </div>
@@ -1051,6 +1081,7 @@ body.life-landing header .navbar .nav-link:focus {
   const step2Heading = document.getElementById('lifeStep2Heading');
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
+  const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
   const valueBridgeBackBtn = document.getElementById('valueBridgeBackBtn');
@@ -1191,6 +1222,9 @@ body.life-landing header .navbar .nav-link:focus {
 
     if (step1Progress) {
       step1Progress.textContent = `Step ${bounded + 1} of 4`;
+    }
+    if (step1ProgressFill) {
+      step1ProgressFill.style.width = `${((bounded + 1) / microSteps.length) * 100}%`;
     }
     trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
 
