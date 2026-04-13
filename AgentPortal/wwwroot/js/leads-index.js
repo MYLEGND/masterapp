@@ -59,6 +59,99 @@ function formatDob(value){
   return `${mm}-${dd}-${yyyy}`;
 }
 
+const US_STATE_NAME_BY_CODE = Object.freeze({
+  AL: 'ALABAMA',
+  AK: 'ALASKA',
+  AZ: 'ARIZONA',
+  AR: 'ARKANSAS',
+  CA: 'CALIFORNIA',
+  CO: 'COLORADO',
+  CT: 'CONNECTICUT',
+  DE: 'DELAWARE',
+  DC: 'DISTRICT OF COLUMBIA',
+  FL: 'FLORIDA',
+  GA: 'GEORGIA',
+  HI: 'HAWAII',
+  ID: 'IDAHO',
+  IL: 'ILLINOIS',
+  IN: 'INDIANA',
+  IA: 'IOWA',
+  KS: 'KANSAS',
+  KY: 'KENTUCKY',
+  LA: 'LOUISIANA',
+  ME: 'MAINE',
+  MD: 'MARYLAND',
+  MA: 'MASSACHUSETTS',
+  MI: 'MICHIGAN',
+  MN: 'MINNESOTA',
+  MS: 'MISSISSIPPI',
+  MO: 'MISSOURI',
+  MT: 'MONTANA',
+  NE: 'NEBRASKA',
+  NV: 'NEVADA',
+  NH: 'NEW HAMPSHIRE',
+  NJ: 'NEW JERSEY',
+  NM: 'NEW MEXICO',
+  NY: 'NEW YORK',
+  NC: 'NORTH CAROLINA',
+  ND: 'NORTH DAKOTA',
+  OH: 'OHIO',
+  OK: 'OKLAHOMA',
+  OR: 'OREGON',
+  PA: 'PENNSYLVANIA',
+  RI: 'RHODE ISLAND',
+  SC: 'SOUTH CAROLINA',
+  SD: 'SOUTH DAKOTA',
+  TN: 'TENNESSEE',
+  TX: 'TEXAS',
+  UT: 'UTAH',
+  VT: 'VERMONT',
+  VA: 'VIRGINIA',
+  WA: 'WASHINGTON',
+  WV: 'WEST VIRGINIA',
+  WI: 'WISCONSIN',
+  WY: 'WYOMING',
+  PR: 'PUERTO RICO',
+  GU: 'GUAM',
+  VI: 'U.S. VIRGIN ISLANDS',
+  AS: 'AMERICAN SAMOA',
+  MP: 'NORTHERN MARIANA ISLANDS'
+});
+const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+  Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+    acc[name.replace(/[^A-Z]/g, '')] = name;
+    return acc;
+  }, {})
+);
+function normalizeStateOption(value){
+  const raw = (value ?? '').toString().trim();
+  if (!raw) return '';
+
+  const upper = raw
+    .toUpperCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (US_STATE_NAME_BY_CODE[upper]) {
+    return US_STATE_NAME_BY_CODE[upper];
+  }
+
+  const tokens = upper.split(/[^A-Z]/).filter(Boolean);
+  for (const token of tokens){
+    if (token.length === 2 && US_STATE_NAME_BY_CODE[token]) {
+      return US_STATE_NAME_BY_CODE[token];
+    }
+  }
+
+  const key = upper.replace(/[^A-Z]/g, '');
+  if (US_STATE_CANONICAL_BY_KEY[key]) {
+    return US_STATE_CANONICAL_BY_KEY[key];
+  }
+
+  return upper;
+}
+
 /* ===== Note to Self helpers ===== */
 function noteTodayISO(){
   const d = new Date();
@@ -1831,10 +1924,10 @@ const clientSearchWarning = $("#clientSearchWarning");
 
 function refreshStateFilterOptions(){
   if (!stateFilter) return;
-  const current = (stateFilter.value || "").toUpperCase();
+  const current = normalizeStateOption(stateFilter.value || "");
   const states = Array.from(new Set(
     rows
-      .map(r => (norm(r.dataset.state) || "").toUpperCase())
+      .map(r => normalizeStateOption(r.dataset.state || ""))
       .filter(Boolean)
   )).sort();
   const options = ['<option value=\"\">State</option>']
@@ -2782,7 +2875,7 @@ function computeFiltered(){
   const s = norm(statusFilter.value);
   const priority = norm(priorityFilter.value);
   const stage = norm(stageFilter.value);
-  const state = norm(stateFilter?.value);
+  const state = normalizeStateOption(stateFilter?.value || "");
   const attn = norm(attentionFilter.value);
 
   let filtered = rows.slice();
@@ -2795,7 +2888,7 @@ function computeFiltered(){
   if (s) filtered = filtered.filter(r => norm(r.dataset.crmStatus) === s);
   if (priority) filtered = filtered.filter(r => norm(r.dataset.crmPriority) === priority);
   if (stage) filtered = filtered.filter(r => matchesStageSelection(r, stage));
-  if (state) filtered = filtered.filter(r => norm(r.dataset.state).toUpperCase() === state.toUpperCase());
+  if (state) filtered = filtered.filter(r => normalizeStateOption(r.dataset.state || "") === state);
 
   if (attn === "needs") filtered = filtered.filter(needsAttention);
   if (attn === "callsnow") filtered = filtered.filter(r => HIGH_PRIORITY_KEYS.has(priorityKey(r)) && (isToday(norm(r.dataset.crmNextDate)) || isOverdue(norm(r.dataset.crmNextDate))));
