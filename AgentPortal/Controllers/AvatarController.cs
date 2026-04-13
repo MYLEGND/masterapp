@@ -19,6 +19,7 @@ namespace AgentPortal.Controllers
         private readonly ILogger<AvatarController> _logger;
         private static readonly object AvatarRootLogSync = new();
         private static string? _loggedConfiguredRoot;
+        private static string? _loggedHomeFallbackRoot;
         private static string? _loggedFallbackRoot;
 
         public AvatarController(IWebHostEnvironment env, ILogger<AvatarController> logger)
@@ -72,10 +73,52 @@ namespace AgentPortal.Controllers
             var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
             if (!string.IsNullOrWhiteSpace(configured))
             {
-                var root = Path.GetFullPath(configured.Trim());
-                Directory.CreateDirectory(root);
-                LogAvatarRootOnce(root, fromEnvVar: true);
-                return root;
+                var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
+                try
+                {
+                    var root = Path.GetFullPath(expanded);
+                    Directory.CreateDirectory(root);
+                    LogAvatarRootOnce(root, fromEnvVar: true);
+                    return root;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Configured LEGEND_AVATAR_ROOT path failed: {ConfiguredAvatarRoot}. Falling back to a safe writable root.",
+                        expanded);
+                }
+            }
+
+            // Azure App Service exposes HOME as a persistent writable root.
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                try
+                {
+                    var appServiceRoot = Path.GetFullPath(Path.Combine(home.Trim(), "avatars"));
+                    Directory.CreateDirectory(appServiceRoot);
+
+                    lock (AvatarRootLogSync)
+                    {
+                        if (!string.Equals(_loggedHomeFallbackRoot, appServiceRoot, StringComparison.OrdinalIgnoreCase))
+                        {
+                            _loggedHomeFallbackRoot = appServiceRoot;
+                            _logger.LogInformation(
+                                "Avatar storage root resolved from HOME fallback: {AvatarRoot}",
+                                appServiceRoot);
+                        }
+                    }
+
+                    return appServiceRoot;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "HOME fallback avatar path failed: {HomePath}. Falling back to application content root.",
+                        home);
+                }
             }
 
             var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "avatars");
@@ -145,21 +188,33 @@ namespace AgentPortal.Controllers
                 };
             }
 
-            var root = GetAvatarRoot();
-            var filePath = Path.Combine(root, $"{userId}{ext}");
-
-            foreach (var existing in Directory.EnumerateFiles(root, $"{userId}.*"))
+            try
             {
-                System.IO.File.Delete(existing);
-            }
+                var root = GetAvatarRoot();
+                var filePath = Path.Combine(root, $"{userId}{ext}");
 
-            await using (var stream = new FileStream(filePath, FileMode.Create))
+                foreach (var existing in Directory.EnumerateFiles(root, $"{userId}.*"))
+                {
+                    System.IO.File.Delete(existing);
+                }
+
+                await using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await photo.CopyToAsync(stream);
+                }
+
+                TempData["AvatarSuccess"] = "Profile picture updated.";
+                return RedirectToAction(nameof(Edit));
+            }
+            catch (Exception ex)
             {
-                await photo.CopyToAsync(stream);
+                _logger.LogError(
+                    ex,
+                    "Avatar upload failed for user {UserId}.",
+                    userId);
+                TempData["AvatarError"] = "We couldn’t save your profile picture right now. Please try again.";
+                return RedirectToAction(nameof(Edit));
             }
-
-            TempData["AvatarSuccess"] = "Profile picture updated.";
-            return RedirectToAction(nameof(Edit));
         }
 
         [HttpGet("avatar/current")]
