@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AgentPortal.Services.Analytics;
 
 namespace AgentPortal.Models.Analytics;
 
@@ -15,6 +16,7 @@ public sealed class TrafficOverviewDto
     public List<KeyCountDto> TopSources { get; set; } = new();
     public List<KeyCountDto> TopCampaigns { get; set; } = new();
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 public sealed class ActivityItemDto
@@ -38,6 +40,7 @@ public sealed class PagePerformanceDto
 {
     public List<PagePerformanceRow> Rows { get; set; } = new();
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 public sealed class CtaPerformanceRow
@@ -51,6 +54,7 @@ public sealed class CtaPerformanceDto
 {
     public List<CtaPerformanceRow> Rows { get; set; } = new();
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 public sealed class QuoteFunnelDto
@@ -62,6 +66,7 @@ public sealed class QuoteFunnelDto
     public decimal? DropOffStartsToFormStarts { get; set; }
     public decimal? DropOffFormStartsToSubmits { get; set; }
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 public sealed class ConversionRow
@@ -77,6 +82,7 @@ public sealed class ConversionCenterDto
     public int TotalConversions { get; set; }
     public List<ConversionRow> Recent { get; set; } = new();
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 public sealed class LeadSnapshotRow
@@ -87,6 +93,13 @@ public sealed class LeadSnapshotRow
     public string? Phone { get; set; }
     public string? Interest { get; set; }
     public string? Source { get; set; }
+    public TrafficType TrafficType { get; set; }
+    public string? UtmSource { get; set; }
+    public string? UtmMedium { get; set; }
+    public string? UtmCampaign { get; set; }
+    public string? Fbclid { get; set; }
+    public string? LandingPage { get; set; }
+    public string? SourcePage { get; set; }
 }
 
 public sealed class LeadSnapshotDto
@@ -94,6 +107,7 @@ public sealed class LeadSnapshotDto
     public List<LeadSnapshotRow> Leads { get; set; } = new();
     public int Total { get; set; }
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 // ── Form Abandonment ──────────────────────────────────────────────────────────

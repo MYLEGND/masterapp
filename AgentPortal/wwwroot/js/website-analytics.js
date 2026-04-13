@@ -25,6 +25,14 @@
       from: null,
       to: null,
       agentProfileId: null
+    },
+    trafficType: {
+      trafficModal: 'all',
+      pagePerfModal: 'all',
+      ctaPerfModal: 'all',
+      quoteModal: 'all',
+      convModal: 'all',
+      leadsModal: 'all'
     }
   };
   const agentOptions = window.AGENT_OPTIONS || [];
@@ -165,7 +173,7 @@
     }
   }
 
-  function rangeParams({ team = false } = {}) {
+  function rangeParams({ team = false, modal = null } = {}) {
     // Defensive: never allow founder requests to carry an agentProfileId
     if (isFounder) {
       state.scope.agentProfileId = null;
@@ -182,6 +190,13 @@
     // Only send agentProfileId for non-founder agents
     if (!isFounder && state.scope.agentProfileId) {
       p.agentProfileId = state.scope.agentProfileId;
+    }
+    // Add trafficType if modal context is provided
+    if (modal && state.trafficType && state.trafficType[modal]) {
+      let t = state.trafficType[modal];
+      if (t === 'paid') p.trafficType = 'PaidAds';
+      else if (t === 'non_paid') p.trafficType = 'NonPaid';
+      else p.trafficType = 'All';
     }
     return p;
   }
@@ -526,6 +541,16 @@
     setText('conv-range-label', data.rangeLabel || '');
   }
 
+  function trafficBadge(attribution) {
+    if (!attribution) return '';
+    if (attribution.isPaid) {
+      return '<span class="badge badge-paid">Ads</span>';
+    } else if (attribution.isNonPaid) {
+      return '<span class="badge badge-nonpaid">Non-Ads</span>';
+    }
+    return '';
+  }
+
   function renderLeads(data) {
     state.cache.leads = data;
     setText('leads-total', data.total);
@@ -540,9 +565,37 @@
       { key: 'email' },
       { key: 'phone' },
       { key: 'interest' },
-      { key: 'source' }
+      { key: 'source' },
+      { render: r => trafficBadge(r.attribution), align: 'text-center' }
     ]);
     setText('leads-range-label', data.rangeLabel || '');
+  }
+  // Traffic type UI controls and modal header update
+  function updateTrafficTypeHeader(modalId) {
+    const header = document.querySelector(`#${modalId} .traffic-type-header`);
+    if (!header) return;
+    const t = state.trafficType[modalId] || 'all';
+    let label = 'All Traffic';
+    if (t === 'paid') label = 'Ads Only';
+    else if (t === 'non_paid') label = 'Non-Ads Only';
+    header.textContent = label;
+  }
+
+  function initTrafficTypeControls() {
+    const modals = [
+      'trafficModal', 'pagePerfModal', 'ctaPerfModal', 'quoteModal', 'convModal', 'leadsModal'
+    ];
+    modals.forEach(modalId => {
+      document.querySelectorAll(`#${modalId} .traffic-type-control input[type=radio]`).forEach(radio => {
+        radio.addEventListener('change', e => {
+          if (radio.checked) {
+            state.trafficType[modalId] = radio.value;
+            updateTrafficTypeHeader(modalId);
+            refreshOpenModal();
+          }
+        });
+      });
+    });
   }
 
   function setAiSnapshotStatus(message, tone = 'muted') {
@@ -1335,12 +1388,13 @@
     }
     initRangeControls();
     initModules();
-    attachModal('trafficModal', loadTraffic);
-    attachModal('pagePerfModal', loadPagePerf);
-    attachModal('ctaPerfModal', loadCtaPerf);
-    attachModal('quoteModal', loadQuote);
-    attachModal('convModal', loadConv);
-    attachModal('leadsModal', loadLeads);
+    initTrafficTypeControls();
+    attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
+    attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
+    attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });
+    attachModal('quoteModal', () => { updateTrafficTypeHeader('quoteModal'); loadQuote(); });
+    attachModal('convModal', () => { updateTrafficTypeHeader('convModal'); loadConv(); });
+    attachModal('leadsModal', () => { updateTrafficTypeHeader('leadsModal'); loadLeads(); });
     attachModal('metaCampaignsModal', loadMetaCampaigns);
     attachModal('behaviorModal', loadBehavior);
     attachModal('aiReviewSnapshotModal', loadAiReviewSnapshot);

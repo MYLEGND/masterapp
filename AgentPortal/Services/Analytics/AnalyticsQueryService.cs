@@ -343,10 +343,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
-    public async Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
 
         var traffic = new TrafficOverviewDto
         {
@@ -406,11 +411,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return traffic;
     }
 
-    public async Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+            leads = leads.Where(l => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid), trafficType)).ToList();
+        }
 
         var pageViews = events.Where(e => e.EventType == "page_view")
             .GroupBy(e => e.PageKey ?? "unknown")
@@ -445,12 +457,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new PagePerformanceDto { Rows = rows, RangeLabel = range.Label };
     }
 
-    public async Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "cta_click")
             .ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
 
         var rows = events
             .GroupBy(e => new { Page = e.PageKey ?? "unknown", Cta = e.ElementKey ?? "unknown" })
@@ -466,10 +483,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new CtaPerformanceDto { Rows = rows, RangeLabel = range.Label };
     }
 
-    public async Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
 
         int starts = events.Count(e => e.EventType == "quote_click");
         int formStarts = events.Count(e => e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_"));
@@ -498,12 +520,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
-    public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var conversionsQuery = BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "lead_form_submit_success" ||
                         (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success")));
+        if (trafficType != TrafficType.All)
+        {
+            conversionsQuery = conversionsQuery.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType));
+        }
 
         var totalConversions = await conversionsQuery.CountAsync();
 
@@ -527,15 +554,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return dto;
     }
 
-    public async Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, int take = 200)
+    public async Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int take = 200)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var leadsQuery = BaseLeads(range, scope, scopedAgentIds)
-            .OrderByDescending(l => l.CreatedUtc)
-            .Take(take);
-
-        var leads = await leadsQuery.ToListAsync();
-        var total = await BaseLeads(range, scope, scopedAgentIds).CountAsync();
+        var leadsQuery = BaseLeads(range, scope, scopedAgentIds);
+        if (trafficType != TrafficType.All)
+        {
+            leadsQuery = leadsQuery.Where(l => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid), trafficType));
+        }
+        var leads = await leadsQuery.OrderByDescending(l => l.CreatedUtc).Take(take).ToListAsync();
+        var total = await leadsQuery.CountAsync();
 
         var dto = new LeadSnapshotDto
         {
@@ -649,10 +678,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     // ── Behavior Intelligence Engine ──────────────────────────────────────────
 
-    public async Task<EngagementSummaryDto> GetEngagementSummaryAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<EngagementSummaryDto> GetEngagementSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            events = events.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
 
         var pvs = events.Where(e => e.EventType == "page_view").ToList();
         // page_exit events carry the real per-page dwell (elapsed ms at departure).
@@ -937,10 +971,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new JourneyAnalysisDto { TopLandingPages = topLanding, PagesBeforeLead = pagesBeforeLead, CommonDropOffPages = dropOff, RangeLabel = range.Label };
     }
 
-    public async Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
+        if (trafficType != TrafficType.All)
+        {
+            pageViewEvents = pageViewEvents.Where(e => TrafficAttribution.MatchesFilter(
+                TrafficAttribution.Classify(e.UtmSource, e.UtmMedium, e.UtmCampaign, e.Fbclid), trafficType)).ToList();
+        }
         var engagementSignals = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
                         (e.EventType == "page_engaged_30s" ||

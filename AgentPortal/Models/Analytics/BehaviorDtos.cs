@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AgentPortal.Services.Analytics;
 
 namespace AgentPortal.Models.Analytics;
 
@@ -11,7 +12,7 @@ public sealed class EngagementSummaryDto
     public double MedianSessionDurationMs { get; set; }
     public double AvgTimeOnPageMs { get; set; }
     public double MedianTimeOnPageMs { get; set; }
-    /// <summary>% of sessions whose final page_exit appears to be a quick exit (dwell &lt; 10 s).
+    /// <summary>% of sessions whose final page_exit appears to be a quick exit (dwell < 10 s).
     /// Null when no final page_exit data exists yet (instrumentation not yet producing data).</summary>
     public decimal? QuickExitRate { get; set; }
     /// <summary>% of sessions with ≥30 s of accumulated engaged time.
@@ -25,6 +26,7 @@ public sealed class EngagementSummaryDto
     /// <summary>Total sessions in range.</summary>
     public int TotalSessions { get; set; }
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 // ── Page Engagement Table ─────────────────────────────────────────────────────
@@ -142,6 +144,7 @@ public sealed class SourcePerformanceDto
 {
     public List<SourcePerformanceRow> Rows { get; set; } = new();
     public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
 }
 
 // ── Landing Page Performance ──────────────────────────────────────────────────

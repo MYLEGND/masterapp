@@ -591,9 +591,17 @@
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">Traffic Overview · <span id="traffic-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="traffic-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="row g-3">
@@ -662,9 +670,17 @@
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">Page Performance · <span id="pageperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="pageperf-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <table class="table table-sm">
@@ -679,9 +695,17 @@
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">CTA Performance · <span id="ctaperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="ctaperf-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <table class="table table-sm">
@@ -696,9 +720,17 @@
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">Quote Funnel · <span id="quote-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="quote-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <ul class="nav nav-tabs mb-3" id="quoteTabs" role="tablist">
@@ -772,9 +804,17 @@
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">Conversion Center · <span id="conv-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="conv-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
@@ -809,9 +849,17 @@
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered">
     <div class="modal-content">
-      <div class="modal-header">
+      <div class="modal-header align-items-center">
         <h5 class="modal-title">Leads Snapshot · <span id="leads-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="ms-3">
+          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
+            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+          </div>
+          <span class="badge bg-secondary ms-2" id="leads-active-mode">Viewing: All Traffic</span>
+        </div>
+        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="d-flex justify-content-between align-items-center mb-2">
@@ -822,8 +870,8 @@
             </div>
         </div>
         <table class="table table-sm">
-            <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th></tr></thead>
-            <tbody id="leads-body"></tbody>
+          <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th><th>Attribution</th><th>Badge</th></tr></thead>
+          <tbody id="leads-body"></tbody>
         </table>
       </div>
     </div>

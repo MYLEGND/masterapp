@@ -108,4 +108,7 @@ public class AnalyticsEvent
 
     /// <summary>HTML element id for dead_click / rage_click attribution.</summary>
     public string? ElementId { get; set; }
+
+    /// <summary>Facebook click ID (fbclid) from the landing URL query string.</summary>
+    public string? Fbclid { get; set; }
 }

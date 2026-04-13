@@ -31,4 +31,7 @@ public class WebsiteLead
     public DateTime CreatedUtc { get; set; }
     public string Status { get; set; } = "New";
     public string? MetadataJson { get; set; }
+
+    /// <summary>Facebook click ID (fbclid) captured at lead submission.</summary>
+    public string? Fbclid { get; set; }
 }

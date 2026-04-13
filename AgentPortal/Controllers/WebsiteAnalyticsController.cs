@@ -105,61 +105,61 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("traffic")]
     [HttpGet("/website-analytics/traffic")]
-    public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetTrafficAsync(range, scope);
+        var result = await _analytics.GetTrafficAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("page-performance")]
     [HttpGet("/website-analytics/page-performance")]
-    public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetPagePerformanceAsync(range, scope);
+        var result = await _analytics.GetPagePerformanceAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("cta-performance")]
     [HttpGet("/website-analytics/cta-performance")]
-    public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetCtaPerformanceAsync(range, scope);
+        var result = await _analytics.GetCtaPerformanceAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("quote-funnel")]
     [HttpGet("/website-analytics/quote-funnel")]
-    public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetQuoteFunnelAsync(range, scope);
+        var result = await _analytics.GetQuoteFunnelAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("conversions")]
     [HttpGet("/website-analytics/conversions")]
-    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetConversionsAsync(range, scope);
+        var result = await _analytics.GetConversionsAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("leads")]
     [HttpGet("/website-analytics/leads")]
-    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetLeadsAsync(range, scope, 200);
+        var result = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
         return Json(result);
     }
 
@@ -176,11 +176,11 @@ namespace AgentPortal.Controllers;
 
     // ── Behavior Intelligence ─────────────────────────────────────
     [HttpGet("behavior/summary")]
-    public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetEngagementSummaryAsync(range, scope);
+        var result = await _analytics.GetEngagementSummaryAsync(range, scope, trafficType);
         return Json(result);
     }
 
@@ -212,11 +212,11 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/source-performance")]
-    public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetSourcePerformanceAsync(range, scope);
+        var result = await _analytics.GetSourcePerformanceAsync(range, scope, trafficType);
         return Json(result);
     }
 
@@ -273,7 +273,7 @@ namespace AgentPortal.Controllers;
                 () => new ConversionCenterDto { RangeLabel = range.Label },
                 "Conversion metrics");
             var (leads, leadsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetLeadsAsync(range, scope, 200),
+                () => _analytics.GetLeadsAsync(range, scope),
                 () => new LeadSnapshotDto { RangeLabel = range.Label },
                 "Lead snapshot metrics");
             var (pagePerf, pagePerfWarning) = await SafeSnapshotLoadAsync(
