@@ -241,13 +241,40 @@ body.life-landing header .navbar .nav-link:focus {
 
 .lq-step-meta{ display:none; }
 .lq-step-progress{
-    display: inline-block;
-    color: rgba(248,250,252,0.68);
-    font-size: .78rem;
-    font-weight: 800;
-    letter-spacing: .03em;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(199,153,49,.38);
+    background: rgba(199,153,49,.10);
+    color: rgba(248,250,252,0.88);
+    font-size: .75rem;
+    font-weight: 900;
+    letter-spacing: .04em;
     text-transform: uppercase;
     margin-bottom: 10px;
+}
+.lq-step-progress-wrap{
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.lq-step-progress-wrap .lq-step-progress{ margin-bottom: 0; }
+.lq-step-progress-track{
+    width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(199,153,49,0.16);
+    border: 1px solid rgba(199,153,49,0.30);
+    overflow: hidden;
+}
+.lq-step-progress-fill{
+    display: block;
+    width: 25%;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #be8c25 0%, #efc86f 100%);
+    transition: width .18s ease;
 }
 .lq-micro-step[hidden]{ display:none !important; }
 .lq-micro-back{
@@ -378,20 +405,25 @@ body.life-landing header .navbar .nav-link:focus {
     text-align: center;
     padding: 14px 10px;
     min-height: 58px;
-    border: 1.6px solid rgba(199,153,49,0.32);
+    border: 1.6px solid rgba(199,153,49,0.42);
     border-radius: 10px;
     background: rgba(24,38,62,0.88);
     color: #f8fafc;
     font-weight: 800;
     font-size: .95rem;
     cursor: pointer;
-    transition: border-color 0.14s, background 0.14s, box-shadow 0.14s, color 0.14s;
+    transition: border-color 0.14s, background 0.14s, box-shadow 0.14s, color 0.14s, transform .12s ease;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     line-height: 1.25;
     position: relative;
 }
-.lq-card:hover { border-color: #c79931; background: rgba(199,153,49,0.08); }
+.lq-card:hover {
+    border-color: #ddb864;
+    background: rgba(199,153,49,0.12);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+}
 .lq-card input[type="radio"] {
     position: absolute;
     opacity: 0;
@@ -401,10 +433,12 @@ body.life-landing header .navbar .nav-link:focus {
 }
 .lq-card.lq-selected,
 .lq-card:has(input:checked) {
-    border-color: #c79931;
-    background: rgba(199,153,49,0.18);
-    box-shadow: 0 0 0 2px rgba(199,153,49,0.32);
-    color: #c79931;
+    border-color: #efc86f;
+    background: rgba(199,153,49,0.24);
+    box-shadow:
+        0 10px 20px rgba(0,0,0,0.24),
+        0 0 0 2px rgba(239,200,111,0.38);
+    color: #f8fafc;
 }
 .lq-card.lq-invalid { border-color: #ef4444; }
 .lq-choice-error {
@@ -466,6 +500,9 @@ body.life-landing header .navbar .nav-link:focus {
 @@media (min-width: 720px){
     .lq-field-row.two{ grid-template-columns: repeat(2,1fr); }
 }
+@@media (min-width: 560px) and (max-width: 767.98px){
+    .lq-contact-step .lq-field-row.two{ grid-template-columns: repeat(2,1fr); }
+}
 .lq-field{
     display: flex;
     flex-direction: column;
@@ -499,36 +536,51 @@ body.life-landing header .navbar .nav-link:focus {
 
 /* ── Mobile / tablet tightening (≤640px) ─────────────────────────────────── */
 @@media (max-width: 640px){
-    .lq-header h1 { font-size: 1.45rem; }
-    .lq-subtext { font-size: .93rem; margin-bottom: 10px; }
+    .lq-container { padding: 4px 12px 14px; }
+    .lq-header h1 { font-size: 1.32rem; line-height: 1.18; margin-bottom: 3px; }
+    .lq-subtext { font-size: .88rem; line-height: 1.32; margin-bottom: 6px; }
     .lq-progress-rail { gap: 8px; }
     .lq-pill-step { padding: 10px; }
 
     /* Hero shell — reclaim vertical space */
     .lq-hero-shell {
-        padding: 12px 12px 10px;
-        margin: 6px auto 12px;
+        padding: 10px 10px 8px;
+        margin: 4px auto 10px;
         border-radius: 14px;
     }
 
     /* Hero header block */
-    .lq-header { margin-top: 10px; margin-bottom: 12px; }
+    .lq-header { margin-top: 6px; margin-bottom: 8px; }
 
     /* Step panels */
     .lq-step-panel { margin-bottom: 10px; }
-    .lq-step-panel-pad { padding: 12px; }
+    .lq-step-panel-pad { padding: 11px; }
     .lq-inner-block { padding: 14px 12px 10px; }
-    .lq-step-title { font-size: 1.08rem; margin-bottom: 4px; }
-    .lq-step-helper { margin-bottom: 10px; }
-    .lq-card { min-height: 52px; padding: 11px 8px; font-size: .9rem; }
-    .lq-choice-grid { gap: 8px; }
-    .lq-step-actions { margin-top: 12px; }
+    .lq-step-title { font-size: 1.02rem; margin-bottom: 4px; }
+    .lq-step-helper { margin-bottom: 8px; font-size: .88rem; line-height: 1.32; }
+    .lq-step-progress-wrap { gap: 7px; margin-bottom: 10px; }
+    .lq-step-progress { font-size: .71rem; padding: 3px 8px; }
+    .lq-step-progress-track { height: 5px; }
+    .lq-card { min-height: 54px; padding: 12px 10px; font-size: .9rem; }
+    .lq-choice-grid { gap: 9px; }
+    .lq-step-actions { margin-top: 10px; }
+    .lq-step-actions.dual { align-items: stretch; gap: 8px; }
+    .lq-step-actions.dual .btn-ghost { min-height: 44px; padding: 9px 12px; }
+    .lq-step-actions.dual .btn-gold { min-height: 52px; }
+    .lq-processing-bridge { margin: 10px 0 6px; }
+    .lq-value-list { gap: 8px; margin: 4px 0 10px; }
+    .lq-value-item { font-size: .86rem; padding: 9px 10px; }
+    .lq-value-note { font-size: .82rem; margin-bottom: 2px; }
 
     /* Contact step fields */
-    .lq-contact-grid { gap: 10px; }
+    .lq-contact-grid { gap: 8px; }
+    .lq-field-row { gap: 10px; }
     .lq-field { gap: 4px; }
-    .form-control, .form-select { padding: 9px 10px; margin-bottom: 6px; }
-    .lq-submit-row { margin-top: 10px; }
+    .lq-field label { font-size: .85rem; }
+    .lq-field-help { font-size: .76rem; margin-top: -1px; }
+    .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
+    .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
+    .lq-submit-row { margin-top: 8px; }
     .btn-gold { padding: 12px 20px; }
 }
 
@@ -547,23 +599,34 @@ body.life-landing header .navbar .nav-link:focus {
 
     /* Hero shell */
     .lq-hero-shell {
-        padding: 6px 10px 6px !important;
-        margin: 2px auto 6px !important;
+        padding: 5px 8px 6px !important;
+        margin: 1px auto 6px !important;
         border-radius: 12px !important;
     }
 
     /* Hero header block */
-    .lq-header { margin-top: 4px !important; margin-bottom: 4px !important; }
-    .lq-header h1 { font-size: 1.3rem !important; letter-spacing: .2px !important; line-height: 1.2 !important; }
-    .lq-subtext { font-size: .86rem !important; margin-bottom: 4px !important; }
+    .lq-header { margin-top: 2px !important; margin-bottom: 4px !important; }
+    .lq-header h1 { font-size: 1.18rem !important; letter-spacing: .1px !important; line-height: 1.18 !important; }
+    .lq-subtext { font-size: .82rem !important; margin-bottom: 4px !important; line-height: 1.3 !important; }
 
     /* Step panel */
     .lq-step-panel-pad { padding: 8px !important; }
     .lq-inner-block { padding: 10px 10px 8px !important; }
     .lq-step-title { font-size: 1rem !important; }
-    .lq-card { min-height: 46px !important; padding: 10px 7px !important; font-size: .87rem !important; }
-    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 54px !important; }
+    .lq-step-helper { font-size: .84rem !important; margin-bottom: 7px !important; }
+    .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
+    .lq-step-progress { font-size: .68rem !important; padding: 3px 7px !important; }
+    .lq-step-progress-track { height: 5px !important; }
+    .lq-card { min-height: 50px !important; padding: 11px 8px !important; font-size: .86rem !important; }
+    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 52px !important; }
     .lq-choice-grid { gap: 7px !important; }
+    .lq-step-actions.dual { gap: 8px !important; }
+    .lq-step-actions.dual .btn-ghost {
+        min-width: 84px;
+        min-height: 42px;
+        padding: 8px 10px;
+    }
+    .lq-step-actions.dual .btn-gold { min-height: 50px !important; }
     .lq-value-item { font-size: .87rem; padding: 10px; }
     .lq-processing-track { height: 9px; }
 
