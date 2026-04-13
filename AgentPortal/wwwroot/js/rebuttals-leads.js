@@ -227,6 +227,71 @@
     return `${mm}-${dd}-${yyyy}`;
   }
 
+  const US_STATE_NAME_BY_CODE = Object.freeze({
+    AL: 'ALABAMA',
+    AK: 'ALASKA',
+    AZ: 'ARIZONA',
+    AR: 'ARKANSAS',
+    CA: 'CALIFORNIA',
+    CO: 'COLORADO',
+    CT: 'CONNECTICUT',
+    DE: 'DELAWARE',
+    DC: 'DISTRICT OF COLUMBIA',
+    FL: 'FLORIDA',
+    GA: 'GEORGIA',
+    HI: 'HAWAII',
+    ID: 'IDAHO',
+    IL: 'ILLINOIS',
+    IN: 'INDIANA',
+    IA: 'IOWA',
+    KS: 'KANSAS',
+    KY: 'KENTUCKY',
+    LA: 'LOUISIANA',
+    ME: 'MAINE',
+    MD: 'MARYLAND',
+    MA: 'MASSACHUSETTS',
+    MI: 'MICHIGAN',
+    MN: 'MINNESOTA',
+    MS: 'MISSISSIPPI',
+    MO: 'MISSOURI',
+    MT: 'MONTANA',
+    NE: 'NEBRASKA',
+    NV: 'NEVADA',
+    NH: 'NEW HAMPSHIRE',
+    NJ: 'NEW JERSEY',
+    NM: 'NEW MEXICO',
+    NY: 'NEW YORK',
+    NC: 'NORTH CAROLINA',
+    ND: 'NORTH DAKOTA',
+    OH: 'OHIO',
+    OK: 'OKLAHOMA',
+    OR: 'OREGON',
+    PA: 'PENNSYLVANIA',
+    RI: 'RHODE ISLAND',
+    SC: 'SOUTH CAROLINA',
+    SD: 'SOUTH DAKOTA',
+    TN: 'TENNESSEE',
+    TX: 'TEXAS',
+    UT: 'UTAH',
+    VT: 'VERMONT',
+    VA: 'VIRGINIA',
+    WA: 'WASHINGTON',
+    WV: 'WEST VIRGINIA',
+    WI: 'WISCONSIN',
+    WY: 'WYOMING',
+    PR: 'PUERTO RICO',
+    GU: 'GUAM',
+    VI: 'U.S. VIRGIN ISLANDS',
+    AS: 'AMERICAN SAMOA',
+    MP: 'NORTHERN MARIANA ISLANDS'
+  });
+  const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+    Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+      acc[name.replace(/[^A-Z]/g, '')] = name;
+      return acc;
+    }, {})
+  );
+
   function buildTextMessage(lead, bucket){
     const leadFirst = (lead.firstName || "there").trim() || "there";
     const agentFirst = ensureAgentName();
@@ -625,7 +690,33 @@
     }
 
     function normalizeStateOption(value){
-      return (value ?? '').toString().trim().toUpperCase();
+      const raw = (value ?? '').toString().trim();
+      if (!raw) return '';
+
+      const upper = raw
+        .toUpperCase()
+        .replace(/\./g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (US_STATE_NAME_BY_CODE[upper]) {
+        return US_STATE_NAME_BY_CODE[upper];
+      }
+
+      // Handle mixed formats like "AZ - Arizona" or "Arizona (AZ)".
+      const tokens = upper.split(/[^A-Z]/).filter(Boolean);
+      for (const token of tokens){
+        if (token.length === 2 && US_STATE_NAME_BY_CODE[token]) {
+          return US_STATE_NAME_BY_CODE[token];
+        }
+      }
+
+      const key = upper.replace(/[^A-Z]/g, '');
+      if (US_STATE_CANONICAL_BY_KEY[key]) {
+        return US_STATE_CANONICAL_BY_KEY[key];
+      }
+
+      return upper;
     }
 
     // Ensure Open CRM always goes somewhere useful even before leads load.
@@ -857,6 +948,19 @@
         if (hasOption){
           selectEl.value = next;
           return;
+        }
+
+        // Backward compatibility: previously persisted filter state may store
+        // abbreviations (e.g. "AZ"), while options now use full names.
+        if (selectEl === stateFilter){
+          const normalizedState = normalizeStateOption(next);
+          if (normalizedState){
+            const mapped = options.find(opt => normalizeStateOption(opt.value || opt.textContent || '') === normalizedState);
+            if (mapped){
+              selectEl.value = mapped.value;
+              return;
+            }
+          }
         }
 
         // Backward compatibility: if older cache/server state stored exact age (e.g. "37"),
@@ -1372,7 +1476,7 @@
       const defaultBucket = normalizedQueueKey || bucket || "";
       let working = baseLeads.slice();
 
-      const stateSel = (stateFilter?.value || '').toUpperCase();
+      const stateSel = normalizeStateOption(stateFilter?.value || '');
       const stageSel = stageFilter?.value || '';
       const callsRaw = (calledFilter?.value || '').trim();
       const callsSel = callsRaw === '' ? null : parseInt(callsRaw, 10);
@@ -1384,7 +1488,8 @@
       const filtered = working.filter(l => {
         const leadTypeValue = leadOriginalLeadType(l);
         if (enforceDefaultBucket && defaultBucket && leadTypeValue !== defaultBucket) return false;
-        if (stateSel && (l.state || '').toUpperCase() !== stateSel) return false;
+        const leadState = normalizeStateOption(l?.state ?? l?.State ?? l?.crmState ?? l?.sState ?? '');
+        if (stateSel && leadState !== stateSel) return false;
         if (stageSel && !matchesStageSelection(l, stageSel)) return false;
         const calls = Number(l.callCount || 0);
         if (callsSel === null){
