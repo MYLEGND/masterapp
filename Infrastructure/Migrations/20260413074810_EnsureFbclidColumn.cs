@@ -13,7 +13,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "Fbclid",
                 table: "WebsiteLeads",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 nullable: true,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(200)",
@@ -23,7 +23,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "ViewportWidth",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
@@ -32,7 +32,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "ViewportHeight",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
@@ -41,7 +41,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "UtmTerm",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(160)",
                 maxLength: 160,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -52,7 +52,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "UtmContent",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(160)",
                 maxLength: 160,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -63,7 +63,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "ScrollPercent",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
@@ -72,7 +72,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "ScreenWidth",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
@@ -81,7 +81,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<int>(
                 name: "ScreenHeight",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "int",
                 nullable: true,
                 oldClrType: typeof(int),
                 oldType: "int",
@@ -90,7 +90,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "ReferrerHost",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -101,7 +101,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "Placement",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -112,7 +112,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "OperatingSystem",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -123,7 +123,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaCampaignName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -134,7 +134,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaCampaignId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -145,7 +145,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaAdSetName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -156,7 +156,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaAdSetId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -167,7 +167,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaAdName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -178,7 +178,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "MetaAdId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 maxLength: 200,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -189,7 +189,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<bool>(
                 name: "IsExitPage",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bit",
                 nullable: true,
                 oldClrType: typeof(bool),
                 oldType: "bit",
@@ -198,7 +198,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<bool>(
                 name: "IsBounceCandidate",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bit",
                 nullable: true,
                 oldClrType: typeof(bool),
                 oldType: "bit",
@@ -207,7 +207,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "FormId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -218,7 +218,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "FieldName",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -229,7 +229,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "Fbclid",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(200)",
                 nullable: true,
                 oldClrType: typeof(string),
                 oldType: "nvarchar(200)",
@@ -239,7 +239,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<long>(
                 name: "EngagedMilliseconds",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bigint",
                 nullable: true,
                 oldClrType: typeof(long),
                 oldType: "bigint",
@@ -248,7 +248,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "ElementId",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(120)",
                 maxLength: 120,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -259,7 +259,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<long>(
                 name: "DwellMilliseconds",
                 table: "AnalyticsEvents",
-                type: "INTEGER",
+                type: "bigint",
                 nullable: true,
                 oldClrType: typeof(long),
                 oldType: "bigint",
@@ -268,7 +268,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "DeviceType",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(60)",
                 maxLength: 60,
                 nullable: true,
                 oldClrType: typeof(string),
@@ -279,7 +279,7 @@ namespace Infrastructure.Migrations
             migrationBuilder.AlterColumn<string>(
                 name: "Browser",
                 table: "AnalyticsEvents",
-                type: "TEXT",
+                type: "nvarchar(100)",
                 maxLength: 100,
                 nullable: true,
                 oldClrType: typeof(string),
