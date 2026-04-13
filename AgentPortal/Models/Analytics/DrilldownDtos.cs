@@ -124,7 +124,8 @@ public sealed class FormAbandonSummaryRow
     public string QuoteType { get; set; } = "";
     public int Abandons { get; set; }
     public int Starts { get; set; }
-    public decimal AbandonRate { get; set; }
+    public decimal? AbandonRate { get; set; }
+    public bool StartSignalMissing { get; set; }
     public double AvgCompletedFields { get; set; }
     public int SubmitAttemptedAbandonCount { get; set; }
 }
@@ -137,5 +138,7 @@ public sealed class FormAbandonmentDto
     public List<ValidationFrictionRow> ValidationFriction { get; set; } = new();
     /// <summary>Count of abandons where submit was attempted at least once before leaving.</summary>
     public int ConsentFrictionCount { get; set; }
+    public int StartSignalGapQuoteTypeCount { get; set; }
+    public string? DataQualityNote { get; set; }
     public string RangeLabel { get; set; } = "";
 }

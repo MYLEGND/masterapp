@@ -401,9 +401,12 @@
     ]);
     const note = document.getElementById('abandon-consent-note');
     if (note) {
-      note.textContent = data.consentFrictionCount > 0
-        ? `Consent friction: ${data.consentFrictionCount} session(s) attempted submit without interacting with the consent checkbox.`
-        : '';
+      const notes = [];
+      if (data.dataQualityNote) notes.push(data.dataQualityNote);
+      if (data.consentFrictionCount > 0) {
+        notes.push(`Consent friction: ${data.consentFrictionCount} session(s) attempted submit without interacting with the consent checkbox.`);
+      }
+      note.textContent = notes.join(' ');
     }
   }
 
@@ -433,11 +436,18 @@
         highlights.style.display = 'none';
       }
     }
+    const sampleNote = document.getElementById('bhvr-time-sample-note');
+    if (sampleNote) {
+      const totalViews = time?.totalPageViews != null ? formatInt(time.totalPageViews) : '—';
+      const timingSamples = time?.totalTimingSamples != null ? formatInt(time.totalTimingSamples) : '—';
+      sampleNote.textContent = `Timing metrics use page_exit samples. Page views: ${totalViews} · Timing samples: ${timingSamples}.`;
+    }
 
     // ── Dwell table columns ────────────────────────────────────────
     const dwellCols = [
       { key: 'pageKey' },
       { key: 'views', align: 'text-end' },
+      { key: 'timingSamples', align: 'text-end' },
       { render: r => formatMs(r.avgDwellMs),    align: 'text-end' },
       { render: r => formatMs(r.medianDwellMs), align: 'text-end' }
     ];

@@ -13,6 +13,7 @@
   const STORAGE_SESSION_TS = 'legend_session_ts';
   const SESSION_TIMEOUT_MIN = 30;
   const DEBOUNCE_MS = 2000;
+  const _formTrackStateByKey = new Map();
 
   const allowedEvents = new Set([
     'page_view','cta_click','quote_click','risk_assessment_click',
@@ -22,6 +23,7 @@
     'page_exit',
     'page_engaged_10s','page_engaged_30s','page_engaged_60s',
     'scroll_depth_25','scroll_depth_50','scroll_depth_75','scroll_depth_90','scroll_depth_100',
+    'page_visibility_hidden','page_visibility_return',
     // Form Abandonment Intelligence
     'form_field_focus','form_field_complete','form_field_error',
     'form_submit_attempt','form_abandon',
@@ -114,6 +116,16 @@
       if (!allowedEvents.has(body.EventType)) return;
       if (body.EventType === 'form_start' || body.EventType === 'form_submit') {
         body.FormKey = body.FormKey || payload.FormKey;
+      }
+      if (body.EventType === 'form_submit' &&
+          typeof body.SubmitOutcome === 'string' &&
+          body.SubmitOutcome.toLowerCase() === 'success' &&
+          body.FormKey) {
+        const state = _formTrackStateByKey.get(body.FormKey);
+        if (state) {
+          state.submitted = true;
+          state.submitAttempted = true;
+        }
       }
       await fetch(INGEST_URL, {
         method: 'POST',
@@ -208,7 +220,7 @@
   //
   // Auto-instruments every form[data-form-key] on the page.
   // Fires field_focus, field_complete, field_error mid-session via async fetch.
-  // Fires form_abandon via sendBeacon on visibilitychange (same as page_exit).
+  // Fires form_abandon via sendBeacon during terminal page lifecycle events.
   // Never sends raw field values. All payloads use MetadataJson for extra context.
 
   // Canonical field name normalization
@@ -296,6 +308,7 @@
       consentInteracted: false,
       abandonFired: false,
     };
+    _formTrackStateByKey.set(formKey, state);
 
     function markStarted() {
       if (!state.started) {
@@ -409,7 +422,15 @@
       state.submitAttempted = true;
     };
 
-    // Register abandon callback — fired by visibilitychange handler below
+    // Native submits (non-AJAX forms) should never be counted as abandon.
+    // We treat a valid submit dispatch as terminal for abandonment purposes.
+    formEl.addEventListener('submit', () => {
+      if (typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) return;
+      state.submitAttempted = true;
+      state.submitted = true;
+    }, true);
+
+    // Register abandon callback — fired during terminal page lifecycle events (pagehide/beforeunload)
     _formAbandonCallbacks.push(function () {
       if (!state.started || state.submitted || state.abandonFired) return;
       state.abandonFired = true;
@@ -434,22 +455,37 @@
   // Instrument all quote forms on the page
   document.querySelectorAll('form[data-form-key]').forEach(wireFormTracking);
 
-  // ── Visibility lifecycle (page_exit + form_abandon on hide) ───────────────
+  function fireExitSignals() {
+    firePageExit();
+    _formAbandonCallbacks.forEach(function (cb) { try { cb(); } catch { /* swallow */ } });
+  }
+
+  // ── Visibility/page lifecycle ──────────────────────────────────────────────
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {
       if (_activeStart !== null) {
         _activeMs += Date.now() - _activeStart;
         _activeStart = null;
       }
-      firePageExit();
-      // Fire abandons for any started-but-not-submitted forms
-      _formAbandonCallbacks.forEach(function (cb) { try { cb(); } catch { /* swallow */ } });
+      sendEvent({
+        EventType: 'page_visibility_hidden',
+        DwellMilliseconds: Date.now() - _pageStart,
+        EngagedMilliseconds: _activeMs,
+        ScrollPercent: Math.max(_maxScroll, getScrollPct())
+      });
     } else {
-      // Page became visible again
-      _activeStart = Date.now();
-      _exitFired = false; // allow new exit beacon on next hide
+      if (_activeStart === null) {
+        _activeStart = Date.now();
+      }
+      sendEvent({
+        EventType: 'page_visibility_return',
+        DwellMilliseconds: Date.now() - _pageStart,
+        EngagedMilliseconds: _activeMs
+      });
     }
   });
+  window.addEventListener('pagehide', fireExitSignals);
+  window.addEventListener('beforeunload', fireExitSignals);
 
   // ── Standard tracking ─────────────────────────────────────────────────────
 

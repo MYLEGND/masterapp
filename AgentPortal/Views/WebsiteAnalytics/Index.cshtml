@@ -377,6 +377,7 @@
         <div>
           <h5 class="modal-title mb-0">Behavior Intelligence</h5>
           <div class="fa-muted small" id="bhvr-range-label"></div>
+          <div class="fa-muted small">Methodology update: timing/exit metrics changed in April 2026; prior snapshots may not be directly comparable.</div>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
@@ -432,13 +433,13 @@
               </div>
               <div class="col">
                 <div class="kpi-card">
-                  <div class="fa-kpi-title">Quick Exit %</div>
+                  <div class="fa-kpi-title">Quick Exit % (Final Page)</div>
                   <div class="fa-kpi-value" id="bhvr-quick-exit">—</div>
                 </div>
               </div>
               <div class="col">
                 <div class="kpi-card">
-                  <div class="fa-kpi-title">Engaged Sessions</div>
+                  <div class="fa-kpi-title">Engaged Sessions (≥30s)</div>
                   <div class="fa-kpi-value" id="bhvr-engaged-rate">—</div>
                 </div>
               </div>
@@ -450,14 +451,15 @@
               <span id="bhvr-highlight-dwell"></span>
               <span id="bhvr-highlight-scroll"></span>
             </div>
+            <div class="fa-muted small mb-3" id="bhvr-time-sample-note">Timing metrics use `page_exit` timing samples and may differ from raw page view totals.</div>
 
             <div class="row g-3">
               <div class="col-lg-6">
                 <div class="bhvr-section-label">Short-Visit Problem Pages</div>
                 <div class="table-responsive">
                   <table class="table table-sm bhvr-table">
-                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
-                    <tbody id="bhvr-short-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -480,8 +482,8 @@
                 <div class="bhvr-section-label">Longest Avg Dwell</div>
                 <div class="table-responsive">
                   <table class="table table-sm bhvr-table">
-                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
-                    <tbody id="bhvr-long-avg-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-long-avg-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -489,8 +491,8 @@
                 <div class="bhvr-section-label">Short-Visit Problem Pages</div>
                 <div class="table-responsive">
                   <table class="table table-sm bhvr-table">
-                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
-                    <tbody id="bhvr-short-body-time"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body-time"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
                   </table>
                 </div>
               </div>
@@ -534,7 +536,7 @@
                 </div>
               </div>
               <div class="col-lg-4">
-                <div class="bhvr-section-label">Lead Form Pages</div>
+                <div class="bhvr-section-label">Lead Conversion Pages</div>
                 <div class="table-responsive">
                   <table class="table table-sm bhvr-table">
                     <thead><tr><th>Page</th><th class="text-end">Leads</th></tr></thead>

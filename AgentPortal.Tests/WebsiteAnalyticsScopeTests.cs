@@ -63,6 +63,9 @@ public class WebsiteAnalyticsScopeTests
 
         var controller = new WebsiteAnalyticsController(
             analytics.Object,
+            Mock.Of<IMetaAdsService>(),
+            Mock.Of<IMetaAdsOAuthService>(),
+            Mock.Of<IMetaAdsConnectionStore>(),
             tracking.Object,
             NullLogger<WebsiteAnalyticsController>.Instance,
             db,

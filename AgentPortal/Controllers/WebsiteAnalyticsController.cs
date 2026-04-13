@@ -936,7 +936,10 @@ namespace AgentPortal.Controllers;
         else
         {
             foreach (var row in abandonSummary)
-                Line($"- {Safe(row.QuoteType)} | abandons {row.Abandons} | abandon rate {row.AbandonRate:0.##}%");
+            {
+                var abandonRate = row.AbandonRate.HasValue ? $"{row.AbandonRate.Value:0.##}%" : "—";
+                Line($"- {Safe(row.QuoteType)} | abandons {row.Abandons} | abandon rate {abandonRate}");
+            }
         }
         Line("Top Abandoned Fields:");
         var topFields = (abandonment.TopAbandonedFields ?? new List<TopAbandonedFieldRow>()).Take(5).ToList();

@@ -15,6 +15,10 @@ namespace AgentPortal.Services.Analytics;
 public sealed class AnalyticsQueryService : IAnalyticsQueryService
 {
     private const int LowSampleThreshold = 20;
+    private const double PageDwellHardCapMs = 30 * 60 * 1000;       // 30 minutes
+    private const double SessionDurationHardCapMs = 2 * 60 * 60 * 1000; // 2 hours
+    private const double TrimFractionPerSide = 0.025;               // 2.5% each tail
+    private const int TrimMinimumSampleSize = 20;
     private readonly string? _envFilter; // normalized ("prod","dev") or null for legacy fallback
     private readonly bool _excludeLocalHosts;
     private static readonly HashSet<string> AllowedEnvironmentsFallback = new(StringComparer.OrdinalIgnoreCase)
@@ -28,7 +32,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public AnalyticsQueryService(MasterAppDbContext db, IConfiguration config, AgentPortal.Services.Tracking.AgentTrackingResolver resolver)
     {
         _db = db;
-        _envFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
+        var configuredFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
+        var runtimeEnvironment = NormalizeEnv(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"));
+        // In production, default to strict production filtering if no explicit filter is configured.
+        _envFilter = configuredFilter ?? (runtimeEnvironment == "prod" ? "prod" : null);
         _excludeLocalHosts = ParseBool(config["Analytics:ExcludeLocalHosts"] ?? config["Analytics__ExcludeLocalHosts"]);
         _resolver = resolver;
     }
@@ -651,24 +658,24 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         // page_exit events carry the real per-page dwell (elapsed ms at departure).
         // page_view.DwellMilliseconds is always 0 (captured at load time), so we use page_exit for all dwell metrics.
         var exitEvents = events.Where(e => e.EventType == "page_exit" && e.DwellMilliseconds.HasValue).ToList();
-        var dwells = exitEvents.Select(e => (double)e.DwellMilliseconds!.Value).ToList();
-        var avgTimeOnPage = dwells.Count > 0 ? dwells.Average() : 0;
-        var medianTimeOnPage = Median(dwells);
+        var dwellSamples = exitEvents.Select(e => (double)e.DwellMilliseconds!.Value).ToList();
+        var avgTimeOnPage = RobustAverage(dwellSamples, PageDwellHardCapMs);
+        var medianTimeOnPage = Median(CapValues(dwellSamples, PageDwellHardCapMs));
 
         // Session duration: elapsed time from first to last event in each session.
         // Using Max(EventUtc) - Min(EventUtc) is correct for multi-page sessions and works
         // immediately from page_view events — no dependency on page_exit being present.
         // Sum(DwellMilliseconds) was wrong: it summed per-page dwell across pages, which
         // double-counts time and returns 0 when page_exit has not been emitted yet.
-        var sessionDurations = events
+        var sessionDurationsRaw = events
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .Where(g => g.Count() > 1) // need at least 2 events for a meaningful duration
             .Select(g => (g.Max(x => x.EventUtc) - g.Min(x => x.EventUtc)).TotalMilliseconds)
             .Where(ms => ms > 0)
             .ToList();
-        var avgSessionDuration = sessionDurations.Count > 0 ? sessionDurations.Average() : 0;
-        var medianSessionDuration = Median(sessionDurations);
+        var avgSessionDuration = RobustAverage(sessionDurationsRaw, SessionDurationHardCapMs);
+        var medianSessionDuration = Median(CapValues(sessionDurationsRaw, SessionDurationHardCapMs));
 
         // Session map: distinct sessions and their max accumulated engaged ms.
         var sessionEngagedMap = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
@@ -676,8 +683,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToDictionary(g => g.Key, g => g.Max(x => x.EngagedMilliseconds ?? 0));
 
         // Quick exits: sessions whose final page_exit had dwell < 10 s or was a bounce candidate.
-        var lastExitPerSession = events
-            .Where(e => (e.EventType == "page_exit" || e.EventType == "session_end") && !string.IsNullOrWhiteSpace(e.SessionId))
+        // Use page_exit only so Summary and Exit Analysis tabs use the same quick-exit methodology.
+        var lastExitPerSession = exitEvents
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .Select(g => g.OrderByDescending(x => x.EventUtc).First())
             .ToList();
@@ -691,14 +699,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             ? Math.Round((decimal)quickExits / lastExitPerSession.Count * 100, 2)
             : (decimal?)null;
 
-        // Engaged sessions: session has any page_engaged_* event (10s, 30s, or 60s checkpoint),
+        // Engaged sessions: session has any page_engaged_30s/page_engaged_60s checkpoint,
         // OR EngagedMilliseconds >= 30 s as a fallback for sessions where the event fired but
         // the engagement-event record is absent (e.g. beacon loss on slow connections).
         // Threshold is 30s to match the EngagementSummaryDto documentation and the UI label.
         var sessionsWithEngagementEvent = new HashSet<string>(
             events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
-                               (e.EventType == "page_engaged_10s" ||
-                                e.EventType == "page_engaged_30s" ||
+                               (e.EventType == "page_engaged_30s" ||
                                 e.EventType == "page_engaged_60s"))
                   .Select(e => e.SessionId!));
         int engagedSessions = sessionEngagedMap.Count(kv =>
@@ -728,7 +735,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         // Top long-dwell page: from page_exit.DwellMilliseconds (real elapsed time per page).
         var topLongDwellPage = exitEvents
             .GroupBy(e => e.PageKey ?? "unknown")
-            .Select(g => new { Page = g.Key, Avg = g.Average(x => (double)x.DwellMilliseconds!.Value) })
+            .Select(g => new
+            {
+                Page = g.Key,
+                Avg = RobustAverage(g.Select(x => (double)x.DwellMilliseconds!.Value).ToList(), PageDwellHardCapMs)
+            })
             .OrderByDescending(x => x.Avg).Select(x => x.Page).FirstOrDefault();
 
         // Highest scroll completion: from page_exit.ScrollPercent (scroll at moment of exit).
@@ -791,8 +802,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return new PageEngagementRow
             {
                 PageKey = p, Views = views, UniqueVisitors = uv,
-                AvgTimeMs = Math.Round(dl.Count > 0 ? dl.Average() : 0, 0),
-                MedianTimeMs = Math.Round(Median(dl), 0),
+                AvgTimeMs = Math.Round(RobustAverage(dl, PageDwellHardCapMs), 0),
+                MedianTimeMs = Math.Round(Median(CapValues(dl, PageDwellHardCapMs)), 0),
                 Scroll50Rate = views > 0 ? Math.Round((decimal)(s50ByPage.TryGetValue(p, out var a) ? a : 0) / views * 100, 2) : 0,
                 Scroll90Rate = views > 0 ? Math.Round((decimal)(s90ByPage.TryGetValue(p, out var b) ? b : 0) / views * 100, 2) : 0,
                 ExitRate = views > 0 ? Math.Round((decimal)(exitByPage.TryGetValue(p, out var c) ? c : 0) / views * 100, 2) : 0,
@@ -818,17 +829,28 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(g => new { PageKey = g.Key, Count = g.Count() })
             .ToListAsync();
         var pvCountMap = pvCounts.ToDictionary(x => x.PageKey, x => x.Count);
+        var totalPageViews = pvCounts.Sum(x => x.Count);
+        var totalTimingSamples = events.Count;
         var byPage = events.GroupBy(e => e.PageKey ?? "unknown").Select(g =>
         {
             var d = g.Select(x => (double)x.DwellMilliseconds!.Value).ToList();
             var viewCount = pvCountMap.TryGetValue(g.Key, out var vc) ? vc : g.Count();
-            return new DwellPageRow { PageKey = g.Key, Views = viewCount, AvgDwellMs = Math.Round(d.Average(), 0), MedianDwellMs = Math.Round(Median(d), 0) };
+            return new DwellPageRow
+            {
+                PageKey = g.Key,
+                Views = viewCount,
+                TimingSamples = d.Count,
+                AvgDwellMs = Math.Round(RobustAverage(d, PageDwellHardCapMs), 0),
+                MedianDwellMs = Math.Round(Median(CapValues(d, PageDwellHardCapMs)), 0)
+            };
         }).ToList();
         return new TimeOnPageDto
         {
             LongestAvgDwell = byPage.OrderByDescending(p => p.AvgDwellMs).Take(10).ToList(),
             LongestMedianDwell = byPage.OrderByDescending(p => p.MedianDwellMs).Take(10).ToList(),
             ShortVisitProblemPages = byPage.Where(p => p.Views >= 5 && p.AvgDwellMs < 8_000).OrderBy(p => p.AvgDwellMs).Take(10).ToList(),
+            TotalPageViews = totalPageViews,
+            TotalTimingSamples = totalTimingSamples,
             RangeLabel = range.Label
         };
     }
@@ -842,13 +864,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var pageExitEvents = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_exit").ToListAsync();
         var viewsByPage = pageViewEvents.GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
-        // Use last page_exit per session as the exit signal — consistent across all pages.
-        // Previously mixed explicit-per-event and inferred-per-session on a per-page basis,
-        // making exit rates incomparable row-to-row. Now all rows use the same methodology.
-        var lastExitPerSessionByPage = pageExitEvents
+        var lastExitPerSession = pageExitEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .Select(g => g.OrderByDescending(x => x.EventUtc).First())
+            .ToList();
+        // Use last page_exit per session as the exit signal — consistent across all pages.
+        // Previously mixed explicit-per-event and inferred-per-session on a per-page basis,
+        // making exit rates incomparable row-to-row. Now all rows use the same methodology.
+        var lastExitPerSessionByPage = lastExitPerSession
             .GroupBy(e => e.PageKey ?? "unknown")
             .ToDictionary(g => g.Key, g => g.Count());
         var topExitRows = viewsByPage.Keys.Select(p =>
@@ -857,8 +881,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var v = viewsByPage[p];
             return new ExitPageRow { PageKey = p, Views = v, Exits = ex, ExitRate = v > 0 ? Math.Round((decimal)ex / v * 100, 2) : 0 };
         }).OrderByDescending(r => r.Exits).Take(15).ToList();
-        // Quick exits: page_exit events with real dwell < 10 s or bounce candidate flag.
-        var quickExits = pageExitEvents
+        // Quick exits use the same population as TopExitPages: final page_exit per session.
+        var quickExits = lastExitPerSession
             .Where(e => e.IsBounceCandidate == true || (e.DwellMilliseconds.HasValue && e.DwellMilliseconds.Value < 10_000))
             .GroupBy(e => e.PageKey ?? "unknown").Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
             .OrderByDescending(k => k.Count).Take(10).ToList();
@@ -901,7 +925,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .GroupBy(e => e.PageKey ?? "unknown").OrderByDescending(g => g.Count()).Take(10)
             .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() }).ToList();
         // SourcePageKey = page where the lead form was submitted (the conversion page).
-        // This is shown in the UI as "Lead Form Pages" — the page the visitor was on when they converted.
+        // This is shown in the UI as "Lead Conversion Pages" — the page the visitor was on when they converted.
         var pagesBeforeLead = leads.Where(l => !string.IsNullOrWhiteSpace(l.SourcePageKey))
             .GroupBy(l => l.SourcePageKey!).OrderByDescending(g => g.Count()).Take(10)
             .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() }).ToList();
@@ -916,21 +940,32 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
+        var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
+        var engagementSignals = await BaseEvents(range, scope, scopedAgentIds)
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
+                        (e.EventType == "page_engaged_30s" ||
+                         e.EventType == "page_engaged_60s" ||
+                         e.EngagedMilliseconds.HasValue))
+            .Select(e => new { e.SessionId, e.EventType, e.EngagedMilliseconds })
+            .ToListAsync();
         // page_exit carries real elapsed dwell per page; page_view.DwellMilliseconds is always 0 at load time.
         var exitDwellEvents = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
             .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
-        var engagedBySid = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId) && e.EngagedMilliseconds.HasValue)
-            .GroupBy(e => e.SessionId!).ToDictionary(g => g.Key, g => g.Max(x => x.EngagedMilliseconds!.Value) >= 30_000);
+        var engagedBySid = engagementSignals
+            .GroupBy(e => e.SessionId!)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Any(x => x.EventType == "page_engaged_30s" || x.EventType == "page_engaged_60s") ||
+                     g.Max(x => x.EngagedMilliseconds ?? 0) >= 30_000);
         // Sum page_exit dwell times per session = total time on site for that session.
         var totalDwellBySid = exitDwellEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
-        var sessionFirst = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+        var sessionFirst = pageViewEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First()).ToList();
         var rows = sessionFirst
             .GroupBy(e => new
@@ -946,9 +981,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var sessions = sids.Count;
                 var engaged = sids.Count(sid => engagedBySid.TryGetValue(sid, out var v) && v);
                 var lCount = sids.Sum(sid => leadsBySid.TryGetValue(sid, out var c) ? c : 0);
-                var avgDwell = sids
+                var dwellSamples = sids
                     .Select(sid => totalDwellBySid.TryGetValue(sid, out var d) ? d : 0)
-                    .DefaultIfEmpty(0).Average();
+                    .ToList();
+                var avgDwell = RobustAverage(dwellSamples, SessionDurationHardCapMs);
                 var lpLeads = leads.Count(l => l.SourcePageKey == g.Key.LandingPage && !string.IsNullOrWhiteSpace(l.SessionId) && sids.Contains(l.SessionId!));
                 return new SourcePerformanceRow
                 {
@@ -965,21 +1001,32 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
+        var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
+        var engagementSignals = await BaseEvents(range, scope, scopedAgentIds)
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
+                        (e.EventType == "page_engaged_30s" ||
+                         e.EventType == "page_engaged_60s" ||
+                         e.EngagedMilliseconds.HasValue))
+            .Select(e => new { e.SessionId, e.EventType, e.EngagedMilliseconds })
+            .ToListAsync();
         // page_exit carries real elapsed dwell; page_view.DwellMilliseconds is always 0 at load time.
         var exitDwellEvents = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
             .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
-        var engagedBySid = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId) && e.EngagedMilliseconds.HasValue)
-            .GroupBy(e => e.SessionId!).ToDictionary(g => g.Key, g => g.Max(x => x.EngagedMilliseconds!.Value) >= 30_000);
+        var engagedBySid = engagementSignals
+            .GroupBy(e => e.SessionId!)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Any(x => x.EventType == "page_engaged_30s" || x.EventType == "page_engaged_60s") ||
+                     g.Max(x => x.EngagedMilliseconds ?? 0) >= 30_000);
         // Sum page_exit dwell times per session = total time on site for that session.
         var totalDwellBySid = exitDwellEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
-        var rows = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+        var rows = pageViewEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First())
             .GroupBy(e => e.PageKey ?? "unknown")
             .Select(g =>
@@ -988,9 +1035,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var sessions = sids.Count;
                 var engaged = sids.Count(sid => engagedBySid.TryGetValue(sid, out var v) && v);
                 var lCount = sids.Sum(sid => leadsBySid.TryGetValue(sid, out var c) ? c : 0);
-                var avgDwell = sids
+                var dwellSamples = sids
                     .Select(sid => totalDwellBySid.TryGetValue(sid, out var d) ? d : 0)
-                    .DefaultIfEmpty(0).Average();
+                    .ToList();
+                var avgDwell = RobustAverage(dwellSamples, SessionDurationHardCapMs);
                 return new LandingPagePerformanceRow
                 {
                     PageKey = g.Key, Sessions = sessions, EngagedSessions = engaged, AvgDwellMs = Math.Round(avgDwell, 0),
@@ -1043,12 +1091,43 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
 
-        // Fetch form_abandon and form_start for denominator, plus form_field_error for validation friction
+        // Fetch form_abandon and form_start for denominator, plus form_field_error for validation friction.
+        // Include submit-success events so true submitters are never counted as abandons.
         var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "form_abandon" || e.EventType == "form_start" || e.EventType == "form_field_error")
+            .Where(e => e.EventType == "form_abandon" ||
+                        e.EventType == "form_start" ||
+                        e.EventType == "form_field_error" ||
+                        e.EventType == "lead_form_submit_success" ||
+                        e.EventType == "form_submit")
             .ToListAsync();
 
-        var abandonEvents = events.Where(e => e.EventType == "form_abandon").ToList();
+        var submitSuccessEvents = events
+            .Where(e => e.EventType == "lead_form_submit_success" ||
+                        (e.EventType == "form_submit" &&
+                         string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        static string? BuildSessionFormKey(string? sessionId, string? formKey, string? quoteType)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) return null;
+            if (!string.IsNullOrWhiteSpace(formKey)) return $"{sessionId}::{formKey}";
+            if (!string.IsNullOrWhiteSpace(quoteType)) return $"{sessionId}::qt:{quoteType}";
+            return null;
+        }
+
+        var successfulSubmitKeys = submitSuccessEvents
+            .Select(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType))
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var abandonEvents = events
+            .Where(e => e.EventType == "form_abandon")
+            .Where(e =>
+            {
+                var key = BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType);
+                return key == null || !successfulSubmitKeys.Contains(key);
+            })
+            .ToList();
         var startEvents = events.Where(e => e.EventType == "form_start").ToList();
         var errorEvents = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName)).ToList();
 
@@ -1112,20 +1191,25 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(g =>
             {
                 var abandons = g.Count();
-                var starts = startsByType.TryGetValue(g.Key, out var s) ? s : abandons;
-                var total = Math.Max(starts, abandons);
+                var starts = startsByType.TryGetValue(g.Key, out var s) ? s : 0;
+                var startSignalMissing = starts == 0 && abandons > 0;
                 return new FormAbandonSummaryRow
                 {
                     QuoteType = g.Key,
                     Abandons = abandons,
-                    Starts = total,
-                    AbandonRate = total > 0 ? Math.Round((decimal)abandons / total * 100, 2) : 0,
+                    Starts = starts,
+                    AbandonRate = starts > 0 ? Math.Round((decimal)abandons / starts * 100, 2) : null,
+                    StartSignalMissing = startSignalMissing,
                     AvgCompletedFields = abandons > 0 ? Math.Round(g.Average(p => (double)p.CompletedCount), 1) : 0,
                     SubmitAttemptedAbandonCount = g.Count(p => p.SubmitAttempted)
                 };
             })
             .OrderByDescending(r => r.Abandons)
             .ToList();
+        var startSignalGapQuoteTypeCount = summary.Count(r => r.StartSignalMissing);
+        var dataQualityNote = startSignalGapQuoteTypeCount > 0
+            ? "Some quote types have form_abandon events but no form_start denominator in-range; abandon rate is shown as — for those rows."
+            : null;
 
         // Top last-focused fields (where drop-off happens)
         var topAbandoned = parsed
@@ -1163,8 +1247,35 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TopLastCompletedFields = topLastCompleted,
             ValidationFriction = validationFriction,
             ConsentFrictionCount = consentFriction,
+            StartSignalGapQuoteTypeCount = startSignalGapQuoteTypeCount,
+            DataQualityNote = dataQualityNote,
             RangeLabel = range.Label
         };
+    }
+
+    private static List<double> CapValues(IEnumerable<double> values, double hardCapMs)
+    {
+        return values
+            .Where(v => !double.IsNaN(v) && !double.IsInfinity(v) && v >= 0)
+            .Select(v => Math.Min(v, hardCapMs))
+            .ToList();
+    }
+
+    private static List<double> TrimValues(List<double> values, double fractionPerSide, int minSampleSize)
+    {
+        if (values.Count < minSampleSize) return values;
+        var sorted = values.OrderBy(v => v).ToList();
+        var trimCount = (int)Math.Floor(sorted.Count * fractionPerSide);
+        if (trimCount <= 0 || (trimCount * 2) >= sorted.Count) return sorted;
+        return sorted.Skip(trimCount).Take(sorted.Count - (trimCount * 2)).ToList();
+    }
+
+    private static double RobustAverage(IEnumerable<double> values, double hardCapMs)
+    {
+        var capped = CapValues(values, hardCapMs);
+        if (capped.Count == 0) return 0;
+        var trimmed = TrimValues(capped, TrimFractionPerSide, TrimMinimumSampleSize);
+        return trimmed.Count == 0 ? 0 : trimmed.Average();
     }
 
     /// <summary>Computes the median of a list of doubles. Returns 0 for empty list.</summary>

@@ -1526,6 +1526,7 @@ body.life-landing header .navbar .nav-link:focus {
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
+      form._trackSubmitSuccess?.();
       trackEvent('life_step2_submit_success');
       trackEvent(submitEvent, { submitOutcome: 'success' });
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,

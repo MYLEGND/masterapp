@@ -54,16 +54,14 @@ public sealed class TrackingProxyController : ControllerBase
         var response = await ForwardAsync("/api/analytics/ingest", req, ct);
         if (response == null)
         {
-            _logger.LogWarning("Analytics forward unavailable. Returning accepted/noop to avoid client-side tracking errors.");
-            return Accepted(new { status = "skipped_tracking_forward_unavailable" });
+            _logger.LogError("Analytics forward unavailable. Returning 503 so upstream ingest failures are visible.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new { error = "tracking_forward_unavailable" });
         }
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning(
-                "Analytics forward returned non-success status {StatusCode}. Returning accepted/noop to avoid client-side tracking errors.",
-                (int)response.StatusCode);
-            return Accepted(new { status = "skipped_tracking_forward_non_success", upstreamStatus = (int)response.StatusCode });
+            _logger.LogWarning("Analytics forward returned non-success status {StatusCode}. Passing through upstream status/body.", (int)response.StatusCode);
+            return await BuildPassThroughResultAsync(response, ct);
         }
 
         return await BuildPassThroughResultAsync(response, ct);

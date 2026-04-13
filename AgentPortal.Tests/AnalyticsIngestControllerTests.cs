@@ -2,12 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AgentPortal.Controllers.Api;
+using AgentPortal.Models;
+using AgentPortal.Security;
 using AgentPortal.Services.Tracking;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -24,7 +28,16 @@ public class AnalyticsIngestControllerTests
             .Build();
 
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
-        var controller = new AnalyticsIngestController(db, config, resolver, NullLogger<AnalyticsIngestController>.Instance);
+        var flags = Options.Create(new AppFeatureFlags { IngestHmacEnabled = false });
+        var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var signatureValidator = new IngestSignatureValidator(memoryCache, config, NullLogger<IngestSignatureValidator>.Instance);
+        var controller = new AnalyticsIngestController(
+            db,
+            config,
+            resolver,
+            NullLogger<AnalyticsIngestController>.Instance,
+            flags,
+            signatureValidator);
 
         var http = new DefaultHttpContext();
         http.Request.Headers["X-Shared-Secret"] = secret;

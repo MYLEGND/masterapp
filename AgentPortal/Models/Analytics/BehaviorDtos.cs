@@ -11,8 +11,8 @@ public sealed class EngagementSummaryDto
     public double MedianSessionDurationMs { get; set; }
     public double AvgTimeOnPageMs { get; set; }
     public double MedianTimeOnPageMs { get; set; }
-    /// <summary>% of page views that appear to be quick exits (dwell &lt; 10 s).
-    /// Null when no page_exit data exists yet (instrumentation not yet producing data).</summary>
+    /// <summary>% of sessions whose final page_exit appears to be a quick exit (dwell &lt; 10 s).
+    /// Null when no final page_exit data exists yet (instrumentation not yet producing data).</summary>
     public decimal? QuickExitRate { get; set; }
     /// <summary>% of sessions with ≥30 s of accumulated engaged time.
     /// Null when no engagement event or EngagedMilliseconds data exists yet.</summary>
@@ -57,6 +57,8 @@ public sealed class DwellPageRow
 {
     public string PageKey { get; set; } = "";
     public int Views { get; set; }
+    /// <summary>Number of page_exit rows with valid dwell timing used in avg/median calculations.</summary>
+    public int TimingSamples { get; set; }
     public double AvgDwellMs { get; set; }
     public double MedianDwellMs { get; set; }
 }
@@ -66,6 +68,8 @@ public sealed class TimeOnPageDto
     public List<DwellPageRow> LongestAvgDwell { get; set; } = new();
     public List<DwellPageRow> LongestMedianDwell { get; set; } = new();
     public List<DwellPageRow> ShortVisitProblemPages { get; set; } = new();
+    public int TotalPageViews { get; set; }
+    public int TotalTimingSamples { get; set; }
     public string RangeLabel { get; set; } = "";
 }
 

@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace AgentPortal.Tests;
@@ -60,7 +61,9 @@ internal static class ControllerTestHelpers
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var db = BuildDb();
-        var controller = new DashboardController(execution, blockers, db, effCtx)
+        var derivedAnalytics = new AgentPortal.Services.Analytics.DerivedAnalyticsService(db);
+        var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
+        var controller = new DashboardController(execution, blockers, db, effCtx, derivedAnalytics, featureFlags)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };
