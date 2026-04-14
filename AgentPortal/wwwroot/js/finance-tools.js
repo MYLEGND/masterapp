@@ -5649,7 +5649,6 @@ if (t.id === "ExpenseLens") {
             nameInput.style.color = "#a68023";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
-            dueInput.value = preDue;
             nameInput.addEventListener("input", saveExpenseLensState);
 
             // Premium blue due date field
