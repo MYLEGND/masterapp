@@ -1494,19 +1494,19 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 actualSavingsOut.textContent = `$${Math.round(avgAnnualSavings).toLocaleString()}`;
 
 // Inputs: income = green, % drains = red, years/return/inflation neutral
-markIncome(incomeEl);
-markNeutral(startingBalEl);
-markExpense(taxEl);
-markExpense(liabEl);
-markExpense(lifeEl);
+markWithSuffix(markIncome,  incomeEl);
+markWithSuffix(markNeutral, startingBalEl);
+markWithSuffix(markExpense, taxEl);
+markWithSuffix(markExpense, liabEl);
+markWithSuffix(markExpense, lifeEl);
 
 markNeutral(yearsEl);
-markNeutral(inflEl);
-markNeutral(retEl);
+markWithSuffix(markNeutral, inflEl);
+markWithSuffix(markNeutral, retEl);
 markNeutral(disruptStartEl);
 markNeutral(disruptYearsEl);
 markNeutral(disruptMonthsEl);
-markNeutral(disabilityPctEl);
+markWithSuffix(markNeutral, disabilityPctEl);
 
 // Outputs
 markIncome(earningsOut);
@@ -5052,10 +5052,10 @@ if (t.id === "SavingsAccelerator") {
 
         <!-- New totals row: Remaining Surplus left on the left, Total Allocated on the right -->
         <div class="d-flex align-items-center mb-3" style="gap:8px;">
-            <div style="flex:2; font-weight:700; color:#222; text-align:left;">
+            <div style="flex:2; font-weight:700; color:#fff; text-align:left;">
                 Remaining Surplus: <span id="saRemaining" style="color:#a68023; font-weight:900;">$0</span>
             </div>
-            <div style="flex:1; text-align:right; font-weight:700; color:#222;">
+            <div style="flex:1; text-align:right; font-weight:700; color:#fff;">
                 Total Allocated: <span id="saPctTotal" style="color:#a68023; font-weight:900;">0%</span>
             </div>
         </div>
@@ -6586,8 +6586,8 @@ if (t.id === "CashFlow") {
     // ✅ Color engine (paint-safe, no refresh required)
     const applyCashFlowColors = (income, bills, net, savingsPotential, investPct) => {
         // Inputs
-        markIncome(cfIncome);
-        markExpense(cfBills);
+        markWithSuffix(markIncome,  cfIncome);
+        markWithSuffix(markExpense, cfBills);
 
         // Net cash flow
         if (net > 0) markIncome(cfResult);
