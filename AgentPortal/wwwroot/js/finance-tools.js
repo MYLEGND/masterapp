@@ -5911,9 +5911,17 @@ if (t.id === "ExpenseLens") {
                 const idx = row.id.replace('elCatRow', '');
                 const dueEl = document.getElementById(`elCatDue${idx}`);
                 const day = elGetDay(dueEl?.value);
-                row.style.display = (!week || (day !== null && day >= week.start && day <= week.end)) ? '' : 'none';
+                const show = !week || (day !== null && day >= week.start && day <= week.end);
+                // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
+                if (show) {
+                    row.style.removeProperty('display');
+                } else {
+                    row.style.setProperty('display', 'none', 'important');
+                }
             });
             weeklyBtn.textContent = week ? `${week.label} ▾` : 'Weekly ▾';
+            const _topBtn = document.getElementById('elWeeklyBtnTop');
+            if (_topBtn) _topBtn.textContent = week ? `${week.label} ▾` : 'Weekly ▾';
             refreshExpenseLens();
             renderWeekPanel();
         };
@@ -5943,10 +5951,30 @@ if (t.id === "ExpenseLens") {
             header.appendChild(closeX);
             weekPanel.appendChild(header);
 
+            // Pre-compute grand total for "Show All" row — reads live DOM so it always reflects current bills
+            let grandTotal = 0;
+            let grandCount = 0;
+            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
+                const idx = row.id.replace('elCatRow', '');
+                const amtEl = document.getElementById(`elCatAmount${idx}`);
+                const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
+                if (amt > 0) { grandTotal += amt; grandCount++; }
+            });
+
             // Show All row
             const allRow = document.createElement('div');
-            allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
-            allRow.innerHTML = '<span>Show All Bills</span><span>↺</span>';
+            allRow.style.cssText = `cursor:pointer;padding:9px 12px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
+
+            const allRowLeft = document.createElement('span');
+            allRowLeft.style.cssText = 'font-weight:700;font-size:0.82rem;';
+            allRowLeft.textContent = 'Show All Bills';
+
+            const allRowRight = document.createElement('span');
+            allRowRight.style.cssText = `font-weight:800;font-size:0.85rem;color:${!elActiveWeek ? '#0b1529' : (grandCount > 0 ? '#38BDF8' : '#64748B')};`;
+            allRowRight.textContent = grandCount > 0 ? `$${grandTotal.toLocaleString()}  (${grandCount} bill${grandCount !== 1 ? 's' : ''})` : '—';
+
+            allRow.appendChild(allRowLeft);
+            allRow.appendChild(allRowRight);
             allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
