@@ -5922,44 +5922,136 @@ if (t.id === "ExpenseLens") {
 
         const renderWeekPanel = () => {
             const days = elDaysInMonth();
+            const now = new Date();
+            const monthLabel = now.toLocaleString('default', { month: 'short' });
             const weeks = EL_WEEK_RANGES.filter(w => w.start <= days);
             weekPanel.innerHTML = '';
 
+            // Header with close button
+            const header = document.createElement('div');
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(56,189,248,0.25);';
+            const title = document.createElement('span');
+            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.95rem;letter-spacing:0.05em;';
+            title.textContent = 'WEEKLY BILL TRACKER';
+            const closeX = document.createElement('span');
+            closeX.textContent = '✕';
+            closeX.style.cssText = 'cursor:pointer;color:#64748B;font-size:1rem;font-weight:700;line-height:1;padding:2px 4px;';
+            closeX.addEventListener('click', (e) => { e.stopPropagation(); weekPanel.style.display = 'none'; });
+            header.appendChild(title);
+            header.appendChild(closeX);
+            weekPanel.appendChild(header);
+
+            // Show All row
             const allRow = document.createElement('div');
-            allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:5px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
+            allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
             allRow.innerHTML = '<span>Show All Bills</span><span>↺</span>';
             allRow.addEventListener('click', () => { elApplyWeekFilter(null); weekPanel.style.display = 'none'; });
             weekPanel.appendChild(allRow);
 
             weeks.forEach(week => {
-                let weekTotal = 0, billCount = 0;
+                let weekTotal = 0;
+                const bills = [];
                 document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                     const idx = row.id.replace('elCatRow', '');
-                    const dueEl = document.getElementById(`elCatDue${idx}`);
-                    const amtEl = document.getElementById(`elCatAmount${idx}`);
+                    const dueEl  = document.getElementById(`elCatDue${idx}`);
+                    const amtEl  = document.getElementById(`elCatAmount${idx}`);
+                    const nameEl = document.getElementById(`elCatName${idx}`);
                     const day = elGetDay(dueEl?.value);
                     if (day !== null && day >= week.start && day <= week.end) {
-                        weekTotal += +(amtEl?.value || '').replace(/,/g, '') || 0;
-                        billCount++;
+                        const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
+                        weekTotal += amt;
+                        bills.push({ name: nameEl?.value?.trim() || '(Unnamed)', amount: amt, day });
                     }
                 });
-
+                bills.sort((a, b) => a.day - b.day);
+                const billCount = bills.length;
                 const isActive = elActiveWeek?.label === week.label;
-                const row = document.createElement('div');
-                row.style.cssText = `cursor:pointer;padding:8px 10px;border-radius:8px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;${isActive ? 'background:#1E3A8A;color:#fff;' : 'color:#E0F2FE;'}`;
 
-                const left = document.createElement('span');
-                left.style.cssText = 'font-weight:700;font-size:0.82rem;';
-                left.textContent = `${week.label}  (Days ${week.start}–${Math.min(week.end, days)})`;
+                const weekBlock = document.createElement('div');
+                weekBlock.style.cssText = 'border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid rgba(56,189,248,0.1);';
 
-                const right = document.createElement('span');
-                right.style.cssText = `font-weight:800;font-size:0.85rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};`;
-                right.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
+                // Summary row
+                const summaryRow = document.createElement('div');
+                summaryRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;${isActive ? 'background:#1E3A8A;' : 'background:rgba(255,255,255,0.04);'}`;
 
-                row.appendChild(left);
-                row.appendChild(right);
-                row.addEventListener('click', () => { elApplyWeekFilter(week); weekPanel.style.display = 'none'; });
-                weekPanel.appendChild(row);
+                const wLabel = document.createElement('span');
+                wLabel.style.cssText = `font-weight:700;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
+                wLabel.textContent = `${week.label}  (Days ${week.start}–${Math.min(week.end, days)})`;
+
+                const rightGroup = document.createElement('div');
+                rightGroup.style.cssText = 'display:flex;align-items:center;gap:10px;';
+
+                const amtSpan = document.createElement('span');
+                amtSpan.style.cssText = `font-weight:800;font-size:0.85rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};`;
+                amtSpan.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
+
+                rightGroup.appendChild(amtSpan);
+
+                let chevron = null;
+                if (billCount > 0) {
+                    chevron = document.createElement('span');
+                    chevron.textContent = '▾';
+                    chevron.style.cssText = 'color:#38BDF8;font-size:0.75rem;user-select:none;transition:transform 0.15s;';
+                    rightGroup.appendChild(chevron);
+                }
+
+                summaryRow.appendChild(wLabel);
+                summaryRow.appendChild(rightGroup);
+
+                // Detail container
+                const detailWrap = document.createElement('div');
+                detailWrap.style.cssText = 'display:none;';
+
+                // Column header
+                const colHeader = document.createElement('div');
+                colHeader.style.cssText = 'display:flex;padding:5px 12px 4px 20px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:60px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:80px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                detailWrap.appendChild(colHeader);
+
+                bills.forEach((bill, i) => {
+                    const billRow = document.createElement('div');
+                    billRow.style.cssText = `display:flex;align-items:center;padding:7px 12px 7px 20px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+
+                    const bName = document.createElement('span');
+                    bName.style.cssText = 'flex:1;font-size:0.8rem;color:#CBD5E1;font-weight:600;';
+                    bName.textContent = bill.name;
+
+                    const bDue = document.createElement('span');
+                    bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
+                    bDue.textContent = `${monthLabel} ${bill.day}`;
+
+                    const bAmt = document.createElement('span');
+                    bAmt.style.cssText = 'min-width:80px;text-align:right;font-size:0.8rem;color:#38BDF8;font-weight:700;';
+                    bAmt.textContent = `$${bill.amount.toLocaleString()}`;
+
+                    billRow.appendChild(bName);
+                    billRow.appendChild(bDue);
+                    billRow.appendChild(bAmt);
+                    detailWrap.appendChild(billRow);
+                });
+
+                // Toggle expand on chevron / summary click
+                let expanded = false;
+                if (billCount > 0) {
+                    const toggleExpand = (e) => {
+                        e.stopPropagation();
+                        expanded = !expanded;
+                        detailWrap.style.display = expanded ? 'block' : 'none';
+                        chevron.textContent = expanded ? '▴' : '▾';
+                    };
+                    chevron.addEventListener('click', toggleExpand);
+                }
+
+                // Filter on label click (not chevron)
+                summaryRow.addEventListener('click', (e) => {
+                    if (e.target === chevron) return;
+                    elApplyWeekFilter(week);
+                    weekPanel.style.display = 'none';
+                });
+
+                weekBlock.appendChild(summaryRow);
+                if (billCount > 0) weekBlock.appendChild(detailWrap);
+                weekPanel.appendChild(weekBlock);
             });
         };
 
