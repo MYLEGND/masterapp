@@ -1551,6 +1551,9 @@ if (t.id === "ExpenseLens") {
 
         const clearExpenseLensState = () => clearPersistedState('ExpenseLens');
 
+        // Active week filter (null = show all)
+        let elActiveWeek = null;
+
         // -----------------------------
         // Due Date Helper — always current month, user picks the day
         // -----------------------------
@@ -1681,6 +1684,8 @@ if (t.id === "ExpenseLens") {
             const categoriesData = [];
 
             document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
+                const row = document.getElementById(`elCatRow${input.id.replace('elCatAmount','')}`);
+                if (row && row.style.display === 'none') return;
                 const val = +input.value.replace(/,/g,'') || 0;
                 totalSpent += val;
                 const index = input.id.replace('elCatAmount','');
@@ -1697,9 +1702,14 @@ if (t.id === "ExpenseLens") {
             const remaining = income - totalSpent;
             const pct = income > 0 ? (totalSpent / income * 100) : 0;
 
-            elMargin.textContent = `Remaining Balance: $${remaining.toLocaleString()}`;
-            if (remaining >= 0) markIncome(elMargin);
-            else markExpense(elMargin);
+            if (elActiveWeek) {
+                elMargin.textContent = `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
+                markExpense(elMargin);
+            } else {
+                elMargin.textContent = `Remaining Balance: $${remaining.toLocaleString()}`;
+                if (remaining >= 0) markIncome(elMargin);
+                else markExpense(elMargin);
+            }
 
             if(pct > 1) {
                 if(pct > 1 && pct <= 80) elTips.textContent = `✅ You are spending ${pct.toFixed(1)}% of your income. Good balance!`;
