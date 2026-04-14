@@ -5647,6 +5647,8 @@ if (t.id === "ExpenseLens") {
 
         // Active week filter (null = show all)
         let elActiveWeek = null;
+        // Which week's detail is expanded in the panel (independent of filter)
+        let elExpandedWeek = null;
         // Drag-and-drop state
         let elDragSrc = null;
 
@@ -5945,7 +5947,7 @@ if (t.id === "ExpenseLens") {
             const allRow = document.createElement('div');
             allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
             allRow.innerHTML = '<span>Show All Bills</span><span>↺</span>';
-            allRow.addEventListener('click', (e) => { e.stopPropagation(); elApplyWeekFilter(null); renderWeekPanel(); });
+            allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
             weeks.forEach(week => {
@@ -5965,7 +5967,8 @@ if (t.id === "ExpenseLens") {
                 });
                 bills.sort((a, b) => a.day - b.day);
                 const billCount = bills.length;
-                const isActive = elActiveWeek?.label === week.label;
+                const isActive   = elActiveWeek?.label   === week.label;
+                const isExpanded = elExpandedWeek?.label === week.label;
 
                 const weekBlock = document.createElement('div');
                 weekBlock.style.cssText = 'border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid rgba(56,189,248,0.1);';
@@ -5984,69 +5987,68 @@ if (t.id === "ExpenseLens") {
                 const amtSpan = document.createElement('span');
                 amtSpan.style.cssText = `font-weight:800;font-size:0.85rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};`;
                 amtSpan.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
-
                 rightGroup.appendChild(amtSpan);
 
-                let chevron = null;
-                if (billCount > 0) {
-                    chevron = document.createElement('span');
-                    chevron.textContent = '▾';
-                    chevron.style.cssText = 'color:#38BDF8;font-size:0.75rem;user-select:none;transition:transform 0.15s;';
-                    rightGroup.appendChild(chevron);
-                }
+                // Chevron always shown so every row is clearly clickable
+                const chevron = document.createElement('span');
+                chevron.textContent = isExpanded ? '▴' : '▾';
+                chevron.style.cssText = 'color:#38BDF8;font-size:0.75rem;user-select:none;';
+                rightGroup.appendChild(chevron);
 
                 summaryRow.appendChild(wLabel);
                 summaryRow.appendChild(rightGroup);
 
-                // Detail container
+                // Detail container — always built and appended
                 const detailWrap = document.createElement('div');
-                detailWrap.style.cssText = 'display:none;';
+                detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};`;
 
-                // Column header
-                const colHeader = document.createElement('div');
-                colHeader.style.cssText = 'display:flex;padding:5px 12px 4px 20px;border-bottom:1px solid rgba(56,189,248,0.12);';
-                colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:60px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:80px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
-                detailWrap.appendChild(colHeader);
+                if (billCount > 0) {
+                    // Column header
+                    const colHeader = document.createElement('div');
+                    colHeader.style.cssText = 'display:flex;padding:5px 12px 4px 20px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:60px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:80px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                    detailWrap.appendChild(colHeader);
 
-                bills.forEach((bill, i) => {
-                    const billRow = document.createElement('div');
-                    billRow.style.cssText = `display:flex;align-items:center;padding:7px 12px 7px 20px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                    bills.forEach((bill, i) => {
+                        const billRow = document.createElement('div');
+                        billRow.style.cssText = `display:flex;align-items:center;padding:7px 12px 7px 20px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
 
-                    const bName = document.createElement('span');
-                    bName.style.cssText = 'flex:1;font-size:0.8rem;color:#CBD5E1;font-weight:600;';
-                    bName.textContent = bill.name;
+                        const bName = document.createElement('span');
+                        bName.style.cssText = 'flex:1;font-size:0.8rem;color:#CBD5E1;font-weight:600;';
+                        bName.textContent = bill.name;
 
-                    const bDue = document.createElement('span');
-                    bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
-                    bDue.textContent = `${monthLabel} ${bill.day}`;
+                        const bDue = document.createElement('span');
+                        bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
+                        bDue.textContent = `${monthLabel} ${bill.day}`;
 
-                    const bAmt = document.createElement('span');
-                    bAmt.style.cssText = 'min-width:80px;text-align:right;font-size:0.8rem;color:#38BDF8;font-weight:700;';
-                    bAmt.textContent = `$${bill.amount.toLocaleString()}`;
+                        const bAmt = document.createElement('span');
+                        bAmt.style.cssText = 'min-width:80px;text-align:right;font-size:0.8rem;color:#38BDF8;font-weight:700;';
+                        bAmt.textContent = `$${bill.amount.toLocaleString()}`;
 
-                    billRow.appendChild(bName);
-                    billRow.appendChild(bDue);
-                    billRow.appendChild(bAmt);
-                    detailWrap.appendChild(billRow);
-                });
-
-                // Auto-expand the active week's detail at render time.
-                // elApplyWeekFilter calls renderWeekPanel, which recreates the DOM — so expansion
-                // must happen here during render, not in the click handler on a now-detached element.
-                if (isActive && billCount > 0) {
-                    detailWrap.style.display = 'block';
-                    if (chevron) chevron.textContent = '▴';
+                        billRow.appendChild(bName);
+                        billRow.appendChild(bDue);
+                        billRow.appendChild(bAmt);
+                        detailWrap.appendChild(billRow);
+                    });
+                } else {
+                    // Empty state — shown when no bills have a due date in this range
+                    const empty = document.createElement('div');
+                    empty.style.cssText = 'padding:10px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
+                    empty.textContent = 'No bills with due dates set for this week.';
+                    detailWrap.appendChild(empty);
                 }
 
-                // Click applies the filter. renderWeekPanel (called inside elApplyWeekFilter)
-                // re-renders and auto-expands the newly active week. Panel stays open.
+                // Click: toggle this week's detail + apply as the active week filter.
+                // elApplyWeekFilter re-renders the panel; elExpandedWeek set here is
+                // read at render time to decide which detail block is expanded.
                 summaryRow.addEventListener('click', (e) => {
                     e.stopPropagation();
+                    elExpandedWeek = (elExpandedWeek?.label === week.label) ? null : week;
                     elApplyWeekFilter(week);
                 });
 
                 weekBlock.appendChild(summaryRow);
-                if (billCount > 0) weekBlock.appendChild(detailWrap);
+                weekBlock.appendChild(detailWrap);
                 weekPanel.appendChild(weekBlock);
             });
         };
@@ -6067,6 +6069,30 @@ if (t.id === "ExpenseLens") {
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
         addBtn.parentElement.appendChild(weeklyBtn);
+
+        // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
+        const weeklyBtnTop = document.createElement('button');
+        weeklyBtnTop.id = 'elWeeklyBtnTop';
+        weeklyBtnTop.type = 'button';
+        weeklyBtnTop.textContent = 'Weekly ▾';
+        weeklyBtnTop.className = 'btn btn-sm';
+        weeklyBtnTop.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;align-self:center;';
+        weeklyBtnTop.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = weekPanel.style.display !== 'none';
+            if (isOpen) { weekPanel.style.display = 'none'; return; }
+            renderWeekPanel();
+            weekPanel.style.display = 'block';
+        });
+        // Wrap the income input row in a flex container so the button sits cleanly to the right
+        const incomeInputRow = elIncome.parentElement;
+        const incomeFlexWrap = document.createElement('div');
+        incomeFlexWrap.style.cssText = 'display:flex;align-items:stretch;gap:10px;margin-bottom:15px;';
+        incomeInputRow.style.marginBottom = '0';
+        incomeInputRow.style.flex = '1';
+        incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
+        incomeFlexWrap.appendChild(incomeInputRow);
+        incomeFlexWrap.appendChild(weeklyBtnTop);
 
         addClearButton(container, () => {
             elIncome.value = '';
