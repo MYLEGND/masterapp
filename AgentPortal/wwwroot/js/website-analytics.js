@@ -32,7 +32,8 @@
       ctaPerfModal: 'all',
       quoteModal: 'all',
       convModal: 'all',
-      leadsModal: 'all'
+      leadsModal: 'all',
+      aiReviewSnapshotModal: 'all'
     }
   };
   const agentOptions = window.AGENT_OPTIONS || [];
@@ -784,7 +785,7 @@
     setAiSnapshotStatus('Generating snapshot…');
 
     try {
-      const data = await fetchJson('ai-review-snapshot', endpoints.aiReviewSnapshot, rangeParams());
+      const data = await fetchJson('ai-review-snapshot', endpoints.aiReviewSnapshot, rangeParams({ modal: 'aiReviewSnapshotModal' }));
       if (!data) return;
       renderAiReviewSnapshot(data);
     } catch (err) {
