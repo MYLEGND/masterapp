@@ -5647,6 +5647,8 @@ if (t.id === "ExpenseLens") {
 
         // Active week filter (null = show all)
         let elActiveWeek = null;
+        // Drag-and-drop state
+        let elDragSrc = null;
 
         // -----------------------------
         // Due Date Helper — always current month, user picks the day
@@ -5759,6 +5761,48 @@ if (t.id === "ExpenseLens") {
 
             amountInput.addEventListener("input", refreshExpenseLens);
 
+            // Drag handle — drag only activates from this grip, never from inputs
+            const dragHandle = document.createElement("span");
+            dragHandle.textContent = "⠿";
+            dragHandle.title = "Drag to reorder";
+            dragHandle.style.cssText = "cursor:grab;color:#1E3A8A;font-size:1.2rem;padding:0 4px 0 0;user-select:none;flex-shrink:0;opacity:0.5;";
+            dragHandle.addEventListener("mousedown", () => { div.draggable = true; });
+            dragHandle.addEventListener("mouseup",   () => { div.draggable = false; });
+
+            // Drag events on the row
+            div.draggable = false;
+            div.addEventListener("dragstart", (e) => {
+                elDragSrc = div;
+                e.dataTransfer.effectAllowed = "move";
+                setTimeout(() => { div.style.opacity = "0.4"; }, 0);
+            });
+            div.addEventListener("dragend", () => {
+                div.style.opacity = "1";
+                div.draggable = false;
+                document.querySelectorAll('[id^="elCatRow"]').forEach(r => {
+                    r.style.border = "1px solid #eee";
+                });
+            });
+            div.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                if (div !== elDragSrc) div.style.border = "2px solid #38BDF8";
+            });
+            div.addEventListener("dragleave", () => {
+                div.style.border = "1px solid #eee";
+            });
+            div.addEventListener("drop", (e) => {
+                e.preventDefault();
+                if (elDragSrc && elDragSrc !== div) {
+                    const rect = div.getBoundingClientRect();
+                    const after = e.clientY > rect.top + rect.height / 2;
+                    categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
+                    div.style.border = "1px solid #eee";
+                    saveExpenseLensState();
+                    refreshExpenseLens();
+                }
+            });
+
+            div.appendChild(dragHandle);
             div.appendChild(nameInput);
             div.appendChild(dueWrapper);
             div.appendChild(amountWrapper);
