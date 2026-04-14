@@ -347,7 +347,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 // ------------------- Financial Meaning Colors -------------------
 const COLOR_INCOME  = "#1f9d55";  // green
 const COLOR_EXPENSE = "#d64545";  // red
-const COLOR_NEUTRAL = "#a68023";     // gold (for neutral inputs and tips)
+const COLOR_NEUTRAL = "#1E3A8A";     // gold (for neutral inputs and tips)
 
 function paint(el, color, weight = "800") {
   if (!el) return;
@@ -748,8 +748,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 25,000 • 100,000 • 250,000 (existing investable assets at start)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbStartingBalance" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                            <input id="wbStartingBalance" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                         </div>
                     </div>
                     <div>
@@ -758,8 +758,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 60,000 • 85,500 • 120,000 (gross annual pay)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbIncome" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                            <input id="wbIncome" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                         </div>
                     </div>
                     <div>
@@ -767,7 +767,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Work Period
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 20 • 30 (years you plan to keep earning/saving)">i</span>
                         </label>
-                        <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023;" />
+                        <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A;" />
                     </div>
                 </div>
 
@@ -778,8 +778,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 2.5 • 3 • 4 (average annual inflation %)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbInflation" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                            <input id="wbInflation" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                         </div>
                     </div>
                     <div>
@@ -788,8 +788,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 5 • 7 • 9 (after-tax investment return %)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbReturn" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                            <input id="wbReturn" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                         </div>
                     </div>
                 </div>
@@ -801,8 +801,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 12 • 22 • 24 (effective/estimated rate %)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbTax" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                            <input id="wbTax" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                         </div>
                     </div>
                     <div>
@@ -811,8 +811,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 18 • 25 (debt payments as % of income)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbLiabilities" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                            <input id="wbLiabilities" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                         </div>
                     </div>
                     <div>
@@ -821,8 +821,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 35 • 45 • 55 (living costs + wants as % of income)">i</span>
                         </label>
                         <div style="position:relative;">
-                            <input id="wbLifestyle" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                            <input id="wbLifestyle" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                         </div>
                     </div>
                 </div>
@@ -850,8 +850,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         <div>
                             <label class="wb-label">Disability Income Replacement %</label>
                             <div style="position:relative;">
-                                <input id="wbDisabilityPct" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#a68023; padding-right:30px;" placeholder="0" />
-                                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">%</span>
+                                <input id="wbDisabilityPct" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#1E3A8A; padding-right:30px;" placeholder="0" />
+                                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
                             </div>
                         </div>
                     </div>
@@ -5014,8 +5014,8 @@ if (t.id === "SavingsAccelerator") {
             </div>
             <div style="position:relative;">
                 <input id="saNet" type="text" class="form-control" placeholder="e.g., 2,000"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
         </div>
         <div style="flex:1; min-width:200px;">
@@ -5025,8 +5025,8 @@ if (t.id === "SavingsAccelerator") {
             </div>
             <div style="position:relative;">
                 <input id="saEss" type="text" class="form-control" placeholder="e.g., 1,500"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
         </div>
     </div>
@@ -5055,9 +5055,9 @@ if (t.id === "SavingsAccelerator") {
 
         <div class="d-flex gap-2 mt-3">
             <button id="saAddCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#a68023; font-weight:600;">+ Add Category</button>
+                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">+ Add Category</button>
             <button id="saDelCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#a68023; font-weight:600;">- Delete Last</button>
+                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">- Delete Last</button>
         </div>
     </div>
 
@@ -5221,12 +5221,12 @@ if (t.id === "SavingsAccelerator") {
         const amt = document.createElement('input');
         amt.className = 'form-control allocation-amount';
         amt.readOnly = true;
-        amt.style.cssText = 'border:1px solid #d6c48a;font-weight:700;color:#a68023;background:#f3f0e8;';
+        amt.style.cssText = 'border:1px solid #d6c48a;font-weight:700;color:#1E3A8A;background:#f3f0e8;';
         amt.value = '';
 
         const dollar = document.createElement('span');
         dollar.textContent = '$';
-        dollar.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
+        dollar.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;';
         amtWrap.appendChild(amt);
         amtWrap.appendChild(dollar);
 
@@ -5236,18 +5236,18 @@ if (t.id === "SavingsAccelerator") {
         const pct = document.createElement('input');
         pct.className = 'form-control allocation-percent';
         pct.value = prePercent || '';
-        pct.style.cssText = 'font-weight:700;color:#a68023;padding-right:28px;';
+        pct.style.cssText = 'font-weight:700;color:#1E3A8A;padding-right:28px;';
         pct.oninput = refreshSurplus;
 
         const pctSign = document.createElement('span');
         pctSign.textContent = '%';
-        pctSign.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
+        pctSign.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;';
         pctWrap.appendChild(pct);
         pctWrap.appendChild(pctSign);
 
         const del = document.createElement('button');
         del.textContent = '✕';
-        del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;';
+        del.style.cssText = 'border:none;background:transparent;color:#1E3A8A;font-weight:900;cursor:pointer;';
         del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
 
         row.append(name, amtWrap, pctWrap, del);
@@ -5449,8 +5449,8 @@ if (t.id === "ExpenseLens") {
                 <input id="elIncome" type="text" 
                        class="form-control mb-3"
                        placeholder="Enter total monthly income"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; padding-right:30px;" />
+                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
 
             <div id="elCategories" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
@@ -5458,12 +5458,12 @@ if (t.id === "ExpenseLens") {
             <div class="d-flex gap-2 mt-3" style="gap:12px; flex-wrap:wrap;">
                 <button id="elAddCat" 
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#a68023; font-weight:600;">
+                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
                     + Add Category
                 </button>
                 <button id="elDelCat" 
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#a68023; font-weight:600;">
+                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
                     - Delete Last
                 </button>
             </div>
@@ -5629,6 +5629,18 @@ if (t.id === "ExpenseLens") {
         const clearExpenseLensState = () => clearPersistedState('ExpenseLens');
 
         // -----------------------------
+        // Due Date Helper — always current month, user picks the day
+        // -----------------------------
+        const toCurrentMonthDue = (savedDate) => {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            if (!savedDate) return `${y}-${m}-01`;
+            const day = savedDate.split('-')[2] || '01';
+            return `${y}-${m}-${day}`;
+        };
+
+        // -----------------------------
         // Create Category Row
         // -----------------------------
         const createCategoryRow = (index, preName = '', preDue = '', preAmount = '') => {
@@ -5649,7 +5661,7 @@ if (t.id === "ExpenseLens") {
             nameInput.className = "form-control flex-grow-1";
             nameInput.placeholder = `Category ${index} Name`;
             nameInput.style.border = "1px solid #ddd";
-            nameInput.style.color = "#a68023";
+            nameInput.style.color = "#1E3A8A";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
             nameInput.addEventListener("input", saveExpenseLensState);
@@ -5668,7 +5680,7 @@ if (t.id === "ExpenseLens") {
             dueInput.style.backgroundColor = "#F0F9FF";
             dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
-            dueInput.value = preDue || '';
+            dueInput.value = toCurrentMonthDue(preDue);
             dueInput.addEventListener("input", saveExpenseLensState);
             dueWrapper.appendChild(dueInput);
 
@@ -5685,7 +5697,7 @@ if (t.id === "ExpenseLens") {
             amountInput.style.width = "100%";
             amountInput.style.border = "1px solid #d6c48a";
             amountInput.style.fontWeight = "700";
-            amountInput.style.color = "#a68023";
+            amountInput.style.color = "#1E3A8A";
             amountInput.value = preAmount;
 
             const dollarSpan = document.createElement("span");
@@ -5695,7 +5707,7 @@ if (t.id === "ExpenseLens") {
             dollarSpan.style.top = "50%";
             dollarSpan.style.transform = "translateY(-50%)";
             dollarSpan.style.fontWeight = "700";
-            dollarSpan.style.color = "#a68023";
+            dollarSpan.style.color = "#1E3A8A";
 
             amountWrapper.appendChild(amountInput);
             amountWrapper.appendChild(dollarSpan);
@@ -5706,13 +5718,13 @@ if (t.id === "ExpenseLens") {
             percentSpan.style.flex = "0 0 90px";
             percentSpan.style.textAlign = "right";
             percentSpan.style.fontWeight = "700";
-            percentSpan.style.color = "#a68023";
+            percentSpan.style.color = "#1E3A8A";
 
             const deleteBtn = document.createElement("button");
             deleteBtn.textContent = "✕";
             deleteBtn.style.border = "none";
             deleteBtn.style.background = "transparent";
-            deleteBtn.style.color = "#a68023";
+            deleteBtn.style.color = "#1E3A8A";
             deleteBtn.style.fontWeight = "900";
             deleteBtn.style.cursor = "pointer";
             deleteBtn.addEventListener("click", () => {
@@ -5982,8 +5994,8 @@ if (t.id === "NetWorth") {
                 </div>
                 <div style="position:relative;">
                     <input id="assets" type="text" class="form-control" placeholder="e.g., 150,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
             <div style="flex:1; min-width:200px;">
@@ -5994,8 +6006,8 @@ if (t.id === "NetWorth") {
                 </div>
                 <div style="position:relative;">
                     <input id="liabs" type="text" class="form-control" placeholder="e.g., 50,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
         </div>
@@ -6309,8 +6321,8 @@ if (t.id === "CashFlow") {
                            placeholder="e.g., 5,000"
                            style="border:1px solid #d6c48a;
                                   box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-                                  font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                                  font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
             <div style="flex:1; min-width:200px;">
@@ -6324,8 +6336,8 @@ if (t.id === "CashFlow") {
                            placeholder="e.g., 2,500"
                            style="border:1px solid #d6c48a;
                                   box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-                                  font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                                  font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
         </div>
@@ -6601,8 +6613,8 @@ if (t.id === "DebtClarity") {
                 <div style="position:relative;">
                     <input id="dcDebt" type="text" class="form-control"
                            placeholder="e.g., 40,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
             <div style="flex:1; min-width:200px;">
@@ -6614,8 +6626,8 @@ if (t.id === "DebtClarity") {
                 <div style="position:relative;">
                     <input id="dcIncome" type="text" class="form-control"
                            placeholder="e.g., 80,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#a68023; padding-right:30px;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
         </div>
@@ -6894,8 +6906,8 @@ if (t.id === "FinancialBuffer") {
         </div>
         <div style="position:relative; margin-bottom:15px;">
             <input id="fbBills" type="text" class="form-control mb-3" placeholder="e.g., 2,500"
-                   style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023; padding-right:30px;" />
-            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#a68023;">$</span>
+                   style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; padding-right:30px;" />
+            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
         </div>
 
         <div class="mb-3">
@@ -7145,7 +7157,7 @@ if (t.id === "WealthProjection") {
                   data-tip="<b>Examples:</b> 50,000 • 120,000 (assets minus liabilities today)">i</span>
         </div>
         <input id="wpNet" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="wp-label">
             Monthly Surplus
@@ -7153,7 +7165,7 @@ if (t.id === "WealthProjection") {
                   data-tip="<b>Examples:</b> 500 • 2,000 (income minus expenses each month)">i</span>
         </div>
         <input id="wpSurplus" type="text" class="form-control mb-2" placeholder="e.g., 2,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="wp-label">
             Custom Months
@@ -7161,7 +7173,7 @@ if (t.id === "WealthProjection") {
                   data-tip="<b>Examples:</b> 18 • 24 • 60 (how far out you want to project)">i</span>
         </div>
         <input id="wpMonths" type="number" class="form-control mb-3" placeholder="e.g., 18"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div style="background:#fafafa; border-radius:12px; padding:14px; border:1px solid #eee; margin-bottom:10px;">
             <h5 style="font-weight:700;">
@@ -7447,7 +7459,7 @@ if (t.id === "FreedomIndex") {
                   data-tip="<b>What to enter:</b> Assets minus liabilities today. <b>Example:</b> 150,000">i</span>
         </div>
         <input id="fiNet" type="text" class="form-control mb-2" placeholder="e.g., 150,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="fi-label">
             Annual Expenses
@@ -7455,7 +7467,7 @@ if (t.id === "FreedomIndex") {
                   data-tip="<b>What to enter:</b> Your yearly cost of living. <b>Example:</b> 50,000 (≈ 4,167/mo)">i</span>
         </div>
         <input id="fiExp" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="fi-label">
             Passive Income
@@ -7463,7 +7475,7 @@ if (t.id === "FreedomIndex") {
                   data-tip="<b>Optional:</b> Annual passive income (rent, dividends, etc.). <b>Example:</b> 10,000">i</span>
         </div>
         <input id="fiPassive" type="text" class="form-control mb-3" placeholder="e.g., 10,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <h5 style="font-weight:700; margin-top:10px;">
             Freedom Index: <span id="fiOut" style="color:#a68023; font-weight:800;">0</span>
@@ -7748,7 +7760,7 @@ if (t.id === "DebtAssetPulse") {
                   data-tip="<b>Examples:</b> 100,000 • 250,000 (cash, investments, retirement, property, etc.)">i</span>
         </div>
         <input id="dapA" type="text" class="form-control mb-2" placeholder="e.g., 100,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="dap-label">
             Total Liabilities
@@ -7756,7 +7768,7 @@ if (t.id === "DebtAssetPulse") {
                   data-tip="<b>Examples:</b> 50,000 • 180,000 (credit cards, loans, mortgage balance, etc.)">i</span>
         </div>
         <input id="dapL" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <div class="dap-label">
             Monthly Income
@@ -7764,11 +7776,11 @@ if (t.id === "DebtAssetPulse") {
                   data-tip="<b>Optional:</b> Monthly income helps estimate how fast you could crush liabilities. <b>Example:</b> 6,000">i</span>
         </div>
         <input id="dapIncome" type="text" class="form-control mb-3" placeholder="e.g., 6,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#a68023;" />
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
         <h5 style="font-weight:700; margin-top:10px;">
             Debt-to-Asset Ratio:
-            <span id="dapOut" style="color:#a68023; font-weight:800;">0</span>
+            <span id="dapOut" style="color:#1E3A8A; font-weight:800;">0</span>
         </h5>
 
         <table class="table mt-3" style="background:#fafafa; border-radius:12px; overflow:hidden; border:1px solid #eee;">
