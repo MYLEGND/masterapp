@@ -5574,8 +5574,9 @@ if (t.id === "ExpenseLens") {
                 document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                     const index = row.id.replace('elCatRow', '');
                     const name = document.getElementById(`elCatName${index}`).value || '';
+                    const due = document.getElementById(`elCatDue${index}`).value || '';
                     const amount = document.getElementById(`elCatAmount${index}`).value || '';
-                    categories.push({ index, name, amount });
+                    categories.push({ index, name, due, amount });
                 });
                 const state = { income, categories };
                 savePersistedState('ExpenseLens', state);
@@ -5594,7 +5595,7 @@ if (t.id === "ExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.amount);
+                            createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount);
                             categoriesCreated++;
                         });
                     }
@@ -5627,7 +5628,7 @@ if (t.id === "ExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '') => {
+        const createCategoryRow = (index, preName = '', preDue = '', preAmount = '') => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
@@ -5648,7 +5649,25 @@ if (t.id === "ExpenseLens") {
             nameInput.style.color = "#a68023";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
+            dueInput.value = preDue;
             nameInput.addEventListener("input", saveExpenseLensState);
+
+            // Premium blue due date field
+            const dueWrapper = document.createElement("div");
+            dueWrapper.style.position = "relative";
+            dueWrapper.style.flex = "1 1 140px";
+            dueWrapper.style.minWidth = "130px";
+            const dueInput = document.createElement("input");
+            dueInput.type = "date";
+            dueInput.id = `elCatDue${index}`;
+            dueInput.className = "form-control";
+            dueInput.placeholder = "Due";
+            dueInput.style.border = "2px solid #1E3A8A";
+            dueInput.style.backgroundColor = "#EFF6FF";
+            dueInput.style.color = "#1E3A8A";
+            dueInput.style.fontWeight = "600";
+            dueInput.value = preDue || '';
+            dueInput.addEventListener("input", saveExpenseLensState);
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
@@ -5706,6 +5725,7 @@ if (t.id === "ExpenseLens") {
             amountInput.addEventListener("input", refreshExpenseLens);
 
             div.appendChild(nameInput);
+            div.appendChild(dueWrapper);
             div.appendChild(amountWrapper);
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
