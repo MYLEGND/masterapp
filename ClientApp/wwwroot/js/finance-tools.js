@@ -255,20 +255,23 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     // ------------------- Clear Button -------------------
-    function addClearButton(container, onClear) {
+    function addClearButton(container, onClear, host) {
         if (!container) return;
-        container.style.position = 'relative';
-
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = 'Clear';
         btn.className = 'btn btn-outline-secondary btn-sm clear-btn';
-        btn.style.position = 'absolute';
-        btn.style.top = '20px';
-        btn.style.right = '10px';
-        btn.style.zIndex = '10';
+        if (host) {
+            host.appendChild(btn);
+        } else {
+            container.style.position = 'relative';
+            btn.style.position = 'absolute';
+            btn.style.top = '20px';
+            btn.style.right = '10px';
+            btn.style.zIndex = '10';
+            container.appendChild(btn);
+        }
         btn.addEventListener('click', onClear);
-        container.appendChild(btn);
     }
 
     // ------------------- Tool Box Sizing -------------------
@@ -1835,10 +1838,16 @@ if (t.id === "ExpenseLens") {
 
         container.appendChild(weekPanel);
 
+        // Shared flex row — both buttons same height, no overlap
+        const elBtnGroup = document.createElement('div');
+        elBtnGroup.style.cssText = 'position:absolute;top:14px;right:10px;z-index:10;display:flex;gap:8px;align-items:stretch;';
+        container.appendChild(elBtnGroup);
+
         const weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
-        weeklyBtn.style.cssText = 'position:absolute;top:20px;right:74px;z-index:10;background:#1E3A8A;color:#fff;font-weight:700;font-size:0.78rem;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;';
+        weeklyBtn.className = 'btn btn-sm';
+        weeklyBtn.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;';
         weeklyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanel.style.display !== 'none';
@@ -1848,7 +1857,7 @@ if (t.id === "ExpenseLens") {
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
-        container.appendChild(weeklyBtn);
+        elBtnGroup.appendChild(weeklyBtn);
 
         addClearButton(container, () => {
             elIncome.value = '';
@@ -1861,7 +1870,7 @@ if (t.id === "ExpenseLens") {
             hideTip();
             elApplyWeekFilter(null);
             refreshExpenseLens();
-        });
+        }, elBtnGroup);
 
         await loadExpenseLensState();
 
