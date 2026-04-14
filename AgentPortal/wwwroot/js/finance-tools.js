@@ -6140,6 +6140,22 @@ if (t.id === "ExpenseLens") {
 
         await loadExpenseLensState();
 
+        // Auto-apply current week filter on load if any bills are due this week.
+        // This makes the tool time-aware: the user sees only today's relevant bills
+        // by default rather than every bill. "Show All Bills" in the weekly panel resets it.
+        (() => {
+            const todayDay = new Date().getDate();
+            const currentWeek = EL_WEEK_RANGES.find(w => todayDay >= w.start && todayDay <= w.end);
+            if (!currentWeek) return;
+            const hasThisWeek = [...document.querySelectorAll('[id^="elCatRow"]')].some(row => {
+                const idx = row.id.replace('elCatRow', '');
+                const dueEl = document.getElementById(`elCatDue${idx}`);
+                const day = elGetDay(dueEl?.value);
+                return day !== null && day >= currentWeek.start && day <= currentWeek.end;
+            });
+            if (hasThisWeek) elApplyWeekFilter(currentWeek);
+        })();
+
         // Apply shared profile updates when fields are empty
         const applyProfileToExpenseLens = () => {
             const prof = window.LegendFinanceProfile?.get?.();
