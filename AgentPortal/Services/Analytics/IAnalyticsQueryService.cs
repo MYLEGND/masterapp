@@ -16,10 +16,10 @@ public interface IAnalyticsQueryService
     // ── Behavior Intelligence Engine ─────────────────────────────────────────
     Task<EngagementSummaryDto> GetEngagementSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<PageEngagementDto> GetPageEngagementAsync(TimeRangeRequest range, ScopeContext scope);
-    Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope);
-    Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope);
+    Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
+    Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<ScrollAnalysisDto> GetScrollAnalysisAsync(TimeRangeRequest range, ScopeContext scope);
-    Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope);
+    Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope);
     Task<FormFrictionDto> GetFormFrictionAsync(TimeRangeRequest range, ScopeContext scope);

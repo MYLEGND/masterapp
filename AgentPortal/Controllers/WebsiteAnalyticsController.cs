@@ -185,29 +185,29 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/time-on-page")]
-    public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetTimeOnPageAsync(range, scope);
+        var result = await _analytics.GetTimeOnPageAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("behavior/exit-analysis")]
-    public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetExitAnalysisAsync(range, scope);
+        var result = await _analytics.GetExitAnalysisAsync(range, scope, trafficType);
         return Json(result);
     }
 
     [HttpGet("behavior/journey")]
-    public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetJourneyAnalysisAsync(range, scope);
+        var result = await _analytics.GetJourneyAnalysisAsync(range, scope, trafficType);
         return Json(result);
     }
 
@@ -287,11 +287,11 @@ namespace AgentPortal.Controllers;
                 () => new CtaPerformanceDto { RangeLabel = range.Label },
                 "CTA performance metrics");
             var (timeOnPage, timeOnPageWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetTimeOnPageAsync(range, scope),
+                () => _analytics.GetTimeOnPageAsync(range, scope, trafficType),
                 () => new TimeOnPageDto { RangeLabel = range.Label },
                 "Time-on-page metrics");
             var (exit, exitWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetExitAnalysisAsync(range, scope),
+                () => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
                 () => new ExitAnalysisDto { RangeLabel = range.Label },
                 "Exit analysis metrics");
             var (source, sourceWarning) = await SafeSnapshotLoadAsync(

@@ -1163,18 +1163,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new PageEngagementDto { Rows = rows, RangeLabel = range.Label };
     }
 
-    public async Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         // page_exit carries the real elapsed dwell per page visit; page_view.DwellMilliseconds is always 0 at load.
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
         // Views count = distinct page_view events per page (for denominator context).
-        var pvCounts = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_view")
+        var pvEvents = await BaseEvents(range, scope, scopedAgentIds)
+            .Where(e => e.EventType == "page_view").ToListAsync();
+
+        if (trafficType != TrafficType.All)
+        {
+            events  = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events),   trafficType).Select(r => r.Event).ToList();
+            pvEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pvEvents), trafficType).Select(r => r.Event).ToList();
+        }
+
+        var pvCounts = pvEvents
             .GroupBy(e => e.PageKey ?? "unknown")
             .Select(g => new { PageKey = g.Key, Count = g.Count() })
-            .ToListAsync();
+            .ToList();
         var pvCountMap = pvCounts.ToDictionary(x => x.PageKey, x => x.Count);
         var totalPageViews = pvCounts.Sum(x => x.Count);
         var totalTimingSamples = events.Count;
@@ -1202,7 +1210,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
-    public async Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         // Load page_view for view counts and page_exit for exit/dwell signals.
@@ -1210,6 +1218,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e => e.EventType == "page_view").ToListAsync();
         var pageExitEvents = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_exit").ToListAsync();
+
+        if (trafficType != TrafficType.All)
+        {
+            pageViewEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pageViewEvents), trafficType).Select(r => r.Event).ToList();
+            pageExitEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pageExitEvents), trafficType).Select(r => r.Event).ToList();
+        }
         var viewsByPage = pageViewEvents.GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         var lastExitPerSession = pageExitEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
@@ -1261,12 +1275,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return new ScrollAnalysisDto { Rows = rows, RangeLabel = range.Label };
     }
 
-    public async Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "page_view").ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+
+        if (trafficType != TrafficType.All)
+        {
+            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType).Select(r => r.Event).ToList();
+            leads  = ResolveAndFilterLeads(leads, events, trafficType);
+        }
         var topLanding = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First())
             .GroupBy(e => e.PageKey ?? "unknown").OrderByDescending(g => g.Count()).Take(10)
