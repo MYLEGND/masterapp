@@ -6115,10 +6115,12 @@ if (t.id === "ExpenseLens") {
         // Wrap the income input row in a flex container so the button sits cleanly to the right.
         // Remove mb-3 from the input (it adds margin-bottom inside the wrapper causing height mismatch).
         elIncome.classList.remove('mb-3');
+        elIncome.style.maxWidth = '240px';
+        elIncome.style.width = '240px';
         const incomeInputRow = elIncome.parentElement;
         const incomeFlexWrap = document.createElement('div');
         incomeFlexWrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:15px;';
-        incomeInputRow.style.cssText = 'position:relative;flex:0 0 auto;width:280px;max-width:100%;';
+        incomeInputRow.style.cssText = 'position:relative;margin-bottom:0;';
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
         incomeFlexWrap.appendChild(weeklyBtnTop);
