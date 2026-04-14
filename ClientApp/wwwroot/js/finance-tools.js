@@ -1835,7 +1835,8 @@ if (t.id === "ExpenseLens") {
         };
 
         const weekPanel = document.createElement('div');
-        weekPanel.style.cssText = 'display:none;position:absolute;top:52px;right:10px;z-index:30;background:#0b1529;border:1.5px solid #38BDF8;border-radius:12px;padding:10px 14px;min-width:250px;box-shadow:0 6px 24px rgba(30,58,138,0.22);';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:18px 22px;width:400px;max-width:92vw;box-shadow:0 12px 48px rgba(30,58,138,0.45);';
+        document.body.appendChild(weekPanel);
 
         const renderWeekPanel = () => {
             const days = elDaysInMonth();
@@ -1880,13 +1881,7 @@ if (t.id === "ExpenseLens") {
             });
         };
 
-        container.appendChild(weekPanel);
-
-        // Shared flex row — both buttons same height, no overlap
-        const elBtnGroup = document.createElement('div');
-        elBtnGroup.style.cssText = 'position:absolute;top:14px;right:10px;z-index:10;display:flex;gap:8px;align-items:stretch;';
-        container.appendChild(elBtnGroup);
-
+        // Weekly button — sits directly right of Delete Last in the category action row
         const weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
@@ -1901,7 +1896,7 @@ if (t.id === "ExpenseLens") {
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
-        elBtnGroup.appendChild(weeklyBtn);
+        addBtn.parentElement.appendChild(weeklyBtn);
 
         addClearButton(container, () => {
             elIncome.value = '';
@@ -1914,7 +1909,7 @@ if (t.id === "ExpenseLens") {
             hideTip();
             elApplyWeekFilter(null);
             refreshExpenseLens();
-        }, elBtnGroup);
+        });
 
         await loadExpenseLensState();
 
