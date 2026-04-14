@@ -8,6 +8,7 @@
 - [x] User approved plan (#1E3A8A premium blue, type="date", auto-save)
 
 ## Remaining Steps
+- [x] Edit AgentPortal/wwwroot/js/finance-tools.js
 1. Edit AgentPortal/wwwroot/js/finance-tools.js:
    - Update createCategoryRow() to add due date input between name & amount
    - Update saveExpenseLensState() to capture due date

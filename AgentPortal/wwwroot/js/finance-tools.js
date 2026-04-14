@@ -5573,9 +5573,12 @@ if (t.id === "ExpenseLens") {
                 const categories = [];
                 document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                     const index = row.id.replace('elCatRow', '');
-                    const name = document.getElementById(`elCatName${index}`).value || '';
-                    const due = document.getElementById(`elCatDue${index}`).value || '';
-                    const amount = document.getElementById(`elCatAmount${index}`).value || '';
+                    const nameEl = document.getElementById(`elCatName${index}`);
+                    const dueEl = document.getElementById(`elCatDue${index}`);
+                    const amountEl = document.getElementById(`elCatAmount${index}`);
+                    const name = nameEl ? nameEl.value || '' : '';
+                    const due = dueEl ? dueEl.value || '' : '';
+                    const amount = amountEl ? amountEl.value || '' : '';
                     categories.push({ index, name, due, amount });
                 });
                 const state = { income, categories };
@@ -5663,10 +5666,11 @@ if (t.id === "ExpenseLens") {
             dueInput.placeholder = "Due";
             dueInput.style.border = "2px solid #1E3A8A";
             dueInput.style.backgroundColor = "#EFF6FF";
-            dueInput.style.color = "#1E3A8A";
-            dueInput.style.fontWeight = "600";
+            dueInput.style.setProperty("color", "#1E3A8A", "important");
+            dueInput.style.setProperty("font-weight", "700", "important");
             dueInput.value = preDue || '';
             dueInput.addEventListener("input", saveExpenseLensState);
+            dueWrapper.appendChild(dueInput);
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
@@ -5746,7 +5750,10 @@ if (t.id === "ExpenseLens") {
                 totalSpent += val;
                 const index = input.id.replace('elCatAmount','');
                 const pct = income > 0 ? ((val/income)*100).toFixed(1)+'%' : '0%';
-                document.getElementById(`elOut${index}`).textContent = pct;
+                const pctEl = document.getElementById(`elOut${index}`);
+                pctEl.textContent = pct;
+                if (val > 0) { markExpense(input); markExpense(pctEl); }
+                else { markNeutral(input); markNeutral(pctEl); }
 
                 const name = (document.getElementById(`elCatName${index}`).value || `Category ${index}`).trim();
                 categoriesData.push({ name, amount: val });

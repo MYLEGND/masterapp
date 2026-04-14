@@ -1519,7 +1519,8 @@ if (t.id === "ExpenseLens") {
                     const index = row.id.replace('elCatRow', '');
                     const name = document.getElementById(`elCatName${index}`).value || '';
                     const amount = document.getElementById(`elCatAmount${index}`).value || '';
-                    categories.push({ index, name, amount });
+                    const due = document.getElementById(`elCatDue${index}`) ? document.getElementById(`elCatDue${index}`).value || '' : '';
+                    categories.push({ index, name, amount, due });
                 });
                 const state = { income, categories };
                 savePersistedState('ExpenseLens', state);
@@ -1538,7 +1539,7 @@ if (t.id === "ExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.amount);
+                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '');
                             categoriesCreated++;
                         });
                     }
@@ -1553,7 +1554,7 @@ if (t.id === "ExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '') => {
+        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '') => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
@@ -1575,6 +1576,24 @@ if (t.id === "ExpenseLens") {
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
             nameInput.addEventListener("input", saveExpenseLensState);
+
+            // Due date field
+            const dueWrapper = document.createElement("div");
+            dueWrapper.style.position = "relative";
+            dueWrapper.style.flex = "1 1 140px";
+            dueWrapper.style.minWidth = "130px";
+            const dueInput = document.createElement("input");
+            dueInput.type = "date";
+            dueInput.id = `elCatDue${index}`;
+            dueInput.className = "form-control";
+            dueInput.placeholder = "Due";
+            dueInput.style.border = "2px solid #1E3A8A";
+            dueInput.style.backgroundColor = "#EFF6FF";
+            dueInput.style.setProperty("color", "#1E3A8A", "important");
+            dueInput.style.setProperty("font-weight", "700", "important");
+            dueInput.value = preDue || '';
+            dueInput.addEventListener("input", saveExpenseLensState);
+            dueWrapper.appendChild(dueInput);
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
@@ -1632,6 +1651,7 @@ if (t.id === "ExpenseLens") {
             amountInput.addEventListener("input", refreshExpenseLens);
 
             div.appendChild(nameInput);
+            div.appendChild(dueWrapper);
             div.appendChild(amountWrapper);
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
@@ -1653,7 +1673,10 @@ if (t.id === "ExpenseLens") {
                 totalSpent += val;
                 const index = input.id.replace('elCatAmount','');
                 const pct = income > 0 ? ((val/income)*100).toFixed(1)+'%' : '0%';
-                document.getElementById(`elOut${index}`).textContent = pct;
+                const pctEl = document.getElementById(`elOut${index}`);
+                pctEl.textContent = pct;
+                if (val > 0) { markExpense(input); markExpense(pctEl); }
+                else { markNeutral(input); markNeutral(pctEl); }
 
                 const name = (document.getElementById(`elCatName${index}`).value || `Category ${index}`).trim();
                 categoriesData.push({ name, amount: val });
