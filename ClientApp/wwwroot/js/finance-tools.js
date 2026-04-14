@@ -345,9 +345,17 @@ function paint(el, color, weight = "800") {
   el.style.setProperty("font-weight", weight, "important");
 }
 
+const COLOR_GOLD = "#a68023";
 function markIncome(el)  { paint(el, COLOR_INCOME); }
 function markExpense(el) { paint(el, COLOR_EXPENSE); }
 function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
+function markGold(el)    { paint(el, COLOR_GOLD, "900"); }
+function markWithSuffix(markFn, el) {
+    if (!el) return;
+    markFn(el);
+    const sib = el.nextElementSibling;
+    if (sib && sib.tagName === 'SPAN') markFn(sib);
+}
 
 
     // ------------------- Tool Renderer -------------------
@@ -1243,23 +1251,32 @@ if (t.id === "SavingsAccelerator") {
         // ✅ COLOR CODING — INPUTS + OUTPUTS + ROWS (FULL COVERAGE)
         // ==========================================================
 
-        // Inputs
-        paint(saNetInput, net > 0 ? 'income' : (net < 0 ? 'expense' : 'neutral'));
-        paint(saEssInput, ess > 0 ? 'expense' : (ess < 0 ? 'income' : 'neutral'));
+        // Inputs + suffix spans
+        if (net > 0) markWithSuffix(markIncome, saNetInput);
+        else if (net < 0) markWithSuffix(markExpense, saNetInput);
+        else markWithSuffix(markNeutral, saNetInput);
+
+        if (ess > 0) markWithSuffix(markExpense, saEssInput);
+        else if (ess < 0) markWithSuffix(markIncome, saEssInput);
+        else markWithSuffix(markNeutral, saEssInput);
 
         // Outputs
-        paint(saOut, surplus > 0 ? 'income' : (surplus < 0 ? 'expense' : 'neutral'));
-        paint(saPctTotal, usedPct >= 100 ? 'expense' : 'neutral'); // gold until "maxed", then red as a warning
-        paint(saRemaining, remaining > 0 ? 'income' : (remaining < 0 ? 'expense' : 'neutral'));
-        paint(saTips, 'neutral');
+        if (surplus > 0) markIncome(saOut);
+        else if (surplus < 0) markExpense(saOut);
+        else markNeutral(saOut);
 
-        // Rows
-        document.querySelectorAll('.allocation-percent').forEach(p => paint(p, 'neutral'));
-        document.querySelectorAll('.allocation-name').forEach(n => paint(n, 'neutral'));
+        if (usedPct >= 100) markExpense(saPctTotal); else markGold(saPctTotal);
+        markGold(saRemaining);
+        markNeutral(saTips);
 
-        // Allocation $ amounts follow surplus state (income=green, deficit=red, zero=gold)
+        // Rows — percent input + % suffix, name, amount + $ suffix
+        document.querySelectorAll('.allocation-percent').forEach(p => markWithSuffix(markNeutral, p));
+        document.querySelectorAll('.allocation-name').forEach(n => markNeutral(n));
+
         document.querySelectorAll('.allocation-amount').forEach(a => {
-            paint(a, surplus > 0 ? 'income' : (surplus < 0 ? 'expense' : 'neutral'));
+            if (surplus > 0) markWithSuffix(markIncome, a);
+            else if (surplus < 0) markWithSuffix(markExpense, a);
+            else markWithSuffix(markNeutral, a);
         });
 
         saveAllocationState();
@@ -1692,8 +1709,9 @@ if (t.id === "ExpenseLens") {
                 const pct = income > 0 ? ((val/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = document.getElementById(`elOut${index}`);
                 pctEl.textContent = pct;
-                if (val > 0) { markExpense(input); markExpense(pctEl); }
-                else { markNeutral(input); markNeutral(pctEl); }
+                const dollarSign = input.nextElementSibling;
+                if (val > 0) { markExpense(input); markExpense(pctEl); if (dollarSign) markExpense(dollarSign); }
+                else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
 
                 const name = (document.getElementById(`elCatName${index}`).value || `Category ${index}`).trim();
                 categoriesData.push({ name, amount: val });
