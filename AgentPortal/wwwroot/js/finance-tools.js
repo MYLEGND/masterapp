@@ -5664,9 +5664,9 @@ if (t.id === "ExpenseLens") {
             dueInput.id = `elCatDue${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
-            dueInput.style.border = "2px solid #1E3A8A";
-            dueInput.style.backgroundColor = "#EFF6FF";
-            dueInput.style.setProperty("color", "#1E3A8A", "important");
+            dueInput.style.border = "2px solid #38BDF8";
+            dueInput.style.backgroundColor = "#F0F9FF";
+            dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
             dueInput.value = preDue || '';
             dueInput.addEventListener("input", saveExpenseLensState);
