@@ -1737,6 +1737,101 @@ if (t.id === "ExpenseLens") {
             }
         });
 
+        // -----------------------------------------
+        // Weekly Bill Tracker
+        // -----------------------------------------
+        const EL_WEEK_RANGES = [
+            { label: 'Week 1', start: 1,  end: 7  },
+            { label: 'Week 2', start: 8,  end: 14 },
+            { label: 'Week 3', start: 15, end: 21 },
+            { label: 'Week 4', start: 22, end: 28 },
+            { label: 'Week 5', start: 29, end: 31 },
+        ];
+
+        const elGetDay = (val) => {
+            if (!val) return null;
+            const d = parseInt((val.split('-')[2] || ''), 10);
+            return isNaN(d) ? null : d;
+        };
+
+        const elDaysInMonth = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+
+        const elApplyWeekFilter = (week) => {
+            elActiveWeek = week;
+            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
+                const idx = row.id.replace('elCatRow', '');
+                const dueEl = document.getElementById(`elCatDue${idx}`);
+                const day = elGetDay(dueEl?.value);
+                row.style.display = (!week || (day !== null && day >= week.start && day <= week.end)) ? '' : 'none';
+            });
+            weeklyBtn.textContent = week ? `${week.label} ▾` : 'Weekly ▾';
+            refreshExpenseLens();
+            renderWeekPanel();
+        };
+
+        const weekPanel = document.createElement('div');
+        weekPanel.style.cssText = 'display:none;position:absolute;top:52px;right:10px;z-index:30;background:#0b1529;border:1.5px solid #38BDF8;border-radius:12px;padding:10px 14px;min-width:250px;box-shadow:0 6px 24px rgba(30,58,138,0.22);';
+
+        const renderWeekPanel = () => {
+            const days = elDaysInMonth();
+            const weeks = EL_WEEK_RANGES.filter(w => w.start <= days);
+            weekPanel.innerHTML = '';
+
+            const allRow = document.createElement('div');
+            allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:5px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
+            allRow.innerHTML = '<span>Show All Bills</span><span>↺</span>';
+            allRow.addEventListener('click', () => { elApplyWeekFilter(null); weekPanel.style.display = 'none'; });
+            weekPanel.appendChild(allRow);
+
+            weeks.forEach(week => {
+                let weekTotal = 0, billCount = 0;
+                document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
+                    const idx = row.id.replace('elCatRow', '');
+                    const dueEl = document.getElementById(`elCatDue${idx}`);
+                    const amtEl = document.getElementById(`elCatAmount${idx}`);
+                    const day = elGetDay(dueEl?.value);
+                    if (day !== null && day >= week.start && day <= week.end) {
+                        weekTotal += +(amtEl?.value || '').replace(/,/g, '') || 0;
+                        billCount++;
+                    }
+                });
+
+                const isActive = elActiveWeek?.label === week.label;
+                const row = document.createElement('div');
+                row.style.cssText = `cursor:pointer;padding:8px 10px;border-radius:8px;margin-bottom:3px;display:flex;justify-content:space-between;align-items:center;${isActive ? 'background:#1E3A8A;color:#fff;' : 'color:#E0F2FE;'}`;
+
+                const left = document.createElement('span');
+                left.style.cssText = 'font-weight:700;font-size:0.82rem;';
+                left.textContent = `${week.label}  (Days ${week.start}–${Math.min(week.end, days)})`;
+
+                const right = document.createElement('span');
+                right.style.cssText = `font-weight:800;font-size:0.85rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};`;
+                right.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
+
+                row.appendChild(left);
+                row.appendChild(right);
+                row.addEventListener('click', () => { elApplyWeekFilter(week); weekPanel.style.display = 'none'; });
+                weekPanel.appendChild(row);
+            });
+        };
+
+        container.appendChild(weekPanel);
+
+        const weeklyBtn = document.createElement('button');
+        weeklyBtn.type = 'button';
+        weeklyBtn.textContent = 'Weekly ▾';
+        weeklyBtn.style.cssText = 'position:absolute;top:20px;right:74px;z-index:10;background:#1E3A8A;color:#fff;font-weight:700;font-size:0.78rem;border:none;border-radius:6px;padding:4px 10px;cursor:pointer;';
+        weeklyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = weekPanel.style.display !== 'none';
+            if (isOpen) { weekPanel.style.display = 'none'; return; }
+            renderWeekPanel();
+            weekPanel.style.display = 'block';
+        });
+        document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
+        weekPanel.addEventListener('click', e => e.stopPropagation());
+        container.appendChild(weeklyBtn);
+
         addClearButton(container, () => {
             elIncome.value = '';
             categoriesContainer.innerHTML = '';
@@ -1746,6 +1841,7 @@ if (t.id === "ExpenseLens") {
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
             hideTip();
+            elApplyWeekFilter(null);
             refreshExpenseLens();
         });
 
