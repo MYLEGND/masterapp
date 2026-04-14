@@ -49,7 +49,8 @@
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/agentportal_masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;\")",
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId;\")",
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT * FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 3;\")",
-      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"PRAGMA table_info\\(WebsiteLeads\\);\")"
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"PRAGMA table_info\\(WebsiteLeads\\);\")",
+      "Bash(grep -E \"\\\\.\\(js|ts\\)$\")"
     ]
   }
 }

@@ -39,6 +39,13 @@
                 <a href="https://outlook.office.com" target="_blank" rel="noopener">
                     <img class="outlook-link" src="~/images/tools-icons/outlook2.png" alt="Outlook" />
                 </a>
+                <button type="button" class="zoom-hub-trigger" id="homeZoomTrigger" aria-label="Open Zoom Links">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" fill="none" aria-hidden="true">
+                        <rect width="36" height="36" rx="8" fill="#2D8CFF"/>
+                        <path d="M6 13a3 3 0 0 1 3-3h13a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V13z" fill="white"/>
+                        <path d="M25 15.5l5-3v11l-5-3V15.5z" fill="white"/>
+                    </svg>
+                </button>
                 <a href="https://outlook.office.com/calendar/view/workweek" target="_blank" rel="noopener">
                     <img class="outlook-link" src="~/images/tools-icons/calendar.png" alt="Outlook Calendar" />
                 </a>
@@ -237,6 +244,36 @@
                 </div>
             </div>
             <div class="home-clients-recent-grid" id="homeClientsRecentGrid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══ ZOOM LINKS HUB ════════════════════════════════════════════════════ -->
+<div class="home-zoom-hub" id="homeZoomHub" hidden>
+    <div class="home-zoom-backdrop" id="homeZoomBackdrop"></div>
+    <div class="home-zoom-dialog" role="dialog" aria-modal="true" aria-labelledby="homeZoomTitle">
+        <div class="home-zoom-shell">
+            <div class="home-zoom-head">
+                <div>
+                    <div class="home-zoom-kicker">Legend™ Quick Access</div>
+                    <h3 class="home-zoom-title" id="homeZoomTitle">Zoom Links</h3>
+                    <p class="home-zoom-sub">Save and launch your personal Zoom meeting links instantly. One click to copy.</p>
+                </div>
+                <button type="button" class="home-zoom-close" id="homeZoomClose" aria-label="Close Zoom hub">×</button>
+            </div>
+
+            <form class="home-zoom-add-form" id="homeZoomForm" autocomplete="off">
+                <div class="home-zoom-add-fields">
+                    <input id="homeZoomName" class="home-zoom-input" type="text" placeholder="Link name (e.g. Personal Meeting Room)" maxlength="200" />
+                    <input id="homeZoomUrl" class="home-zoom-input" type="url" placeholder="https://zoom.us/j/..." maxlength="2048" />
+                </div>
+                <button type="submit" class="home-zoom-save-btn" id="homeZoomSave">Save Link</button>
+                <div class="home-zoom-error" id="homeZoomError" hidden></div>
+            </form>
+
+            <div class="home-zoom-list-head">Saved Links</div>
+            <div class="home-zoom-empty" id="homeZoomEmpty" hidden>No Zoom links saved yet. Add one above.</div>
+            <div class="home-zoom-list" id="homeZoomList"></div>
         </div>
     </div>
 </div>
@@ -1597,9 +1634,297 @@ body.hp-modal-open{ overflow:hidden; }
     font-weight: 650;
 }
 .ff-home-footer strong{ color: var(--text-strong); }
+
+/* =========================================
+   ZOOM HUB TRIGGER BUTTON (mini tools)
+========================================= */
+.zoom-hub-trigger{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:36px;
+    height:36px;
+    padding:0;
+    border:none;
+    background:transparent;
+    cursor:pointer;
+    border-radius:8px;
+    transition: transform .2s ease, opacity .2s ease;
+    flex-shrink:0;
+}
+.zoom-hub-trigger:hover{
+    transform: translateY(-2px) scale(1.05);
+    opacity: 0.9;
+}
+.zoom-hub-trigger svg{
+    display:block;
+    border-radius:7px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+
+/* =========================================
+   ZOOM LINKS HUB OVERLAY
+========================================= */
+.home-zoom-hub{
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+}
+.home-zoom-hub.open{
+    opacity: 1;
+    pointer-events: auto;
+}
+.home-zoom-backdrop{
+    position: absolute;
+    inset: 0;
+    background: rgba(7, 12, 23, .68);
+    backdrop-filter: blur(7px);
+}
+.home-zoom-dialog{
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 2rem 1rem;
+}
+.home-zoom-shell{
+    width: min(680px, 100%);
+    max-height: min(88vh, 820px);
+    overflow: auto;
+    border-radius: 28px;
+    border: 1.8px solid rgba(221,180,87,.5);
+    background:
+        radial-gradient(860px 360px at -6% -10%, rgba(221,180,87,.22), transparent 56%),
+        radial-gradient(760px 340px at 102% -4%, rgba(84,120,176,.16), transparent 60%),
+        linear-gradient(168deg, rgba(8,18,36,.995), rgba(14,29,56,.995) 56%, rgba(16,34,64,.995));
+    color: var(--text-strong);
+    box-shadow:
+        0 38px 96px rgba(0,0,0,.54),
+        0 0 0 1px rgba(255,255,255,.06) inset,
+        0 24px 42px rgba(221,180,87,.12);
+    padding: 2rem;
+}
+.home-zoom-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 1.25rem;
+    padding-bottom: 1.2rem;
+    border-bottom: 1px solid rgba(221,180,87,.24);
+    margin-bottom: 1.5rem;
+}
+.home-zoom-kicker{
+    display:inline-flex;
+    align-items:center;
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:#e7c06d;
+}
+.home-zoom-title{
+    margin:.45rem 0 .4rem;
+    font-size:1.9rem;
+    font-weight:950;
+    line-height:1.15;
+}
+.home-zoom-sub{
+    margin:0;
+    color:#d4dde9;
+    font-weight:600;
+    line-height:1.6;
+}
+.home-zoom-close{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(166,128,35,.44);
+    background: rgba(255,255,255,.05);
+    color:#f8fafc;
+    font-size:1.6rem;
+    line-height:1;
+    cursor:pointer;
+    flex-shrink:0;
+    transition: background .15s ease, border-color .15s ease;
+}
+.home-zoom-close:hover{
+    background: rgba(255,255,255,.1);
+    border-color: rgba(166,128,35,.7);
+}
+
+/* Add Form */
+.home-zoom-add-form{
+    margin-bottom: 1.75rem;
+}
+.home-zoom-add-fields{
+    display:flex;
+    gap:.75rem;
+    flex-wrap:wrap;
+    margin-bottom:.75rem;
+}
+.home-zoom-input{
+    flex:1 1 200px;
+    padding: .6rem .85rem;
+    border-radius: 10px;
+    border: 1.5px solid rgba(221,180,87,.4);
+    background: rgba(255,255,255,.06);
+    color: var(--text-strong);
+    font-size: .95rem;
+    font-weight:600;
+    outline:none;
+    transition: border-color .15s ease, background .15s ease;
+}
+.home-zoom-input:focus{
+    border-color: rgba(221,180,87,.8);
+    background: rgba(255,255,255,.1);
+}
+.home-zoom-input::placeholder{ color: rgba(255,255,255,.38); }
+.home-zoom-save-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: .6rem 1.35rem;
+    border-radius:10px;
+    border: 1.8px solid var(--gold-color);
+    background: var(--gold-color);
+    color: #0b1529;
+    font-size:.95rem;
+    font-weight:900;
+    cursor:pointer;
+    transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,.26);
+}
+.home-zoom-save-btn:hover{
+    background: #c79931;
+    border-color: #c79931;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(0,0,0,.3);
+}
+.home-zoom-save-btn:disabled{
+    opacity:.6;
+    cursor:default;
+    transform:none;
+}
+.home-zoom-error{
+    margin-top:.6rem;
+    padding:.55rem .85rem;
+    border-radius:8px;
+    background: rgba(220,53,69,.18);
+    border: 1px solid rgba(220,53,69,.45);
+    color: #f8b4bc;
+    font-size:.9rem;
+    font-weight:600;
+}
+
+/* Links List */
+.home-zoom-list-head{
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#e7c06d;
+    margin-bottom:.75rem;
+}
+.home-zoom-empty{
+    color:#d4dde9;
+    font-weight:600;
+    font-size:.95rem;
+    padding: 1rem 0;
+}
+.home-zoom-list{
+    display:flex;
+    flex-direction:column;
+    gap:.6rem;
+}
+.zoom-link-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:.85rem 1rem;
+    border-radius:14px;
+    border: 1.5px solid rgba(221,180,87,.28);
+    background: rgba(255,255,255,.04);
+    transition: border-color .15s ease, background .15s ease;
+}
+.zoom-link-row:hover{
+    border-color: rgba(221,180,87,.5);
+    background: rgba(255,255,255,.07);
+}
+.zoom-link-info{
+    display:flex;
+    flex-direction:column;
+    gap:.2rem;
+    min-width:0;
+}
+.zoom-link-name{
+    font-weight:800;
+    font-size:.95rem;
+    color: var(--text-strong);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.zoom-link-url{
+    font-size:.8rem;
+    font-weight:600;
+    color:#94a3b8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.zoom-link-actions{
+    display:flex;
+    gap:.5rem;
+    flex-shrink:0;
+}
+.zoom-link-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:.4rem .85rem;
+    border-radius:8px;
+    font-size:.82rem;
+    font-weight:800;
+    cursor:pointer;
+    transition: background .15s ease, transform .1s ease, border-color .15s ease;
+}
+.zoom-link-btn-copy{
+    border: 1.5px solid rgba(221,180,87,.5);
+    background: rgba(221,180,87,.12);
+    color: #f6e6b4;
+}
+.zoom-link-btn-copy:hover,
+.zoom-link-btn-copy.copied{
+    background: rgba(221,180,87,.26);
+    border-color: rgba(221,180,87,.75);
+}
+.zoom-link-btn-delete{
+    border: 1.5px solid rgba(220,53,69,.35);
+    background: rgba(220,53,69,.1);
+    color: #f8b4bc;
+}
+.zoom-link-btn-delete:hover{
+    background: rgba(220,53,69,.22);
+    border-color: rgba(220,53,69,.6);
+}
+@@media (max-width: 576px){
+    .home-zoom-add-fields{ flex-direction:column; }
+    .zoom-link-row{ flex-direction:column; align-items:flex-start; }
+    .zoom-link-actions{ align-self:flex-end; }
+}
 </style>
 
 @section Scripts {
     <script src="~/js/home-clients-hub.js" asp-append-version="true"></script>
     <script src="~/js/home-proposals-dropdown.js" asp-append-version="true"></script>
+    <script src="~/js/home-zoom-hub.js" asp-append-version="true"></script>
 }

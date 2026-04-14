@@ -318,6 +318,41 @@ namespace Infrastructure.Migrations
                     b.ToTable("AgentProfiles");
                 });
 
+            modelBuilder.Entity("Domain.Entities.AgentZoomLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasDefaultValue(0)
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentUserId");
+
+                    b.ToTable("AgentZoomLinks");
+                });
+
             modelBuilder.Entity("Domain.Entities.AgentTrackingAlias", b =>
                 {
                     b.Property<Guid>("Id")

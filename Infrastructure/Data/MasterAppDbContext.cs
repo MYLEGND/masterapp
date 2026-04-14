@@ -34,6 +34,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
     public DbSet<PlaybookExecution> PlaybookExecutions => Set<PlaybookExecution>();
     public DbSet<Commitment> Commitments => Set<Commitment>();
     public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
+    public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
