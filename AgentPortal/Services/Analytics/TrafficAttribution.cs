@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace AgentPortal.Services.Analytics
@@ -53,7 +52,7 @@ namespace AgentPortal.Services.Analytics
                 if (PaidSources.Contains(utmSource)) return TrafficType.PaidAds;
             }
             // fallback: if any paid-like campaign
-            if (!string.IsNullOrWhiteSpace(utmCampaign) && utmCampaign.ToLower().Contains("ad"))
+            if (!string.IsNullOrWhiteSpace(utmCampaign) && utmCampaign.Contains("ad", StringComparison.OrdinalIgnoreCase))
                 return TrafficType.PaidAds;
             // fallback: unknown
             return TrafficType.Unknown;
@@ -65,11 +64,25 @@ namespace AgentPortal.Services.Analytics
             if (filter == TrafficType.PaidAds) return rowType == TrafficType.PaidAds;
             if (filter == TrafficType.NonPaid)
             {
+                // NonPaid = Organic + Direct + Referral. Unknown never leaks into NonPaid.
                 return rowType == TrafficType.Organic
                     || rowType == TrafficType.Direct
                     || rowType == TrafficType.Referral;
             }
             return rowType == filter;
         }
+
+        /// <summary>Human-readable label for a traffic filter, used in snapshot headers and diagnostics.</summary>
+        public static string BucketLabel(TrafficType t) => t switch
+        {
+            TrafficType.All      => "All Traffic (Paid + Non-Paid + Unknown)",
+            TrafficType.PaidAds  => "Paid Ads Only",
+            TrafficType.NonPaid  => "Non-Paid Only (Organic + Direct + Referral)",
+            TrafficType.Organic  => "Organic Only",
+            TrafficType.Direct   => "Direct Only",
+            TrafficType.Referral => "Referral Only",
+            TrafficType.Unknown  => "Unknown/Unattributed Only",
+            _                    => t.ToString()
+        };
     }
 }

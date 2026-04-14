@@ -231,7 +231,7 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("ai-review-snapshot")]
     [HttpGet("/website-analytics/ai-review-snapshot")]
-    public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         try
         {
@@ -251,8 +251,10 @@ namespace AgentPortal.Controllers;
                 }
             }
 
+            // All sections use the same trafficType so every metric is computed on a consistent
+            // population. Default is TrafficType.All (matches the dashboard default view).
             var (summary, summaryWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetSummaryAsync(range, scope),
+                () => _analytics.GetSummaryAsync(range, scope, trafficType),
                 () => new SummaryKpiDto
                 {
                     RangeLabel = range.Label,
@@ -261,27 +263,27 @@ namespace AgentPortal.Controllers;
                 },
                 "Summary metrics");
             var (traffic, trafficWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetTrafficAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetTrafficAsync(range, scope, trafficType),
                 () => new TrafficOverviewDto { RangeLabel = range.Label },
                 "Traffic metrics");
             var (quote, quoteWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetQuoteFunnelAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
                 () => new QuoteFunnelDto { RangeLabel = range.Label },
                 "Quote funnel metrics");
             var (conversions, conversionsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetConversionsAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetConversionsAsync(range, scope, trafficType),
                 () => new ConversionCenterDto { RangeLabel = range.Label },
                 "Conversion metrics");
             var (leads, leadsWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetLeadsAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetLeadsAsync(range, scope, trafficType),
                 () => new LeadSnapshotDto { RangeLabel = range.Label },
                 "Lead snapshot metrics");
             var (pagePerf, pagePerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetPagePerformanceAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
                 () => new PagePerformanceDto { RangeLabel = range.Label },
                 "Page performance metrics");
             var (ctaPerf, ctaPerfWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetCtaPerformanceAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetCtaPerformanceAsync(range, scope, trafficType),
                 () => new CtaPerformanceDto { RangeLabel = range.Label },
                 "CTA performance metrics");
             var (timeOnPage, timeOnPageWarning) = await SafeSnapshotLoadAsync(
@@ -293,11 +295,11 @@ namespace AgentPortal.Controllers;
                 () => new ExitAnalysisDto { RangeLabel = range.Label },
                 "Exit analysis metrics");
             var (source, sourceWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetSourcePerformanceAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
                 () => new SourcePerformanceDto { RangeLabel = range.Label },
                 "Source performance metrics");
             var (abandonment, abandonmentWarning) = await SafeSnapshotLoadAsync(
-                () => _analytics.GetFormAbandonmentAsync(range, scope, TrafficType.PaidAds),
+                () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
                 () => new FormAbandonmentDto { RangeLabel = range.Label },
                 "Form abandonment metrics");
             MetaCampaignsDto? metaCampaigns = null;
@@ -360,6 +362,7 @@ namespace AgentPortal.Controllers;
                 generatedLocal,
                 scopeLabel,
                 rangeLabel,
+                TrafficAttribution.BucketLabel(trafficType),
                 warnings);
 
             return Json(new AiReviewSnapshotDto
@@ -700,6 +703,7 @@ namespace AgentPortal.Controllers;
         string generatedAtLocal,
         string scopeLabel,
         string rangeLabel,
+        string trafficScopeLabel,
         IReadOnlyCollection<string> warnings)
     {
         var sb = new StringBuilder();
@@ -751,6 +755,7 @@ namespace AgentPortal.Controllers;
         Line($"Generated: {generatedAtLocal} (server local time)");
         Line($"Range: {rangeLabel}");
         Line($"Scope: {scopeLabel}");
+        Line($"Traffic Filter: {trafficScopeLabel}");
         Line();
 
         var activeCampaigns = (metaCampaigns?.Rows ?? new List<MetaCampaignRow>())
@@ -983,5 +988,93 @@ namespace AgentPortal.Controllers;
         Line("Provide a blunt, practical breakdown with priority order.");
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Developer-only diagnostic endpoint. Returns traffic bucket counts and attribution
+    /// distribution for the requested range/scope. Safe to call; never modifies data.
+    /// To hide from normal users, add [Authorize(Policy = "FounderOnly")] or restrict by role.
+    /// </summary>
+    [HttpGet("debug/traffic-buckets")]
+    [HttpGet("/website-analytics/debug/traffic-buckets")]
+    public async Task<IActionResult> DebugTrafficBuckets(
+        [FromQuery] string? preset,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] bool team = false)
+    {
+        if (!FounderGuard.IsFounder(User))
+            return Forbid();
+
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+
+        // Load all raw events + leads
+        var scopedAgentIds = await _db.AgentTrackingProfiles
+            .Where(p => true)
+            .Select(p => p.Id)
+            .ToArrayAsync();
+
+        var allEvents = await _db.AnalyticsEvents.AsNoTracking()
+            .Where(e => !e.IsInternal && e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
+            .ToListAsync();
+
+        var allLeads = await _db.WebsiteLeads.AsNoTracking()
+            .Where(l => !l.IsInternal && l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
+            .ToListAsync();
+
+        // Compute attributed event rows
+        var attributed = allEvents
+            .Select(e =>
+            {
+                var src  = e.UtmSource?.Trim();
+                var med  = e.UtmMedium?.Trim();
+                var camp = e.UtmCampaign?.Trim();
+                var fb   = e.Fbclid?.Trim();
+                var t    = TrafficAttribution.Classify(src, med, camp, fb);
+                return new { e.EventType, e.SessionId, t };
+            })
+            .ToList();
+
+        var eventBuckets = attributed
+            .GroupBy(r => r.t)
+            .OrderByDescending(g => g.Count())
+            .Select(g => new
+            {
+                Bucket = g.Key.ToString(),
+                Events = g.Count(),
+                Sessions = g.Where(r => r.SessionId != null).Select(r => r.SessionId!).Distinct().Count()
+            })
+            .ToList();
+
+        var leadBuckets = allLeads
+            .GroupBy(l => TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid))
+            .OrderByDescending(g => g.Count())
+            .Select(g => new
+            {
+                Bucket = g.Key.ToString(),
+                Leads = g.Count()
+            })
+            .ToList();
+
+        var zeroDataHints = new List<string>();
+        var paidEvents    = eventBuckets.FirstOrDefault(b => b.Bucket == "PaidAds")?.Events ?? 0;
+        var unknownEvents = eventBuckets.FirstOrDefault(b => b.Bucket == "Unknown")?.Events ?? 0;
+        if (paidEvents == 0 && unknownEvents > 0)
+            zeroDataHints.Add($"All traffic is Unknown/unattributed ({unknownEvents} events). PaidAds filter will return 0 rows. Check that utm_source/utm_medium are being sent on landing page_view events.");
+        if (paidEvents == 0 && allEvents.Count > 0)
+            zeroDataHints.Add("No PaidAds-classified events in range. If you expect paid traffic, verify UTM parameters are present on the first page_view of paid sessions.");
+
+        return Json(new
+        {
+            Range = range.Label,
+            TotalEvents = allEvents.Count,
+            TotalLeads = allLeads.Count,
+            EventBucketsByDirectAttribution = eventBuckets,
+            LeadBucketsByDirectAttribution = leadBuckets,
+            ZeroDataHints = zeroDataHints,
+            Note = "Attribution shown here is direct-field only (no session fallback). Actual query results use session→visitor fallback and may differ."
+        });
     }
 }

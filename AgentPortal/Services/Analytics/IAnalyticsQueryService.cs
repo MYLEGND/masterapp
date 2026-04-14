@@ -5,7 +5,7 @@ namespace AgentPortal.Services.Analytics;
 
 public interface IAnalyticsQueryService
 {
-    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope);
+    Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);

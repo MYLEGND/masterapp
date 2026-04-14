@@ -412,6 +412,58 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return rows.Where(r => TrafficAttribution.MatchesFilter(r.TrafficType, trafficType)).ToList();
     }
 
+    /// <summary>
+    /// Applies traffic filtering to a list of leads using the same session→visitor attribution
+    /// fallback chain used for events. Leads with blank UTM fields are resolved against the
+    /// session/visitor attribution maps built from the provided context events before filtering.
+    /// This prevents paid sessions from being misclassified as Unknown simply because the lead
+    /// record itself did not capture UTM fields directly.
+    /// </summary>
+    private static List<WebsiteLead> ResolveAndFilterLeads(
+        List<WebsiteLead> leads,
+        List<AnalyticsEvent> contextEvents,
+        TrafficType trafficType)
+    {
+        if (trafficType == TrafficType.All) return leads;
+        if (leads.Count == 0) return leads;
+
+        var sessionMap = BuildSessionAttributionMap(contextEvents);
+        var visitorMap = BuildVisitorAttributionMap(contextEvents);
+
+        return leads.Where(l =>
+        {
+            var direct = new EventAttributionSnapshot(
+                NormalizeAttributionToken(l.UtmSource),
+                NormalizeAttributionToken(l.UtmMedium),
+                NormalizeAttributionToken(l.UtmCampaign),
+                NormalizeAttributionToken(l.Fbclid));
+
+            EventAttributionSnapshot resolved;
+            if (HasAttributionSignal(direct))
+            {
+                resolved = direct;
+            }
+            else if (!string.IsNullOrWhiteSpace(l.SessionId) &&
+                     sessionMap.TryGetValue(l.SessionId!, out var sessionAttr) &&
+                     HasAttributionSignal(sessionAttr))
+            {
+                resolved = sessionAttr;
+            }
+            else if (!string.IsNullOrWhiteSpace(l.VisitorId) &&
+                     visitorMap.TryGetValue(l.VisitorId!, out var visitorAttr) &&
+                     HasAttributionSignal(visitorAttr))
+            {
+                resolved = visitorAttr;
+            }
+            else
+            {
+                resolved = direct; // remains Unknown
+            }
+
+            return TrafficAttribution.MatchesFilter(Classify(resolved), trafficType);
+        }).ToList();
+    }
+
     private static List<AttributedEventRow> BuildSessionAttributionRows(List<AttributedEventRow> rows)
     {
         return rows
@@ -431,18 +483,46 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static decimal ClampPercent(decimal value) => Math.Min(100m, Math.Max(0m, value));
 
-    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope)
+    public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
-        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
-        // previous period for deltas
+        List<AnalyticsEvent> events;
+        List<WebsiteLead>    leads;
+        if (trafficType == TrafficType.All)
+        {
+            events = allEvents;
+            leads  = allLeads;
+        }
+        else
+        {
+            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+                         .Select(r => r.Event).ToList();
+            leads  = ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+        }
+
+        // previous period for deltas (same filter applied)
         var span = range.ToUtc - range.FromUtc;
         var prevFrom = range.FromUtc - span;
-        var prevTo = range.ToUtc - span;
-        var prevEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
-        var prevLeads = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+        var prevTo   = range.ToUtc - span;
+        var prevAllEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+        var prevAllLeads  = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+
+        List<AnalyticsEvent> prevEvents;
+        List<WebsiteLead>    prevLeads;
+        if (trafficType == TrafficType.All)
+        {
+            prevEvents = prevAllEvents;
+            prevLeads  = prevAllLeads;
+        }
+        else
+        {
+            prevEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(prevAllEvents), trafficType)
+                             .Select(r => r.Event).ToList();
+            prevLeads  = ResolveAndFilterLeads(prevAllLeads, prevAllEvents, trafficType);
+        }
 
         int pageViews = events.Count(e => e.EventType == "page_view");
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
@@ -603,15 +683,22 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
-        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
-        if (trafficType != TrafficType.All)
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+
+        List<AnalyticsEvent> events;
+        List<WebsiteLead>    leads;
+        if (trafficType == TrafficType.All)
         {
-            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType)
-                .Select(r => r.Event)
-                .ToList();
-            leads = leads.Where(l => TrafficAttribution.MatchesFilter(
-                TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid), trafficType)).ToList();
+            events = allEvents;
+            leads  = allLeads;
+        }
+        else
+        {
+            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+                         .Select(r => r.Event).ToList();
+            // Use session/visitor fallback so leads with missing direct UTMs are resolved correctly.
+            leads = ResolveAndFilterLeads(allLeads, allEvents, trafficType);
         }
 
         var pageViews = events.Where(e => e.EventType == "page_view")
@@ -650,15 +737,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "cta_click")
-            .ToListAsync();
-        if (trafficType != TrafficType.All)
-        {
-            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType)
-                .Select(r => r.Event)
-                .ToList();
-        }
+        // Load ALL events for proper session attribution (same reason as GetConversionsAsync).
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
+        var events = attributedRows
+            .Where(r => r.Event.EventType == "cta_click")
+            .Select(r => r.Event)
+            .ToList();
 
         var rows = events
             .GroupBy(e => new { Page = e.PageKey ?? "unknown", Cta = e.ElementKey ?? "unknown" })
@@ -717,14 +802,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var conversionEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "lead_form_submit_success" ||
-                        (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success")))
-            .ToListAsync();
+        // Load ALL events so BuildAttributedEventRows can include page_view events when resolving
+        // session-level attribution. Pre-filtering to conversion types would strip page_views from
+        // the session map, causing paid conversions to be misclassified as Unknown.
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
 
         var filteredConversionEvents = FilterAttributedRowsByTraffic(
-                BuildAttributedEventRows(conversionEvents),
+                BuildAttributedEventRows(allEvents),
                 trafficType)
+            .Where(r => r.Event.EventType == "lead_form_submit_success" ||
+                        (r.Event.EventType == "form_submit" &&
+                         (r.Event.SubmitOutcome == null || r.Event.SubmitOutcome == "success")))
             .Select(r => r.Event)
             .ToList();
 
@@ -753,14 +841,25 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int take = 200)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var leadsQuery = BaseLeads(range, scope, scopedAgentIds);
-        if (trafficType != TrafficType.All)
+        // Load all leads first (without SQL-level traffic filter) so we can apply session/visitor
+        // attribution fallback for leads whose own UTM fields are blank but whose session carried UTMs.
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds)
+            .OrderByDescending(l => l.CreatedUtc)
+            .ToListAsync();
+
+        List<WebsiteLead> filteredLeads;
+        if (trafficType == TrafficType.All)
         {
-            leadsQuery = leadsQuery.Where(l => TrafficAttribution.MatchesFilter(
-                TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid), trafficType));
+            filteredLeads = allLeads;
         }
-        var leads = await leadsQuery.OrderByDescending(l => l.CreatedUtc).Take(take).ToListAsync();
-        var total = await leadsQuery.CountAsync();
+        else
+        {
+            var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+            filteredLeads = ResolveAndFilterLeads(allLeads, contextEvents, trafficType);
+        }
+
+        var total = filteredLeads.Count;
+        var leads = filteredLeads.Take(take).ToList();
 
         var dto = new LeadSnapshotDto
         {
