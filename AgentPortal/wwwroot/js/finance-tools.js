@@ -6206,15 +6206,19 @@ if (t.id === "ExpenseLens") {
             markNeutral(elTips);
 
             // Remaining Balance (based on current computed values)
-            const income = +elIncome.value.replace(/,/g, '') || 0;
-            let totalSpent = 0;
-            document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
-                totalSpent += (+input.value.replace(/,/g, '') || 0);
-            });
-            const remaining = income - totalSpent;
-
-            if (remaining >= 0) markIncome(elMargin);
-            else markExpense(elMargin);
+            // When a week filter is active, the label shows "Week X Due: $N" — always red (it's a bill amount).
+            if (elActiveWeek) {
+                markExpense(elMargin);
+            } else {
+                const income = +elIncome.value.replace(/,/g, '') || 0;
+                let totalSpent = 0;
+                document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
+                    totalSpent += (+input.value.replace(/,/g, '') || 0);
+                });
+                const remaining = income - totalSpent;
+                if (remaining >= 0) markIncome(elMargin);
+                else markExpense(elMargin);
+            }
         };
 
         // ✅ Force style application after DOM paint (this is what kills the “refresh page” issue)
