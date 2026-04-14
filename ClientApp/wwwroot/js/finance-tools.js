@@ -2019,8 +2019,8 @@ if (t.id === "ExpenseLens") {
         weeklyBtnTop.id = 'elWeeklyBtnTop';
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly ▾';
-        weeklyBtnTop.className = 'btn btn-sm';
-        weeklyBtnTop.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;align-self:center;';
+        weeklyBtnTop.className = 'btn';
+        weeklyBtnTop.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanel.style.display !== 'none';
@@ -2028,12 +2028,13 @@ if (t.id === "ExpenseLens") {
             renderWeekPanel();
             weekPanel.style.display = 'block';
         });
-        // Wrap the income input row in a flex container so the button sits cleanly to the right
+        // Wrap the income input row in a flex container so the button sits cleanly to the right.
+        // Remove mb-3 from the input (it adds margin-bottom inside the wrapper causing height mismatch).
+        elIncome.classList.remove('mb-3');
         const incomeInputRow = elIncome.parentElement;
         const incomeFlexWrap = document.createElement('div');
-        incomeFlexWrap.style.cssText = 'display:flex;align-items:stretch;gap:10px;margin-bottom:15px;';
-        incomeInputRow.style.marginBottom = '0';
-        incomeInputRow.style.flex = '1';
+        incomeFlexWrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:15px;';
+        incomeInputRow.style.cssText = 'position:relative;flex:0 0 auto;width:280px;max-width:100%;';
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
         incomeFlexWrap.appendChild(weeklyBtnTop);
