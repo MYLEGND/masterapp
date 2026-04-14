@@ -5040,9 +5040,9 @@ if (t.id === "SavingsAccelerator") {
         </div>
     </div>
 
-    <h5 style="margin-top:10px; font-weight:700;">
+    <h5 style="margin-top:10px; font-weight:700; color:#fff;">
         Surplus:
-        <span id="saOut" style="color:#222; font-weight:900;">$0</span>
+        <span id="saOut" style="color:#a68023; font-weight:900;">$0</span>
     </h5>
 
     <div class="mt-4">
@@ -6466,9 +6466,9 @@ if (t.id === "CashFlow") {
             </div>
         </div>
 
-        <h5 style="font-weight:700; margin-top:6px;">
+        <h5 style="font-weight:700; margin-top:6px; color:#fff;">
             Net Cash Flow:
-            <span id="cfResult" style="color:#222; font-weight:900;">$0</span>
+            <span id="cfResult" style="color:#a68023; font-weight:900;">$0</span>
         </h5>
 
         <table class="table mt-3"
@@ -6758,7 +6758,7 @@ if (t.id === "DebtClarity") {
 
         <h5 style="font-weight:700; margin-top:8px;">
             DTI Ratio:
-            <span id="dcResult" style="color:#222; font-weight:900;">0%</span>
+            <span id="dcResult" style="color:#a68023; font-weight:900;">0%</span>
         </h5>
 
         <table class="table mt-3"
@@ -7135,9 +7135,9 @@ if (t.id === "FinancialBuffer") {
         markExpense(fbBillsInput);
 
         // Outputs: goals are targets (neutral by your spec)
-        markNeutral(fb1);
-        markNeutral(fb3);
-        markNeutral(fb12);
+        markGold(fb1);
+        markGold(fb3);
+        markGold(fb12);
 
         // Tips neutral
         markNeutral(fbTips);
@@ -7442,9 +7442,9 @@ if (t.id === "WealthProjection") {
             markExpense(wp6);
             markExpense(wp12);
         } else {
-            markNeutral(wpOut);
-            markNeutral(wp6);
-            markNeutral(wp12);
+            markGold(wpOut);
+            markGold(wp6);
+            markGold(wp12);
         }
 
         // Tips neutral
