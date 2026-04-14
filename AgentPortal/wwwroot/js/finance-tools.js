@@ -5263,9 +5263,9 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.appendChild(row);
 
         // Initial paint for new rows
-        paint(name, 'neutral');
-        paint(pct, 'neutral');
-        paint(amt, 'neutral');
+        markNeutral(name);
+        markWithSuffix(markNeutral, pct);
+        markWithSuffix(markNeutral, amt);
     };
 
     const refreshSurplus = () => {
