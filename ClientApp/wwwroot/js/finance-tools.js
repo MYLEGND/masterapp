@@ -1835,7 +1835,7 @@ if (t.id === "ExpenseLens") {
         };
 
         const weekPanel = document.createElement('div');
-        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:18px 22px;width:400px;max-width:92vw;box-shadow:0 12px 48px rgba(30,58,138,0.45);';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:22px 28px;width:600px;max-width:95vw;max-height:82vh;overflow-y:auto;box-shadow:0 16px 60px rgba(30,58,138,0.55);';
         document.body.appendChild(weekPanel);
 
         const renderWeekPanel = () => {
@@ -1863,7 +1863,7 @@ if (t.id === "ExpenseLens") {
             const allRow = document.createElement('div');
             allRow.style.cssText = `cursor:pointer;padding:7px 10px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
             allRow.innerHTML = '<span>Show All Bills</span><span>↺</span>';
-            allRow.addEventListener('click', () => { elApplyWeekFilter(null); weekPanel.style.display = 'none'; });
+            allRow.addEventListener('click', (e) => { e.stopPropagation(); elApplyWeekFilter(null); renderWeekPanel(); });
             weekPanel.appendChild(allRow);
 
             weeks.forEach(week => {
@@ -1948,23 +1948,19 @@ if (t.id === "ExpenseLens") {
                     detailWrap.appendChild(billRow);
                 });
 
-                // Toggle expand on chevron click
-                let expanded = false;
-                if (billCount > 0) {
-                    const toggleExpand = (e) => {
-                        e.stopPropagation();
-                        expanded = !expanded;
-                        detailWrap.style.display = expanded ? 'block' : 'none';
-                        chevron.textContent = expanded ? '▴' : '▾';
-                    };
-                    chevron.addEventListener('click', toggleExpand);
+                // Auto-expand the active week's detail at render time.
+                // elApplyWeekFilter calls renderWeekPanel, which recreates the DOM — so expansion
+                // must happen here during render, not in the click handler on a now-detached element.
+                if (isActive && billCount > 0) {
+                    detailWrap.style.display = 'block';
+                    if (chevron) chevron.textContent = '▴';
                 }
 
-                // Filter on label/row click (not chevron)
+                // Click applies the filter. renderWeekPanel (called inside elApplyWeekFilter)
+                // re-renders and auto-expands the newly active week. Panel stays open.
                 summaryRow.addEventListener('click', (e) => {
-                    if (e.target === chevron) return;
+                    e.stopPropagation();
                     elApplyWeekFilter(week);
-                    weekPanel.style.display = 'none';
                 });
 
                 weekBlock.appendChild(summaryRow);
