@@ -508,9 +508,11 @@
     ]);
   }
 
-  function renderConversions(data) {
+  function renderConversions(data, summaryOverride) {
     state.cache.conversions = data;
-    const summary = state.cache.summary;
+    // summaryOverride is a traffic-filtered summary fetched alongside conversion data.
+    // Falls back to the all-traffic summary cache so behaviour is unchanged when no filter is active.
+    const summary = summaryOverride || state.cache.summary;
     if (summary) {
       setText('conv-intent', summary.intentAvailable ? `${summary.intentConversionRate}%` : '—');
       setText('conv-intent-sub', summary.intentAvailable ? summary.intentDenominatorLabel : 'Intent conversion unavailable');
@@ -855,9 +857,24 @@
     }
   }
   async function loadConv() {
-    const data = await fetchJson('conv', endpoints.conversions, rangeParams({ modal: 'convModal' }));
-    if (!data) return;
-    renderConversions(data);
+    const params = rangeParams({ modal: 'convModal' });
+    const t = state.trafficType.convModal || 'all';
+    let convData, summaryData;
+    if (t === 'all') {
+      // No filter active — use the cached all-traffic summary (no extra fetch needed).
+      convData = await fetchJson('conv', endpoints.conversions, params);
+      summaryData = state.cache.summary;
+    } else {
+      // Filter is active — fetch conversion data AND a matching filtered summary in parallel
+      // so Intent Conversion Rate and Session Conversion Rate reflect the same traffic population
+      // as Total Conversions. Without this, rates would silently use an all-traffic denominator.
+      [convData, summaryData] = await Promise.all([
+        fetchJson('conv', endpoints.conversions, params),
+        fetchJson('conv-summary', endpoints.summary, params)
+      ]);
+    }
+    if (!convData) return;
+    renderConversions(convData, summaryData);
   }
   async function loadLeads() {
     const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
