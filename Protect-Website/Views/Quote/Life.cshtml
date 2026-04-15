@@ -858,7 +858,6 @@ body.life-landing header .navbar .nav-link:focus {
                 <div class="lq-micro-step" data-micro-step="1" hidden>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
                         <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
-                        <div class="lq-step-helper" style="margin-bottom:10px;">This helps us tailor what may fit best.</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in goalStep.Options)
                             {
@@ -879,7 +878,6 @@ body.life-landing header .navbar .nav-link:focus {
                 <div class="lq-micro-step" data-micro-step="2" hidden>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
                         <div class="lq-choice-label" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                        <div class="lq-step-helper" style="margin-bottom:10px;">This simply helps narrow realistic options.</div>
                         <div class="lq-choice-grid lq-grid-2">
                             @foreach (var opt in tobaccoStep.Options)
                             {
@@ -917,9 +915,9 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" data-step1-back="2">Back</button>
-                        <button type="button" class="btn-gold flex-fill" id="step1Continue">CONTINUE</button>
+                        <button type="button" class="btn-gold flex-fill" id="step1Continue">CONTINUE TO MY OPTIONS</button>
                     </div>
-                    <div class="lq-trust-note">Private • Secure • No pressure</div>
+                    <div class="lq-trust-note">No obligation • 100% secure</div>
                 </div>
             </div>
         </div>
@@ -941,14 +939,14 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel" id="lifeValuePanel" data-funnel-step="1.6" hidden>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Almost done</div>
-                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">Here’s what happens next</div>
-                <div class="lq-step-helper">Based on what you shared, we’ll prepare options that fit what matters most to you and walk you through them clearly.</div>
+                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">Here’s what we’ll help you review</div>
+                <div class="lq-step-helper">Based on what you shared, we’ll prepare personalized protection options and walk you through what may fit your needs best.</div>
                 <div class="lq-value-list">
                     <div class="lq-value-item"><strong>Options aligned with your goals</strong></div>
-                    <div class="lq-value-item"><strong>Clear guidance based on your situation</strong></div>
+                    <div class="lq-value-item"><strong>Guidance based on your situation</strong></div>
                     <div class="lq-value-item"><strong>No obligation to move forward</strong></div>
                 </div>
-                <div class="lq-value-note">Quick, simple, and built around what matters most to you.</div>
+                <div class="lq-value-note">Quick. Clear. Built around what matters most to you.</div>
                 <div class="lq-step-actions dual">
                     <button type="button" class="btn-ghost" id="valueBridgeBackBtn">Back</button>
                     <button type="button" class="btn-gold flex-fill" id="valueBridgeContinueBtn">CONTINUE</button>
@@ -959,7 +957,7 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Where should we send your personalized options?</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Where should we send or review your options?</div>
                 <div class="lq-step-helper">Based on what you shared, we’ll prepare your personalized review and walk you through what may fit your needs best.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
@@ -1054,13 +1052,13 @@ body.life-landing header .navbar .nav-link:focus {
                         }
                     </div>
                     <div class="lq-step-actions">
-                        <div class="lq-reach-note">We’ll walk through your options with you — no pressure.</div>
+                        <div class="lq-reach-note">Quick and simple — we’ll walk through everything with you.</div>
                         <div class="lq-submit-row">
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <div class="lq-trust-note">Private • Secure • No obligation</div>
+                        <div class="lq-trust-note">100% Secure • No Obligation</div>
                         <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
                     </div>
                     <div class="lq-reassurance" hidden></div>
