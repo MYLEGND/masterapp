@@ -286,6 +286,43 @@ namespace Protect_Website.Controllers
                     correlationId, lead.LeadId, model.OfferKey);
             }
 
+            // ── 2b. Send recommendation summary to user (only when email provided) ──
+            if (!string.IsNullOrWhiteSpace(model.Email?.Trim()))
+            {
+                try
+                {
+                    var userCredential  = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                    var userGraphClient = new GraphServiceClient(userCredential);
+
+                    var userMessage = new Message
+                    {
+                        Subject = $"Your Recommendation Summary — {websiteName}",
+                        Body = new ItemBody
+                        {
+                            ContentType = BodyType.Html,
+                            Content = BuildUserSummaryEmailBody(model, cfg)
+                        },
+                        ToRecipients = new List<Recipient>
+                        {
+                            new Recipient { EmailAddress = new EmailAddress { Address = model.Email.Trim() } }
+                        }
+                    };
+
+                    await userGraphClient.Users[senderEmail].SendMail.PostAsync(
+                        new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
+
+                    _logger.LogInformation(
+                        "LifeQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId} offer={Offer}",
+                        correlationId, model.Email.Trim(), lead.LeadId, model.OfferKey);
+                }
+                catch (Exception userEmailEx)
+                {
+                    _logger.LogError(userEmailEx,
+                        "LifeQuote [{CorrelationId}]: user summary email failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                        correlationId, lead.LeadId, model.OfferKey);
+                }
+            }
+
             // ── 3. Write analytics event ─────────────────────────────────────────
             try
             {
@@ -434,6 +471,45 @@ namespace Protect_Website.Controllers
                 .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
+        }
+
+        private static string BuildUserSummaryEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
+        {
+            // Resolve a human-readable label for a code value using the step options.
+            static string? ResolveLabel(IReadOnlyList<LifeWizardOption>? options, string? code)
+            {
+                if (string.IsNullOrWhiteSpace(code) || options == null) return null;
+                return options.FirstOrDefault(o => string.Equals(o.Code, code, StringComparison.OrdinalIgnoreCase))?.Label ?? code;
+            }
+
+            var protectStep = cfg.Steps.ElementAtOrDefault(0);
+            var goalStep    = cfg.Steps.ElementAtOrDefault(1);
+            var tobaccoStep = cfg.Steps.ElementAtOrDefault(2);
+
+            var protectingLabel = ResolveLabel(protectStep?.Options, model.ProtectingWho);
+            var goalLabel       = ResolveLabel(goalStep?.Options,    model.CoverageGoal);
+            var tobaccoLabel    = ResolveLabel(tobaccoStep?.Options,  model.TobaccoUse);
+
+            var rows = new LeadEmailTemplate.RowBuilder();
+
+            rows.Section("Your Answers")
+                .Row("Protecting",  protectingLabel)
+                .Row("Main goal",   goalLabel)
+                .Row("Tobacco use", tobaccoLabel)
+                .Row("Age",         model.Age?.ToString(CultureInfo.InvariantCulture));
+
+            rows.Section("Your Recommendation Summary")
+                .Row("Best fit",      model.RecommendationPrimaryTitle   ?? model.RecommendationPrimaryKey)
+                .Row("Also consider", model.RecommendationSecondaryTitle ?? model.RecommendationSecondaryKey);
+
+            rows.Section("What Happens Next");
+            rows.RowHtml("", @"<div style=""color:rgba(249,250,251,0.78);font-size:14px;line-height:1.6;"">
+  One of our licensed advisors will be in touch shortly to walk you through these options
+  and answer any questions you may have. There is no obligation — just a straightforward
+  conversation about what may fit your situation.
+</div>");
+
+            return LeadEmailTemplate.Wrap("Your Recommendation Summary", rows.ToString());
         }
 
         private static void NormalizeDiscoveryAnswers(LifeQuoteFormModel model)
