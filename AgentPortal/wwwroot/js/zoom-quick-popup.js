@@ -261,12 +261,7 @@
         const subject = encodeURIComponent('Zoom Meeting Link');
         const body    = encodeURIComponent(`Hi,\n\nHere's the Zoom link for our meeting:\n${url}\n\nLooking forward to connecting with you.`);
         const uri     = `mailto:${email}?subject=${subject}&body=${body}`;
-        const a       = document.createElement('a');
-        a.href        = uri;
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        window.location.href = uri;
     }
 
     // ─── Actions submenu ─────────────────────────────────────────────────────

@@ -22,6 +22,7 @@
     // ── Actions submenu (body-level, avoids overflow:hidden clipping) ───────
     let actionsMenu = null;
     let activeDotsUrl = null;
+    let activeDotsId = null;
 
     function getOrCreateActionsMenu() {
         if (actionsMenu) return actionsMenu;
@@ -29,15 +30,18 @@
         actionsMenu.className = 'zoom-qp-actions-menu';
         actionsMenu.style.cssText = 'display:none;position:fixed;z-index:9960;background:#1e2a3a;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px 0;min-width:130px;box-shadow:0 8px 24px rgba(0,0,0,.45);';
         actionsMenu.innerHTML =
-            '<button type="button" class="zoom-qp-action-btn" data-action="text" style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">📱 Text Link</button>' +
-            '<button type="button" class="zoom-qp-action-btn" data-action="email" style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">✉️ Email Link</button>';
+            '<button type="button" class="zoom-qp-action-btn" data-action="text"   style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">📱 Text Link</button>' +
+            '<button type="button" class="zoom-qp-action-btn" data-action="email"  style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">✉️ Email Link</button>' +
+            '<div style="height:1px;background:rgba(255,255,255,.08);margin:4px 0;"></div>' +
+            '<button type="button" class="zoom-qp-action-btn" data-action="remove" style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#f87171;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">🗑 Remove</button>';
         document.body.appendChild(actionsMenu);
         return actionsMenu;
     }
 
-    function openActionsMenu(dotsBtn, linkUrl) {
+    function openActionsMenu(dotsBtn, linkUrl, linkId) {
         const menu = getOrCreateActionsMenu();
         activeDotsUrl = linkUrl;
+        activeDotsId  = linkId;
         const r = dotsBtn.getBoundingClientRect();
         let top = r.bottom + 4;
         const menuH = 80;
@@ -50,6 +54,7 @@
     function closeActionsMenu() {
         if (actionsMenu) actionsMenu.style.display = 'none';
         activeDotsUrl = null;
+        activeDotsId  = null;
     }
 
     function getContactPhone() {
@@ -79,10 +84,7 @@
         const email   = getContactEmail();
         const subject = encodeURIComponent('Zoom Meeting Link');
         const body    = encodeURIComponent(`Hi,\n\nHere's the Zoom link for our meeting:\n${url}\n\nLooking forward to connecting with you.`);
-        const uri     = `mailto:${email}?subject=${subject}&body=${body}`;
-        const a = document.createElement('a');
-        a.href = uri; a.style.display = 'none';
-        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
     }
 
     // Close actions menu on outside click
@@ -99,10 +101,12 @@
         if (!btn || !actionsMenu || actionsMenu.style.display === 'none') return;
         e.stopPropagation();
         const action = btn.dataset.action;
-        const url = activeDotsUrl;
+        const url    = activeDotsUrl;
+        const id     = activeDotsId;
         closeActionsMenu();
-        if (action === 'text')  sendTextLink(url);
-        if (action === 'email') sendEmailLink(url);
+        if (action === 'text')   sendTextLink(url);
+        if (action === 'email')  sendEmailLink(url);
+        if (action === 'remove') deleteLink(id);
     }, true);
 
     function open() {
@@ -191,19 +195,12 @@
                 if (activeDotsUrl === link.url && menu.style.display !== 'none') {
                     closeActionsMenu();
                 } else {
-                    openActionsMenu(dotsBtn, link.url);
+                    openActionsMenu(dotsBtn, link.url, link.id);
                 }
             });
 
-            const delBtn = document.createElement('button');
-            delBtn.type = 'button';
-            delBtn.className = 'zoom-link-btn zoom-link-btn-delete';
-            delBtn.textContent = 'Remove';
-            delBtn.addEventListener('click', () => deleteLink(link.id));
-
             actions.appendChild(copyBtn);
             actions.appendChild(dotsBtn);
-            actions.appendChild(delBtn);
             row.appendChild(info);
             row.appendChild(actions);
             listEl.appendChild(row);
