@@ -787,6 +787,81 @@ body.life-landing header .navbar .nav-link:focus {
         margin-bottom: 3px !important;
     }
 }
+
+/* ── Results page ─────────────────────────────────────────────────────────── */
+.lq-results-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    background: rgba(12,22,40,0.60);
+    border: 1px solid rgba(199,153,49,0.30);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+}
+.lq-rs-item { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 80px; }
+.lq-rs-label { font-size: .72rem; font-weight: 700; color: rgba(248,250,252,0.52); text-transform: uppercase; letter-spacing: .04em; }
+.lq-rs-value { font-size: .88rem; font-weight: 800; color: #f3d78f; }
+
+.lq-rec-badge {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    border-radius: 999px;
+    padding: 2px 10px;
+    margin-bottom: 8px;
+}
+.lq-rec-badge.primary { background: #c79931; color: #0f172a; }
+.lq-rec-badge.secondary { background: rgba(199,153,49,0.15); color: #f3d78f; border: 1px solid rgba(199,153,49,0.40); }
+
+.lq-rec-card {
+    background: rgba(24,39,63,0.76);
+    border: 1.4px solid rgba(199,153,49,0.34);
+    border-radius: 12px;
+    padding: 14px 14px 12px;
+    margin-bottom: 10px;
+}
+.lq-rec-card.primary { border-color: rgba(199,153,49,0.64); background: rgba(199,153,49,0.08); }
+.lq-rec-title { font-size: 1.05rem; font-weight: 900; color: #f8fafc; margin-bottom: 5px; }
+.lq-rec-desc { font-size: .9rem; color: rgba(248,250,252,0.72); margin-bottom: 8px; line-height: 1.45; }
+.lq-rec-bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 5px;
+}
+.lq-rec-bullets li {
+    font-size: .86rem;
+    font-weight: 760;
+    color: rgba(248,250,252,0.82);
+    padding-left: 1.2em;
+    position: relative;
+    line-height: 1.35;
+}
+.lq-rec-bullets li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: #c79931;
+    font-weight: 900;
+}
+.lq-rec-trust {
+    text-align: center;
+    font-size: .82rem;
+    font-weight: 700;
+    color: rgba(248,250,252,0.52);
+    margin-top: 4px;
+}
+@@media (max-width: 640px) {
+    .lq-results-summary { gap: 6px; padding: 8px 10px; }
+    .lq-rec-card { padding: 12px 12px 10px; }
+    .lq-rec-title { font-size: .98rem; }
+    .lq-rec-desc { font-size: .85rem; }
+    .lq-rec-bullets li { font-size: .82rem; }
+}
 </style>
 
 <div class="lq-hero-shell">
@@ -960,8 +1035,8 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Get your personalized personalized review.</div>
-                 <div class="lq-step-helper">We’ll prepare your personalized options and walk you through them — so you can make the right decision with confidence.</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">How should we show you your results?</div>
+                <div class="lq-step-helper">Enter your contact info below and we’ll walk you through your recommendations personally.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -979,14 +1054,14 @@ body.life-landing header .navbar .nav-link:focus {
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-help">Best for a quick review of your options.</div>
+                                <div class="lq-field-help">Best for a quick walkthrough of the recommendations based on your answers.</div>
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
                                 <label for="Email">Email (optional) @if (!usesLeanContactFields)
                                 {<span style="color:#f87171">*</span>}</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
-                                <div class="lq-field-help">Used only for your personalized review.</div>
+                                <div class="lq-field-help">Optional — so you can receive a copy of your recommendation summary.</div>
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email.</div>
                             </div>
                         </div>
@@ -1101,6 +1176,10 @@ body.life-landing header .navbar .nav-link:focus {
   const focusHidden = document.getElementById('ProtectFocus');
   const submitBtn = document.getElementById('submitLife');
   const submitLabel = submitBtn?.dataset.defaultLabel || 'Submit';
+  const recPrimaryKeyEl = document.getElementById('RecommendationPrimaryKey');
+  const recPrimaryTitleEl = document.getElementById('RecommendationPrimaryTitle');
+  const recSecondaryKeyEl = document.getElementById('RecommendationSecondaryKey');
+  const recSecondaryTitleEl = document.getElementById('RecommendationSecondaryTitle');
   const pageKey = form.dataset.formKey || 'quote_life';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
@@ -1123,6 +1202,138 @@ body.life-landing header .navbar .nav-link:focus {
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
+  }
+
+  // ── Product content config ────────────────────────────────────────────────
+  const PRODUCT_CONTENT = {
+    term:         { title: 'Term Life Insurance',        desc: 'Affordable coverage for a set period — ideal for income replacement and family protection during your working years.',                              bullets: ['Lowest cost for maximum coverage', 'Best for income earners with dependents', 'Flexible term lengths: 10, 20, or 30 years'] },
+    wholelife:    { title: 'Whole Life Insurance',       desc: 'Permanent protection with guaranteed cash value that grows tax-deferred over your lifetime.',                                                      bullets: ['Coverage lasts your entire lifetime', 'Builds guaranteed cash value', 'Premiums never increase'] },
+    finalexpense: { title: 'Final Expense Insurance',    desc: 'Simple, affordable coverage designed to cover end-of-life costs so your family isn\'t left with a financial burden.',                            bullets: ['Easy approval — no medical exam required', 'Covers funeral, burial, and final bills', 'Smaller benefit, lower monthly premium'] },
+    mortgage:     { title: 'Mortgage Protection',        desc: 'Coverage tied to your home loan — ensures your family can stay in their home if something happens to you.',                                       bullets: ['Matches your mortgage payoff schedule', 'Protects your most valuable asset', 'Peace of mind for homeowners'] },
+    iul:          { title: 'Indexed Universal Life (IUL)', desc: 'Permanent protection with flexible premiums and cash value growth linked to market indexes — with built-in downside protection.',              bullets: ['Tax-advantaged wealth accumulation', 'Flexible premiums and death benefit', 'Downside protection from market losses'] },
+    life:         { title: 'Life Insurance',             desc: 'Comprehensive protection tailored to your goals — whether that\'s income replacement, legacy planning, or simply peace of mind.',                bullets: ['Options matched to your situation', 'Flexible coverage amounts and terms', 'Expert guidance included'] },
+  };
+
+  // ── Scoring engine ────────────────────────────────────────────────────────
+  function getAgeBand(age) {
+    const n = Number.parseInt(age, 10);
+    if (!Number.isFinite(n)) return null;
+    if (n <= 35) return 'young';
+    if (n <= 50) return 'mid';
+    if (n <= 65) return 'senior';
+    return 'elder';
+  }
+
+  function computeRecommendations() {
+    const protectingWho = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
+    const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
+    const tobacco       = selectedRadio('TobaccoUse')?.value    || answerHidden[2]?.value || '';
+    const age           = asTrimmed(ageInput?.value)            || answerHidden[3]?.value || '';
+    const ageBand       = getAgeBand(age);
+    const offerKey      = '@cfg.OfferKey';
+    const isGeneric     = offerKey === 'life';
+
+    const scores = { term: 0, wholelife: 0, finalexpense: 0, mortgage: 0, iul: 0, life: 0 };
+
+    // Q1 modifiers
+    if (protectingWho === 'family' || protectingWho === 'spouse_or_partner') {
+      scores.term += 3; scores.wholelife += 2; scores.mortgage += 1;
+    } else if (protectingWho === 'children') {
+      scores.wholelife += 3; scores.term += 2;
+    } else if (protectingWho === 'just_me') {
+      scores.finalexpense += 2; scores.iul += 2; scores.wholelife += 1;
+    }
+
+    // Q2 modifiers
+    if (coverageGoal === 'replace_income') {
+      scores.term += 4; scores.wholelife += 1;
+    } else if (coverageGoal === 'final_expenses') {
+      scores.finalexpense += 4; scores.wholelife += 1;
+    } else if (coverageGoal === 'mortgage_or_bills') {
+      scores.mortgage += 4; scores.term += 2;
+    } else if (coverageGoal === 'leave_something') {
+      scores.wholelife += 3; scores.iul += 3; scores.finalexpense += 1;
+    }
+
+    // Tobacco modifier
+    if (tobacco === 'smoker') { scores.finalexpense += 1; }
+
+    // Age band modifiers
+    if (ageBand === 'young')  { scores.term += 2; scores.iul += 2; }
+    else if (ageBand === 'mid')    { scores.term += 1; scores.wholelife += 1; scores.mortgage += 1; }
+    else if (ageBand === 'senior') { scores.finalexpense += 2; scores.wholelife += 2; }
+    else if (ageBand === 'elder')  { scores.finalexpense += 3; scores.wholelife += 1; }
+
+    // Tie-break order (lower index = higher priority when scores are equal)
+    const tieBreak = ['term', 'wholelife', 'finalexpense', 'mortgage', 'iul', 'life'];
+    const ranked = Object.entries(scores).sort((a, b) =>
+      b[1] !== a[1] ? b[1] - a[1] : tieBreak.indexOf(a[0]) - tieBreak.indexOf(b[0])
+    );
+
+    let primaryKey, secondaryKey;
+    if (!isGeneric) {
+      primaryKey   = offerKey;
+      secondaryKey = ranked.find(([k]) => k !== primaryKey)?.[0] || 'term';
+    } else {
+      primaryKey   = ranked[0][0];
+      secondaryKey = ranked[1][0];
+    }
+
+    return {
+      primary:   { key: primaryKey,   ...(PRODUCT_CONTENT[primaryKey]   || PRODUCT_CONTENT.life) },
+      secondary: { key: secondaryKey, ...(PRODUCT_CONTENT[secondaryKey] || PRODUCT_CONTENT.life) },
+    };
+  }
+
+  function renderRecCard(rec, isPrimary) {
+    const badgeClass = isPrimary ? 'primary' : 'secondary';
+    const badgeLabel = isPrimary ? 'Best Match' : 'Also Consider';
+    const cardClass  = isPrimary ? 'lq-rec-card primary' : 'lq-rec-card';
+    const bullets    = rec.bullets.map(b => `<li>${b}</li>`).join('');
+    return `<div class="${cardClass}">
+      <span class="lq-rec-badge ${badgeClass}">${badgeLabel}</span>
+      <div class="lq-rec-title">${rec.title}</div>
+      <div class="lq-rec-desc">${rec.desc}</div>
+      <ul class="lq-rec-bullets">${bullets}</ul>
+    </div>`;
+  }
+
+  function renderResults() {
+    const recs = computeRecommendations();
+
+    // Resolve human-readable labels from the selected radio's label span
+    function getLabelForRadio(name, code) {
+      return (
+        selectedRadio(name)?.closest('label')?.querySelector('span')?.textContent ||
+        form.querySelector(`input[name="${name}"][value="${code}"]`)?.closest('label')?.querySelector('span')?.textContent ||
+        code || '—'
+      );
+    }
+
+    const protectingWhoCode = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
+    const coverageGoalCode  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
+    const tobaccoCode       = selectedRadio('TobaccoUse')?.value    || answerHidden[2]?.value || '';
+    const ageVal            = asTrimmed(ageInput?.value) || answerHidden[3]?.value || '—';
+
+    const rsProtecting = document.getElementById('rs-protecting');
+    const rsGoal       = document.getElementById('rs-goal');
+    const rsTobacco    = document.getElementById('rs-tobacco');
+    const rsAge        = document.getElementById('rs-age');
+    if (rsProtecting) rsProtecting.textContent = getLabelForRadio('ProtectingWho', protectingWhoCode);
+    if (rsGoal)       rsGoal.textContent       = getLabelForRadio('CoverageGoal',  coverageGoalCode);
+    if (rsTobacco)    rsTobacco.textContent    = getLabelForRadio('TobaccoUse',    tobaccoCode);
+    if (rsAge)        rsAge.textContent        = ageVal;
+
+    const cardsEl = document.getElementById('lifeRecCards');
+    if (cardsEl) {
+      cardsEl.innerHTML = renderRecCard(recs.primary, true) + renderRecCard(recs.secondary, false);
+    }
+
+    // Store in hidden fields for POST passthrough
+    if (recPrimaryKeyEl)     recPrimaryKeyEl.value     = recs.primary.key;
+    if (recPrimaryTitleEl)   recPrimaryTitleEl.value   = recs.primary.title;
+    if (recSecondaryKeyEl)   recSecondaryKeyEl.value   = recs.secondary.key;
+    if (recSecondaryTitleEl) recSecondaryTitleEl.value = recs.secondary.title;
   }
 
   function trackEvent(eventType, metadata = {}) {
@@ -1274,8 +1485,17 @@ body.life-landing header .navbar .nav-link:focus {
   function showValueBridge(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(false);
+    syncStepOneAnswersFromUI();
+    renderResults();
     setActivePanel(valuePanel);
-    trackEvent('life_value_bridge_view');
+    trackEvent('results_view', {
+      protectingWho: answerHidden[0]?.value || '',
+      coverageGoal:  answerHidden[1]?.value || '',
+      tobaccoUse:    answerHidden[2]?.value || '',
+      age:           answerHidden[3]?.value || '',
+      primaryRec:    recPrimaryKeyEl?.value || '',
+      secondaryRec:  recSecondaryKeyEl?.value || '',
+    });
     if (shouldScroll) {
       scrollIntoViewAndFocus(valueHeading || valuePanel, true);
     }
@@ -1416,11 +1636,9 @@ body.life-landing header .navbar .nav-link:focus {
 
   valueBridgeContinueBtn?.addEventListener('click', () => {
     syncStepOneAnswersFromUI();
-    trackEvent('life_value_bridge_continue', {
-      protectingWho: answerHidden[0]?.value || '',
-      coverageGoal: answerHidden[1]?.value || '',
-      tobaccoUse: answerHidden[2]?.value || '',
-      age: answerHidden[3]?.value || ''
+    trackEvent('results_continue', {
+      primaryRec:   recPrimaryKeyEl?.value   || '',
+      secondaryRec: recSecondaryKeyEl?.value || '',
     });
     showStep2(true);
   });
@@ -1538,6 +1756,10 @@ body.life-landing header .navbar .nav-link:focus {
       form._trackSubmitSuccess?.();
       trackEvent('life_step2_submit_success');
       trackEvent(submitEvent, { submitOutcome: 'success' });
+      trackEvent('results_contact_submit', {
+        primaryRec:   recPrimaryKeyEl?.value   || '',
+        secondaryRec: recSecondaryKeyEl?.value || '',
+      });
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
         SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
       window.location.href = thankYouPath;
