@@ -54,7 +54,9 @@
       "Bash(grep -r \"ConnectionString\\\\|DataSource\\\\|Data Source\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json)",
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 10;\")",
       "Bash(grep -rn \"more\\\\|three\\\\|vertical\\\\|menu-icon\\\\|options\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/js/*.js)",
-      "Bash(grep -rn \"\\\\.more\\\\|\\\\.menu\\\\|\\\\.options\\\\|\\\\.action\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/css/*.css)"
+      "Bash(grep -rn \"\\\\.more\\\\|\\\\.menu\\\\|\\\\.options\\\\|\\\\.action\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/css/*.css)",
+      "Bash(grep -r \"OWNER_EMAIL\\\\|FOUNDER_OID\\\\|FounderOid\\\\|OwnerEmail\\\\|Founder:Upn\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json /Users/zacowen/MASTERAPP/AgentPortal/Properties/launchSettings.json)",
+      "Bash(grep -r \"Founder:Upn\\\\|Founder__Upn\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json /Users/zacowen/MASTERAPP/AgentPortal/Properties/launchSettings.json)"
     ]
   }
 }

@@ -384,14 +384,38 @@ static string ResolveSqliteForEnvironment(IWebHostEnvironment env)
 
 var sqliteConn = useSqlServer ? null : ResolveSqliteForEnvironment(builder.Environment);
 
-// PRODUCTION GUARD: OWNER_EMAIL must be set in production.
-var ownerEmail = builder.Configuration["OWNER_EMAIL"] ?? Environment.GetEnvironmentVariable("OWNER_EMAIL");
+// ── Founder / owner identity resolution ──────────────────────────────────
+// Primary:   OWNER_EMAIL / FOUNDER_OID  Azure App Service Application Settings (env vars)
+// Secondary: Founder:Email / Founder:Oid  appsettings.Production.json config keys
+// Sets env vars so that OnboardingGuard / FounderGuard static fields pick them up
+// on first use (which happens per-request, after this startup block runs).
+{
+    var resolvedOwnerEmail =
+        Environment.GetEnvironmentVariable("OWNER_EMAIL")
+        ?? Environment.GetEnvironmentVariable("OwnerEmail")
+        ?? builder.Configuration["Founder:Email"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedOwnerEmail))
+        Environment.SetEnvironmentVariable("OWNER_EMAIL", resolvedOwnerEmail);
+
+    var resolvedFounderOid =
+        Environment.GetEnvironmentVariable("FOUNDER_OID")
+        ?? Environment.GetEnvironmentVariable("FounderOid")
+        ?? builder.Configuration["Founder:Oid"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedFounderOid))
+        Environment.SetEnvironmentVariable("FOUNDER_OID", resolvedFounderOid);
+}
+
+// PRODUCTION GUARD: owner email must resolve from at least one source.
+var ownerEmail = Environment.GetEnvironmentVariable("OWNER_EMAIL");
 if (string.IsNullOrWhiteSpace(ownerEmail) &&
     string.Equals(builder.Environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase))
 {
     throw new InvalidOperationException(
-        "STARTUP BLOCKED: OWNER_EMAIL environment variable is required in Production. " +
-        "Set it in Azure Portal → App Service → Configuration → Application settings.");
+        "STARTUP BLOCKED: Owner email is required in Production. " +
+        "Set OWNER_EMAIL in Azure App Service → Configuration → Application settings, " +
+        "or add Founder:Email to appsettings.Production.json.");
 }
 
 // PRODUCTION GUARD: refuse to start on SQLite when running on Azure App Service.
