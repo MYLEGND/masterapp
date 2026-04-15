@@ -260,8 +260,8 @@
         const email   = getContactEmail();
         const subject = encodeURIComponent('Zoom Meeting Link');
         const body    = encodeURIComponent(`Hi,\n\nHere's the Zoom link for our meeting:\n${url}\n\nLooking forward to connecting with you.`);
-        const uri     = `mailto:${email}?subject=${subject}&body=${body}`;
-        window.location.href = uri;
+        const compose = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(email)}&subject=${subject}&body=${body}`;
+        window.open(compose, '_blank', 'noopener');
     }
 
     // ─── Actions submenu ─────────────────────────────────────────────────────
@@ -419,15 +419,6 @@
             dotsBtn.setAttribute('aria-label', 'More actions');
             dotsBtn.dataset.linkUrl = link.url;
             dotsBtn.innerHTML = '&#8942;'; // ⋮ vertical ellipsis
-            dotsBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (actionsMenu?.classList.contains('open') && activeDotsUrl === link.url) {
-                    closeActionsMenu();
-                } else {
-                    closeActionsMenu();
-                    openActionsMenu(dotsBtn, link.url);
-                }
-            });
 
             actions.appendChild(copyBtn);
             actions.appendChild(dotsBtn);
@@ -472,10 +463,17 @@
             return;
         }
 
-        // 3. Dots button — handled inline via addEventListener on the element;
-        //    just stop propagation so it doesn't trigger outside-click close
-        if (e.target.closest?.('.zoom-qp-dots')) {
+        // 3. Dots button — toggle actions menu
+        const dotsEl = e.target.closest?.('.zoom-qp-dots');
+        if (dotsEl) {
             e.stopPropagation();
+            const linkUrl = dotsEl.dataset.linkUrl;
+            if (actionsMenu?.classList.contains('open') && activeDotsUrl === linkUrl) {
+                closeActionsMenu();
+            } else {
+                closeActionsMenu();
+                openActionsMenu(dotsEl, linkUrl);
+            }
             return;
         }
 

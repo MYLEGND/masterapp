@@ -84,14 +84,28 @@
         const email   = getContactEmail();
         const subject = encodeURIComponent('Zoom Meeting Link');
         const body    = encodeURIComponent(`Hi,\n\nHere's the Zoom link for our meeting:\n${url}\n\nLooking forward to connecting with you.`);
-        window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+        const compose = `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(email)}&subject=${subject}&body=${body}`;
+        window.open(compose, '_blank', 'noopener');
     }
 
-    // Close actions menu on outside click
+    // Close actions menu on outside click / handle dots toggle
     document.addEventListener('click', function(e) {
+        // Dots button — toggle menu
+        const dotsEl = e.target.closest('[data-zoom-hub-dots]');
+        if (dotsEl) {
+            e.stopPropagation();
+            const linkUrl = dotsEl.dataset.zoomUrl;
+            const linkId  = dotsEl.dataset.zoomId;
+            if (actionsMenu && actionsMenu.style.display !== 'none' && activeDotsUrl === linkUrl) {
+                closeActionsMenu();
+            } else {
+                openActionsMenu(dotsEl, linkUrl, linkId);
+            }
+            return;
+        }
+        // Outside click — close menu
         if (!actionsMenu || actionsMenu.style.display === 'none') return;
         if (actionsMenu.contains(e.target)) return;
-        if (e.target.closest('[data-zoom-hub-dots]')) return;
         closeActionsMenu();
     }, true);
 
@@ -186,18 +200,11 @@
             dotsBtn.type = 'button';
             dotsBtn.className = 'zoom-link-btn zoom-link-btn-dots';
             dotsBtn.setAttribute('data-zoom-hub-dots', '');
+            dotsBtn.setAttribute('data-zoom-url', link.url);
+            dotsBtn.setAttribute('data-zoom-id', link.id);
             dotsBtn.setAttribute('aria-label', 'More actions');
             dotsBtn.style.cssText = 'padding:0 7px;font-size:16px;letter-spacing:1px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#8ba5c2;cursor:pointer;line-height:1;';
             dotsBtn.textContent = '⋮';
-            dotsBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const menu = getOrCreateActionsMenu();
-                if (activeDotsUrl === link.url && menu.style.display !== 'none') {
-                    closeActionsMenu();
-                } else {
-                    openActionsMenu(dotsBtn, link.url, link.id);
-                }
-            });
 
             actions.appendChild(copyBtn);
             actions.appendChild(dotsBtn);
