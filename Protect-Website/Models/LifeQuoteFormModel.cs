@@ -62,5 +62,11 @@ namespace Protect_Website.Models
         public string? Fbclid { get; set; }
         public string? ReferrerUrl { get; set; }
         public string? LandingPageUrl { get; set; }
+
+        // ── Recommendation output (populated by JS results page, passed through form POST) ──
+        public string? RecommendationPrimaryKey { get; set; }
+        public string? RecommendationPrimaryTitle { get; set; }
+        public string? RecommendationSecondaryKey { get; set; }
+        public string? RecommendationSecondaryTitle { get; set; }
     }
 }

@@ -210,6 +210,10 @@ namespace Protect_Website.Controllers
                         PageMode       = pageMode.PageMode,
                         PagePath       = Request?.Path.Value,
                         CorrelationId  = correlationId,
+                        RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
+                        RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
+                        RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
+                        RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                     })
                 };
                 _db.WebsiteLeads.Add(lead);
@@ -311,7 +315,11 @@ namespace Protect_Website.Controllers
                         OfferKey      = model.OfferKey,
                         PageVariant   = pageMode.PageVariant,
                         PageMode      = pageMode.PageMode,
-                        PagePath      = Request?.Path.Value
+                        PagePath      = Request?.Path.Value,
+                        RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
+                        RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
+                        RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
+                        RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                     })
                 };
                 _db.AnalyticsEvents.Add(evt);
@@ -414,6 +422,10 @@ namespace Protect_Website.Controllers
                     rows.Row(step.Question, label);
                 }
             }
+
+            rows.Section("Recommendations")
+                .Row("Recommended primary",   model.RecommendationPrimaryTitle ?? model.RecommendationPrimaryKey)
+                .Row("Recommended secondary", model.RecommendationSecondaryTitle ?? model.RecommendationSecondaryKey);
 
             rows.Section("Details")
                 .Row("Product",          cfg.DisplayName)
@@ -578,7 +590,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect the people who count on you",
                     Subheader = "Get a clear picture of coverage options that match your needs, goals, and budget — before making any decisions.",
                     PageTitle = "Protect the People Who Count on You",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
                     Steps = BuildSharedDiscoverySteps(),
@@ -593,7 +605,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect the years your family depends on most.",
                     Subheader = "Let’s help you compare term life protection based on your needs, goals, and budget.",
                     PageTitle = "Term Life Protection Review",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_term_form_start",
                     SubmitEvent = "life_term_submit",
                     Steps = BuildSharedDiscoverySteps(),
@@ -608,7 +620,7 @@ namespace Protect_Website.Controllers
                     Header = "Build lifelong protection for the people you love.",
                     Subheader = "Let’s shape whole life protection around your needs, goals, and long-term legacy plans.",
                     PageTitle = "Whole Life Protection Review",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_whole_form_start",
                     SubmitEvent = "life_whole_submit",
                     Steps = BuildSharedDiscoverySteps(),
@@ -623,7 +635,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect your loved ones from final expense stress.",
                     Subheader = "Let’s review final expense protection based on your needs, goals, and budget comfort.",
                     PageTitle = "Final Expense Protection Review",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_finalexpense_form_start",
                     SubmitEvent = "life_finalexpense_submit",
                     Steps = BuildSharedDiscoverySteps(),
@@ -638,7 +650,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect what you’ve built for your family.",
                     Subheader = "Let’s map mortgage protection options around your needs, goals, and monthly reality.",
                     PageTitle = "Mortgage Protection Options Review",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_mp_form_start",
                     SubmitEvent = "life_mp_submit",
                     Steps = BuildSharedDiscoverySteps(),
@@ -653,7 +665,7 @@ namespace Protect_Website.Controllers
                     Header = "Protect now while building for tomorrow.",
                     Subheader = "Let’s explore indexed universal life options based on your needs, goals, and long-term plans.",
                     PageTitle = "Indexed Universal Life Options Review",
-                    SubmitButtonText = "GET MY REVIEW",
+                    SubmitButtonText = "GET MY RESULTS",
                     StartEvent = "life_iul_form_start",
                     SubmitEvent = "life_iul_submit",
                     Steps = BuildSharedDiscoverySteps(),
