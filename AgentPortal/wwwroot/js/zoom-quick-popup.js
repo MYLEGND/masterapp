@@ -9,7 +9,7 @@
         s.id = 'zoom-qp-style';
         s.textContent = `
 .zoom-qp {
-    position: absolute;
+    position: fixed;
     z-index: 9900;
     width: 320px;
     border-radius: 16px;
@@ -170,17 +170,15 @@
 
     function position(trigger) {
         const rect = trigger.getBoundingClientRect();
-        const scrollY = window.scrollY || document.documentElement.scrollTop;
-        const scrollX = window.scrollX || document.documentElement.scrollLeft;
 
-        popup.style.top = (rect.bottom + scrollY + 6) + 'px';
-        popup.style.left = (rect.left + scrollX) + 'px';
+        popup.style.top = (rect.bottom + 6) + 'px';
+        popup.style.left = rect.left + 'px';
 
         // keep within viewport horizontally
         requestAnimationFrame(() => {
             const pr = popup.getBoundingClientRect();
             if (pr.right > window.innerWidth - 8) {
-                popup.style.left = Math.max(8, window.innerWidth - pr.width - 8 + scrollX) + 'px';
+                popup.style.left = Math.max(8, window.innerWidth - pr.width - 8) + 'px';
             }
         });
     }
@@ -290,10 +288,7 @@
         if (e.key === 'Escape' && popup?.classList.contains('open')) close();
     });
 
-    // Reposition on scroll/resize
-    window.addEventListener('scroll', () => {
-        if (activeTrigger && popup?.classList.contains('open')) position(activeTrigger);
-    }, { passive: true });
+    // Reposition on resize (position:fixed is viewport-relative so scroll isn't needed)
     window.addEventListener('resize', () => {
         if (activeTrigger && popup?.classList.contains('open')) position(activeTrigger);
     }, { passive: true });
