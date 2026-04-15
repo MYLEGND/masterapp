@@ -824,6 +824,10 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
         <input type="hidden" name="MarketingEmailConsent" value="true" />
+        <input type="hidden" name="RecommendationPrimaryKey" id="RecommendationPrimaryKey" value="@form.RecommendationPrimaryKey" />
+        <input type="hidden" name="RecommendationPrimaryTitle" id="RecommendationPrimaryTitle" value="@form.RecommendationPrimaryTitle" />
+        <input type="hidden" name="RecommendationSecondaryKey" id="RecommendationSecondaryKey" value="@form.RecommendationSecondaryKey" />
+        <input type="hidden" name="RecommendationSecondaryTitle" id="RecommendationSecondaryTitle" value="@form.RecommendationSecondaryTitle" />
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
@@ -935,18 +939,20 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel" id="lifeValuePanel" data-funnel-step="1.6" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-progress">Almost done</div>
-                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">You’re one step away from your personalized options</div>
-                <div class="lq-step-helper">Based on what you shared, we’ll prepare personalized protection options and walk you through what may fit your needs best.</div>
-                <div class="lq-value-list">
-                    <div class="lq-value-item"><strong>Options aligned with your goals</strong></div>
-                    <div class="lq-value-item"><strong>Guidance based on your situation</strong></div>
-                    <div class="lq-value-item"><strong>No obligation to move forward</strong></div>
+                <div class="lq-step-progress">Your Results</div>
+                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">Here’s what we found for you</div>
+                <div class="lq-step-helper">Based on your answers, here are the protection paths that may fit you best.</div>
+                <div class="lq-results-summary" id="lifeResultsSummary">
+                    <div class="lq-rs-item"><span class="lq-rs-label">Protecting</span><span class="lq-rs-value" id="rs-protecting">—</span></div>
+                    <div class="lq-rs-item"><span class="lq-rs-label">Goal</span><span class="lq-rs-value" id="rs-goal">—</span></div>
+                    <div class="lq-rs-item"><span class="lq-rs-label">Tobacco</span><span class="lq-rs-value" id="rs-tobacco">—</span></div>
+                    <div class="lq-rs-item"><span class="lq-rs-label">Age</span><span class="lq-rs-value" id="rs-age">—</span></div>
                 </div>
-                <div class="lq-value-note">Faith based support • Built around what matters most to you.</div>
-                <div class="lq-step-actions dual">
+                <div id="lifeRecCards"></div>
+                <div class="lq-rec-trust">No obligation &bull; Personalized based on your answers</div>
+                <div class="lq-step-actions dual" style="margin-top:16px;">
                     <button type="button" class="btn-ghost" id="valueBridgeBackBtn">Back</button>
-                    <button type="button" class="btn-gold flex-fill" id="valueBridgeContinueBtn">CONTINUE</button>
+                    <button type="button" class="btn-gold flex-fill" id="valueBridgeContinueBtn">GET MY RESULTS</button>
                 </div>
             </div>
         </div>
