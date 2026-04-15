@@ -1205,23 +1205,130 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   // ── Product content config ────────────────────────────────────────────────
+  // 5 core recommendation buckets: term, wholelife, finalexpense, mortgage, iul
+  // 'life' is a display-only fallback and is never recommended.
   const PRODUCT_CONTENT = {
-    term:         { title: 'Term Life Insurance',        desc: 'Affordable coverage for a set period — ideal for income replacement and family protection during your working years.',                              bullets: ['Lowest cost for maximum coverage', 'Best for income earners with dependents', 'Flexible term lengths: 10, 20, or 30 years'] },
-    wholelife:    { title: 'Whole Life Insurance',       desc: 'Permanent protection with guaranteed cash value that grows tax-deferred over your lifetime.',                                                      bullets: ['Coverage lasts your entire lifetime', 'Builds guaranteed cash value', 'Premiums never increase'] },
-    finalexpense: { title: 'Final Expense Insurance',    desc: 'Simple, affordable coverage designed to cover end-of-life costs so your family isn\'t left with a financial burden.',                            bullets: ['Easy approval — no medical exam required', 'Covers funeral, burial, and final bills', 'Smaller benefit, lower monthly premium'] },
-    mortgage:     { title: 'Mortgage Protection',        desc: 'Coverage tied to your home loan — ensures your family can stay in their home if something happens to you.',                                       bullets: ['Matches your mortgage payoff schedule', 'Protects your most valuable asset', 'Peace of mind for homeowners'] },
-    iul:          { title: 'Indexed Universal Life (IUL)', desc: 'Permanent protection with flexible premiums and cash value growth linked to market indexes — with built-in downside protection.',              bullets: ['Tax-advantaged wealth accumulation', 'Flexible premiums and death benefit', 'Downside protection from market losses'] },
-    life:         { title: 'Life Insurance',             desc: 'Comprehensive protection tailored to your goals — whether that\'s income replacement, legacy planning, or simply peace of mind.',                bullets: ['Options matched to your situation', 'Flexible coverage amounts and terms', 'Expert guidance included'] },
+    term: {
+      title: 'Term Life Insurance',
+      desc: 'A lower-cost protection path commonly reviewed when the goal is covering temporary responsibilities like income, family needs, or major bills.',
+      bullets: [
+        'Often the most affordable way to get more coverage',
+        'Commonly reviewed for income protection and family needs',
+        'A strong option when straightforward protection is the priority',
+      ],
+    },
+    wholelife: {
+      title: 'Whole Life Insurance',
+      desc: 'A simple permanent coverage path often reviewed when lifelong protection and steady guarantees matter.',
+      bullets: [
+        'Designed to stay in place for the long term',
+        'Builds cash value over time',
+        'Often reviewed when permanent protection matters more than lowest cost',
+      ],
+    },
+    finalexpense: {
+      title: 'Final Expense Coverage',
+      desc: 'A smaller permanent coverage path commonly reviewed to help with burial and end-of-life expenses.',
+      bullets: [
+        'Focused on funeral and final-cost needs',
+        'Usually reviewed when the coverage purpose is narrow and specific',
+        'Often more relevant in older-age planning conversations',
+      ],
+    },
+    mortgage: {
+      title: 'Mortgage Protection Review',
+      desc: 'A protection path commonly reviewed when the priority is helping protect the home and major monthly obligations.',
+      bullets: [
+        'Focused on mortgage and household bill protection',
+        'Often reviewed alongside term coverage',
+        'A strong fit when keeping the home is the main concern',
+      ],
+    },
+    iul: {
+      title: 'Indexed Universal Life',
+      desc: 'A more flexible permanent coverage option that may be worth reviewing in select long-term planning situations.',
+      bullets: [
+        'Permanent protection with flexible structure',
+        'More advanced than basic term or whole life',
+        'Typically worth reviewing only when long-term flexibility is a priority',
+      ],
+    },
+    // Display-only fallback — never recommended by the engine
+    life: {
+      title: 'Life Insurance',
+      desc: 'Comprehensive protection options tailored to your goals — income replacement, legacy planning, or simply peace of mind.',
+      bullets: [
+        'Options matched to your situation',
+        'Flexible coverage amounts and terms',
+        'Expert guidance included',
+      ],
+    },
   };
 
-  // ── Scoring engine ────────────────────────────────────────────────────────
+  // ── Recommendation engine ─────────────────────────────────────────────────
+  // Goal-primary dispatch table — no additive scoring.
+  //
+  // IUL: does NOT appear in any generic page output. The only path to IUL
+  //   as primary is the specific /Quote/IUL product page (offerKey = 'iul').
+  //   On all other pages IUL is never a recommended secondary either.
+  //
+  // Final Expense: suppressed as primary for age < 50. Appears as secondary
+  //   for age 35–49 on a final_expenses or leave_something goal. Primary only
+  //   for age >= 50 on a final_expenses goal.
+  //
+  // Whole Life: the default permanent / cash-value comparison path.
+  //   Replaces IUL as the conservative permanent default for all age bands.
+  //
+  // Q1 (protectingWho) and tobacco: informational context passed through to
+  //   the agent email. They do not change the primary/secondary output.
+
   function getAgeBand(age) {
     const n = Number.parseInt(age, 10);
     if (!Number.isFinite(n)) return null;
-    if (n <= 35) return 'young';
-    if (n <= 50) return 'mid';
-    if (n <= 65) return 'senior';
-    return 'elder';
+    if (n < 35) return 'young';   // under 35
+    if (n < 50) return 'mid';     // 35–49
+    if (n < 65) return 'senior';  // 50–64
+    return 'elder';               // 65+
+  }
+
+  // Pure goal + age dispatch. Returns { primaryKey, secondaryKey }.
+  // Q1 does not override these results; it reinforces existing tendencies only.
+  function resolveGenericPair(coverageGoal, ageNum) {
+    // 1. Replace income for my family
+    if (coverageGoal === 'replace_income') {
+      return { primaryKey: 'term', secondaryKey: 'wholelife' };
+    }
+
+    // 2. Help with mortgage or bills
+    if (coverageGoal === 'mortgage_or_bills') {
+      return { primaryKey: 'mortgage', secondaryKey: 'term' };
+    }
+
+    // 3. Leave something behind
+    if (coverageGoal === 'leave_something') {
+      if (Number.isFinite(ageNum) && ageNum >= 50) {
+        return { primaryKey: 'wholelife', secondaryKey: 'finalexpense' };
+      }
+      // age < 50 (including unknown age): whole life + term
+      return { primaryKey: 'wholelife', secondaryKey: 'term' };
+    }
+
+    // 4. Cover final expenses — hard age-banded mapping
+    if (coverageGoal === 'final_expenses') {
+      if (!Number.isFinite(ageNum) || ageNum < 35) {
+        // Young or unknown: whole life is the permanent default; FE not appropriate
+        return { primaryKey: 'wholelife', secondaryKey: 'term' };
+      }
+      if (ageNum < 50) {
+        // 35–49: whole life primary, FE as secondary comparison
+        return { primaryKey: 'wholelife', secondaryKey: 'finalexpense' };
+      }
+      // 50+ (both 50–64 and 65+): FE is the right primary
+      return { primaryKey: 'finalexpense', secondaryKey: 'wholelife' };
+    }
+
+    // 5. Not sure / empty / unknown — conservative default
+    return { primaryKey: 'term', secondaryKey: 'wholelife' };
   }
 
   function computeRecommendations() {
@@ -1229,55 +1336,29 @@ body.life-landing header .navbar .nav-link:focus {
     const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
     const tobacco       = selectedRadio('TobaccoUse')?.value    || answerHidden[2]?.value || '';
     const age           = asTrimmed(ageInput?.value)            || answerHidden[3]?.value || '';
-    const ageBand       = getAgeBand(age);
+    const ageNum        = Number.parseInt(age, 10);
     const offerKey      = '@cfg.OfferKey';
     const isGeneric     = offerKey === 'life';
 
-    const scores = { term: 0, wholelife: 0, finalexpense: 0, mortgage: 0, iul: 0, life: 0 };
-
-    // Q1 modifiers
-    if (protectingWho === 'family' || protectingWho === 'spouse_or_partner') {
-      scores.term += 3; scores.wholelife += 2; scores.mortgage += 1;
-    } else if (protectingWho === 'children') {
-      scores.wholelife += 3; scores.term += 2;
-    } else if (protectingWho === 'just_me') {
-      scores.finalexpense += 2; scores.iul += 2; scores.wholelife += 1;
-    }
-
-    // Q2 modifiers
-    if (coverageGoal === 'replace_income') {
-      scores.term += 4; scores.wholelife += 1;
-    } else if (coverageGoal === 'final_expenses') {
-      scores.finalexpense += 4; scores.wholelife += 1;
-    } else if (coverageGoal === 'mortgage_or_bills') {
-      scores.mortgage += 4; scores.term += 2;
-    } else if (coverageGoal === 'leave_something') {
-      scores.wholelife += 3; scores.iul += 3; scores.finalexpense += 1;
-    }
-
-    // Tobacco modifier
-    if (tobacco === 'smoker') { scores.finalexpense += 1; }
-
-    // Age band modifiers
-    if (ageBand === 'young')  { scores.term += 2; scores.iul += 2; }
-    else if (ageBand === 'mid')    { scores.term += 1; scores.wholelife += 1; scores.mortgage += 1; }
-    else if (ageBand === 'senior') { scores.finalexpense += 2; scores.wholelife += 2; }
-    else if (ageBand === 'elder')  { scores.finalexpense += 3; scores.wholelife += 1; }
-
-    // Tie-break order (lower index = higher priority when scores are equal)
-    const tieBreak = ['term', 'wholelife', 'finalexpense', 'mortgage', 'iul', 'life'];
-    const ranked = Object.entries(scores).sort((a, b) =>
-      b[1] !== a[1] ? b[1] - a[1] : tieBreak.indexOf(a[0]) - tieBreak.indexOf(b[0])
-    );
-
     let primaryKey, secondaryKey;
+
     if (!isGeneric) {
+      // Specific-product page: primary is always the page's own product.
+      // Secondary is the top recommendation from the generic dispatch
+      // that isn't the locked primary.
+      const pair   = resolveGenericPair(coverageGoal, ageNum);
       primaryKey   = offerKey;
-      secondaryKey = ranked.find(([k]) => k !== primaryKey)?.[0] || 'term';
+      secondaryKey = pair.primaryKey !== offerKey ? pair.primaryKey : pair.secondaryKey;
     } else {
-      primaryKey   = ranked[0][0];
-      secondaryKey = ranked[1][0];
+      const pair   = resolveGenericPair(coverageGoal, ageNum);
+      primaryKey   = pair.primaryKey;
+      secondaryKey = pair.secondaryKey;
     }
+
+    // ── Safety fallbacks ──────────────────────────────────────────────────
+    if (!PRODUCT_CONTENT[primaryKey])   primaryKey   = 'term';
+    if (!PRODUCT_CONTENT[secondaryKey]) secondaryKey = 'wholelife';
+    if (primaryKey === secondaryKey)    secondaryKey = primaryKey === 'term' ? 'wholelife' : 'term';
 
     return {
       primary:   { key: primaryKey,   ...(PRODUCT_CONTENT[primaryKey]   || PRODUCT_CONTENT.life) },
