@@ -19,6 +19,92 @@
 
     const API = '/api/zoom-links';
 
+    // ── Actions submenu (body-level, avoids overflow:hidden clipping) ───────
+    let actionsMenu = null;
+    let activeDotsUrl = null;
+
+    function getOrCreateActionsMenu() {
+        if (actionsMenu) return actionsMenu;
+        actionsMenu = document.createElement('div');
+        actionsMenu.className = 'zoom-qp-actions-menu';
+        actionsMenu.style.cssText = 'display:none;position:fixed;z-index:9960;background:#1e2a3a;border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px 0;min-width:130px;box-shadow:0 8px 24px rgba(0,0,0,.45);';
+        actionsMenu.innerHTML =
+            '<button type="button" class="zoom-qp-action-btn" data-action="text" style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">📱 Text Link</button>' +
+            '<button type="button" class="zoom-qp-action-btn" data-action="email" style="display:block;width:100%;padding:8px 14px;background:none;border:none;color:#c9d8ea;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap;">✉️ Email Link</button>';
+        document.body.appendChild(actionsMenu);
+        return actionsMenu;
+    }
+
+    function openActionsMenu(dotsBtn, linkUrl) {
+        const menu = getOrCreateActionsMenu();
+        activeDotsUrl = linkUrl;
+        const r = dotsBtn.getBoundingClientRect();
+        let top = r.bottom + 4;
+        const menuH = 80;
+        if (top + menuH > window.innerHeight - 8) top = r.top - menuH - 4;
+        menu.style.top  = top + 'px';
+        menu.style.left = Math.max(8, r.right - 130) + 'px';
+        menu.style.display = 'block';
+    }
+
+    function closeActionsMenu() {
+        if (actionsMenu) actionsMenu.style.display = 'none';
+        activeDotsUrl = null;
+    }
+
+    function getContactPhone() {
+        return (
+            document.getElementById('dPhoneInput')?.value?.trim() ||
+            document.querySelector('[data-lf-value="phone"]')?.textContent?.trim() ||
+            ''
+        );
+    }
+
+    function getContactEmail() {
+        return (
+            document.getElementById('dEmailInput')?.value?.trim() ||
+            document.querySelector('[data-lf-value="email"]')?.textContent?.trim() ||
+            ''
+        );
+    }
+
+    function sendTextLink(url) {
+        const phone = getContactPhone();
+        const body  = `Here's my Zoom link: ${url}`;
+        const uri   = phone ? `sms:${phone}?body=${encodeURIComponent(body)}` : `sms:?body=${encodeURIComponent(body)}`;
+        window.location.href = uri;
+    }
+
+    function sendEmailLink(url) {
+        const email   = getContactEmail();
+        const subject = encodeURIComponent('Zoom Meeting Link');
+        const body    = encodeURIComponent(`Hi,\n\nHere's the Zoom link for our meeting:\n${url}\n\nLooking forward to connecting with you.`);
+        const uri     = `mailto:${email}?subject=${subject}&body=${body}`;
+        const a = document.createElement('a');
+        a.href = uri; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    }
+
+    // Close actions menu on outside click
+    document.addEventListener('click', function(e) {
+        if (!actionsMenu || actionsMenu.style.display === 'none') return;
+        if (actionsMenu.contains(e.target)) return;
+        if (e.target.closest('[data-zoom-hub-dots]')) return;
+        closeActionsMenu();
+    }, true);
+
+    // Handle action button clicks
+    document.addEventListener('click', function(e) {
+        const btn = e.target.closest('.zoom-qp-action-btn');
+        if (!btn || !actionsMenu || actionsMenu.style.display === 'none') return;
+        e.stopPropagation();
+        const action = btn.dataset.action;
+        const url = activeDotsUrl;
+        closeActionsMenu();
+        if (action === 'text')  sendTextLink(url);
+        if (action === 'email') sendEmailLink(url);
+    }, true);
+
     function open() {
         hub.hidden = false;
         requestAnimationFrame(() => hub.classList.add('open'));
@@ -37,7 +123,13 @@
     backdrop?.addEventListener('click', close);
 
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && hub.classList.contains('open')) close();
+        if (e.key === 'Escape') {
+            if (actionsMenu && actionsMenu.style.display !== 'none') {
+                closeActionsMenu();
+            } else if (hub.classList.contains('open')) {
+                close();
+            }
+        }
     });
 
     async function loadLinks() {
@@ -86,6 +178,23 @@
             copyBtn.textContent = 'Copy';
             copyBtn.addEventListener('click', () => copyLink(link.url, copyBtn));
 
+            const dotsBtn = document.createElement('button');
+            dotsBtn.type = 'button';
+            dotsBtn.className = 'zoom-link-btn zoom-link-btn-dots';
+            dotsBtn.setAttribute('data-zoom-hub-dots', '');
+            dotsBtn.setAttribute('aria-label', 'More actions');
+            dotsBtn.style.cssText = 'padding:0 7px;font-size:16px;letter-spacing:1px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#8ba5c2;cursor:pointer;line-height:1;';
+            dotsBtn.textContent = '⋮';
+            dotsBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const menu = getOrCreateActionsMenu();
+                if (activeDotsUrl === link.url && menu.style.display !== 'none') {
+                    closeActionsMenu();
+                } else {
+                    openActionsMenu(dotsBtn, link.url);
+                }
+            });
+
             const delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'zoom-link-btn zoom-link-btn-delete';
@@ -93,6 +202,7 @@
             delBtn.addEventListener('click', () => deleteLink(link.id));
 
             actions.appendChild(copyBtn);
+            actions.appendChild(dotsBtn);
             actions.appendChild(delBtn);
             row.appendChild(info);
             row.appendChild(actions);

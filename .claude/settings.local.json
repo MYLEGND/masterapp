@@ -52,7 +52,9 @@
       "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"PRAGMA table_info\\(WebsiteLeads\\);\")",
       "Bash(grep -E \"\\\\.\\(js|ts\\)$\")",
       "Bash(grep -r \"ConnectionString\\\\|DataSource\\\\|Data Source\" /Users/zacowen/MASTERAPP/AgentPortal/appsettings*.json)",
-      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 10;\")"
+      "Bash(sqlite3 /Users/zacowen/MASTERAPP/AgentPortal/App_Data/masterapp.db \"SELECT MigrationId FROM __EFMigrationsHistory ORDER BY MigrationId DESC LIMIT 10;\")",
+      "Bash(grep -rn \"more\\\\|three\\\\|vertical\\\\|menu-icon\\\\|options\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/js/*.js)",
+      "Bash(grep -rn \"\\\\.more\\\\|\\\\.menu\\\\|\\\\.options\\\\|\\\\.action\" /Users/zacowen/MASTERAPP/AgentPortal/wwwroot/css/*.css)"
     ]
   }
 }
