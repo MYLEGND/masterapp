@@ -14,6 +14,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Globalization;
 using ProtectWebsite.Services;
+using System.Net;
 
 namespace Protect_Website.Controllers
 {
@@ -432,6 +433,87 @@ namespace Protect_Website.Controllers
             return null;
         }
 
+        // ── Server-side product content (mirrors JS PRODUCT_CONTENT) ─────────────
+        private sealed record RecContent(string Title, string Description, string[] Bullets);
+
+        private static readonly IReadOnlyDictionary<string, RecContent> RecContentMap =
+            new Dictionary<string, RecContent>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["term"] = new(
+                    "Term Life Insurance",
+                    "A lower-cost protection path commonly reviewed when the goal is covering temporary responsibilities like income, family needs, or major bills.",
+                    new[] {
+                        "Often the most affordable way to get more coverage",
+                        "Commonly reviewed for income protection and family needs",
+                        "A strong option when straightforward protection is the priority",
+                    }),
+                ["wholelife"] = new(
+                    "Whole Life Insurance",
+                    "A simple permanent coverage path often reviewed when lifelong protection and steady guarantees matter.",
+                    new[] {
+                        "Designed to stay in place for the long term",
+                        "Builds cash value over time",
+                        "Often reviewed when permanent protection matters more than lowest cost",
+                    }),
+                ["finalexpense"] = new(
+                    "Final Expense Coverage",
+                    "A smaller permanent coverage path commonly reviewed to help with burial and end-of-life expenses.",
+                    new[] {
+                        "Focused on funeral and final-cost needs",
+                        "Usually reviewed when the coverage purpose is narrow and specific",
+                        "Often more relevant in older-age planning conversations",
+                    }),
+                ["mortgage"] = new(
+                    "Mortgage Protection Review",
+                    "A protection path commonly reviewed when the priority is helping protect the home and major monthly obligations.",
+                    new[] {
+                        "Focused on mortgage and household bill protection",
+                        "Often reviewed alongside term coverage",
+                        "A strong fit when keeping the home is the main concern",
+                    }),
+                ["iul"] = new(
+                    "Indexed Universal Life",
+                    "A more flexible permanent coverage option that may be worth reviewing in select long-term planning situations.",
+                    new[] {
+                        "Permanent protection with flexible structure",
+                        "More advanced than basic term or whole life",
+                        "Typically worth reviewing only when long-term flexibility is a priority",
+                    }),
+            };
+
+        // Builds a styled HTML rec card block for use inside LeadEmailTemplate.RowHtml.
+        private static string BuildRecCardHtml(string? key, string? fallbackTitle, string badgeLabel, bool isPrimary)
+        {
+            RecContentMap.TryGetValue(key ?? "", out var content);
+            var title   = content?.Title       ?? fallbackTitle ?? key ?? "—";
+            var desc    = content?.Description ?? "";
+            var bullets = content?.Bullets     ?? Array.Empty<string>();
+
+            var borderColor   = isPrimary ? "rgba(199,141,49,0.70)" : "rgba(199,153,49,0.30)";
+            var bgColor       = isPrimary ? "rgba(199,153,49,0.09)" : "rgba(15,29,53,0.70)";
+            var badgeBg       = isPrimary ? "#c79931"               : "rgba(199,153,49,0.16)";
+            var badgeColor    = isPrimary ? "#0f172a"               : "#f3d78f";
+
+            var sb = new StringBuilder();
+            sb.Append($@"<div style=""background:{bgColor};border:1.4px solid {borderColor};border-radius:10px;padding:14px 14px 12px;margin-bottom:10px;"">
+  <div style=""display:inline-block;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;border-radius:999px;padding:2px 10px;margin-bottom:8px;background:{badgeBg};color:{badgeColor};"">{WebUtility.HtmlEncode(badgeLabel)}</div>
+  <div style=""font-size:15px;font-weight:900;color:#f8fafc;margin-bottom:5px;"">{WebUtility.HtmlEncode(title)}</div>");
+
+            if (!string.IsNullOrWhiteSpace(desc))
+                sb.Append($@"<div style=""font-size:13px;color:rgba(248,250,252,0.72);margin-bottom:8px;line-height:1.5;"">{WebUtility.HtmlEncode(desc)}</div>");
+
+            if (bullets.Length > 0)
+            {
+                sb.Append(@"<ul style=""list-style:none;padding:0;margin:0;"">");
+                foreach (var b in bullets)
+                    sb.Append($@"<li style=""font-size:13px;font-weight:700;color:rgba(248,250,252,0.82);padding-left:1.3em;position:relative;line-height:1.4;margin-bottom:4px;""><span style=""position:absolute;left:0;color:#c79931;font-weight:900;"">✓</span>{WebUtility.HtmlEncode(b)}</li>");
+                sb.Append("</ul>");
+            }
+
+            sb.Append("</div>");
+            return sb.ToString();
+        }
+
         private static string BuildEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
         {
             var rows = new LeadEmailTemplate.RowBuilder()
@@ -460,9 +542,9 @@ namespace Protect_Website.Controllers
                 }
             }
 
-            rows.Section("Recommendations")
-                .Row("Recommended primary",   model.RecommendationPrimaryTitle ?? model.RecommendationPrimaryKey)
-                .Row("Recommended secondary", model.RecommendationSecondaryTitle ?? model.RecommendationSecondaryKey);
+            rows.Section("Recommendations");
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
 
             rows.Section("Details")
                 .Row("Product",          cfg.DisplayName)
@@ -498,13 +580,13 @@ namespace Protect_Website.Controllers
                 .Row("Tobacco use", tobaccoLabel)
                 .Row("Age",         model.Age?.ToString(CultureInfo.InvariantCulture));
 
-            rows.Section("Your Recommendation Summary")
-                .Row("Best fit",      model.RecommendationPrimaryTitle   ?? model.RecommendationPrimaryKey)
-                .Row("Also consider", model.RecommendationSecondaryTitle ?? model.RecommendationSecondaryKey);
+            rows.Section("Your Recommendation Summary");
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
 
             rows.Section("What Happens Next");
             rows.RowHtml("", @"<div style=""color:rgba(249,250,251,0.78);font-size:14px;line-height:1.6;"">
-  One of our licensed advisors will be in touch shortly to walk you through these options
+  One of our licensed representatives will be in touch shortly to walk you through your options
   and answer any questions you may have. There is no obligation — just a straightforward
   conversation about what may fit your situation.
 </div>");
