@@ -547,10 +547,9 @@ namespace Protect_Website.Controllers
             rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
 
             rows.Section("Details")
-                .Row("Product",          cfg.DisplayName)
-                .Row("Offer Key",        model.OfferKey)
-                .Row("State",            model.State)
-                .Row("Contact Consent",  LeadEmailTemplate.Bool(model.MarketingEmailConsent));
+                .Row("Product",   cfg.DisplayName)
+                .Row("Offer Key", model.OfferKey)
+                .Row("State",     model.State);
 
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
