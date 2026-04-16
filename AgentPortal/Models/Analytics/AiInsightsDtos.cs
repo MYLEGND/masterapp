@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace AgentPortal.Models.Analytics;
 
@@ -33,6 +34,7 @@ public sealed class AiFollowUpRequestDto
 
 // ── Result DTOs ───────────────────────────────────────────────────────────────
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BreakpointSeverity
 {
     Low,
@@ -41,6 +43,7 @@ public enum BreakpointSeverity
     Critical
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum BreakpointOwner
 {
     Ad,
