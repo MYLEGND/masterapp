@@ -16,17 +16,20 @@ namespace AgentPortal.Services.Analytics;
 /// <summary>
 /// Calls OpenAI Responses API with a fully redacted, aggregate-only analytics payload.
 /// Never touches PII. Never exposes the API key to any client.
+/// Configured independently of other OpenAI features via OpenAI:WebsiteAnalytics* keys.
 /// </summary>
 public sealed class OpenAiWebsiteAnalyticsReviewService
 {
     private const string DefaultBaseUrl = "https://api.openai.com";
-    private const int MaxPayloadChars = 50_000;
+    private const int MaxPayloadChars = 12_000;
+
     private const string SystemPrompt =
-        "You are a digital marketing performance analyst. You only have access to the website " +
-        "analytics data provided. Do not invent data you were not given. Do not infer or reveal " +
-        "any individual identity. Analyze only aggregate traffic, conversion, and funnel metrics. " +
-        "Identify bottlenecks across: ad quality, landing page performance, quote form friction, " +
-        "tracking gaps, and follow-up process. Be blunt and operational.";
+        "You are a digital marketing performance analyst. Analyze ONLY the aggregate data provided — " +
+        "do not invent figures. Be blunt and direct. Focus exclusively on: " +
+        "ad/campaign quality, landing page drop-off, quote form friction, and lead conversion. " +
+        "Return ONLY: one concise summary sentence, up to 3 primaryBreakpoints (with short evidence), " +
+        "up to 3 recommendedActions, up to 2 testsToRun, and up to 3 short confidenceNotes. " +
+        "No padding, no repetition.";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -37,8 +40,11 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _config;
     private readonly ILogger<OpenAiWebsiteAnalyticsReviewService> _logger;
-    private readonly string _model;
-    private readonly int _timeoutSeconds;
+
+    // Website-analytics-specific config — isolated from other OpenAI feature settings
+    private readonly string _waModel;
+    private readonly int _waTimeoutSeconds;
+    private readonly bool _waStrictSchema;
     private readonly string _responsesEndpoint;
 
     public OpenAiWebsiteAnalyticsReviewService(
@@ -49,8 +55,20 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         _httpClientFactory = httpClientFactory;
         _config = config;
         _logger = logger;
-        _model = config["OpenAI:Model"] ?? "gpt-4.1";
-        _timeoutSeconds = int.TryParse(config["OpenAI:TimeoutSeconds"], out var t) && t > 0 ? t : 30;
+
+        // Feature-specific model — falls back to global model, then hard default
+        var waModel = config["OpenAI:WebsiteAnalyticsModel"];
+        var globalModel = config["OpenAI:Model"];
+        _waModel = !string.IsNullOrWhiteSpace(waModel) ? waModel
+                 : !string.IsNullOrWhiteSpace(globalModel) ? globalModel
+                 : "gpt-4.1";
+
+        // Feature-specific timeout — falls back to 60 s default
+        _waTimeoutSeconds = int.TryParse(config["OpenAI:WebsiteAnalyticsTimeoutSeconds"], out var wt) && wt > 0
+            ? wt : 60;
+
+        // Strict JSON schema enforcement — default off for speed
+        _waStrictSchema = bool.TryParse(config["OpenAI:WebsiteAnalyticsStrictSchema"], out var ws) && ws;
 
         // Resolve base URL: IsNullOrWhiteSpace so an empty config value ("") falls through
         // to the default, preventing a schemeless URI that would resolve to file:///.
@@ -94,8 +112,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         {
             sb.AppendLine();
             sb.AppendLine("PRIOR ANALYSIS SUMMARY:");
-            // Truncate prior summary to prevent ballooning payload
-            var truncated = priorSummary.Length > 2000 ? priorSummary[..2000] + "…" : priorSummary;
+            var truncated = priorSummary.Length > 1000 ? priorSummary[..1000] + "…" : priorSummary;
             sb.AppendLine(truncated);
         }
 
@@ -120,7 +137,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             return ErrorResult("AI review is not configured. Set the OpenAI:ApiKey or OPENAI_API_KEY environment variable.");
         }
 
-        // Guard on total payload size
+        // Guard on total payload size — keep input tokens low
         if (userContent.Length > MaxPayloadChars)
         {
             _logger.LogWarning(
@@ -133,7 +150,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         var requestJson = JsonSerializer.Serialize(requestBody, JsonOptions);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds));
+        cts.CancelAfter(TimeSpan.FromSeconds(_waTimeoutSeconds));
+
+        var startedAt = DateTimeOffset.UtcNow;
 
         try
         {
@@ -144,14 +163,16 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
             _logger.LogInformation(
-                "AI review request starting. Endpoint={Endpoint} Model={Model} PayloadChars={Chars}",
-                _responsesEndpoint, _model, userContent.Length);
+                "AI review request starting. Model={Model} StrictSchema={Strict} " +
+                "PayloadChars={Chars} TimeoutSeconds={Timeout} StartedAt={StartedAt}",
+                _waModel, _waStrictSchema, userContent.Length, _waTimeoutSeconds, startedAt);
 
             using var response = await client.SendAsync(request, cts.Token);
 
             _logger.LogInformation(
-                "AI review HTTP response. Status={Status} Endpoint={Endpoint}",
-                (int)response.StatusCode, _responsesEndpoint);
+                "AI review HTTP response. Status={Status} ElapsedMs={Elapsed}",
+                (int)response.StatusCode,
+                (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -163,7 +184,6 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                     response.StatusCode,
                     errorBody.Length > 400 ? errorBody[..400] : errorBody);
 
-                // Extract OpenAI's error message from the body if available
                 var openAiMessage = TryExtractOpenAiError(errorBody);
 
                 var userMessage = statusCode switch
@@ -181,20 +201,23 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             }
 
             var responseJson = await response.Content.ReadAsStringAsync(ct);
-
             var result = ParseOpenAiResponse(responseJson);
 
+            var elapsedMs = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
             _logger.LogInformation(
-                "AI review completed. InputTokens={In} OutputTokens={Out}",
-                result.inputTokens, result.outputTokens);
+                "AI review completed. Model={Model} InputTokens={In} OutputTokens={Out} ElapsedMs={Elapsed}",
+                _waModel, result.inputTokens, result.outputTokens, elapsedMs);
 
             return result.dto;
         }
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            _logger.LogWarning("AI review request timed out after {Timeout}s.", _timeoutSeconds);
+            var elapsedMs = (long)(DateTimeOffset.UtcNow - startedAt).TotalMilliseconds;
+            _logger.LogWarning(
+                "AI review timed out. Model={Model} TimeoutSeconds={Timeout} ElapsedMs={Elapsed}",
+                _waModel, _waTimeoutSeconds, elapsedMs);
             return ErrorResult(
-                $"OpenAI did not respond within {_timeoutSeconds} seconds. " +
+                $"OpenAI did not respond within {_waTimeoutSeconds} seconds. " +
                 "This is usually a network connectivity issue (firewall, DNS, or no route to api.openai.com), " +
                 "a request the model is struggling with, or OpenAI API overload. " +
                 "Check server logs and verify the host can reach api.openai.com.");
@@ -211,7 +234,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse OpenAI response.");
+            _logger.LogWarning(ex, "Failed to parse OpenAI top-level response JSON.");
             return ErrorResult("AI response could not be parsed. Please try again.");
         }
         catch (Exception ex)
@@ -223,20 +246,20 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
 
     private static string BuildUserContent(AiSafeAnalyticsPayload payload)
     {
-        // Serialize the safe payload as compact JSON — no indentation keeps token count low
+        // Compact JSON — no indentation keeps token count low
         var payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         });
 
-        return $"WEBSITE ANALYTICS DATA:\n{payloadJson}\n\nAnalyze the above and return your structured review.";
+        return $"ANALYTICS DATA:\n{payloadJson}\n\nReturn your structured review.";
     }
 
     private object BuildRequestBody(string systemPrompt, string userContent)
     {
         return new
         {
-            model = _model,
+            model = _waModel,
             input = new object[]
             {
                 new { role = "system", content = systemPrompt },
@@ -248,7 +271,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                 {
                     type = "json_schema",
                     name = "analytics_review",
-                    strict = true,
+                    strict = _waStrictSchema,
                     schema = BuildJsonSchema()
                 }
             }
@@ -257,13 +280,12 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
 
     private static object BuildJsonSchema()
     {
-        // JSON schema matching AiInsightsResultDto
         return new
         {
             type = "object",
             properties = new Dictionary<string, object>
             {
-                ["summary"] = new { type = "string", description = "Executive summary of performance." },
+                ["summary"] = new { type = "string", description = "One concise sentence summarizing performance." },
                 ["primaryBreakpoints"] = new
                 {
                     type = "array",
@@ -272,11 +294,11 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                         type = "object",
                         properties = new Dictionary<string, object>
                         {
-                            ["title"] = new { type = "string" },
-                            ["severity"] = new { type = "string", @enum = new[] { "Low", "Medium", "High", "Critical" } },
-                            ["evidence"] = new { type = "array", items = new { type = "string" } },
+                            ["title"]       = new { type = "string" },
+                            ["severity"]    = new { type = "string", @enum = new[] { "Low", "Medium", "High", "Critical" } },
+                            ["evidence"]    = new { type = "array", items = new { type = "string" } },
                             ["likelyCause"] = new { type = "string" },
-                            ["owner"] = new { type = "string", @enum = new[] { "Ad", "LandingPage", "Form", "Tracking", "FollowUp", "Unknown" } }
+                            ["owner"]       = new { type = "string", @enum = new[] { "Ad", "LandingPage", "Form", "Tracking", "FollowUp", "Unknown" } }
                         },
                         required = new[] { "title", "severity", "evidence", "likelyCause", "owner" },
                         additionalProperties = false
@@ -290,9 +312,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                         type = "object",
                         properties = new Dictionary<string, object>
                         {
-                            ["priority"] = new { type = "integer" },
-                            ["action"] = new { type = "string" },
-                            ["why"] = new { type = "string" },
+                            ["priority"]       = new { type = "integer" },
+                            ["action"]         = new { type = "string" },
+                            ["why"]            = new { type = "string" },
                             ["expectedImpact"] = new { type = "string" }
                         },
                         required = new[] { "priority", "action", "why", "expectedImpact" },
@@ -307,9 +329,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                         type = "object",
                         properties = new Dictionary<string, object>
                         {
-                            ["name"] = new { type = "string" },
+                            ["name"]       = new { type = "string" },
                             ["hypothesis"] = new { type = "string" },
-                            ["metric"] = new { type = "string" }
+                            ["metric"]     = new { type = "string" }
                         },
                         required = new[] { "name", "hypothesis", "metric" },
                         additionalProperties = false
@@ -331,7 +353,6 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         using var doc = JsonDocument.Parse(responseJson);
         var root = doc.RootElement;
 
-        // Extract usage if available
         var inputTokens = 0;
         var outputTokens = 0;
         if (root.TryGetProperty("usage", out var usage))
@@ -356,17 +377,28 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         if (string.IsNullOrWhiteSpace(text))
             return (ErrorResult("OpenAI returned empty text."), inputTokens, outputTokens);
 
-        // Deserialize the structured JSON from the model
         var resultOptions = new JsonSerializerOptions
         {
-            PropertyNameCaseInsensitive = true
+            PropertyNameCaseInsensitive = true,
+            Converters = { new JsonStringEnumConverter() }
         };
-        var dto = JsonSerializer.Deserialize<AiInsightsResultDto>(text, resultOptions)
-            ?? ErrorResult("Failed to deserialize AI response.");
+
+        AiInsightsResultDto? dto;
+        try
+        {
+            dto = JsonSerializer.Deserialize<AiInsightsResultDto>(text, resultOptions);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Failed to deserialize AI response DTO. Raw text (truncated): {Text}",
+                text.Length > 500 ? text[..500] : text);
+            return (ErrorResult("AI response could not be parsed. Please try again."), inputTokens, outputTokens);
+        }
+
+        dto ??= ErrorResult("Failed to deserialize AI response.");
 
         return (dto, inputTokens, outputTokens);
     }
-
 
     private static string? TryExtractOpenAiError(string errorBody)
     {
@@ -375,7 +407,6 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         {
             using var doc = JsonDocument.Parse(errorBody);
             var root = doc.RootElement;
-            // OpenAI error shape: { "error": { "message": "..." } }
             if (root.TryGetProperty("error", out var err) &&
                 err.TryGetProperty("message", out var msg))
             {
@@ -384,10 +415,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                     return text.Length > 200 ? text[..200] + "…" : text;
             }
         }
-        catch
-        {
-            // Not valid JSON — ignore
-        }
+        catch { /* Not valid JSON — ignore */ }
         return null;
     }
 

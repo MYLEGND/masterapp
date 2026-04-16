@@ -8,8 +8,10 @@ using AgentPortal.Models.Analytics;
 namespace AgentPortal.Services.Analytics;
 
 /// <summary>
-/// Assembles an <see cref="AiSafeAnalyticsPayload"/> from the existing analytics query
-/// service. Only aggregate metrics are included — never individual lead rows.
+/// Assembles a focused <see cref="AiSafeAnalyticsPayload"/> for AI review.
+/// Only includes: active campaign performance, page performance, quote funnel,
+/// behavior intelligence, unique visitors, and form/lead data.
+/// Never includes PII, historical comparisons, or non-conversion breakdowns.
 /// </summary>
 public sealed class WebsiteAnalyticsAiDataBuilder
 {
@@ -29,152 +31,113 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         TrafficType trafficType = TrafficType.All,
         CancellationToken ct = default)
     {
-        // Run all queries concurrently — same pattern as existing AiReviewSnapshot endpoint.
-        var summaryTask = SafeLoadAsync(() => _analytics.GetSummaryAsync(range, scope, trafficType),
-            () => new SummaryKpiDto { RangeLabel = range.Label });
-        var trafficTask = SafeLoadAsync(() => _analytics.GetTrafficAsync(range, scope, trafficType),
-            () => new TrafficOverviewDto { RangeLabel = range.Label });
-        var pagePerfTask = SafeLoadAsync(() => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
-            () => new PagePerformanceDto { RangeLabel = range.Label });
-        var ctaPerfTask = SafeLoadAsync(() => _analytics.GetCtaPerformanceAsync(range, scope, trafficType),
-            () => new CtaPerformanceDto { RangeLabel = range.Label });
+        // Run only the queries needed for conversion-focused analysis.
+        // Removed: traffic breakdowns, CTA performance, total conversions, dwell time.
+        var summaryTask    = SafeLoadAsync(() => _analytics.GetSummaryAsync(range, scope, trafficType),
+                                () => new SummaryKpiDto { RangeLabel = range.Label });
+        var pagePerfTask   = SafeLoadAsync(() => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
+                                () => new PagePerformanceDto { RangeLabel = range.Label });
         var quoteFunnelTask = SafeLoadAsync(() => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-            () => new QuoteFunnelDto { RangeLabel = range.Label });
-        var conversionsTask = SafeLoadAsync(() => _analytics.GetConversionsAsync(range, scope, trafficType),
-            () => new ConversionCenterDto { RangeLabel = range.Label });
+                                () => new QuoteFunnelDto { RangeLabel = range.Label });
         var engagementTask = SafeLoadAsync(() => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
-            () => new EngagementSummaryDto { RangeLabel = range.Label });
-        var timeOnPageTask = SafeLoadAsync(() => _analytics.GetTimeOnPageAsync(range, scope, trafficType),
-            () => new TimeOnPageDto { RangeLabel = range.Label });
-        var exitTask = SafeLoadAsync(() => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
-            () => new ExitAnalysisDto { RangeLabel = range.Label });
-        var sourceTask = SafeLoadAsync(() => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
-            () => new SourcePerformanceDto { RangeLabel = range.Label });
-        var abandonTask = SafeLoadAsync(() => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
-            () => new FormAbandonmentDto { RangeLabel = range.Label });
+                                () => new EngagementSummaryDto { RangeLabel = range.Label });
+        var exitTask       = SafeLoadAsync(() => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
+                                () => new ExitAnalysisDto { RangeLabel = range.Label });
+        var sourceTask     = SafeLoadAsync(() => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
+                                () => new SourcePerformanceDto { RangeLabel = range.Label });
+        var abandonTask    = SafeLoadAsync(() => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
+                                () => new FormAbandonmentDto { RangeLabel = range.Label });
 
         await Task.WhenAll(
-            summaryTask, trafficTask, pagePerfTask, ctaPerfTask,
-            quoteFunnelTask, conversionsTask, engagementTask,
-            timeOnPageTask, exitTask, sourceTask, abandonTask);
+            summaryTask, pagePerfTask, quoteFunnelTask,
+            engagementTask, exitTask, sourceTask, abandonTask);
 
-        var summary = await summaryTask;
-        var traffic = await trafficTask;
-        var pagePerf = await pagePerfTask;
-        var ctaPerf = await ctaPerfTask;
-        var quote = await quoteFunnelTask;
-        var conversions = await conversionsTask;
+        var summary    = await summaryTask;
+        var pagePerf   = await pagePerfTask;
+        var quote      = await quoteFunnelTask;
         var engagement = await engagementTask;
-        var timeOnPage = await timeOnPageTask;
-        var exit = await exitTask;
-        var source = await sourceTask;
-        var abandon = await abandonTask;
+        var exit       = await exitTask;
+        var source     = await sourceTask;
+        var abandon    = await abandonTask;
 
         return new AiSafeAnalyticsPayload
         {
-            RangeLabel = rangeLabel,
-            ScopeLabel = scopeLabel,
+            RangeLabel   = rangeLabel,
+            ScopeLabel   = scopeLabel,
             TrafficFilter = trafficFilter,
 
-            // Summary KPIs
-            PageViews = summary.PageViews,
-            UniqueVisitors = summary.UniqueVisitors,
-            Sessions = summary.Sessions,
-            VerifiedLeads = summary.VerifiedLeads,
+            // (e) Unique Visitors + Lead data
+            UniqueVisitors        = summary.UniqueVisitors,
+            Sessions              = summary.Sessions,
+            VerifiedLeads         = summary.VerifiedLeads,
             SessionConversionRate = summary.SessionConversionRate,
-            IntentConversionRate = summary.IntentConversionRate,
-            IntentAvailable = summary.IntentAvailable,
-            TopPage = summary.TopPage,
-            TopCta = summary.TopCta,
-            TopSource = summary.TopSource,
-            TopCampaign = summary.TopCampaign,
 
-            // Traffic breakdowns — labels and counts only, no PII
-            TopPages = (traffic.TopPages ?? new List<KeyCountDto>()).Take(10)
-                .Select(x => new LabelCount { Label = x.Key, Count = x.Count }).ToList(),
-            TopSources = (traffic.TopSources ?? new List<KeyCountDto>()).Take(10)
-                .Select(x => new LabelCount { Label = x.Key, Count = x.Count }).ToList(),
-            TopCampaigns = (traffic.TopCampaigns ?? new List<KeyCountDto>()).Take(10)
-                .Select(x => new LabelCount { Label = x.Key, Count = x.Count }).ToList(),
-            EntryPages = (traffic.EntryPages ?? new List<KeyCountDto>()).Take(10)
-                .Select(x => new LabelCount { Label = x.Key, Count = x.Count }).ToList(),
-
-            // Page performance — aggregate, no names/emails
-            PagePerformance = (pagePerf.Rows ?? new List<PagePerformanceRow>()).Take(15)
+            // (b) Page Performance — top 5 by view volume
+            PagePerformance = (pagePerf.Rows ?? new List<PagePerformanceRow>())
+                .Take(5)
                 .Select(x => new PagePerfRow
                 {
-                    PageKey = x.PageKey,
-                    Views = x.Views,
-                    CtaClicks = x.CtaClicks,
-                    Leads = x.Leads,
+                    PageKey        = x.PageKey,
+                    Views          = x.Views,
+                    CtaClicks      = x.CtaClicks,
+                    Leads          = x.Leads,
                     ConversionRate = x.ConversionRate
                 }).ToList(),
 
-            // CTA performance
-            CtaPerformance = (ctaPerf.Rows ?? new List<CtaPerformanceRow>()).Take(15)
-                .Select(x => new CtaPerfRow
-                {
-                    PageKey = x.PageKey,
-                    ElementKey = x.ElementKey,
-                    Clicks = x.Clicks
-                }).ToList(),
+            // (c) Quote Funnel metrics
+            QuoteStarts                  = quote.QuoteStarts,
+            QuoteFormStarts              = quote.QuoteFormStarts,
+            QuoteFormSubmits             = quote.QuoteFormSubmits,
+            DropOffStartsToFormStarts    = quote.DropOffStartsToFormStarts,
+            DropOffFormStartsToSubmits   = quote.DropOffFormStartsToSubmits,
 
-            // Quote funnel
-            QuoteStarts = quote.QuoteStarts,
-            QuoteFormStarts = quote.QuoteFormStarts,
-            QuoteFormSubmits = quote.QuoteFormSubmits,
-            DropOffStartsToFormStarts = quote.DropOffStartsToFormStarts,
-            DropOffFormStartsToSubmits = quote.DropOffFormStartsToSubmits,
-
-            // Conversions — aggregate count only
-            TotalConversions = conversions.TotalConversions,
-
-            // Behavior
+            // (d) Behavior Intelligence
             AvgSessionDurationMs = engagement.AvgSessionDurationMs,
-            QuickExitRate = engagement.QuickExitRate,
-            EngagedSessionRate = engagement.EngagedSessionRate,
-            TopDwellPages = (timeOnPage.LongestAvgDwell ?? new List<DwellPageRow>()).Take(5)
-                .Select(x => new DwellRow
-                {
-                    PageKey = x.PageKey,
-                    AvgDwellMs = x.AvgDwellMs,
-                    Samples = x.TimingSamples
-                }).ToList(),
-            TopExitPages = (exit.TopExitPages ?? new List<ExitPageRow>()).Take(5)
+            QuickExitRate        = engagement.QuickExitRate,
+            EngagedSessionRate   = engagement.EngagedSessionRate,
+            TopExitPages = (exit.TopExitPages ?? new List<ExitPageRow>())
+                .Take(3)
                 .Select(x => new ExitRow
                 {
-                    PageKey = x.PageKey,
-                    Exits = x.Exits,
+                    PageKey  = x.PageKey,
+                    Exits    = x.Exits,
                     ExitRate = x.ExitRate
                 }).ToList(),
 
-            // Source performance — source/medium/campaign labels + aggregate counts
-            SourcePerformance = (source.Rows ?? new List<SourcePerformanceRow>()).Take(10)
+            // (a) Active Campaign Performance — only rows with actual campaign attribution
+            SourcePerformance = (source.Rows ?? new List<SourcePerformanceRow>())
+                .Where(x => !string.IsNullOrWhiteSpace(x.Campaign))
+                .Take(5)
                 .Select(x => new SourceRow
                 {
-                    Source = x.Source,
-                    Medium = x.Medium,
-                    Campaign = x.Campaign,
-                    Sessions = x.Sessions,
-                    VerifiedLeads = x.VerifiedLeads,
+                    Source                = x.Source,
+                    Medium                = x.Medium,
+                    Campaign              = x.Campaign,
+                    Sessions              = x.Sessions,
+                    VerifiedLeads         = x.VerifiedLeads,
                     SessionConversionRate = x.SessionConversionRate
                 }).ToList(),
 
-            // Form abandonment — aggregate only
-            FormAbandonment = (abandon.Summary ?? new List<FormAbandonSummaryRow>()).Take(5)
+            // (e) Form/Lead data
+            FormAbandonment = (abandon.Summary ?? new List<FormAbandonSummaryRow>())
+                .Take(3)
                 .Select(x => new AbandonRow
                 {
-                    QuoteType = x.QuoteType,
-                    Abandons = x.Abandons,
-                    Starts = x.Starts,
+                    QuoteType   = x.QuoteType,
+                    Abandons    = x.Abandons,
+                    Starts      = x.Starts,
                     AbandonRate = x.AbandonRate
                 }).ToList(),
-            TopAbandonedFields = (abandon.TopAbandonedFields ?? new List<TopAbandonedFieldRow>()).Take(5)
-                .Select(x => new LabelCount { Label = x.FieldName, Count = x.AbandonCount }).ToList()
+            TopAbandonedFields = (abandon.TopAbandonedFields ?? new List<TopAbandonedFieldRow>())
+                .Take(3)
+                .Select(x => new LabelCount { Label = x.FieldName, Count = x.AbandonCount })
+                .ToList()
+
+            // Intentionally omitted (non-conversion breakdowns):
+            // TopPages, TopSources, TopCampaigns, EntryPages, CtaPerformance,
+            // TotalConversions, TopDwellPages, IntentConversionRate, PageViews
         };
     }
-
-    // ── Helper ────────────────────────────────────────────────────────────────
 
     private static async Task<T> SafeLoadAsync<T>(Func<Task<T>> loader, Func<T> fallback)
     {
