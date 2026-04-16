@@ -286,8 +286,10 @@ public class LeadsController : Controller
                 .ToListAsync();
 
             // Canonicalize by LeadId in case older duplicates surface.
+            // Use the canonical entity directly — do NOT re-look-up from leadsRaw by CrmOrder,
+            // which could return a different (stale) duplicate with incorrect dial counts.
             var leads = LeadCanonicalizer.Canonicalize(leadsRaw.Select(r => r.Lead), _logger, "Leads/Index preload")
-                .Select(c => leadsRaw.First(r => r.Lead.LeadId.Equals(c.LeadId, StringComparison.OrdinalIgnoreCase)))
+                .Select(c => new { Lead = c, Paid = 0m, Personal = 0m })
                 .ToList();
 
             var leadIds = leads.Select(l => l.Lead.LeadId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();

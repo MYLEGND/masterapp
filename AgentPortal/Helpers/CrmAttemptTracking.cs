@@ -260,10 +260,14 @@ public static class CrmAttemptTracking
         TimeZoneInfo? timeZone = null)
     {
         var tz = timeZone ?? DialTimeZone;
-        var dayStart = StartOfUtcDay(utcNow, tz);
-        var weekStart = StartOfUtcWeek(utcNow, tz);
-        var monthStart = StartOfUtcMonth(utcNow, tz);
-        var yearStart = StartOfUtcYear(utcNow, tz);
+
+        // Activity dates are stored as local date strings ("yyyy-MM-dd") — compare as local dates
+        // against local period anchors. Do NOT parse as UTC; midnight UTC != start-of-local-day.
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), tz);
+        var localToday      = localNow.Date;
+        var localWeekStart  = StartOfLocalWeekMonday(localToday);
+        var localMonthStart = new DateTime(localToday.Year, localToday.Month, 1);
+        var localYearStart  = new DateTime(localToday.Year, 1, 1);
 
         var today = 0;
         var week = 0;
@@ -275,14 +279,22 @@ public static class CrmAttemptTracking
         {
             if (activity == null) continue;
             if (!isAttempt(activity)) continue;
-            if (!TryParseIsoDate(activity.Date, out var attemptDateUtc)) continue;
 
+            // Parse as local date — no timezone assumption
+            if (!DateTime.TryParseExact(
+                    activity.Date,
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out var parsed)) continue;
+
+            var actDate = parsed.Date;
             lifetime++;
 
-            if (attemptDateUtc == dayStart) today++;
-            if (attemptDateUtc >= weekStart) week++;
-            if (attemptDateUtc >= monthStart) month++;
-            if (attemptDateUtc >= yearStart) year++;
+            if (actDate == localToday)      today++;
+            if (actDate >= localWeekStart)  week++;
+            if (actDate >= localMonthStart) month++;
+            if (actDate >= localYearStart)  year++;
         }
 
         return new CrmAttemptCounts(today, week, month, year, lifetime);
