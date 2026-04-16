@@ -88,6 +88,21 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 else
     builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiDataBuilder>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
+builder.Services.AddHttpClient("OpenAI", c =>
+{
+    c.BaseAddress = new Uri("https://api.openai.com/");
+    c.Timeout = TimeSpan.FromSeconds(35); // slightly longer than service timeout to allow graceful handling
+});
+// Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
+var openAiKey = builder.Configuration["OpenAI:ApiKey"]
+    ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
+    ?? Environment.GetEnvironmentVariable("OpenAI__ApiKey");
+if (string.IsNullOrWhiteSpace(openAiKey))
+{
+    Console.WriteLine("[WARN] OpenAI:ApiKey is not configured. AI insights features will return error results until the key is set via config or the OPENAI_API_KEY environment variable.");
+}
 builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
 builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
 builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();

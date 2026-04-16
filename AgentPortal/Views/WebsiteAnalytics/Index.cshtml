@@ -114,10 +114,23 @@
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(canViewFounderTeamUi)
             {
-            <div class="ms-auto">
+            <div class="ms-auto d-flex align-items-center gap-2">
                 <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
                         style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
                     Team Performance
+                </button>
+                <button class="btn btn-sm" type="button" data-ai-drawer-trigger
+                        style="background: linear-gradient(180deg, #1a2e5a, #0e1b3d); color:#c79931; border:1px solid #a68023; font-weight:800; box-shadow:0 6px 16px rgba(0,0,0,.22);">
+                    AI Review
+                </button>
+            </div>
+            }
+            else
+            {
+            <div class="ms-auto">
+                <button class="btn btn-sm" type="button" data-ai-drawer-trigger
+                        style="background: linear-gradient(180deg, #1a2e5a, #0e1b3d); color:#c79931; border:1px solid #a68023; font-weight:800; box-shadow:0 6px 16px rgba(0,0,0,.22);">
+                    AI Review
                 </button>
             </div>
             }
@@ -998,9 +1011,77 @@
   </div>
 </div>
 
+@* ── AI Insights Drawer ───────────────────────────────────────────────────── *@
+@* Hidden antiforgery form used exclusively by the AI drawer JS *@
+<form id="ai-antiforgery" class="d-none" method="post">
+    @Html.AntiForgeryToken()
+</form>
+
+@* Backdrop overlay *@
+<div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
+
+@* Drawer panel *@
+<div id="aiInsightsDrawer" class="ai-drawer" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+    <div class="ai-drawer-header">
+        <div>
+            <div class="ai-drawer-title">AI Review</div>
+            <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
+        </div>
+        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+    </div>
+
+    <div class="ai-drawer-body">
+        @* Loading state *@
+        <div class="ai-drawer-loading" aria-live="polite">
+            <div class="ai-skel-line medium" style="margin-top:4px;"></div>
+            <div class="ai-skel-line short"></div>
+            <div class="ai-skel-block" style="margin-top:14px;"></div>
+            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-line short"></div>
+            <div class="ai-skel-block"></div>
+            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-block"></div>
+            <div class="ai-skel-line short"></div>
+        </div>
+
+        @* Error state *@
+        <div class="ai-drawer-error" hidden aria-live="assertive">
+            <div class="ai-error-icon">&#9888;</div>
+            <div class="ai-error-message">Unable to load AI review.</div>
+            <button type="button" class="btn btn-sm ai-retry-btn"
+                    style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
+                Try Again
+            </button>
+        </div>
+
+        @* Result sections — rendered by JS *@
+        <div class="ai-drawer-result" hidden></div>
+    </div>
+
+    <div class="ai-drawer-footer">
+        @* Follow-up question area — shown after first successful result *@
+        <div class="ai-drawer-followup-section" hidden>
+            <div class="ai-followup-label">Ask a follow-up</div>
+            <form id="ai-followup-form" autocomplete="off">
+                <textarea id="ai-followup-input"
+                          class="ai-followup-textarea"
+                          name="question"
+                          maxlength="500"
+                          rows="3"
+                          placeholder="Ask about a specific metric, page, or campaign..."></textarea>
+                <button type="submit" class="btn btn-sm w-100 mt-2"
+                        style="background:rgba(199,153,49,0.12);color:#c79931;border:1px solid rgba(199,153,49,0.4);font-weight:700;">
+                    Submit Follow-Up
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/website-analytics.js" asp-append-version="true"></script>
 <script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
+<script src="~/js/website-analytics-ai.js" asp-append-version="true"></script>
 <script>
     window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
     window.CALLER_PROFILE_ID = "@callerProfileId";
