@@ -272,7 +272,7 @@
       toUtc: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: st.trafficType || 'all'
+      trafficType: 'all'
     };
 
     try {
@@ -305,7 +305,7 @@
       toUtc: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: st.trafficType || 'all',
+      trafficType: 'all',
       followUpQuestion: question,
       priorSummary: lastResult?.summary || ''
     };
