@@ -1421,7 +1421,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     border-top: 1px solid rgba(199, 153, 49, 0.25);
     background: linear-gradient(180deg, rgba(11,21,48,0.96) 0%, rgba(9,17,42,0.99) 100%);
 }
-.ai-followup-label {
+.ai-drawer-footer .ai-followup-label {
     color: var(--legend-gold);
     font-size: 0.72rem;
     font-weight: 900;
@@ -1429,27 +1429,27 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     text-transform: uppercase;
     margin-bottom: 8px;
 }
-.ai-followup-textarea {
+.ai-drawer-footer .ai-followup-textarea {
     width: 100%;
-    background: rgba(14, 27, 61, 0.75);
+    background-color: rgba(14, 27, 61, 0.85) !important;
     border: 1px solid rgba(199, 153, 49, 0.35);
     border-radius: 10px;
-    color: var(--legend-ink);
+    color: var(--legend-ink) !important;
     font-size: 0.875rem;
     line-height: 1.55;
     padding: 10px 13px;
     resize: none;
     min-height: 72px;
     max-height: 140px;
-    transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+    transition: border-color 0.18s, box-shadow 0.18s, background-color 0.18s;
 }
-.ai-followup-textarea:focus {
+.ai-drawer-footer .ai-followup-textarea:focus {
     outline: none;
     border-color: var(--legend-gold);
-    background: rgba(14, 27, 61, 0.95);
-    box-shadow: 0 0 0 3px rgba(199, 153, 49, 0.12);
+    background-color: rgba(9, 17, 42, 0.98) !important;
+    box-shadow: 0 0 0 3px rgba(199, 153, 49, 0.15);
 }
-.ai-followup-textarea::placeholder { color: rgba(216, 222, 234, 0.4); }
+.ai-drawer-footer .ai-followup-textarea::placeholder { color: rgba(216, 222, 234, 0.45); }
 .ai-followup-btn {
     width: 100%;
     margin-top: 10px;
