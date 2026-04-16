@@ -405,6 +405,193 @@ namespace AgentPortal.Controllers;
         }
     }
 
+    // ── KPI Detail Modal Endpoint ─────────────────────────────────────────────
+    [HttpGet("kpi-detail")]
+    [HttpGet("/website-analytics/kpi-detail")]
+    public async Task<IActionResult> KpiDetail(
+        [FromQuery] string metric,
+        [FromQuery] string? preset,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] bool team = false,
+        [FromQuery] TrafficType trafficType = TrafficType.All)
+    {
+        if (string.IsNullOrWhiteSpace(metric))
+            return BadRequest(new { message = "metric is required" });
+
+        metric = metric.ToLowerInvariant().Trim();
+        if (metric != "pageviews" && metric != "visitors" && metric != "sessions" && metric != "leads")
+            return BadRequest(new { message = $"Unknown metric: {metric}" });
+
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+
+        // Previous period: same duration, ending the day before the current start
+        var span = range.ToUtc - range.FromUtc;
+        var prevFrom = range.FromUtc - span - TimeSpan.FromSeconds(1);
+        var prevTo = range.FromUtc - TimeSpan.FromSeconds(1);
+        var prevRange = new TimeRangeRequest
+        {
+            FromUtc = prevFrom,
+            ToUtc = prevTo,
+            Grouping = range.Grouping,
+            Label = range.Label,
+            Preset = range.Preset
+        };
+
+        // Pull the data we need — reuse existing service methods, no duplication
+        var traffic = await _analytics.GetTrafficAsync(range, scope, trafficType);
+        var prevTraffic = await _analytics.GetTrafficAsync(prevRange, scope, trafficType);
+
+        int total, prevTotal;
+        List<TrendPointDto> series;
+
+        switch (metric)
+        {
+            case "pageviews":
+                total = traffic.PageViewTrend.Sum(p => p.Value);
+                prevTotal = prevTraffic.PageViewTrend.Sum(p => p.Value);
+                series = traffic.PageViewTrend;
+                break;
+            case "visitors":
+                total = traffic.VisitorTrend.Sum(p => p.Value);
+                prevTotal = prevTraffic.VisitorTrend.Sum(p => p.Value);
+                series = traffic.VisitorTrend;
+                break;
+            case "sessions":
+                total = traffic.SessionTrend.Sum(p => p.Value);
+                prevTotal = prevTraffic.SessionTrend.Sum(p => p.Value);
+                series = traffic.SessionTrend;
+                break;
+            case "leads":
+                var leads = await _analytics.GetLeadsAsync(range, scope, trafficType, 50);
+                var prevLeads = await _analytics.GetLeadsAsync(prevRange, scope, trafficType, 1);
+                total = leads.Total;
+                prevTotal = prevLeads.Total;
+                // Build daily series for leads from the lead list
+                series = BuildLeadDailySeries(leads, range);
+                break;
+            default:
+                total = 0; prevTotal = 0; series = new List<TrendPointDto>();
+                break;
+        }
+
+        var deltaCount = total - prevTotal;
+        var deltaPct = prevTotal > 0 ? Math.Round((decimal)deltaCount / prevTotal * 100, 1) : 0;
+        var days = Math.Max(1, (range.ToUtc - range.FromUtc).TotalDays);
+        var avgPerDay = Math.Round((decimal)total / (decimal)days, 1);
+
+        // Build breakdown
+        var breakdown = new Models.Analytics.KpiDetailBreakdownDto();
+
+        switch (metric)
+        {
+            case "pageviews":
+                breakdown.TopPages = traffic.TopPages.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                breakdown.TopSources = traffic.TopSources.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                breakdown.TopCampaigns = traffic.TopCampaigns.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                break;
+
+            case "visitors":
+                breakdown.TopLandingPages = traffic.EntryPages.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                breakdown.TopSources = traffic.TopSources.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                break;
+
+            case "sessions":
+                breakdown.TopLandingPages = traffic.EntryPages.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                breakdown.TopSources = traffic.TopSources.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                breakdown.TopCampaigns = traffic.TopCampaigns.Take(10)
+                    .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
+                break;
+
+            case "leads":
+                var leadsForBreakdown = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
+                breakdown.TopSources = leadsForBreakdown.Leads
+                    .Where(l => !string.IsNullOrWhiteSpace(l.UtmSource))
+                    .GroupBy(l => l.UtmSource!, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count())
+                    .Take(10)
+                    .Select(g => new Models.Analytics.KpiDetailBreakdownItemDto { Label = g.Key, Value = g.Count() })
+                    .ToList();
+                breakdown.TopCampaigns = leadsForBreakdown.Leads
+                    .Where(l => !string.IsNullOrWhiteSpace(l.UtmCampaign))
+                    .GroupBy(l => l.UtmCampaign!, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count())
+                    .Take(10)
+                    .Select(g => new Models.Analytics.KpiDetailBreakdownItemDto { Label = g.Key, Value = g.Count() })
+                    .ToList();
+                breakdown.TopPages = leadsForBreakdown.Leads
+                    .Where(l => !string.IsNullOrWhiteSpace(l.SourcePage))
+                    .GroupBy(l => l.SourcePage!, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(g => g.Count())
+                    .Take(10)
+                    .Select(g => new Models.Analytics.KpiDetailBreakdownItemDto { Label = g.Key, Value = g.Count() })
+                    .ToList();
+                breakdown.RecentLeads = leadsForBreakdown.Leads.Take(15)
+                    .Select(l => new Models.Analytics.KpiDetailBreakdownItemDto
+                    {
+                        Label = string.IsNullOrWhiteSpace(l.Name) ? l.Email : l.Name,
+                        Value = 1,
+                        Meta = l.Source ?? (l.UtmSource ?? "direct")
+                    })
+                    .ToList();
+                break;
+        }
+
+        var metricLabel = metric switch
+        {
+            "pageviews" => "Page Views",
+            "visitors" => "Unique Visitors",
+            "sessions" => "Sessions",
+            "leads" => "Leads",
+            _ => metric
+        };
+
+        var result = new Models.Analytics.KpiDetailDto
+        {
+            Metric = metric,
+            Label = metricLabel,
+            StartDateLocal = range.FromUtc.ToString("MMM d, yyyy"),
+            EndDateLocal = range.ToUtc.ToString("MMM d, yyyy"),
+            Totals = new Models.Analytics.KpiDetailTotalsDto
+            {
+                Total = total,
+                PreviousTotal = prevTotal,
+                DeltaCount = deltaCount,
+                DeltaPct = deltaPct,
+                AvgPerDay = avgPerDay
+            },
+            Series = series,
+            Breakdown = breakdown
+        };
+
+        return Json(result);
+    }
+
+    private static List<TrendPointDto> BuildLeadDailySeries(LeadSnapshotDto leads, TimeRangeRequest range)
+    {
+        if (!leads.Leads.Any())
+            return new List<TrendPointDto>();
+
+        return leads.Leads
+            .GroupBy(l => l.CreatedUtc.Date)
+            .OrderBy(g => g.Key)
+            .Select(g => new TrendPointDto
+            {
+                Label = g.Key.ToString("yyyy-MM-dd"),
+                Value = g.Count()
+            })
+            .ToList();
+    }
+
     [HttpGet("meta-campaigns")]
     [HttpGet("/website-analytics/meta-campaigns")]
     public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null)

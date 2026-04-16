@@ -142,32 +142,32 @@
 
     <div class="row row-cols-1 row-cols-md-4 row-cols-lg-8 g-3 fa-kpi-grid">
         <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Page Views</div>
+            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="pageviews" role="button" tabindex="0" aria-label="Page Views — click to view detail" title="Click to view Page Views detail">
+                <div class="fa-kpi-title">Page Views <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-pageviews">0</div>
                 <div class="fa-kpi-delta" id="kpi-pv-delta"></div>
                 <div class="fa-spark" id="kpi-pv-spark"></div>
             </div>
         </div>
         <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Unique Visitors</div>
+            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="visitors" role="button" tabindex="0" aria-label="Unique Visitors — click to view detail" title="Click to view Unique Visitors detail">
+                <div class="fa-kpi-title">Unique Visitors <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-visitors">0</div>
                 <div class="fa-kpi-delta" id="kpi-vis-delta"></div>
                 <div class="fa-spark" id="kpi-vis-spark"></div>
             </div>
         </div>
         <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Sessions</div>
+            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="sessions" role="button" tabindex="0" aria-label="Sessions — click to view detail" title="Click to view Sessions detail">
+                <div class="fa-kpi-title">Sessions <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-sessions">0</div>
                 <div class="fa-kpi-delta" id="kpi-ses-delta"></div>
                 <div class="fa-spark" id="kpi-ses-spark"></div>
             </div>
         </div>
         <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Leads</div>
+            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="leads" role="button" tabindex="0" aria-label="Leads — click to view detail" title="Click to view Leads detail">
+                <div class="fa-kpi-title">Leads <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-leads">0</div>
                 <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
                 <div class="fa-spark" id="kpi-leads-spark"></div>
@@ -951,8 +951,56 @@
   </div>
 </div>
 
+<!-- KPI Detail Modal -->
+<div id="kpiDetailBackdrop" class="kpi-detail-backdrop" aria-hidden="true" hidden></div>
+<div id="kpiDetailModal" class="kpi-detail-modal" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle" hidden>
+  <div class="kpi-detail-header">
+    <div>
+      <div class="kpi-detail-title" id="kpiDetailTitle">Detail</div>
+      <div class="kpi-detail-range" id="kpiDetailRange"></div>
+    </div>
+    <button type="button" class="kpi-detail-close" id="kpiDetailClose" aria-label="Close detail modal">&times;</button>
+  </div>
+  <div class="kpi-detail-body">
+    <!-- Loading skeleton -->
+    <div id="kpiDetailLoading" class="kpi-detail-loading" hidden>
+      <div class="kpi-skel kpi-skel-stat-row">
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+      </div>
+      <div class="kpi-skel kpi-skel-chart"></div>
+      <div class="kpi-skel kpi-skel-list"></div>
+    </div>
+    <!-- Error state -->
+    <div id="kpiDetailError" class="kpi-detail-state-msg kpi-detail-error" hidden>
+      <div class="kpi-state-icon">&#9888;</div>
+      <div id="kpiDetailErrorMsg">Unable to load data.</div>
+    </div>
+    <!-- Empty state -->
+    <div id="kpiDetailEmpty" class="kpi-detail-state-msg" hidden>
+      <div class="kpi-state-icon">&#9680;</div>
+      <div>No data for this period.</div>
+    </div>
+    <!-- Content -->
+    <div id="kpiDetailContent" hidden>
+      <!-- Summary stat tiles -->
+      <div class="kpi-detail-stat-tiles" id="kpiDetailStatTiles"></div>
+      <!-- Chart -->
+      <div class="kpi-detail-chart-container">
+        <canvas id="kpiDetailChart" aria-label="KPI detail trend chart" role="img"></canvas>
+      </div>
+      <!-- Breakdown -->
+      <div class="kpi-detail-breakdown" id="kpiDetailBreakdown"></div>
+    </div>
+  </div>
+</div>
+
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/website-analytics.js" asp-append-version="true"></script>
+<script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
 <script>
     window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
     window.CALLER_PROFILE_ID = "@callerProfileId";

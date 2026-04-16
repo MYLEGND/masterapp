@@ -1544,6 +1544,28 @@
     await loadMetaConnectionStatus();
 
     initPolling();
+
+    // ── KPI modal state bridge ───────────────────────────────────────────────
+    // Expose current page state so website-analytics-kpi-modal.js can read
+    // the live preset/from/to/trafficType without duplicating internal state.
+    // The modal JS reads window.__waState on each card click, so it always
+    // reflects the most recently applied filter (not a stale snapshot).
+    window.__waState = {
+      get preset()      { return state.scope.preset || '30d'; },
+      get from()        { return state.scope.from || null; },
+      get to()          { return state.scope.to || null; },
+      get trafficType() {
+        // Return the active traffic filter for the currently open modal,
+        // or 'all' when no modal filter is engaged.
+        const t = state.trafficType;
+        if (!t) return 'all';
+        // Find the most recently active modal traffic type (non-'all' wins).
+        const active = Object.values(t).find(v => v && v !== 'all');
+        return active || 'all';
+      },
+      get agentProfileId() { return state.scope.agentProfileId || null; },
+      get isFounder()      { return isFounder; }
+    };
   }
 
   function renderAgentPerf(data) {
