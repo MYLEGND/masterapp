@@ -59,7 +59,7 @@
       to: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: (st.trafficType && st.trafficType.aiReviewSnapshotModal) || 'all'
+      trafficType: typeof st.trafficType === 'string' ? st.trafficType : 'all'
     };
   }
 

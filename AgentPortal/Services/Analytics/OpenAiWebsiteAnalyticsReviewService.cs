@@ -156,11 +156,28 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(ct);
+                var statusCode = (int)response.StatusCode;
+
                 _logger.LogWarning(
                     "OpenAI API returned {Status}. Body (truncated): {Body}",
                     response.StatusCode,
                     errorBody.Length > 400 ? errorBody[..400] : errorBody);
-                return ErrorResult($"AI service returned HTTP {(int)response.StatusCode}. Please try again.");
+
+                // Extract OpenAI's error message from the body if available
+                var openAiMessage = TryExtractOpenAiError(errorBody);
+
+                var userMessage = statusCode switch
+                {
+                    401 => "OpenAI API key is invalid or unauthorized (HTTP 401). Check your OPENAI_API_KEY configuration.",
+                    403 => "OpenAI API access is forbidden (HTTP 403). Your key may not have permission for this model.",
+                    429 => "OpenAI rate limit exceeded (HTTP 429). Wait a moment and try again.",
+                    >= 500 and <= 599 => $"OpenAI service error (HTTP {statusCode}). Try again in a few minutes.",
+                    _ => string.IsNullOrWhiteSpace(openAiMessage)
+                        ? $"OpenAI API error (HTTP {statusCode}). Please try again."
+                        : $"OpenAI API error (HTTP {statusCode}): {openAiMessage}"
+                };
+
+                return ErrorResult(userMessage);
             }
 
             var responseJson = await response.Content.ReadAsStringAsync(ct);
@@ -176,7 +193,11 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         catch (OperationCanceledException) when (cts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
             _logger.LogWarning("AI review request timed out after {Timeout}s.", _timeoutSeconds);
-            return ErrorResult("AI review timed out. Try a shorter date range or try again.");
+            return ErrorResult(
+                $"OpenAI did not respond within {_timeoutSeconds} seconds. " +
+                "This is usually a network connectivity issue (firewall, DNS, or no route to api.openai.com), " +
+                "a request the model is struggling with, or OpenAI API overload. " +
+                "Check server logs and verify the host can reach api.openai.com.");
         }
         catch (OperationCanceledException)
         {
@@ -184,8 +205,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "AI review HTTP request failed.");
-            return ErrorResult("AI service is temporarily unavailable. Please try again.");
+            var detail = ex.InnerException?.Message ?? ex.Message;
+            _logger.LogWarning(ex, "AI review HTTP request failed. Detail={Detail}", detail);
+            return ErrorResult($"Could not reach OpenAI API: {detail}");
         }
         catch (JsonException ex)
         {
@@ -346,6 +368,29 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         return (dto, inputTokens, outputTokens);
     }
 
+
+    private static string? TryExtractOpenAiError(string errorBody)
+    {
+        if (string.IsNullOrWhiteSpace(errorBody)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(errorBody);
+            var root = doc.RootElement;
+            // OpenAI error shape: { "error": { "message": "..." } }
+            if (root.TryGetProperty("error", out var err) &&
+                err.TryGetProperty("message", out var msg))
+            {
+                var text = msg.GetString();
+                if (!string.IsNullOrWhiteSpace(text))
+                    return text.Length > 200 ? text[..200] + "…" : text;
+            }
+        }
+        catch
+        {
+            // Not valid JSON — ignore
+        }
+        return null;
+    }
 
     private static AiInsightsResultDto ErrorResult(string message) => new()
     {
