@@ -16,10 +16,12 @@ namespace AgentPortal.Services.Analytics;
 public sealed class WebsiteAnalyticsAiDataBuilder
 {
     private readonly IAnalyticsQueryService _analytics;
+    private readonly IMetaAdsService _metaAds;
 
-    public WebsiteAnalyticsAiDataBuilder(IAnalyticsQueryService analytics)
+    public WebsiteAnalyticsAiDataBuilder(IAnalyticsQueryService analytics, IMetaAdsService metaAds)
     {
         _analytics = analytics;
+        _metaAds  = metaAds;
     }
 
     public async Task<AiSafeAnalyticsPayload> BuildAsync(
@@ -33,24 +35,28 @@ public sealed class WebsiteAnalyticsAiDataBuilder
     {
         // Run only the queries needed for conversion-focused analysis.
         // Removed: traffic breakdowns, CTA performance, total conversions, dwell time.
-        var summaryTask    = SafeLoadAsync(() => _analytics.GetSummaryAsync(range, scope, trafficType),
-                                () => new SummaryKpiDto { RangeLabel = range.Label });
-        var pagePerfTask   = SafeLoadAsync(() => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
-                                () => new PagePerformanceDto { RangeLabel = range.Label });
+        var summaryTask     = SafeLoadAsync(() => _analytics.GetSummaryAsync(range, scope, trafficType),
+                                 () => new SummaryKpiDto { RangeLabel = range.Label });
+        var pagePerfTask    = SafeLoadAsync(() => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
+                                 () => new PagePerformanceDto { RangeLabel = range.Label });
         var quoteFunnelTask = SafeLoadAsync(() => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-                                () => new QuoteFunnelDto { RangeLabel = range.Label });
-        var engagementTask = SafeLoadAsync(() => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
-                                () => new EngagementSummaryDto { RangeLabel = range.Label });
-        var exitTask       = SafeLoadAsync(() => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
-                                () => new ExitAnalysisDto { RangeLabel = range.Label });
-        var sourceTask     = SafeLoadAsync(() => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
-                                () => new SourcePerformanceDto { RangeLabel = range.Label });
-        var abandonTask    = SafeLoadAsync(() => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
-                                () => new FormAbandonmentDto { RangeLabel = range.Label });
+                                 () => new QuoteFunnelDto { RangeLabel = range.Label });
+        var engagementTask  = SafeLoadAsync(() => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
+                                 () => new EngagementSummaryDto { RangeLabel = range.Label });
+        var exitTask        = SafeLoadAsync(() => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
+                                 () => new ExitAnalysisDto { RangeLabel = range.Label });
+        var sourceTask      = SafeLoadAsync(() => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
+                                 () => new SourcePerformanceDto { RangeLabel = range.Label });
+        var abandonTask     = SafeLoadAsync(() => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
+                                 () => new FormAbandonmentDto { RangeLabel = range.Label });
+
+        // Meta Ads — active campaigns. SafeLoadAsync catches "not connected" / API errors gracefully.
+        var metaAdsTask = SafeLoadAsync(() => _metaAds.GetCampaignsAsync(range, scope, ct),
+                              () => new MetaCampaignsDto { RangeLabel = range.Label });
 
         await Task.WhenAll(
             summaryTask, pagePerfTask, quoteFunnelTask,
-            engagementTask, exitTask, sourceTask, abandonTask);
+            engagementTask, exitTask, sourceTask, abandonTask, metaAdsTask);
 
         var summary    = await summaryTask;
         var pagePerf   = await pagePerfTask;
@@ -59,6 +65,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var exit       = await exitTask;
         var source     = await sourceTask;
         var abandon    = await abandonTask;
+        var metaCampaigns = await metaAdsTask;
 
         return new AiSafeAnalyticsPayload
         {
@@ -131,7 +138,23 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             TopAbandonedFields = (abandon.TopAbandonedFields ?? new List<TopAbandonedFieldRow>())
                 .Take(3)
                 .Select(x => new LabelCount { Label = x.FieldName, Count = x.AbandonCount })
-                .ToList()
+                .ToList(),
+
+            // (a) Active Meta Ads campaigns — Status == ACTIVE only, top 5 by spend
+            ActiveCampaigns = (metaCampaigns.Rows ?? new List<MetaCampaignRow>())
+                .Where(x => string.Equals(x.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(x => x.Spend)
+                .Take(5)
+                .Select(x => new AiCampaignRow
+                {
+                    CampaignName = x.CampaignName,
+                    Spend        = x.Spend,
+                    Impressions  = x.Impressions,
+                    Clicks       = x.Clicks,
+                    Ctr          = x.Ctr,
+                    Cpc          = x.Cpc,
+                    Leads        = x.Leads
+                }).ToList()
 
             // Intentionally omitted (non-conversion breakdowns):
             // TopPages, TopSources, TopCampaigns, EntryPages, CtaPerformance,

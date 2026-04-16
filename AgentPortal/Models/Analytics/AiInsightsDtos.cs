@@ -147,6 +147,9 @@ public sealed class AiSafeAnalyticsPayload
     // Form abandonment
     public List<AbandonRow> FormAbandonment { get; set; } = new();
     public List<LabelCount> TopAbandonedFields { get; set; } = new();
+
+    // Meta Ads — active campaigns only (Status == ACTIVE from Meta API), ordered by spend desc
+    public List<AiCampaignRow> ActiveCampaigns { get; set; } = new();
 }
 
 // ── Nested safe row types ─────────────────────────────────────────────────────
@@ -203,4 +206,19 @@ public sealed class AbandonRow
     public int Abandons { get; set; }
     public int Starts { get; set; }
     public decimal? AbandonRate { get; set; }
+}
+
+/// <summary>
+/// A single active Meta Ads campaign row — safe for AI consumption.
+/// Only aggregate ad-delivery metrics; no PII.
+/// </summary>
+public sealed class AiCampaignRow
+{
+    public string CampaignName { get; set; } = "";
+    public decimal Spend { get; set; }
+    public long Impressions { get; set; }
+    public long Clicks { get; set; }
+    public decimal Ctr { get; set; }
+    public decimal Cpc { get; set; }
+    public long Leads { get; set; }
 }

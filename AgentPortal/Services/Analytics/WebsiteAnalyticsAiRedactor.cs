@@ -81,7 +81,8 @@ public static class WebsiteAnalyticsAiRedactor
             TopExitPages = RedactExit(payload.TopExitPages, logger),
             SourcePerformance = RedactSources(payload.SourcePerformance, logger),
             FormAbandonment = RedactAbandonment(payload.FormAbandonment, logger),
-            TopAbandonedFields = RedactLabelCounts(payload.TopAbandonedFields, "TopAbandonedFields", logger)
+            TopAbandonedFields = RedactLabelCounts(payload.TopAbandonedFields, "TopAbandonedFields", logger),
+            ActiveCampaigns = RedactCampaigns(payload.ActiveCampaigns, logger)
         };
 
         return safe;
@@ -188,6 +189,23 @@ public static class WebsiteAnalyticsAiRedactor
             Starts = x.Starts,
             AbandonRate = x.AbandonRate
         }).ToList();
+    }
+
+    private static List<AiCampaignRow> RedactCampaigns(List<AiCampaignRow>? rows, ILogger? logger)
+    {
+        if (rows == null) return new List<AiCampaignRow>();
+        return rows.Select(x => new AiCampaignRow
+        {
+            CampaignName = CleanLabel(x.CampaignName, logger, "ActiveCampaigns.CampaignName"),
+            Spend        = x.Spend,
+            Impressions  = x.Impressions,
+            Clicks       = x.Clicks,
+            Ctr          = x.Ctr,
+            Cpc          = x.Cpc,
+            Leads        = x.Leads
+        })
+        .Where(x => x.CampaignName != "[redacted]")
+        .ToList();
     }
 
     // ── PII Detection ─────────────────────────────────────────────────────────
