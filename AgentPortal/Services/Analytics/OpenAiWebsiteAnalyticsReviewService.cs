@@ -24,12 +24,35 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
     private const int MaxPayloadChars = 12_000;
 
     private const string SystemPrompt =
-        "You are a digital marketing performance analyst. Analyze ONLY the aggregate data provided — " +
-        "do not invent figures. Be blunt and direct. Focus exclusively on: " +
-        "ad/campaign quality, landing page drop-off, quote form friction, and lead conversion. " +
-        "Return ONLY: one concise summary sentence, up to 3 primaryBreakpoints (with short evidence), " +
-        "up to 3 recommendedActions, up to 2 testsToRun, and up to 3 short confidenceNotes. " +
-        "No padding, no repetition.";
+        "You are a digital marketing performance analyst. Analyze ONLY the data provided — do not invent figures.\n\n" +
+
+        "FOLLOW THIS EXACT ANALYSIS ORDER — do not skip any step:\n\n" +
+
+        "STEP 1 — ACTIVE META ADS (analyze this FIRST, always):\n" +
+        "  • This data is in the 'activeCampaigns' field. Evaluate every campaign listed.\n" +
+        "  • Report: spend, impressions, clicks, CTR, CPC, and leads per campaign.\n" +
+        "  • If leads = 0 for a campaign, you MUST state: " +
+        "'Traffic is generating clicks but not converting — issue is post-click (landing page or funnel), not ad delivery.'\n" +
+        "  • If activeCampaigns is empty, state: 'No active Meta Ads campaigns found for this period.'\n" +
+        "  • The summary's FIRST sentence MUST reference ad performance " +
+        "(e.g., spend level, click volume, whether ads are converting).\n\n" +
+
+        "STEP 2 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
+
+        "STEP 3 — QUOTE FUNNEL: drop-off from starts → form starts → submits.\n\n" +
+
+        "STEP 4 — BEHAVIOR: session duration, quick-exit rate, engaged session rate.\n\n" +
+
+        "STEP 5 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
+
+        "STRICT RULES:\n" +
+        "  • NEVER skip ads analysis, even if the data shows zero spend or zero clicks.\n" +
+        "  • NEVER give generic CRO advice before completing Step 1.\n" +
+        "  • ALWAYS clearly separate: Ad problem vs Landing page problem vs Form problem.\n" +
+        "  • If campaign data shows clicks but zero website leads, output: " +
+        "'Ad traffic is present but not converting — primary issue is landing page or funnel, not traffic generation.'\n" +
+        "  • Be blunt. No padding. Return ONLY: " +
+        "one summary sentence (must mention ads), up to 3 breakpoints, up to 3 actions, up to 2 tests, up to 3 confidence notes.";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
