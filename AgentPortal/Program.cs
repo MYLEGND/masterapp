@@ -92,8 +92,13 @@ builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiData
 builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
 builder.Services.AddHttpClient("OpenAI", c =>
 {
-    var rawBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com";
-    c.BaseAddress = new Uri(rawBase.TrimEnd('/') + "/");
+    // IsNullOrWhiteSpace so an empty string in config ("BaseUrl": "") falls through
+    // to the default instead of producing a schemeless URI that resolves to file:///.
+    var configuredBase = builder.Configuration["OpenAI:BaseUrl"];
+    var resolvedBase = !string.IsNullOrWhiteSpace(configuredBase)
+        ? configuredBase.TrimEnd('/') + "/"
+        : "https://api.openai.com/";
+    c.BaseAddress = new Uri(resolvedBase);
     // Timeout is slightly longer than the service-level timeout (OpenAI:TimeoutSeconds)
     // so the service's CancellationTokenSource fires first and returns a clean error.
     var svcTimeout = int.TryParse(builder.Configuration["OpenAI:TimeoutSeconds"], out var st) && st > 0 ? st : 30;

@@ -52,8 +52,25 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         _model = config["OpenAI:Model"] ?? "gpt-4.1";
         _timeoutSeconds = int.TryParse(config["OpenAI:TimeoutSeconds"], out var t) && t > 0 ? t : 30;
 
-        var baseUrl = (config["OpenAI:BaseUrl"] ?? DefaultBaseUrl).TrimEnd('/');
-        _responsesEndpoint = $"{baseUrl}/v1/responses";
+        // Resolve base URL: IsNullOrWhiteSpace so an empty config value ("") falls through
+        // to the default, preventing a schemeless URI that would resolve to file:///.
+        var configuredBase = config["OpenAI:BaseUrl"];
+        var resolvedBase = !string.IsNullOrWhiteSpace(configuredBase)
+            ? configuredBase.TrimEnd('/')
+            : DefaultBaseUrl.TrimEnd('/');
+
+        // Validate scheme — reject anything that is not http or https.
+        if (!Uri.TryCreate(resolvedBase, UriKind.Absolute, out var baseUri) ||
+            (baseUri.Scheme != Uri.UriSchemeHttps && baseUri.Scheme != Uri.UriSchemeHttp))
+        {
+            logger.LogError(
+                "OpenAI:BaseUrl is not a valid http/https URI (scheme={Scheme}). " +
+                "Falling back to default: {Default}.",
+                baseUri?.Scheme ?? "(unparseable)", DefaultBaseUrl);
+            resolvedBase = DefaultBaseUrl.TrimEnd('/');
+        }
+
+        _responsesEndpoint = $"{resolvedBase}/v1/responses";
     }
 
     public async Task<AiInsightsResultDto> ReviewAsync(
@@ -127,10 +144,14 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
             _logger.LogInformation(
-                "AI review request starting. Model={Model} PayloadChars={Chars}",
-                _model, userContent.Length);
+                "AI review request starting. Endpoint={Endpoint} Model={Model} PayloadChars={Chars}",
+                _responsesEndpoint, _model, userContent.Length);
 
             using var response = await client.SendAsync(request, cts.Token);
+
+            _logger.LogInformation(
+                "AI review HTTP response. Status={Status} Endpoint={Endpoint}",
+                (int)response.StatusCode, _responsesEndpoint);
 
             if (!response.IsSuccessStatusCode)
             {

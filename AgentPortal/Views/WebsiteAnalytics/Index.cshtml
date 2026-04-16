@@ -84,6 +84,11 @@
         <div class="hero-link-meta-actions mt-2">
           <button type="button"
               class="btn btn-outline-light hero-link-meta-btn"
+              data-ai-drawer-trigger>
+            AI Review
+          </button>
+          <button type="button"
+              class="btn btn-outline-light hero-link-meta-btn"
               id="ai-review-snapshot-btn"
               data-bs-toggle="modal"
               data-bs-target="#aiReviewSnapshotModal">
@@ -114,23 +119,10 @@
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(canViewFounderTeamUi)
             {
-            <div class="ms-auto d-flex align-items-center gap-2">
+            <div class="ms-auto">
                 <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
                         style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
                     Team Performance
-                </button>
-                <button class="btn btn-sm" type="button" data-ai-drawer-trigger
-                        style="background: linear-gradient(180deg, #1a2e5a, #0e1b3d); color:#c79931; border:1px solid #a68023; font-weight:800; box-shadow:0 6px 16px rgba(0,0,0,.22);">
-                    AI Review
-                </button>
-            </div>
-            }
-            else
-            {
-            <div class="ms-auto">
-                <button class="btn btn-sm" type="button" data-ai-drawer-trigger
-                        style="background: linear-gradient(180deg, #1a2e5a, #0e1b3d); color:#c79931; border:1px solid #a68023; font-weight:800; box-shadow:0 6px 16px rgba(0,0,0,.22);">
-                    AI Review
                 </button>
             </div>
             }

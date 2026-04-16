@@ -1186,8 +1186,9 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     position: fixed;
     top: 0;
     right: 0;
-    width: 420px;
+    width: 50vw;
     max-width: 100vw;
+    min-width: 360px;
     height: 100vh;
     background: linear-gradient(180deg, #0b1530 0%, #0c1830 100%);
     border-left: 2px solid var(--legend-gold-border);
