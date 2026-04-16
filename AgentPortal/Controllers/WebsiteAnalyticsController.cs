@@ -407,7 +407,6 @@ namespace AgentPortal.Controllers;
 
     // ── KPI Detail Modal Endpoint ─────────────────────────────────────────────
     [HttpGet("kpi-detail")]
-    [HttpGet("/website-analytics/kpi-detail")]
     public async Task<IActionResult> KpiDetail(
         [FromQuery] string metric,
         [FromQuery] string? preset,
