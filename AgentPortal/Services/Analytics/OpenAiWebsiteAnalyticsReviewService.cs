@@ -223,10 +223,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
 
     private static string BuildUserContent(AiSafeAnalyticsPayload payload)
     {
-        // Serialize the safe payload as structured JSON for the prompt
+        // Serialize the safe payload as compact JSON — no indentation keeps token count low
         var payloadJson = JsonSerializer.Serialize(payload, new JsonSerializerOptions
         {
-            WriteIndented = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         });
 
