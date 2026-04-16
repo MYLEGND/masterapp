@@ -96,7 +96,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         string userContent,
         CancellationToken ct)
     {
-        var apiKey = ResolveApiKey();
+        var apiKey = OpenAiKeyResolver.Resolve(_config);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning("OpenAI API key is not configured. Returning error result.");
@@ -325,17 +325,6 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         return (dto, inputTokens, outputTokens);
     }
 
-    private string ResolveApiKey()
-    {
-        // Check config first (Azure App Settings, appsettings.json override)
-        var fromConfig = _config["OpenAI:ApiKey"];
-        if (!string.IsNullOrWhiteSpace(fromConfig)) return fromConfig;
-
-        // Fallback to environment variable (supports both casing variants)
-        var fromEnv = Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-            ?? Environment.GetEnvironmentVariable("OpenAI__ApiKey");
-        return fromEnv ?? "";
-    }
 
     private static AiInsightsResultDto ErrorResult(string message) => new()
     {

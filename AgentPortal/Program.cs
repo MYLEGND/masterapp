@@ -100,12 +100,9 @@ builder.Services.AddHttpClient("OpenAI", c =>
     c.Timeout = TimeSpan.FromSeconds(svcTimeout + 5);
 });
 // Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
-var openAiKey = builder.Configuration["OpenAI:ApiKey"]
-    ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-    ?? Environment.GetEnvironmentVariable("OpenAI__ApiKey");
-if (string.IsNullOrWhiteSpace(openAiKey))
+if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Configuration))
 {
-    Console.WriteLine("[WARN] OpenAI:ApiKey is not configured. AI insights features will return error results until the key is set via config or the OPENAI_API_KEY environment variable.");
+    Console.WriteLine("[WARN] OpenAI API key is not configured. AI insights features will return error results until a key is set via OpenAI:ApiKey (config) or the OPENAI_API_KEY environment variable.");
 }
 builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
 builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
