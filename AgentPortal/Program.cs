@@ -92,8 +92,12 @@ builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiData
 builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
 builder.Services.AddHttpClient("OpenAI", c =>
 {
-    c.BaseAddress = new Uri("https://api.openai.com/");
-    c.Timeout = TimeSpan.FromSeconds(35); // slightly longer than service timeout to allow graceful handling
+    var rawBase = builder.Configuration["OpenAI:BaseUrl"] ?? "https://api.openai.com";
+    c.BaseAddress = new Uri(rawBase.TrimEnd('/') + "/");
+    // Timeout is slightly longer than the service-level timeout (OpenAI:TimeoutSeconds)
+    // so the service's CancellationTokenSource fires first and returns a clean error.
+    var svcTimeout = int.TryParse(builder.Configuration["OpenAI:TimeoutSeconds"], out var st) && st > 0 ? st : 30;
+    c.Timeout = TimeSpan.FromSeconds(svcTimeout + 5);
 });
 // Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
 var openAiKey = builder.Configuration["OpenAI:ApiKey"]

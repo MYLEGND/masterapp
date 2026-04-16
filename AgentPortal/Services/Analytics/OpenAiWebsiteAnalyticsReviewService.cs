@@ -19,7 +19,7 @@ namespace AgentPortal.Services.Analytics;
 /// </summary>
 public sealed class OpenAiWebsiteAnalyticsReviewService
 {
-    private const string OpenAiResponsesEndpoint = "https://api.openai.com/v1/responses";
+    private const string DefaultBaseUrl = "https://api.openai.com";
     private const int MaxPayloadChars = 50_000;
     private const string SystemPrompt =
         "You are a digital marketing performance analyst. You only have access to the website " +
@@ -39,6 +39,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
     private readonly ILogger<OpenAiWebsiteAnalyticsReviewService> _logger;
     private readonly string _model;
     private readonly int _timeoutSeconds;
+    private readonly string _responsesEndpoint;
 
     public OpenAiWebsiteAnalyticsReviewService(
         IHttpClientFactory httpClientFactory,
@@ -50,6 +51,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         _logger = logger;
         _model = config["OpenAI:Model"] ?? "gpt-4.1";
         _timeoutSeconds = int.TryParse(config["OpenAI:TimeoutSeconds"], out var t) && t > 0 ? t : 30;
+
+        var baseUrl = (config["OpenAI:BaseUrl"] ?? DefaultBaseUrl).TrimEnd('/');
+        _responsesEndpoint = $"{baseUrl}/v1/responses";
     }
 
     public async Task<AiInsightsResultDto> ReviewAsync(
@@ -118,7 +122,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         {
             var client = _httpClientFactory.CreateClient("OpenAI");
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, OpenAiResponsesEndpoint);
+            using var request = new HttpRequestMessage(HttpMethod.Post, _responsesEndpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
             request.Content = new StringContent(requestJson, Encoding.UTF8, "application/json");
 
