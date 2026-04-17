@@ -93,19 +93,47 @@ namespace AgentPortal.Controllers;
     }
 
     // JSON endpoints -------------------------------------------------
-    private int GetViewerTimezoneOffset()
+    private TimeZoneInfo GetViewerTimeZone()
     {
-        if (Request.Query.TryGetValue("timezoneOffsetMinutes", out var raw) &&
-            int.TryParse(raw, out var offset))
-            return offset;
-        return 0;
+        // 1. Try IANA or Windows timezone ID (e.g. "America/Phoenix").
+        //    TimeZoneInfo.FindSystemTimeZoneById accepts both IANA and Windows IDs on .NET 6+.
+        if (Request.Query.TryGetValue("timezoneId", out var tzIdRaw))
+        {
+            var tzId = tzIdRaw.ToString().Trim();
+            if (!string.IsNullOrEmpty(tzId))
+            {
+                try { return TimeZoneInfo.FindSystemTimeZoneById(tzId); }
+                catch (TimeZoneNotFoundException) { }
+                catch (InvalidTimeZoneException) { }
+            }
+        }
+
+        // 2. Fall back to browser UTC offset (minutes west of UTC — positive for UTC-7).
+        //    CreateCustomTimeZone expects offset FROM UTC, so invert the sign.
+        if (Request.Query.TryGetValue("timezoneOffsetMinutes", out var offsetRaw) &&
+            int.TryParse(offsetRaw, out var offsetMinutes) &&
+            offsetMinutes >= -840 && offsetMinutes <= 840)
+        {
+            try
+            {
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    $"viewer-offset-{offsetMinutes}",
+                    TimeSpan.FromMinutes(-offsetMinutes),
+                    "Viewer Local",
+                    "Viewer Local");
+            }
+            catch { }
+        }
+
+        // 3. Safe fallback: UTC.
+        return TimeZoneInfo.Utc;
     }
 
     [HttpGet("summary")]
     [HttpGet("/website-analytics/summary")]
     public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetSummaryAsync(range, scope);
         return Json(result);
@@ -115,7 +143,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/traffic")]
     public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetTrafficAsync(range, scope, trafficType);
         return Json(result);
@@ -125,7 +153,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/page-performance")]
     public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetPagePerformanceAsync(range, scope, trafficType);
         return Json(result);
@@ -135,7 +163,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/cta-performance")]
     public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetCtaPerformanceAsync(range, scope, trafficType);
         return Json(result);
@@ -145,7 +173,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/quote-funnel")]
     public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetQuoteFunnelAsync(range, scope, trafficType);
         return Json(result);
@@ -155,7 +183,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/conversions")]
     public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetConversionsAsync(range, scope, trafficType);
         return Json(result);
@@ -165,7 +193,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/leads")]
     public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
         return Json(result);
@@ -176,7 +204,7 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var options = new AnalyticsQueryOptions { OrderBy = orderBy ?? "leads", Desc = desc, Take = take, Skip = skip };
         var result = await _analytics.GetAgentPerformanceAsync(range, ScopeContext.Global, options);
         return Json(result);
@@ -186,7 +214,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("behavior/summary")]
     public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetEngagementSummaryAsync(range, scope, trafficType);
         return Json(result);
@@ -195,7 +223,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("behavior/time-on-page")]
     public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetTimeOnPageAsync(range, scope, trafficType);
         return Json(result);
@@ -204,7 +232,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("behavior/exit-analysis")]
     public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetExitAnalysisAsync(range, scope, trafficType);
         return Json(result);
@@ -213,7 +241,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("behavior/journey")]
     public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetJourneyAnalysisAsync(range, scope, trafficType);
         return Json(result);
@@ -222,7 +250,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("behavior/source-performance")]
     public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetSourcePerformanceAsync(range, scope, trafficType);
         return Json(result);
@@ -231,7 +259,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("quote-funnel/abandonment")]
     public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetFormAbandonmentAsync(range, scope, trafficType);
         return Json(result);
@@ -243,7 +271,7 @@ namespace AgentPortal.Controllers;
     {
         try
         {
-            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
             var scope = await ResolveScopeAsync(agentProfileId, team);
 
             async Task<(T Value, string? Warning)> SafeSnapshotLoadAsync<T>(Func<Task<T>> loader, Func<T> fallbackFactory, string area)
@@ -328,7 +356,9 @@ namespace AgentPortal.Controllers;
                 _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
             }
 
-            var generatedLocal = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
+            var generatedUtc = DateTime.UtcNow;
+            var generatedDisplay = generatedUtc.ToString("MM/dd/yyyy h:mm tt") + " UTC";
+            var generatedUtcIso = generatedUtc.ToString("o");
             string scopeLabel;
             string? scopeWarning = null;
             try
@@ -367,7 +397,7 @@ namespace AgentPortal.Controllers;
                 exit,
                 source,
                 abandonment,
-                generatedLocal,
+                generatedDisplay,
                 scopeLabel,
                 rangeLabel,
                 TrafficAttribution.BucketLabel(trafficType),
@@ -376,7 +406,7 @@ namespace AgentPortal.Controllers;
             return Json(new AiReviewSnapshotDto
             {
                 SnapshotText = snapshotText,
-                GeneratedAtLocal = generatedLocal,
+                GeneratedAtLocal = generatedUtcIso,
                 ScopeLabel = scopeLabel,
                 RangeLabel = rangeLabel,
                 Warnings = warnings
@@ -388,13 +418,14 @@ namespace AgentPortal.Controllers;
             TimeRangeRequest fallbackRange;
             try
             {
-                fallbackRange = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+                fallbackRange = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
             }
             catch
             {
                 fallbackRange = TimeRangeRequest.FromPreset("30d");
             }
-            var fallbackGenerated = DateTime.Now.ToString("MM/dd/yyyy h:mm tt");
+            var fallbackUtc = DateTime.UtcNow;
+            var fallbackGenerated = fallbackUtc.ToString("MM/dd/yyyy h:mm tt") + " UTC";
             var warnings = new List<string>
             {
                 $"Snapshot generation failed. requestId={requestId}",
@@ -405,7 +436,7 @@ namespace AgentPortal.Controllers;
             return Json(new AiReviewSnapshotDto
             {
                 SnapshotText = BuildAiReviewSnapshotFailureText(fallbackGenerated, fallbackRange.Label, warnings),
-                GeneratedAtLocal = fallbackGenerated,
+                GeneratedAtLocal = fallbackUtc.ToString("o"),
                 ScopeLabel = "Current Scope",
                 RangeLabel = fallbackRange.Label,
                 Warnings = warnings
@@ -431,7 +462,7 @@ namespace AgentPortal.Controllers;
         if (metric != "pageviews" && metric != "visitors" && metric != "sessions" && metric != "leads")
             return BadRequest(new { message = $"Unknown metric: {metric}" });
 
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
 
         // Previous period: same duration, ending the day before the current start
@@ -605,7 +636,7 @@ namespace AgentPortal.Controllers;
     {
         try
         {
-            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+            var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
             var scope = await ResolveScopeAsync(agentProfileId, team: false);
             var result = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
             return Json(result);
@@ -859,7 +890,7 @@ namespace AgentPortal.Controllers;
         var sb = new StringBuilder();
         sb.AppendLine("SECTION A — HEADER");
         sb.AppendLine("WEBSITE ANALYTICS AI REVIEW SNAPSHOT");
-        sb.AppendLine($"Generated: {generatedAtLocal} (server local time)");
+        sb.AppendLine($"Generated: {generatedAtLocal}");
         sb.AppendLine($"Range: {rangeLabel}");
         sb.AppendLine("Scope: Current Scope");
         sb.AppendLine();
@@ -946,7 +977,7 @@ namespace AgentPortal.Controllers;
 
         Line("SECTION A — HEADER");
         Line("WEBSITE ANALYTICS AI REVIEW SNAPSHOT");
-        Line($"Generated: {generatedAtLocal} (server local time)");
+        Line($"Generated: {generatedAtLocal}");
         Line($"Range: {rangeLabel}");
         Line($"Scope: {scopeLabel}");
         Line($"Traffic Filter: {trafficScopeLabel}");
@@ -1201,7 +1232,7 @@ namespace AgentPortal.Controllers;
         if (!FounderGuard.IsFounder(User))
             return Forbid();
 
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
 
         // Load all raw events + leads

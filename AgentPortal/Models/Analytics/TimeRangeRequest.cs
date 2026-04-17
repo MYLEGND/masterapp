@@ -18,17 +18,35 @@ public sealed class TimeRangeRequest
     public string Label { get; init; } = "Last 30 Days";
     public string Preset { get; init; } = "30d";
 
-    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, int timezoneOffsetMinutes = 0)
+    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, TimeZoneInfo? viewerTz = null)
     {
+        var tz = viewerTz ?? TimeZoneInfo.Utc;
         var now = DateTime.UtcNow;
-        // Clamp offset to a sane range to prevent abuse; 0 = UTC fallback.
-        var safeOffset = (timezoneOffsetMinutes >= -840 && timezoneOffsetMinutes <= 840) ? timezoneOffsetMinutes : 0;
-        // Derive the viewer's local "now" by applying the browser UTC offset.
-        // getTimezoneOffset() is positive for zones west of UTC (e.g. UTC-7 = +420).
-        var localNow = now.AddMinutes(-safeOffset);
-        // Local "today" midnight expressed as a UTC instant.
-        var localTodayUtc = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, DateTimeKind.Utc)
-                                .AddMinutes(safeOffset);
+
+        // Convert UTC now to viewer-local time (DST-aware via TimeZoneInfo).
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, tz);
+
+        // Helper: convert a viewer-local midnight DateTime to UTC safely.
+        // Wraps ConvertTimeToUtc which can throw for times in a DST gap (extremely
+        // unlikely at midnight, but we guard anyway).
+        static DateTime LocalMidnightToUtc(DateTime localMidnight, TimeZoneInfo tzInfo)
+        {
+            try
+            {
+                return TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(localMidnight, DateTimeKind.Unspecified), tzInfo);
+            }
+            catch
+            {
+                // DST gap edge-case: shift one hour forward and retry.
+                var shifted = localMidnight.AddHours(1);
+                return TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(shifted, DateTimeKind.Unspecified), tzInfo);
+            }
+        }
+
+        var localTodayMidnight = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0);
+        var localTodayUtc = LocalMidnightToUtc(localTodayMidnight, tz);
 
         preset = (preset ?? "30d").ToLowerInvariant();
 
@@ -55,14 +73,12 @@ public sealed class TimeRangeRequest
                 label = "Last 30 Days";
                 break;
             case "month":
-                start = new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
-                            .AddMinutes(safeOffset);
+                start = LocalMidnightToUtc(new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0), tz);
                 grouping = TimeGrouping.Day;
                 label = "This Month";
                 break;
             case "year":
-                start = new DateTime(localNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc)
-                            .AddMinutes(safeOffset);
+                start = LocalMidnightToUtc(new DateTime(localNow.Year, 1, 1, 0, 0, 0), tz);
                 grouping = TimeGrouping.Month;
                 label = "This Year";
                 break;

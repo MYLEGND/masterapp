@@ -1,6 +1,17 @@
 (() => {
   const OPEN_MODAL_STORAGE_KEY = 'websiteAnalytics.openModal';
 
+  const viewerTz = (() => {
+    try {
+      return {
+        id: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        offsetMinutes: new Date().getTimezoneOffset()
+      };
+    } catch {
+      return { id: '', offsetMinutes: 0 };
+    }
+  })();
+
   const shell = document.querySelector('.fa-shell');
   const state = {
     preset: shell?.dataset.initialPreset || '30d',
@@ -180,10 +191,15 @@
     if (isFounder) {
       state.scope.agentProfileId = null;
     }
-    const p = { preset: state.scope.preset };
+    const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes };
+    if (viewerTz.id) p.timezoneId = viewerTz.id;
     if (state.scope.preset === 'custom' && state.scope.from && state.scope.to) {
-      p.fromUtc = state.scope.from;
-      p.toUtc = state.scope.to;
+      // Interpret the date-picker values ("YYYY-MM-DD") as viewer-local midnight/EOD
+      // so the server receives UTC instants that correspond to the viewer's day boundaries.
+      const [fy, fm, fd] = state.scope.from.split('-').map(Number);
+      const [ty, tm, td] = state.scope.to.split('-').map(Number);
+      p.fromUtc = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
+      p.toUtc   = new Date(ty, tm - 1, td, 23, 59, 59).toISOString();
     }
     if (team) {
       p.team = true;
@@ -754,7 +770,7 @@
 
   function renderAiReviewSnapshot(data) {
     state.cache.aiSnapshot = data;
-    setText('ai-snapshot-generated', data.generatedAtLocal || '—');
+    setText('ai-snapshot-generated', data.generatedAtLocal ? formatDisplayDate(data.generatedAtLocal) : '—');
     setText('ai-snapshot-range', data.rangeLabel || '—');
     setText('ai-snapshot-scope', data.scopeLabel || '—');
 
@@ -1406,6 +1422,12 @@
   }
 
   async function init() {
+    const tzLabelEl = document.getElementById('wa-tz-label');
+    if (tzLabelEl) {
+      tzLabelEl.textContent = viewerTz.id
+        ? `Times shown in your local timezone: ${viewerTz.id}`
+        : 'Times shown in your local timezone';
+    }
     showMetaCallbackBanner();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
