@@ -165,7 +165,7 @@ namespace AgentPortal.Controllers;
     [HttpGet("/website-analytics/leads")]
     public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
-        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc);
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimezoneOffset());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
         return Json(result);
