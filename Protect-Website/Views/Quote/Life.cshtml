@@ -1411,7 +1411,8 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function setActivePanel(activePanel) {
-    [step1Panel, processingPanel, step2Panel].forEach((panel) => {
+    const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    [step1Panel, processingPanel, step2Panel, previewPanel].forEach((panel) => {
       if (!panel) return;
       panel.hidden = panel !== activePanel;
     });
@@ -1496,6 +1497,7 @@ body.life-landing header .navbar .nav-link:focus {
   function showProcessingBridge(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
+    computeRecommendations();
     setActivePanel(processingPanel);
     trackEvent('life_processing_bridge_view');
     animateProcessingBar();
@@ -1506,8 +1508,49 @@ body.life-landing header .navbar .nav-link:focus {
       processingTimer = null;
       trackEvent('life_processing_bridge_complete');
       syncStepOneAnswersFromUI();
-      showStep2(true);
+      showMiniResultsPreview();
     }, PROCESSING_BRIDGE_MS + 80);
+  }
+
+  function showMiniResultsPreview() {
+    const existing = document.getElementById('lifeMiniResultsPanel');
+    if (existing) existing.remove();
+
+    const recs = computeRecommendations();
+
+    const previewHtml = `
+      <div class="lq-step-panel" id="lifeMiniResultsPanel">
+        <div class="lq-step-panel-pad">
+          <div class="lq-step-progress">Your Results</div>
+          <div class="lq-step-title">Based on what you shared, here's what may fit best</div>
+          <div class="lq-rec-card primary">
+            <span class="lq-rec-badge primary">Best Match</span>
+            <div class="lq-rec-title">${recs.primary.title}</div>
+            <div class="lq-rec-desc">${recs.primary.desc}</div>
+          </div>
+          <div class="lq-rec-card">
+            <span class="lq-rec-badge secondary">Also Worth Looking At</span>
+            <div class="lq-rec-title">${recs.secondary.title}</div>
+          </div>
+          <div class="lq-reach-note" style="margin-top:12px;">
+            We'll walk through your options and pricing clearly on the next step.
+          </div>
+          <div class="lq-step-actions">
+            <button class="btn-gold w-100" id="continueToContactBtn">Continue to See My Options</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    processingPanel.insertAdjacentHTML('afterend', previewHtml);
+    const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    setActivePanel(previewPanel);
+    trackEvent('mini_results_view');
+
+    document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
+      previewPanel.remove();
+      showStep2(true);
+    });
   }
 
   function showStep2(shouldScroll = true) {
@@ -1646,6 +1689,17 @@ body.life-landing header .navbar .nav-link:focus {
   // form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+
+    const recs = computeRecommendations();
+    if (recPrimaryKeyEl)     recPrimaryKeyEl.value     = recs.primary.key;
+    if (recPrimaryTitleEl)   recPrimaryTitleEl.value   = recs.primary.title;
+    if (recSecondaryKeyEl)   recSecondaryKeyEl.value   = recs.secondary.key;
+    if (recSecondaryTitleEl) recSecondaryTitleEl.value = recs.secondary.title;
+    trackEvent('recommendation_generated', {
+      primary: recs.primary.key,
+      secondary: recs.secondary.key,
+    });
+
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) {
       form._trackSubmitAttempt?.(false, 1);
