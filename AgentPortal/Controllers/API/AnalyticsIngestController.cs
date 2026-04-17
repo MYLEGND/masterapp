@@ -252,14 +252,10 @@ public class AnalyticsIngestController : ControllerBase
             ElementId = TrimOrNull(req.ElementId)
         };
 
-        // Legacy local SQLite databases may have AnalyticsEvents.Id as non-rowid bigint PK
-        // (not auto-generated). In that case we assign a monotonic Id so local ingest works.
+        // SQLite local dev: bigint PK is not auto-generated, so assign a unique Id.
+        // Use millisecond timestamp + random suffix to avoid concurrent-insert PK collisions.
         if (IsSqliteProvider())
-        {
-            var nextId =
-                (await _db.AnalyticsEvents.AsNoTracking().MaxAsync(x => (long?)x.Id, HttpContext.RequestAborted) ?? 0L) + 1L;
-            ev.Id = nextId;
-        }
+            ev.Id = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000L + Random.Shared.Next(1000);
 
         _db.AnalyticsEvents.Add(ev);
         try
@@ -270,6 +266,11 @@ public class AnalyticsIngestController : ControllerBase
         {
             _logger.LogInformation("AnalyticsIngest: duplicate ClientEventId ignored via DB constraint. clientEventId={ClientEventId}", req.ClientEventId);
             return Ok(new { status = "duplicate_ignored" });
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "AnalyticsIngest: save failed for eventType={EventType} clientEventId={ClientEventId}", req.EventType, req.ClientEventId);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { error = "ingest_save_failed" });
         }
 
         return Ok(new { status = "ok", eventId = ev.EventId });
