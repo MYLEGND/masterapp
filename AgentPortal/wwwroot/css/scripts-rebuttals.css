@@ -14299,3 +14299,75 @@ details.section{
         padding: 5px 7px !important;
     }
 }
+
+/* Mobile sanity hotfix: remove floating rail arrows + prevent header clipping */
+@media (max-width: 900px){
+    #rbShell .nav-rail-arrow,
+    #rbShell #rbNavArrow,
+    #rbShell #prosperNavArrow{
+        display: none !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+
+    html.lead-bridge-mobile,
+    html.lead-bridge-mobile body{
+        height: auto !important;
+        min-height: 100% !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+    }
+
+    #rbShell,
+    html.lead-bridge-mobile #rbShell{
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+    }
+
+    #rbShell .rb-wrap,
+    html.lead-bridge-mobile #rbShell .rb-wrap{
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        padding: max(6px, env(safe-area-inset-top)) 6px max(8px, env(safe-area-inset-bottom)) 6px !important;
+        gap: 6px !important;
+    }
+
+    #rbShell .rb-hero{
+        padding: 6px 8px !important;
+        margin: 0 !important;
+    }
+
+    #rbShell .hero-left{
+        display: none !important;
+    }
+
+    #rbShell .rb-hero-top{
+        gap: 6px !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed[data-lf="city"],
+    #rbShell .lead-field.mobile-allowed[data-lf="lender"],
+    .lead-bridge-mobile #rbShell .lead-field.mobile-allowed[data-lf="city"],
+    .lead-bridge-mobile #rbShell .lead-field.mobile-allowed[data-lf="lender"]{
+        display: none !important;
+    }
+
+    #rbShell .lb-row.lb-row-fields{
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 6px !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed[data-lf="name"]{
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed[data-lf="state"]{
+        grid-column: 2 !important;
+        grid-row: 1 !important;
+    }
+}
