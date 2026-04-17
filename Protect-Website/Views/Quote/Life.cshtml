@@ -956,23 +956,7 @@ body.life-landing header .navbar .nav-link:focus {
 
                 <div class="lq-micro-step" data-micro-step="2" hidden>
                     <div class="lq-choice-label">Let's tailor this to you</div>
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
-                        <div style="font-weight:700;font-size:.9rem;color:rgba(248,250,252,0.72);margin-bottom:8px;" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                        <div class="lq-choice-grid lq-grid-2">
-                            @foreach (var opt in tobaccoStep.Options)
-                            {
-                                var isChecked =
-                                    string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
-                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
-                                </label>
-                            }
-                        </div>
-                        <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use status.</div>
-                    </div>
-                    <div class="lq-choice-group" style="margin-top:14px;">
+                    <div class="lq-choice-group">
                         <div style="font-weight:700;font-size:.9rem;color:rgba(248,250,252,0.72);margin-bottom:8px;" id="lbl-step1-age">@ageStep.Question</div>
                         <div class="lq-field">
                             <input
@@ -990,7 +974,7 @@ body.life-landing header .navbar .nav-link:focus {
                         <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 85.</div>
                     </div>
                     <div class="lq-step-actions dual">
-                        <button type="button" class="btn-ghost" data-step1-back="1">Back</button>
+                        <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
                         <button type="button" class="btn-gold flex-fill" id="step1Continue">SEE MY REVIEW</button>
                     </div>
                     <div class="lq-trust-note">No obligation • 100% secure</div>
@@ -1020,7 +1004,6 @@ body.life-landing header .navbar .nav-link:focus {
                 <div class="lq-results-summary" id="lifeResultsSummary">
                     <div class="lq-rs-item"><span class="lq-rs-label">Protecting</span><span class="lq-rs-value" id="rs-protecting">—</span></div>
                     <div class="lq-rs-item"><span class="lq-rs-label">Goal</span><span class="lq-rs-value" id="rs-goal">—</span></div>
-                    <div class="lq-rs-item"><span class="lq-rs-label">Tobacco</span><span class="lq-rs-value" id="rs-tobacco">—</span></div>
                     <div class="lq-rs-item"><span class="lq-rs-label">Age</span><span class="lq-rs-value" id="rs-age">—</span></div>
                 </div>
                 <div id="lifeRecCards"></div>
@@ -1187,7 +1170,7 @@ body.life-landing header .navbar .nav-link:focus {
   const microStepViewEvents = [
     'life_step1_protecting_view',
     'life_step1_goal_view',
-    'life_step1_tobacco_view',
+    'life_step1_age_view',
   ];
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
@@ -1327,7 +1310,7 @@ body.life-landing header .navbar .nav-link:focus {
   function computeRecommendations() {
     const protectingWho = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
     const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
-    const tobacco       = selectedRadio('TobaccoUse')?.value    || answerHidden[2]?.value || '';
+    const tobacco       = '';
     const age           = asTrimmed(ageInput?.value)            || answerHidden[3]?.value || '';
     const ageNum        = Number.parseInt(age, 10);
     const offerKey      = '@cfg.OfferKey';
@@ -1386,16 +1369,13 @@ body.life-landing header .navbar .nav-link:focus {
 
     const protectingWhoCode = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
     const coverageGoalCode  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
-    const tobaccoCode       = selectedRadio('TobaccoUse')?.value    || answerHidden[2]?.value || '';
     const ageVal            = asTrimmed(ageInput?.value) || answerHidden[3]?.value || '—';
 
     const rsProtecting = document.getElementById('rs-protecting');
     const rsGoal       = document.getElementById('rs-goal');
-    const rsTobacco    = document.getElementById('rs-tobacco');
     const rsAge        = document.getElementById('rs-age');
     if (rsProtecting) rsProtecting.textContent = getLabelForRadio('ProtectingWho', protectingWhoCode);
     if (rsGoal)       rsGoal.textContent       = getLabelForRadio('CoverageGoal',  coverageGoalCode);
-    if (rsTobacco)    rsTobacco.textContent    = getLabelForRadio('TobaccoUse',    tobaccoCode);
     if (rsAge)        rsAge.textContent        = ageVal;
 
     const cardsEl = document.getElementById('lifeRecCards');
@@ -1474,7 +1454,6 @@ body.life-landing header .navbar .nav-link:focus {
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
-    const tobacco = selectedRadio('TobaccoUse');
     const ageValue = asTrimmed(ageInput?.value);
 
     if (protecting) {
@@ -1484,10 +1463,6 @@ body.life-landing header .navbar .nav-link:focus {
       answerHidden[1].value = goal.value;
       focusHidden.value = goal.dataset.label || goal.value;
     }
-    if (tobacco) {
-      answerHidden[2].value = tobacco.value;
-    }
-
     answerHidden[3].value = ageValue;
     ageHidden.value = ageValue;
   }
@@ -1552,7 +1527,9 @@ body.life-landing header .navbar .nav-link:focus {
     processingTimer = window.setTimeout(() => {
       processingTimer = null;
       trackEvent('life_processing_bridge_complete');
-      showValueBridge(true);
+      syncStepOneAnswersFromUI();
+      renderResults();
+      showStep2(true);
     }, PROCESSING_BRIDGE_MS + 80);
   }
 
@@ -1565,7 +1542,7 @@ body.life-landing header .navbar .nav-link:focus {
     trackEvent('results_view', {
       protectingWho: answerHidden[0]?.value || '',
       coverageGoal:  answerHidden[1]?.value || '',
-      tobaccoUse:    answerHidden[2]?.value || '',
+      tobaccoUse:    '',
       age:           answerHidden[3]?.value || '',
       primaryRec:    recPrimaryKeyEl?.value || '',
       secondaryRec:  recSecondaryKeyEl?.value || '',
@@ -1588,18 +1565,16 @@ body.life-landing header .navbar .nav-link:focus {
   function resolveInitialMicroStep() {
     if (!selectedRadio('ProtectingWho')) return 0;
     if (!selectedRadio('CoverageGoal')) return 1;
-    return 2; // combined tobacco+age step
+    return 2; // age step
   }
 
   function validateStepOneComplete() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
-    const tobacco = selectedRadio('TobaccoUse');
     const hasValidAge = validateAgeOnly();
 
     showChoiceError('err-step1-protecting-who', !protecting);
     showChoiceError('err-step1-coverage-goal', !goal);
-    showChoiceError('err-step1-tobacco-use', !tobacco);
 
     if (!protecting) {
       showStep1(0, true);
@@ -1611,13 +1586,8 @@ body.life-landing header .navbar .nav-link:focus {
       form.querySelector('input[name="CoverageGoal"]')?.focus();
       return false;
     }
-    if (!tobacco) {
-      showStep1(2, true);
-      form.querySelector('input[name="TobaccoUse"]')?.focus();
-      return false;
-    }
     if (!hasValidAge) {
-      showStep1(3, true);
+      showStep1(2, true);
       ageInput?.focus();
       return false;
     }
@@ -1665,15 +1635,30 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', 0, 1);
-  wireAutoAdvanceGroup('CoverageGoal', 'err-step1-coverage-goal', 'life_step1_goal_select', 1, 2);
-  // TobaccoUse is now on the combined step — sync + track only, no auto-advance
-  form.querySelectorAll('input[name="TobaccoUse"]').forEach((radio) => {
+  // CoverageGoal advances to value panel (step 3) instead of age step
+  form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
     radio.addEventListener('change', () => {
-      showChoiceError('err-step1-tobacco-use', false);
+      showChoiceError('err-step1-coverage-goal', false);
       syncStepOneAnswersFromUI();
-      trackEvent('life_step1_tobacco_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      if (!step1Panel.hidden && currentMicroStep === 1) {
+        clearAutoAdvanceTimer();
+        autoAdvanceTimer = window.setTimeout(() => showValueBridge(true), 160);
+      }
+    });
+    radio.closest('label')?.addEventListener('click', () => {
+      setTimeout(() => {
+        if (radio.checked && !step1Panel.hidden && currentMicroStep === 1) {
+          clearAutoAdvanceTimer();
+          autoAdvanceTimer = window.setTimeout(() => showValueBridge(true), 160);
+        }
+      }, 0);
     });
   });
+  document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
+    showValueBridge(true);
+  });
+
   ageInput?.addEventListener('input', () => {
     showChoiceError('err-step1-age', false);
     syncStepOneAnswersFromUI();
@@ -1698,14 +1683,14 @@ body.life-landing header .navbar .nav-link:focus {
     trackEvent('life_step1_age_continue', {
       protectingWho: answerHidden[0]?.value || '',
       coverageGoal: answerHidden[1]?.value || '',
-      tobaccoUse: answerHidden[2]?.value || '',
+      tobaccoUse: '',
       age: answerHidden[3]?.value || ''
     });
     showProcessingBridge(true);
   });
 
   valueBridgeBackBtn?.addEventListener('click', () => {
-    showStep1(2, true);
+    showStep1(1, true);
   });
 
   valueBridgeContinueBtn?.addEventListener('click', () => {
@@ -1714,12 +1699,12 @@ body.life-landing header .navbar .nav-link:focus {
       primaryRec:   recPrimaryKeyEl?.value   || '',
       secondaryRec: recSecondaryKeyEl?.value || '',
     });
-    showStep2(true);
+    showStep1(2, true);
   });
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
-    showValueBridge(true);
+    showStep1(2, true);
   });
 
   // form submission
@@ -1809,7 +1794,7 @@ body.life-landing header .navbar .nav-link:focus {
         pagePath: window.location.pathname,
         protectingWho: answerHidden[0]?.value || '',
         coverageGoal: answerHidden[1]?.value || '',
-        tobaccoUse: answerHidden[2]?.value || '',
+        tobaccoUse: '',
         age: answerHidden[3]?.value || '',
         ageRange: ageHidden.value,
         protectFocus: focusHidden.value
@@ -1864,7 +1849,13 @@ body.life-landing header .navbar .nav-link:focus {
   if (showContactStepByDefault) {
     showStep2(false);
   } else {
-    showStep1(resolveInitialMicroStep(), false);
+    const initMicro = resolveInitialMicroStep();
+    if (initMicro >= 2) {
+      renderResults();
+      showValueBridge(false);
+    } else {
+      showStep1(initMicro, false);
+    }
   }
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
