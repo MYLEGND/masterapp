@@ -2026,8 +2026,10 @@
       populateFilters(baseLeads);
       idx = 0;
       const hydrated = await fetchActiveState();
-      if (!hydrated){
-        restoreFilters(); // cache-only fallback when server state cannot be reached
+      if (!hydrated || !serverFilterState){
+        // Fallback: server unreachable OR server had no saved filter state for this session.
+        // restoreFilters() is a no-op when serverFilterState is already set (set inside applyRemoteState).
+        restoreFilters();
         applyFilters();
       }
 
