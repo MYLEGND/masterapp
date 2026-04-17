@@ -13611,3 +13611,65 @@ details.section{
         0 0 0 3px rgba(45,140,255,.16),
         0 16px 32px rgba(0,0,0,.36);
 }
+
+/* ── Outcome buttons: color-coded by meaning ──────────────────── */
+.lb-actions [data-outcome="NoAnswer"] {
+    background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+    border-color: #475569;
+    color: #f8fafc;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 16px rgba(71,85,105,.28);
+}
+.lb-actions [data-outcome="Contacted"] {
+    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+    border-color: #1d4ed8;
+    color: #eff6ff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px rgba(37,99,235,.28);
+}
+.lb-actions [data-outcome="FollowUp"] {
+    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%);
+    border-color: #b45309;
+    color: #1c0f00;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 8px 16px rgba(217,119,6,.28);
+}
+.lb-actions [data-outcome="Booked"] {
+    background: linear-gradient(180deg, #34d399 0%, #059669 100%);
+    border-color: #047857;
+    color: #ecfdf5;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 8px 16px rgba(5,150,105,.30);
+}
+.lb-actions [data-outcome="NeedsDocs"] {
+    background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%);
+    border-color: #c2410c;
+    color: #fff7ed;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 8px 16px rgba(234,88,12,.28);
+}
+.lb-actions [data-outcome="PolicyPlaced"] {
+    background: linear-gradient(180deg, #fde68a 0%, #ca8a04 100%);
+    border-color: #a16207;
+    color: #1c1300;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.36), 0 8px 18px rgba(202,138,4,.32);
+}
+.lb-actions [data-outcome="AIReception"] {
+    background: linear-gradient(180deg, #c084fc 0%, #9333ea 100%);
+    border-color: #7e22ce;
+    color: #faf5ff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 8px 16px rgba(147,51,234,.30);
+}
+.lb-actions [data-outcome="Nurture"] {
+    background: linear-gradient(180deg, #22d3ee 0%, #0891b2 100%);
+    border-color: #0e7490;
+    color: #ecfeff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px rgba(8,145,178,.28);
+}
+.lb-actions [data-outcome="NotInterested"] {
+    background: linear-gradient(180deg, #fb923c 0%, #dc2626 100%);
+    border-color: #b91c1c;
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 8px 16px rgba(220,38,38,.28);
+}
+.lb-actions [data-outcome="Lost"] {
+    background: linear-gradient(180deg, #f87171 0%, #dc2626 100%);
+    border-color: #991b1b;
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 16px rgba(185,28,28,.32);
+}
