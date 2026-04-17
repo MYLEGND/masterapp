@@ -876,6 +876,21 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     }
 
     function updateRailArrows(){
+        const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
+        if(isMobile){
+            if(rbNavArrow){
+                rbNavArrow.style.left = "";
+                rbNavArrow.style.top = "";
+                rbNavArrow.style.opacity = "1";
+            }
+            if(prosperNavArrow){
+                prosperNavArrow.style.left = "";
+                prosperNavArrow.style.top = "";
+                prosperNavArrow.style.opacity = "0";
+            }
+            return;
+        }
+
         positionRailArrow(rbNav, rbNavArrow, "left");
         positionRailArrow(prosperNav, prosperNavArrow, "right");
     }

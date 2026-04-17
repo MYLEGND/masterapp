@@ -1007,11 +1007,11 @@ body.note-self-open{
     justify-content: center;
 }
 .lead-bridge-mobile #rbShell .lb-actions [data-lb-call]{
-    grid-column: 1 / span 2;
+    grid-column: 3 / span 2;
     grid-row: 1;
 }
 .lead-bridge-mobile #rbShell .lb-actions [data-lb-text]{
-    grid-column: 3 / span 2;
+    grid-column: 1 / span 2;
     grid-row: 1;
 }
 .lead-bridge-mobile #rbShell .lb-actions [data-lb-next]{
@@ -1033,6 +1033,31 @@ body.note-self-open{
     justify-content: center;
     text-align: center;
     gap: 3px;
+    opacity: 1 !important;
+    background: linear-gradient(180deg, #142744 0%, #0b1529 100%) !important;
+    border: 2px solid #e4b859 !important;
+    color: #f8fafc !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.14),
+        0 8px 16px rgba(2,6,23,.38) !important;
+}
+.lead-bridge-mobile #rbShell .lb-actions .lb-dials:disabled,
+.lead-bridge-mobile #rbShell .lb-actions .lb-dials[disabled]{
+    opacity: 1 !important;
+    filter: none !important;
+}
+.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-label{
+    color: #f8fafc !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.12px !important;
+}
+.lead-bridge-mobile #rbShell .lb-actions .lb-dials .lb-dials-count{
+    color: #facc15 !important;
+    background: #0a1020 !important;
+    border: 1.5px solid #facc15 !important;
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    text-shadow: none !important;
 }
 
 /* Lead bridge bar (Leads ↔ Rebuttals) */
@@ -14004,5 +14029,30 @@ details.section{
         width: 46px !important;
         height: 46px !important;
         font-size: 2rem !important;
+        border: 2px solid rgba(244,216,144,.72) !important;
+        border-radius: 999px !important;
+        background: rgba(8,16,33,.9) !important;
+        color: #f8fafc !important;
+        line-height: 1 !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    #rbShell #rbNavArrow.nav-rail-arrow{
+        display: flex !important;
+        position: fixed !important;
+        top: calc(max(10px, env(safe-area-inset-top)) + 2px) !important;
+        left: 8px !important;
+        opacity: 1 !important;
+        z-index: 1300 !important;
+        transition: none !important;
+        animation: none !important;
+        transform: none !important;
+    }
+
+    #rbShell #prosperNavArrow.nav-rail-arrow{
+        display: none !important;
+        opacity: 0 !important;
     }
 }

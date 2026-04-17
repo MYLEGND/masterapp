@@ -711,6 +711,12 @@
       } catch (error) {
         console.error("Underwriting list refresh failed", error);
       }
+      const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
+      if (isMobile) {
+        closeMenu();
+        openRecord(null);
+        return;
+      }
       toggleMenu();
     });
 

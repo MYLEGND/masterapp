@@ -746,6 +746,12 @@
     } catch (error) {
       console.error("Proposal list refresh failed", error);
     }
+    const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
+    if (isMobile) {
+      closeMenu();
+      openModal(null);
+      return;
+    }
     toggleMenu();
   });
 

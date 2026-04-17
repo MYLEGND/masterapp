@@ -111,12 +111,11 @@
     z-index: 5100 !important;
     border-radius: 18px !important;
     border: 1.5px solid rgba(199,153,49,.48) !important;
-    background: linear-gradient(180deg, rgba(11,21,46,.98), rgba(7,14,30,.99)) !important;
+    background: linear-gradient(180deg, #0b1529 0%, #07111e 100%) !important;
     box-shadow:
         0 0 0 1px rgba(255,255,255,.06) inset,
         0 0 60px rgba(199,153,49,.10),
-        0 32px 72px rgba(0,0,0,.58) !important;
-    backdrop-filter: blur(20px) !important;
+        0 32px 72px rgba(0,0,0,.72) !important;
     padding: 20px !important;
 }
 
@@ -126,9 +125,9 @@ body:has(#uwMenu:not([hidden]))::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: rgba(5,10,22,.72);
-    backdrop-filter: blur(3px);
+    background: rgba(5,10,22,.60);
     z-index: 5099;
+    pointer-events: none;
 }
 
 /* ── Nav buttons: dark navy + gold border + white text ─────────── */
