@@ -502,7 +502,9 @@
       <div class="hp-proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
         <div class="hp-proposal-name-wrap" data-prop-open>
           <div class="hp-proposal-name">${escapeHtml(record.name || "Proposal")}</div>
-          <div class="hp-proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>
+          ${(record.leadName || record.leadId) && (record.leadName || "").trim().toLowerCase() !== (record.name || "").trim().toLowerCase()
+            ? `<div class="hp-proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>`
+            : ""}
         </div>
         <div class="hp-proposal-actions hp-ellipsis-wrap">
           <button type="button" class="btn-mini hp-ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>

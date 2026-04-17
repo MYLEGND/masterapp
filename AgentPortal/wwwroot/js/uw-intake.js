@@ -569,7 +569,9 @@
         <div class="proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
           <div class="proposal-name-wrap" data-uw-open>
             <div class="proposal-name">${escapeHtml(record.name || "Underwriting")}</div>
-            <div class="proposal-meta-line">${escapeHtml(`${record.isDraft ? "Draft • " : ""}${record.leadName || record.leadId || record.pageTitle || "Unassigned lead"}`)}</div>
+            ${(record.isDraft || ((record.leadName || record.leadId) && (record.leadName || "").trim().toLowerCase() !== (record.name || "").trim().toLowerCase()))
+              ? `<div class="proposal-meta-line">${escapeHtml(`${record.isDraft ? "Draft • " : ""}${record.leadName || record.leadId || record.pageTitle || "Unassigned lead"}`)}</div>`
+              : ""}
           </div>
           <div class="proposal-actions ellipsis-wrap">
             <button type="button" class="btn-mini ellipsis-btn" aria-label="Actions" data-ellipsis="uw">⋮</button>
