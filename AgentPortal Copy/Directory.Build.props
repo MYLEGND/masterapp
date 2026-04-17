@@ -1,8 +1,0 @@
-<Project>
-  <PropertyGroup>
-    <!-- Keep this copy isolated from the primary AgentPortal project artifacts. -->
-    <BaseIntermediateOutputPath>/tmp/masterapp/obj/AgentPortalCopy/</BaseIntermediateOutputPath>
-    <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/AgentPortalCopy/</MSBuildProjectExtensionsPath>
-    <BaseOutputPath>/tmp/masterapp/bin/AgentPortalCopy/</BaseOutputPath>
-  </PropertyGroup>
-</Project>
