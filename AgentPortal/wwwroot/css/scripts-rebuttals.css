@@ -2578,27 +2578,41 @@ details.section{
 ============================== */
 .theme-mp .rb-hero,
 .theme-mp .mp-hero{
-    background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%);
-    border-color: #0f766e;
+    background: linear-gradient(180deg, #071e12 0%, #0d3520 100%);
+    border-color: #22c55e;
+    color: #dcfce7;
 }
 .theme-mp .rb-wrap,
-.theme-mp .mp-shell{ background: #f8fefb; }
+.theme-mp .mp-shell{ background: #f0fdf4; }
 .theme-mp .nav-card,
 .theme-mp .content-card,
 .theme-mp .prosper-nav-card{
-    border-color:#0f172a;
-    box-shadow: 0 12px 26px rgba(15,23,42,.24);
-    background: linear-gradient(180deg, #0f172a, #111827);
+    border-color: #166534;
+    box-shadow: 0 12px 26px rgba(22,101,52,.22);
+    background: linear-gradient(180deg, #071e12, #0a2b18);
     color: #f8fafc;
 }
 .theme-mp .rb-link,
 .theme-mp .hero-proposal,
 .theme-mp .hero-underwrite{
-    background: linear-gradient(180deg, #10b981, #0f766e);
+    background: linear-gradient(180deg, #22c55e, #16a34a);
     color: #052e25 !important;
-    border-color: #0f766e;
+    border-color: #15803d;
 }
-.theme-mp .count-pill{ background:#ecfdf3; color:#065f46; }
+.theme-mp .count-pill{ background:#dcfce7; color:#14532d; }
+
+#rbShell.theme-mp .rb-hero {
+    background: linear-gradient(180deg, #071e12, #0d3520) !important;
+    border-color: #22c55e !important;
+    color: #dcfce7;
+}
+#rbShell.theme-mp .lead-bridge,
+#rbShell.theme-mp .lb-filterbar,
+#rbShell.theme-mp .nav-card,
+#rbShell.theme-mp .content-card,
+#rbShell.theme-mp .prosper-nav-card{
+    background: #041408 !important;
+}
 
 .theme-fe .rb-hero{
     background: linear-gradient(180deg, #fff1f2 0%, #ffe4e6 100%);
