@@ -239,8 +239,12 @@
     background: rgba(199,153,49,.15) !important;
     border-color: rgba(199,153,49,.75) !important;
 }
-#rbShell .hp-ellipsis-menu,
-#rbShell .ellipsis-menu {
+#rbShell .hp-ellipsis-menu[hidden],
+#rbShell .ellipsis-menu[hidden] {
+    display: none !important;
+}
+#rbShell .hp-ellipsis-menu:not([hidden]),
+#rbShell .ellipsis-menu:not([hidden]) {
     position: absolute !important;
     top: 110% !important;
     right: 0 !important;
@@ -495,6 +499,94 @@
     filter: saturate(1.08) brightness(1.04) !important;
     transform: translateY(-1px) !important;
 }
+
+/* ── Grid: 4 columns, collapse unnecessary span-2 ───────────────── */
+#uwDialog .uw-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 7px 10px !important;
+}
+/* Collapse all span-2 to single-width in the 4-col grid */
+#uwDialog .uw-span-2 {
+    grid-column: span 1 !important;
+}
+/* Textareas are long-response — keep them at 2 columns */
+#uwDialog .uw-span-2:has(textarea) {
+    grid-column: span 2 !important;
+}
+/* Full-width fields (housing status, medical conditions, etc.) stay full */
+#uwDialog .uw-full {
+    grid-column: 1 / -1 !important;
+}
+
+/* ── Field text color-coding by section ─────────────────────────── */
+
+/* Personal / Basics — sky blue */
+#uwDialog #uwDate,
+#uwDialog #uwClientName,
+#uwDialog #uwOccupation,
+#uwDialog #uwDob,
+#uwDialog #uwAge,
+#uwDialog #uwGender,
+#uwDialog #uwNicotine,
+#uwDialog #uwHeight,
+#uwDialog #uwWeight,
+#uwDialog #uwPhone,
+#uwDialog #uwPhone2,
+#uwDialog #uwEmail { color: #7dd3fc !important; }
+
+/* Address / Location — warm amber */
+#uwDialog #uwAddress,
+#uwDialog #uwCity,
+#uwDialog #uwState,
+#uwDialog #uwZip,
+#uwDialog #uwCounty { color: #fbbf24 !important; }
+
+/* Financial / Coverage — bright green */
+#uwDialog #uwHousingStatus,
+#uwDialog #uwLender,
+#uwDialog #uwLoan,
+#uwDialog #uwHomeValue,
+#uwDialog #uwEquity,
+#uwDialog #uwTerm,
+#uwDialog #uwPayment,
+#uwDialog #uwIncome,
+#uwDialog #uwAddlIncome,
+#uwDialog #uwSavings,
+#uwDialog #uwCoverage,
+#uwDialog #uwBeneficiary,
+#uwDialog #uwBeneficiary2,
+#uwDialog #uwBeneficiary3,
+#uwDialog #uwBeneficiary4 { color: #4ade80 !important; }
+
+/* Health / Risk — coral red */
+#uwDialog #uwSurgeries,
+#uwDialog #uwMeds,
+#uwDialog #uwBankruptcies,
+#uwDialog #uwDui,
+#uwDialog #uwHealthConditions,
+#uwDialog #uwHealth { color: #f87171 !important; }
+
+/* Insurance / Plan — soft lavender */
+#uwDialog #uwLifeCoverage,
+#uwDialog #uwFamilyPlan,
+#uwDialog #uwAfford,
+#uwDialog #uwPlanTerm,
+#uwDialog #uwEmergencyAssets,
+#uwDialog #uwBank,
+#uwDialog #uwRouting,
+#uwDialog #uwAccount { color: #c084fc !important; }
+
+/* IDs & Docs — caution yellow */
+#uwDialog #uwDln,
+#uwDialog #uwSsn,
+#uwDialog #uwSavings2 { color: #fde047 !important; }
+
+/* Notes — soft slate */
+#uwDialog #uwNotes,
+#uwDialog #uwFamilyPlan2 { color: #94a3b8 !important; }
+
+/* Select option text inherits the field color */
+#uwDialog select option { color: inherit !important; }
 
 /* Mobile */
 @media (max-width: 900px) {
