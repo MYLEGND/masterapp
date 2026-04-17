@@ -96,3 +96,94 @@
         font-size:2rem;
     }
 }
+
+/* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
+#rbShell .hp-proposal-menu:not([hidden]),
+#rbShell .proposal-menu:not([hidden]) {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: min(420px, 92vw) !important;
+    min-width: unset !important;
+    max-height: 80vh !important;
+    overflow-y: auto !important;
+    z-index: 5100 !important;
+    border-radius: 18px !important;
+    border: 1.5px solid rgba(199,153,49,.48) !important;
+    background: linear-gradient(180deg, rgba(11,21,46,.98), rgba(7,14,30,.99)) !important;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.06) inset,
+        0 0 60px rgba(199,153,49,.10),
+        0 32px 72px rgba(0,0,0,.58) !important;
+    backdrop-filter: blur(20px) !important;
+    padding: 20px !important;
+}
+
+/* Scrim backdrop while quick-list is open */
+body:has(#proposalMenu:not([hidden]))::before,
+body:has(#uwMenu:not([hidden]))::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: rgba(5,10,22,.72);
+    backdrop-filter: blur(3px);
+    z-index: 5099;
+}
+
+/* ── Nav buttons: dark navy + gold border + white text ─────────── */
+#rbShell .hero-actions .hp-proposal-trigger,
+#rbShell .hero-actions .hero-underwrite,
+#rbShell .hero-actions .btn.gold {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.62) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: .15px !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.07) inset, 0 6px 18px rgba(0,0,0,.30) !important;
+    transition: background .14s, border-color .14s, box-shadow .14s, transform .12s !important;
+}
+#rbShell .hero-actions .hp-proposal-trigger:hover,
+#rbShell .hero-actions .hero-underwrite:hover,
+#rbShell .hero-actions .btn.gold:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.09) inset, 0 0 0 3px rgba(199,153,49,.15), 0 12px 26px rgba(0,0,0,.36) !important;
+}
+
+/* ── rb-link-bar (Quility / Integrity / EZLynx) ─────────────────── */
+#rbShell .rb-link-bar {
+    background: rgba(10,18,38,.45) !important;
+    border: 1px solid rgba(199,153,49,.18) !important;
+    border-radius: 12px !important;
+    padding: 8px 12px !important;
+    gap: 7px !important;
+    backdrop-filter: blur(6px) !important;
+}
+#rbShell .rb-link-bar .btn,
+#rbShell .rb-link-bar .btn.gold,
+#rbShell .rb-link-bar .rb-link {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.55) !important;
+    color: #ffffff !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    padding: 7px 14px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+    text-decoration: none !important;
+    transition: background .13s, border-color .13s, transform .12s, color .12s !important;
+}
+#rbShell .rb-link-bar .btn:hover,
+#rbShell .rb-link-bar .btn.gold:hover,
+#rbShell .rb-link-bar .rb-link:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,.30) !important;
+}
