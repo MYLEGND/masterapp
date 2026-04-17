@@ -975,7 +975,7 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                        <button type="button" class="btn-gold flex-fill" id="step1Continue">Show Me What Fits Me</button>
+                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See My Personalized Options</button>
                     </div>
                     <div class="lq-trust-note">Private • No obligation • Built for you</div>
                 </div>
@@ -996,30 +996,11 @@ body.life-landing header .navbar .nav-link:focus {
             </div>
         </div>
 
-        <div class="lq-step-panel" id="lifeValuePanel" data-funnel-step="1.6" hidden>
-            <div class="lq-step-panel-pad">
-                <div class="lq-step-progress">Your Results</div>
-                <div class="lq-step-title" id="lifeValueHeading" tabindex="-1">Here’s what may fit your situation</div>
-                <div class="lq-step-helper">Based on what you shared, here are a few options that may make the most sense for you.</div>
-                <div class="lq-results-summary" id="lifeResultsSummary">
-                    <div class="lq-rs-item"><span class="lq-rs-label">Protecting</span><span class="lq-rs-value" id="rs-protecting">—</span></div>
-                    <div class="lq-rs-item"><span class="lq-rs-label">Goal</span><span class="lq-rs-value" id="rs-goal">—</span></div>
-                    <div class="lq-rs-item"><span class="lq-rs-label">Age</span><span class="lq-rs-value" id="rs-age">—</span></div>
-                </div>
-                <div id="lifeRecCards"></div>
-                <div class="lq-rec-trust">No obligation &bull; Personalized based on your answers</div>
-                <div class="lq-step-actions dual" style="margin-top:16px;">
-                    <button type="button" class="btn-ghost" id="valueBridgeBackBtn">Back</button>
-                    <button type="button" class="btn-gold flex-fill" id="valueBridgeContinueBtn">Let's Review My Options</button>
-                </div>
-            </div>
-        </div>
-
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s take a quick look at what may fit you best</div>
-                <div class="lq-step-helper">Based on what you shared, there are a few options that may surprise you. Let’s take a quick look together.</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Your personalized options are ready</div>
+                <div class="lq-step-helper">We just need a quick way to walk you through them clearly.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -1107,6 +1088,7 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
+                            <div class="lq-reach-note">We'll walk through your options right after this — no pressure.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -1128,18 +1110,14 @@ body.life-landing header .navbar .nav-link:focus {
 
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
-  const valuePanel = document.getElementById('lifeValuePanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
   const processingHeading = document.getElementById('lifeProcessingHeading');
-  const valueHeading = document.getElementById('lifeValueHeading');
   const step2Heading = document.getElementById('lifeStep2Heading');
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
-  const valueBridgeBackBtn = document.getElementById('valueBridgeBackBtn');
-  const valueBridgeContinueBtn = document.getElementById('valueBridgeContinueBtn');
   const step2BackBtn = document.getElementById('step2BackBtn');
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answerHidden = [
@@ -1433,7 +1411,7 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function setActivePanel(activePanel) {
-    [step1Panel, processingPanel, valuePanel, step2Panel].forEach((panel) => {
+    [step1Panel, processingPanel, step2Panel].forEach((panel) => {
       if (!panel) return;
       panel.hidden = panel !== activePanel;
     });
@@ -1528,28 +1506,8 @@ body.life-landing header .navbar .nav-link:focus {
       processingTimer = null;
       trackEvent('life_processing_bridge_complete');
       syncStepOneAnswersFromUI();
-      renderResults();
       showStep2(true);
     }, PROCESSING_BRIDGE_MS + 80);
-  }
-
-  function showValueBridge(shouldScroll = true) {
-    clearAutoAdvanceTimer();
-    clearProcessingTimer(false);
-    syncStepOneAnswersFromUI();
-    renderResults();
-    setActivePanel(valuePanel);
-    trackEvent('results_view', {
-      protectingWho: answerHidden[0]?.value || '',
-      coverageGoal:  answerHidden[1]?.value || '',
-      tobaccoUse:    '',
-      age:           answerHidden[3]?.value || '',
-      primaryRec:    recPrimaryKeyEl?.value || '',
-      secondaryRec:  recSecondaryKeyEl?.value || '',
-    });
-    if (shouldScroll) {
-      scrollIntoViewAndFocus(valueHeading || valuePanel, true);
-    }
   }
 
   function showStep2(shouldScroll = true) {
@@ -1635,31 +1593,20 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', 0, 1);
-  // CoverageGoal advances to value panel (step 3) instead of age step
-form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
-  radio.addEventListener('change', () => {
-    showChoiceError('err-step1-coverage-goal', false);
-    syncStepOneAnswersFromUI();
-    trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
-
-    if (!step1Panel.hidden && currentMicroStep === 1) {
-      clearAutoAdvanceTimer();
-      autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
-    }
-  });
-});
-    radio.closest('label')?.addEventListener('click', () => {
-      setTimeout(() => {
-        if (radio.checked && !step1Panel.hidden && currentMicroStep === 1) {
-          clearAutoAdvanceTimer();
-          autoAdvanceTimer = window.setTimeout(() => showValueBridge(true), 160);
-        }
-      }, 0);
+  form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      showChoiceError('err-step1-coverage-goal', false);
+      syncStepOneAnswersFromUI();
+      trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      if (!step1Panel.hidden && currentMicroStep === 1) {
+        clearAutoAdvanceTimer();
+        autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
+      }
     });
   });
-document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-  showMicroStep(1, true);
-});
+  document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
+    showStep1(1, true);
+  });
 
   ageInput?.addEventListener('input', () => {
     showChoiceError('err-step1-age', false);
@@ -1690,19 +1637,6 @@ document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
     });
     showProcessingBridge(true);
   });
-
-  valueBridgeBackBtn?.addEventListener('click', () => {
-    showStep1(1, true);
-  });
-
-valueBridgeContinueBtn?.addEventListener('click', () => {
-  syncStepOneAnswersFromUI();
-  trackEvent('results_continue', {
-    primaryRec:   recPrimaryKeyEl?.value   || '',
-    secondaryRec: recSecondaryKeyEl?.value || '',
-  });
-  showStep2(true);
-});
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
