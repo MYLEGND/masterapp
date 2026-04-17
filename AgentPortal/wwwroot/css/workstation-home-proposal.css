@@ -541,22 +541,26 @@
 #uwDialog #uwZip,
 #uwDialog #uwCounty { color: #fbbf24 !important; }
 
-/* Financial / Coverage — bright green */
-#uwDialog #uwHousingStatus,
-#uwDialog #uwLender,
+/* Liabilities / Expenses — red (money going out) */
 #uwDialog #uwLoan,
-#uwDialog #uwHomeValue,
+#uwDialog #uwPayment { color: #ef4444 !important; }
+
+/* Assets / Income — green (money coming in / owned) */
 #uwDialog #uwEquity,
-#uwDialog #uwTerm,
-#uwDialog #uwPayment,
+#uwDialog #uwHomeValue,
 #uwDialog #uwIncome,
 #uwDialog #uwAddlIncome,
-#uwDialog #uwSavings,
+#uwDialog #uwSavings { color: #4ade80 !important; }
+
+/* Coverage / Plan targets — teal (goal-oriented) */
+#uwDialog #uwHousingStatus,
+#uwDialog #uwLender,
+#uwDialog #uwTerm,
 #uwDialog #uwCoverage,
 #uwDialog #uwBeneficiary,
 #uwDialog #uwBeneficiary2,
 #uwDialog #uwBeneficiary3,
-#uwDialog #uwBeneficiary4 { color: #4ade80 !important; }
+#uwDialog #uwBeneficiary4 { color: #34d399 !important; }
 
 /* Health / Risk — coral red */
 #uwDialog #uwSurgeries,
