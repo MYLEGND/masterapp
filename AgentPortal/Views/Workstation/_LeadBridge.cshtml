@@ -6,17 +6,17 @@
 <section class="lead-bridge" data-lead-bridge data-bucket="@bucket">
     @Html.AntiForgeryToken()
     <div class="lb-filterbar">
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="state">
             <select id="lbStateFilter" data-lb-state-filter>
                 <option value="" selected>State</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="stage">
             <select id="lbStageFilter" data-lb-stage-filter>
                 <option value="" selected>Stage</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="calls">
             <select id="lbCalledFilter" data-lb-called-filter>
                 <option value="" selected>Calls</option>
                 <option value="0">0</option>
@@ -32,22 +32,25 @@
                 <option value="10">10+</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="age">
             <select id="lbAgeFilter" data-lb-age-filter>
                 <option value="" selected>Age</option>
             </select>
         </div>
-        <div class="lb-filter lb-search">
-            <input id="lbSearch" type="search" data-lb-search placeholder="Search name, phone, email" autocomplete="off" />
+        <div class="lb-filter" data-lb-slot="crm">
+            <a class="btn lb-btn ghost" data-lb-open-crm target="_blank" rel="noopener">Open in CRM</a>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="clear">
             <button type="button" class="btn lb-btn ghost" data-lb-clear>Clear</button>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="zoom">
+            <button type="button" class="btn lb-btn ghost" data-lb-zoom data-zoom-popup>Zoom Links</button>
+        </div>
+        <div class="lb-filter" data-lb-slot="note">
             <button type="button" class="btn lb-btn note-self-cta" data-note-self-open>📝 Note to Self</button>
         </div>
-        <div class="lb-filter">
-            <a class="btn lb-btn ghost" data-lb-open-crm target="_blank" rel="noopener">Open in CRM</a>
+        <div class="lb-filter lb-search" data-lb-slot="search">
+            <input id="lbSearch" type="search" data-lb-search placeholder="Search name, phone, email" autocomplete="off" />
         </div>
     </div>
 
@@ -155,25 +158,25 @@
         <div class="lb-actions">
             <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-call>Call</button>
             <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-text>Text ▾</button>
-            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-day disabled>
+            <button type="button" class="btn lb-btn ghost lb-dials mobile-allowed" data-lb-dials-day disabled>
                 <span class="lb-dials-label">Today’s Dials:</span>
                 <span class="lb-dials-count lb-dials-day">—</span>
             </button>
-            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-week disabled>
+            <button type="button" class="btn lb-btn ghost lb-dials mobile-allowed" data-lb-dials-week disabled>
                 <span class="lb-dials-label">Week’s Dials:</span>
                 <span class="lb-dials-count lb-dials-week">—</span>
             </button>
             <button type="button" class="btn lb-btn next mobile-allowed" data-lb-next>Next ➜</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NoAnswer">No Answer</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Contacted">Mark Contacted</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="FollowUp">Follow Up</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Booked">Booked Meeting</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NeedsDocs">Needs Docs</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="PolicyPlaced">Policy Placed</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="AIReception">AI Reception</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Nurture">Nurture</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NotInterested">Not Interested</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Lost">Lost</button>
+            <button type="button" class="btn lb-btn" data-outcome="NoAnswer">No Answer</button>
+            <button type="button" class="btn lb-btn" data-outcome="Contacted">Mark Contacted</button>
+            <button type="button" class="btn lb-btn" data-outcome="FollowUp">Follow Up</button>
+            <button type="button" class="btn lb-btn" data-outcome="Booked">Booked Meeting</button>
+            <button type="button" class="btn lb-btn" data-outcome="NeedsDocs">Needs Docs</button>
+            <button type="button" class="btn lb-btn" data-outcome="PolicyPlaced">Policy Placed</button>
+            <button type="button" class="btn lb-btn" data-outcome="AIReception">AI Reception</button>
+            <button type="button" class="btn lb-btn" data-outcome="Nurture">Nurture</button>
+            <button type="button" class="btn lb-btn" data-outcome="NotInterested">Not Interested</button>
+            <button type="button" class="btn lb-btn" data-outcome="Lost">Lost</button>
             <button type="button" class="btn lb-btn danger mobile-hidden" data-lb-delete style="background:#dc2626;color:#fff;border-color:#b91c1c;">Delete Lead</button>
         </div>
         <div class="lb-meta mobile-allowed">

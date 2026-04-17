@@ -896,12 +896,103 @@ body.note-self-open{
     display: flex !important;
 }
 .lead-bridge-mobile #rbShell .lb-actions .mobile-allowed{
-    display: inline-flex !important;
+    display: flex !important;
 }
 .lead-bridge-mobile #rbShell .lb-meta.mobile-allowed{
     display: flex !important;
     gap: 8px;
     flex-wrap: wrap;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar{
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+    align-items: stretch;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar .lb-filter{
+    min-width: 0;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar select,
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-search],
+.lead-bridge-mobile #rbShell .lb-filterbar .lb-btn{
+    width: 100%;
+    min-width: 0 !important;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="state"]{
+    grid-column: 1 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="stage"]{
+    grid-column: 3 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="calls"]{
+    grid-column: 5 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="age"]{
+    grid-column: 1 / span 2;
+    grid-row: 2;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="crm"]{
+    grid-column: 3 / span 2;
+    grid-row: 2;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="clear"]{
+    grid-column: 5 / span 2;
+    grid-row: 2;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="zoom"]{
+    display: block !important;
+    grid-column: 1 / span 3;
+    grid-row: 3;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="note"]{
+    grid-column: 4 / span 3;
+    grid-row: 3;
+}
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="search"]{
+    grid-column: 1 / -1;
+    grid-row: 4;
+}
+.lead-bridge-mobile #rbShell .lb-actions{
+    display: grid !important;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+}
+.lead-bridge-mobile #rbShell .lb-actions .btn{
+    width: 100%;
+    justify-content: center;
+}
+.lead-bridge-mobile #rbShell .lb-actions [data-lb-call]{
+    grid-column: 1 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-actions [data-lb-text]{
+    grid-column: 3 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-actions [data-lb-next]{
+    grid-column: 5 / span 2;
+    grid-row: 1;
+}
+.lead-bridge-mobile #rbShell .lb-actions [data-lb-dials-day]{
+    grid-column: 1 / span 3;
+    grid-row: 2;
+}
+.lead-bridge-mobile #rbShell .lb-actions [data-lb-dials-week]{
+    grid-column: 4 / span 3;
+    grid-row: 2;
+}
+.lead-bridge-mobile #rbShell .lb-actions .lb-dials{
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 3px;
 }
 
 /* Lead bridge bar (Leads ↔ Rebuttals) */
@@ -971,6 +1062,9 @@ body.note-self-open{
 .lb-filterbar [data-lb-search]::placeholder{
     color: var(--muted);
     opacity: 0.9;
+}
+#rbShell .lb-filterbar [data-lb-slot="zoom"]{
+    display: none;
 }
 
 .lead-bridge .lb-row{
@@ -13582,6 +13676,86 @@ details.section{
     border:1.5px solid rgba(166,128,35,.44) !important;
 }
 
+/* ══════════════════════════════════════════════════════════════
+   WORKSTATION BUTTON REFRESH
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Hero action buttons (Proposal, Underwriting) ─────────────── */
+#rbShell .hero-actions .btn.gold,
+#rbShell .hero-actions .hp-proposal-trigger,
+#rbShell .hero-actions .hero-underwrite {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.62) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    padding: 9px 15px !important;
+    letter-spacing: .15px !important;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.07) inset,
+        0 6px 18px rgba(0,0,0,.30) !important;
+    transition: background .14s, border-color .14s, box-shadow .14s, transform .12s !important;
+}
+#rbShell .hero-actions .btn.gold:hover,
+#rbShell .hero-actions .hp-proposal-trigger:hover,
+#rbShell .hero-actions .hero-underwrite:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.09) inset,
+        0 0 0 3px rgba(199,153,49,.15),
+        0 12px 26px rgba(0,0,0,.36) !important;
+}
+
+/* ── Script switcher select ───────────────────────────────────── */
+#rbShell .hero-actions select.btn,
+#rbShell .hero-actions select.btn.gold {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.62) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    padding: 9px 38px 9px 38px !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.07) inset, 0 6px 18px rgba(0,0,0,.30) !important;
+}
+
+/* ── rb-link-bar (Quility / Integrity / EZLynx) ──────────────── */
+#rbShell .rb-link-bar {
+    background: rgba(10,18,38,.45);
+    border: 1px solid rgba(199,153,49,.18);
+    border-radius: 12px;
+    padding: 8px 12px;
+    gap: 7px;
+    backdrop-filter: blur(6px);
+}
+#rbShell .rb-link-bar .btn,
+#rbShell .rb-link-bar .btn.gold,
+#rbShell .rb-link-bar .rb-link {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.55) !important;
+    color: #ffffff !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    padding: 7px 14px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+    text-decoration: none;
+    transition: background .13s, border-color .13s, transform .12s, color .12s !important;
+}
+#rbShell .rb-link-bar .btn:hover,
+#rbShell .rb-link-bar .btn.gold:hover,
+#rbShell .rb-link-bar .rb-link:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,.30) !important;
+}
+
 /* ── Zoom Links hero button ───────────────────────────────────── */
 #rbShell .hero-actions .hero-zoom-btn {
     background: linear-gradient(155deg, rgba(14,27,61,.96) 0%, rgba(10,19,44,.98) 100%);
@@ -13612,64 +13786,72 @@ details.section{
         0 16px 32px rgba(0,0,0,.36);
 }
 
-/* ── Outcome buttons: color-coded by meaning ──────────────────── */
-#rbShell .lb-actions .lb-btn[data-outcome="NoAnswer"] {
-    background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%) !important;
-    border-color: #475569 !important;
-    color: #f8fafc !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 8px 16px rgba(71,85,105,.28) !important;
+/* ── Post-call outcome buttons: theme-tinted dark base ────────── */
+/* Default (fallback) */
+#rbShell .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #141e2e 0%, #0d1320 100%) !important;
+    border: 1.5px solid rgba(148,163,184,.28) !important;
+    color: #c8d4e0 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 4px 12px rgba(0,0,0,.28) !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="Contacted"] {
-    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%) !important;
-    border-color: #1d4ed8 !important;
-    color: #eff6ff !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px rgba(37,99,235,.28) !important;
+#rbShell .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(148,163,184,.55) !important;
+    color: #e2e8f0 !important;
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 8px 18px rgba(0,0,0,.34) !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="FollowUp"] {
-    background: linear-gradient(180deg, #fbbf24 0%, #d97706 100%) !important;
-    border-color: #b45309 !important;
-    color: #1c0f00 !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 8px 16px rgba(217,119,6,.28) !important;
+
+/* Mortgage Protection — deep emerald tint */
+#rbShell.theme-mp .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #0a2018 0%, #061510 100%) !important;
+    border-color: rgba(34,197,94,.3) !important;
+    color: #a7f3cc !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="Booked"] {
-    background: linear-gradient(180deg, #34d399 0%, #059669 100%) !important;
-    border-color: #047857 !important;
-    color: #ecfdf5 !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.24), 0 8px 16px rgba(5,150,105,.30) !important;
+#rbShell.theme-mp .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(34,197,94,.6) !important;
+    color: #d1fae5 !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="NeedsDocs"] {
-    background: linear-gradient(180deg, #fb923c 0%, #ea580c 100%) !important;
-    border-color: #c2410c !important;
-    color: #fff7ed !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 8px 16px rgba(234,88,12,.28) !important;
+
+/* Final Expense — deep crimson tint */
+#rbShell.theme-fe .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #200a12 0%, #150609 100%) !important;
+    border-color: rgba(244,63,94,.3) !important;
+    color: #fda4b4 !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="PolicyPlaced"] {
-    background: linear-gradient(180deg, #fde68a 0%, #ca8a04 100%) !important;
-    border-color: #a16207 !important;
-    color: #1c1300 !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.36), 0 8px 18px rgba(202,138,4,.32) !important;
+#rbShell.theme-fe .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(244,63,94,.6) !important;
+    color: #fecdd3 !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="AIReception"] {
-    background: linear-gradient(180deg, #c084fc 0%, #9333ea 100%) !important;
-    border-color: #7e22ce !important;
-    color: #faf5ff !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.20), 0 8px 16px rgba(147,51,234,.30) !important;
+
+/* Medicare — deep blue tint */
+#rbShell.theme-med .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #0a1828 0%, #060f1a 100%) !important;
+    border-color: rgba(59,130,246,.3) !important;
+    color: #93c5fd !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="Nurture"] {
-    background: linear-gradient(180deg, #22d3ee 0%, #0891b2 100%) !important;
-    border-color: #0e7490 !important;
-    color: #ecfeff !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.22), 0 8px 16px rgba(8,145,178,.28) !important;
+#rbShell.theme-med .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(59,130,246,.6) !important;
+    color: #bfdbfe !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="NotInterested"] {
-    background: linear-gradient(180deg, #fb923c 0%, #dc2626 100%) !important;
-    border-color: #b91c1c !important;
-    color: #fff !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 8px 16px rgba(220,38,38,.28) !important;
+
+/* Life Insurance — deep purple tint */
+#rbShell.theme-life .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #160e2e 0%, #0e081e 100%) !important;
+    border-color: rgba(168,85,247,.3) !important;
+    color: #d8b4fe !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome="Lost"] {
-    background: linear-gradient(180deg, #f87171 0%, #dc2626 100%) !important;
-    border-color: #991b1b !important;
-    color: #fff !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 8px 16px rgba(185,28,28,.32) !important;
+#rbShell.theme-life .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(168,85,247,.6) !important;
+    color: #ede9fe !important;
+}
+
+/* Disability Insurance — deep amber tint */
+#rbShell.theme-di .lb-actions .lb-btn[data-outcome] {
+    background: linear-gradient(160deg, #1c1206 0%, #110b03 100%) !important;
+    border-color: rgba(245,158,11,.3) !important;
+    color: #fcd34d !important;
+}
+#rbShell.theme-di .lb-actions .lb-btn[data-outcome]:hover {
+    border-color: rgba(245,158,11,.6) !important;
+    color: #fde68a !important;
 }
