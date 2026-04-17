@@ -147,15 +147,16 @@ body.note-self-open{
 .note-self-sub{ margin: 4px 0 0; color: #9fb0cd; font-size: 13px; }
 
 .note-self-close{
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
     border-radius: 10px;
-    border: 1px solid #35435f;
-    background: #131d31;
-    font-size: 20px;
+    border: 2px solid #d9af52;
+    background: linear-gradient(180deg, #1a2841, #121d32);
+    font-size: 24px;
     font-weight: 900;
-    color: #f5f7fb;
+    color: #ffffff;
     cursor: pointer;
+    box-shadow: 0 10px 22px rgba(0,0,0,.35);
 }
 
 .note-self-toolbar{
@@ -271,6 +272,41 @@ body.note-self-open{
     .note-self-col:first-child{ border-right: 0; border-bottom: 3px solid #d1a034; }
 }
 
+@media (max-width: 900px){
+    .note-self-overlay,
+    .uw-overlay,
+    .proposal-overlay{
+        align-items: center;
+        justify-content: center;
+        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
+    }
+    .note-self-modal,
+    .uw-dialog,
+    .proposal-dialog{
+        width: min(98vw, 1400px);
+        max-height: calc(100dvh - 20px);
+    }
+    .note-self-head{
+        position: sticky;
+        top: 0;
+        z-index: 7;
+    }
+    .note-self-close,
+    .uw-close,
+    .proposal-dialog .uw-close{
+        width: 46px;
+        height: 46px;
+        font-size: 2rem;
+    }
+    #captureDecisionModal.legend-popout-modal .modal-dialog{
+        margin: auto;
+        max-width: min(96vw, 760px);
+    }
+    #captureDecisionModal.legend-popout-modal .modal-content{
+        max-height: calc(100dvh - 20px);
+    }
+}
+
 .uw-overlay{
     position: fixed;
     inset: 0;
@@ -303,6 +339,10 @@ body.note-self-open{
     align-items:flex-start;
     justify-content:space-between;
     gap:10px;
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,250,252,.98));
     border-bottom:1.5px solid var(--line);
     padding-bottom:12px;
     margin-bottom:14px;
@@ -337,21 +377,21 @@ body.note-self-open{
 }
 
 .uw-close{
-    border:1.5px solid var(--line);
-    background:#fff;
-    width:34px;
-    height:34px;
+    border:2px solid #c6952f;
+    background:linear-gradient(180deg,#1a2841,#121d32);
+    width:42px;
+    height:42px;
     border-radius:10px;
-    font-size:18px;
+    font-size:24px;
     font-weight:900;
     cursor:pointer;
-    color:var(--ink);
-    box-shadow: 0 8px 16px rgba(0,0,0,.08);
+    color:#ffffff;
+    box-shadow: 0 10px 22px rgba(0,0,0,.26);
 }
 
 .uw-close:hover{
-    background: #fdf5dc;
-    border-color: var(--line-strong);
+    background:linear-gradient(180deg,#233758,#1a2843);
+    border-color:#ddb457;
 }
 
 .uw-form{
@@ -3113,6 +3153,10 @@ details.section{
 }
 
 .proposal-dialog .uw-head{
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.97));
     border-bottom: 1px solid rgba(166,128,35,.22);
     padding-bottom: .7rem;
     margin-bottom: .8rem;
@@ -3140,17 +3184,18 @@ details.section{
     width:44px;
     height:44px;
     border-radius:12px;
-    border:1.5px solid rgba(166,128,35,.44);
-    background:rgba(255,255,255,.05);
+    border:2px solid rgba(221,180,87,.82);
+    background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));
     color:#f8fafc;
     font-size:1.7rem;
     line-height:1;
     box-shadow:none;
+    cursor:pointer;
 }
 
 .proposal-dialog .uw-close:hover{
-    background:rgba(221,180,87,.16);
-    border-color:#ddb457;
+    background:linear-gradient(180deg,rgba(20,35,66,.98),rgba(15,29,56,.98));
+    border-color:#f2cf7f;
 }
 
 /* Bootstrap decision capture modal stabilization */
@@ -3177,6 +3222,16 @@ details.section{
 #captureDecisionModal.legend-popout-modal .modal-footer{
     border-color: rgba(166,128,35,.5);
     background: linear-gradient(180deg, rgba(15,23,42,.95), rgba(15,23,42,.88));
+}
+#captureDecisionModal.legend-popout-modal .modal-header{
+    position: sticky;
+    top: 0;
+    z-index: 8;
+}
+#captureDecisionModal.legend-popout-modal .modal-footer{
+    position: sticky;
+    bottom: 0;
+    z-index: 7;
 }
 #captureDecisionModal.legend-popout-modal .modal-title{
     color: var(--legend-gold-bright, #ddb457);
@@ -3208,7 +3263,11 @@ details.section{
 }
 #captureDecisionModal.legend-popout-modal .btn-close{
     filter: invert(1);
-    opacity: .96;
+    opacity: 1;
+    border: 2px solid rgba(221,180,87,.75);
+    border-radius: 10px;
+    background-color: rgba(15,26,50,.94);
+    box-shadow: 0 8px 16px rgba(0,0,0,.35);
 }
 #captureDecisionModal.legend-popout-modal .btn.btn-secondary{
     background: #1f2937;
@@ -13904,4 +13963,46 @@ details.section{
     border-color: rgba(220,38,38,.9) !important;
     color: #fca5a5 !important;
     transform: translateY(-1px);
+}
+
+/* Mobile popout safety lock */
+@media (max-width: 900px){
+    .note-self-overlay,
+    .uw-overlay,
+    .proposal-overlay,
+    #proposalOverlay.hp-overlay{
+        align-items: center !important;
+        justify-content: center !important;
+        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px !important;
+    }
+    .note-self-modal,
+    .uw-dialog,
+    .proposal-dialog,
+    #proposalDialog.hp-dialog,
+    #captureDecisionModal.legend-popout-modal .modal-content,
+    .zoom-qp-dialog{
+        max-height: calc(100dvh - 20px) !important;
+    }
+    #captureDecisionModal.legend-popout-modal .modal-dialog{
+        margin: auto !important;
+    }
+    .uw-head,
+    .proposal-dialog .uw-head,
+    #proposalDialog .hp-dialog-head,
+    .note-self-head,
+    #captureDecisionModal.legend-popout-modal .modal-header{
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 20 !important;
+    }
+    .note-self-close,
+    .uw-close,
+    .proposal-dialog .uw-close,
+    #proposalDialog .hp-dialog-close,
+    #captureDecisionModal.legend-popout-modal .btn-close,
+    .zoom-qp-close{
+        width: 46px !important;
+        height: 46px !important;
+        font-size: 2rem !important;
+    }
 }

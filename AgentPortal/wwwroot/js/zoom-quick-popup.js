@@ -57,6 +57,10 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: linear-gradient(180deg, rgba(8,18,36,.99), rgba(14,29,56,.98));
     padding-bottom: 1.1rem;
     border-bottom: 1px solid rgba(221,180,87,.22);
     margin-bottom: 1.25rem;
@@ -88,24 +92,26 @@
     line-height: 1.5;
 }
 .zoom-qp-close {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     border-radius: 10px;
-    border: 1.5px solid rgba(166,128,35,.44);
-    background: rgba(255,255,255,.05);
-    color: #f1f5f9;
-    font-size: 1.5rem;
+    border: 2px solid rgba(221,180,87,.8);
+    background: linear-gradient(180deg, rgba(15,26,50,.98), rgba(11,21,41,.98));
+    color: #ffffff;
+    font-size: 1.9rem;
     line-height: 1;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background .12s, border-color .12s;
+    transition: background .12s, border-color .12s, transform .12s;
+    box-shadow: 0 10px 20px rgba(0,0,0,.34);
 }
 .zoom-qp-close:hover {
-    background: rgba(255,255,255,.12);
-    border-color: rgba(166,128,35,.7);
+    background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98));
+    border-color: rgba(242,207,127,.95);
+    transform: translateY(-1px);
 }
 
 .zoom-qp-list {
@@ -290,6 +296,28 @@
     text-decoration: none;
 }
 .zoom-qp-foot a:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+    .zoom-qp {
+        padding: max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
+    }
+    .zoom-qp-dialog {
+        width: min(680px, 98vw);
+        max-height: calc(100dvh - 20px);
+        border-radius: 16px;
+        padding: 1rem .85rem .95rem;
+    }
+    .zoom-qp-head {
+        margin: -1rem -.85rem 1rem;
+        padding: .85rem .85rem .75rem;
+        border-radius: 16px 16px 0 0;
+    }
+    .zoom-qp-close {
+        width: 46px;
+        height: 46px;
+        font-size: 2rem;
+    }
+}
         `;
         document.head.appendChild(s);
     }
