@@ -309,3 +309,201 @@
     transform: translateY(-1px) !important;
     box-shadow: 0 8px 20px rgba(0,0,0,.30) !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   UNDERWRITING FORM — Dark navy/gold theme matching Proposal Builder
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Overlay */
+#uwOverlay {
+    background: rgba(5,10,22,.78) !important;
+    backdrop-filter: blur(8px) !important;
+    padding: 1.5rem 1rem !important;
+}
+
+/* Dialog shell */
+#uwDialog {
+    background:
+        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%),
+        linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99)) !important;
+    border: 1.8px solid rgba(166,128,35,.52) !important;
+    border-radius: 22px !important;
+    color: #f8fafc !important;
+    box-shadow: 0 40px 100px rgba(0,0,0,.58) !important;
+    scrollbar-gutter: stable;
+}
+
+/* Sticky header */
+#uwDialog .uw-head {
+    background: linear-gradient(180deg, rgba(11,21,41,.98), rgba(9,18,36,.96)) !important;
+    border-bottom: 1px solid rgba(166,128,35,.26) !important;
+    backdrop-filter: blur(4px) !important;
+}
+
+/* Logo */
+#uwDialog .uw-logo {
+    border: 1px solid rgba(199,153,49,.38) !important;
+    background: rgba(255,255,255,.06) !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,.28) !important;
+}
+
+/* Title & subtitle */
+#uwDialog .uw-name {
+    color: #f4d890 !important;
+    font-weight: 950 !important;
+    font-size: 1.45rem !important;
+    letter-spacing: .02em !important;
+}
+#uwDialog .uw-sub {
+    color: #b9c5d8 !important;
+    font-weight: 600 !important;
+}
+
+/* Close button — matches proposal */
+#uwDialog .uw-close {
+    border: 2px solid rgba(221,180,87,.78) !important;
+    background: linear-gradient(180deg, rgba(15,26,50,.98), rgba(11,21,41,.98)) !important;
+    color: #f8fafc !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.35) !important;
+    border-radius: 12px !important;
+    width: 44px !important;
+    height: 44px !important;
+}
+#uwDialog .uw-close:hover {
+    border-color: #f2cf7f !important;
+    background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98)) !important;
+}
+
+/* Section cards */
+#uwDialog .uw-section {
+    background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02)) !important;
+    border: 1.5px solid rgba(166,128,35,.24) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+}
+#uwDialog .uw-section + .uw-section {
+    margin-top: 8px !important;
+}
+#uwDialog .uw-section-title {
+    color: #f4d890 !important;
+    font-weight: 900 !important;
+    font-size: .78rem !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(166,128,35,.2) !important;
+    padding-bottom: .3rem !important;
+    margin-bottom: .5rem !important;
+}
+
+/* Field wrappers */
+#uwDialog .uw-field {
+    background: rgba(255,255,255,.05) !important;
+    border: 1.5px solid rgba(166,128,35,.30) !important;
+    border-radius: 10px !important;
+    color: #f8fafc !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+#uwDialog .uw-field label,
+#uwDialog .uw-field > span:first-child {
+    font-size: .72rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    color: #f4d890 !important;
+}
+
+/* Inputs, selects, textareas */
+#uwDialog .uw-field input,
+#uwDialog .uw-field select,
+#uwDialog .uw-field textarea {
+    background: rgba(255,255,255,.07) !important;
+    border: 1.5px solid rgba(166,128,35,.34) !important;
+    border-radius: 8px !important;
+    color: #f8fafc !important;
+    caret-color: #f4d890 !important;
+}
+#uwDialog .uw-field input::placeholder,
+#uwDialog .uw-field textarea::placeholder {
+    color: #64748b !important;
+}
+#uwDialog .uw-field select option {
+    background: #0f1d38 !important;
+    color: #f8fafc !important;
+}
+#uwDialog .uw-field input:focus,
+#uwDialog .uw-field select:focus,
+#uwDialog .uw-field textarea:focus {
+    border-color: #ddb457 !important;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+    outline: none !important;
+}
+
+/* Multi-select buttons */
+#uwDialog .uw-multi-btn {
+    border: 1.5px solid rgba(199,153,49,.48) !important;
+    background: rgba(255,255,255,.06) !important;
+    color: #f4e8c0 !important;
+    box-shadow: none !important;
+}
+#uwDialog .uw-multi-btn:hover {
+    border-color: rgba(221,180,87,.85) !important;
+    background: rgba(199,153,49,.12) !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,.22) !important;
+}
+#uwDialog .uw-multi-btn.is-selected {
+    background: linear-gradient(180deg, #184f1d 0%, #0f3b14 100%) !important;
+    color: #e9ffe7 !important;
+    border-color: #4ade80 !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 6px 16px rgba(0,0,0,.22) !important;
+}
+
+/* Action bar */
+#uwDialog .uw-actions {
+    border-top: 1px solid rgba(166,128,35,.22) !important;
+    padding-top: 14px !important;
+    margin-top: 4px !important;
+}
+#uwDialog .uw-actions .btn,
+#uwDialog .proposal-actions-inline .btn {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.55) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-weight: 800 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+    transition: background .13s, border-color .13s, transform .12s !important;
+}
+#uwDialog .uw-actions .btn:hover,
+#uwDialog .proposal-actions-inline .btn:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    transform: translateY(-1px) !important;
+}
+#uwDialog .uw-actions .btn.gold,
+#uwDialog #uwSave {
+    background: linear-gradient(180deg, #f4dc98, #ddb457) !important;
+    border: 1.6px solid #ddb457 !important;
+    color: #0b1529 !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.55) !important;
+}
+#uwDialog .uw-actions .btn.gold:hover,
+#uwDialog #uwSave:hover {
+    filter: saturate(1.08) brightness(1.04) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Mobile */
+@media (max-width: 900px) {
+    #uwDialog {
+        border-radius: 16px !important;
+        padding: .8rem .8rem 1rem !important;
+    }
+    #uwDialog .uw-head {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 5 !important;
+        margin: -.8rem -.8rem .7rem !important;
+        padding: .8rem .8rem .7rem !important;
+        border-radius: 16px 16px 0 0 !important;
+    }
+}
