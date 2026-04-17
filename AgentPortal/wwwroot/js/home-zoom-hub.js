@@ -190,6 +190,13 @@
             const actions = document.createElement('div');
             actions.className = 'zoom-link-actions';
 
+            const openBtn = document.createElement('a');
+            openBtn.className = 'zoom-link-btn zoom-link-btn-open';
+            openBtn.href = link.url;
+            openBtn.target = '_blank';
+            openBtn.rel = 'noopener';
+            openBtn.textContent = 'Open';
+
             const copyBtn = document.createElement('button');
             copyBtn.type = 'button';
             copyBtn.className = 'zoom-link-btn zoom-link-btn-copy';
@@ -206,6 +213,7 @@
             dotsBtn.style.cssText = 'padding:0 7px;font-size:16px;letter-spacing:1px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:#8ba5c2;cursor:pointer;line-height:1;';
             dotsBtn.textContent = '⋮';
 
+            actions.appendChild(openBtn);
             actions.appendChild(copyBtn);
             actions.appendChild(dotsBtn);
             row.appendChild(info);
