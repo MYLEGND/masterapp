@@ -1636,16 +1636,18 @@ body.life-landing header .navbar .nav-link:focus {
 
   wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', 0, 1);
   // CoverageGoal advances to value panel (step 3) instead of age step
-  form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      showChoiceError('err-step1-coverage-goal', false);
-      syncStepOneAnswersFromUI();
-      trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
-      if (!step1Panel.hidden && currentMicroStep === 1) {
-        clearAutoAdvanceTimer();
-        autoAdvanceTimer = window.setTimeout(() => showValueBridge(true), 160);
-      }
-    });
+form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    showChoiceError('err-step1-coverage-goal', false);
+    syncStepOneAnswersFromUI();
+    trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+
+    if (!step1Panel.hidden && currentMicroStep === 1) {
+      clearAutoAdvanceTimer();
+      autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
+    }
+  });
+});
     radio.closest('label')?.addEventListener('click', () => {
       setTimeout(() => {
         if (radio.checked && !step1Panel.hidden && currentMicroStep === 1) {
@@ -1655,9 +1657,9 @@ body.life-landing header .navbar .nav-link:focus {
       }, 0);
     });
   });
-  document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-    showValueBridge(true);
-  });
+document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
+  showMicroStep(1, true);
+});
 
   ageInput?.addEventListener('input', () => {
     showChoiceError('err-step1-age', false);
@@ -1693,14 +1695,14 @@ body.life-landing header .navbar .nav-link:focus {
     showStep1(1, true);
   });
 
-  valueBridgeContinueBtn?.addEventListener('click', () => {
-    syncStepOneAnswersFromUI();
-    trackEvent('results_continue', {
-      primaryRec:   recPrimaryKeyEl?.value   || '',
-      secondaryRec: recSecondaryKeyEl?.value || '',
-    });
-    showStep1(2, true);
+valueBridgeContinueBtn?.addEventListener('click', () => {
+  syncStepOneAnswersFromUI();
+  trackEvent('results_continue', {
+    primaryRec:   recPrimaryKeyEl?.value   || '',
+    secondaryRec: recSecondaryKeyEl?.value || '',
   });
+  showStep2(true);
+});
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
@@ -1850,10 +1852,9 @@ body.life-landing header .navbar .nav-link:focus {
     showStep2(false);
   } else {
     const initMicro = resolveInitialMicroStep();
-    if (initMicro >= 2) {
-      renderResults();
-      showValueBridge(false);
-    } else {
+if (initMicro >= 2) {
+  showStep1(2, false);
+} else {
       showStep1(initMicro, false);
     }
   }
