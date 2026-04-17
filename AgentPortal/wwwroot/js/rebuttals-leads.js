@@ -129,7 +129,9 @@
   }
 
   function normalizeDialTotal(value){
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   function readAgentWideDialTotals(payload){
@@ -738,6 +740,33 @@
       if (dWeek) dWeek.textContent = String(agentWideDials.week ?? 0);
     }
 
+    function renderLeadCallCount(lead){
+      if (!lead || !fields.calls) return;
+      const currentLead = resolveCurrentLead();
+      if (!currentLead || currentLead.leadId !== lead.leadId) return;
+      fields.calls.textContent = `Calls: ${lead.callCount ?? 0}`;
+    }
+
+    function applyOptimisticCallIncrement(lead){
+      if (!lead) return;
+      const priorCallCount = Number(lead.callCount ?? 0);
+      const priorLifetime = Number(lead.attemptsLifetime ?? priorCallCount);
+      lead.callCount = priorCallCount + 1;
+      lead.attemptsToday = Number(lead.attemptsToday ?? lead.dialsToday ?? 0) + 1;
+      lead.attemptsThisWeek = Number(lead.attemptsThisWeek ?? lead.dialsWeek ?? 0) + 1;
+      lead.attemptsThisMonth = Number(lead.attemptsThisMonth ?? 0) + 1;
+      lead.attemptsThisYear = Number(lead.attemptsThisYear ?? 0) + 1;
+      lead.attemptsLifetime = (Number.isFinite(priorLifetime) ? priorLifetime : priorCallCount) + 1;
+      lead.dialsToday = lead.attemptsToday;
+      lead.dialsWeek = lead.attemptsThisWeek;
+
+      agentWideDials.today = Number(agentWideDials.today ?? 0) + 1;
+      agentWideDials.week = Number(agentWideDials.week ?? 0) + 1;
+
+      renderLeadCallCount(lead);
+      renderAgentWideDialCounters();
+    }
+
     async function refreshAgentWideDialCounters(){
       if (dialTotalsRefreshInFlight) return;
       dialTotalsRefreshInFlight = true;
@@ -1046,7 +1075,8 @@
       }, 8000);
     }
 
-    async function incrementCallForLead(lead){
+    async function incrementCallForLead(lead, options = {}){
+      const skipLocalFallback = !!options.skipLocalFallback;
       let payload = null;
       try {
         const res = await fetch('/Leads/IncrementCall', withDialHeaders({
@@ -1062,15 +1092,34 @@
           payload = await res.json().catch(() => ({}));
         }
       } catch {}
-      lead.callCount = payload?.callCount ?? ((lead.callCount ?? 0) + 1);
-      lead.attemptsToday = payload?.attemptsToday ?? ((lead.attemptsToday ?? lead.dialsToday ?? 0) + 1);
-      lead.attemptsThisWeek = payload?.attemptsThisWeek ?? ((lead.attemptsThisWeek ?? lead.dialsWeek ?? 0) + 1);
-      lead.attemptsThisMonth = payload?.attemptsThisMonth ?? ((lead.attemptsThisMonth ?? 0) + 1);
-      lead.attemptsThisYear = payload?.attemptsThisYear ?? ((lead.attemptsThisYear ?? 0) + 1);
-      lead.attemptsLifetime = payload?.attemptsLifetime ?? lead.callCount;
-      lead.dialsToday = payload?.dialsToday ?? lead.attemptsToday;
-      lead.dialsWeek = payload?.dialsWeek ?? lead.attemptsThisWeek;
+
+      const currentCallCount = Number(lead.callCount ?? 0);
+      const currentToday = Number(lead.attemptsToday ?? lead.dialsToday ?? 0);
+      const currentWeek = Number(lead.attemptsThisWeek ?? lead.dialsWeek ?? 0);
+      const currentMonth = Number(lead.attemptsThisMonth ?? 0);
+      const currentYear = Number(lead.attemptsThisYear ?? 0);
+      const currentLifetime = Number(lead.attemptsLifetime ?? currentCallCount);
+
+      const payloadCallCount = normalizeDialTotal(payload?.callCount);
+      const payloadToday = normalizeDialTotal(payload?.attemptsToday);
+      const payloadWeek = normalizeDialTotal(payload?.attemptsThisWeek);
+      const payloadMonth = normalizeDialTotal(payload?.attemptsThisMonth);
+      const payloadYear = normalizeDialTotal(payload?.attemptsThisYear);
+      const payloadLifetime = normalizeDialTotal(payload?.attemptsLifetime);
+      const payloadDialsToday = normalizeDialTotal(payload?.dialsToday);
+      const payloadDialsWeek = normalizeDialTotal(payload?.dialsWeek);
+
+      lead.callCount = payloadCallCount ?? (skipLocalFallback ? currentCallCount : currentCallCount + 1);
+      lead.attemptsToday = payloadToday ?? (skipLocalFallback ? currentToday : currentToday + 1);
+      lead.attemptsThisWeek = payloadWeek ?? (skipLocalFallback ? currentWeek : currentWeek + 1);
+      lead.attemptsThisMonth = payloadMonth ?? (skipLocalFallback ? currentMonth : currentMonth + 1);
+      lead.attemptsThisYear = payloadYear ?? (skipLocalFallback ? currentYear : currentYear + 1);
+      lead.attemptsLifetime = payloadLifetime ?? (skipLocalFallback ? currentLifetime : currentLifetime + 1);
+      lead.dialsToday = payloadDialsToday ?? lead.attemptsToday;
+      lead.dialsWeek = payloadDialsWeek ?? lead.attemptsThisWeek;
       updateAgentWideDials(payload);
+      renderLeadCallCount(lead);
+      renderAgentWideDialCounters();
       if (window.liveSync && lead?.leadId){
         window.liveSync.sendCall(lead.leadId, Number(lead.callCount ?? 0) || 0);
         window.liveSync.sendUpdate({
@@ -1724,10 +1773,11 @@
       }
       // One-click call: launch dialer immediately; track dials without blocking.
       resetPendingAction({ preserveStatus: true });
+      applyOptimisticCallIncrement(lead);
       setStatusMessage(`Dialing ${fmtPhone(digits) || digits}...`);
       setTimeout(() => { window.location.href = `tel:${digits}`; }, 0);
-      // fire-and-forget tracking so UI is not blocked
-      incrementCallForLead(lead).catch(() => {});
+      // Keep UI instant via optimistic update, then reconcile with server totals.
+      incrementCallForLead(lead, { skipLocalFallback: true }).catch(() => {});
     });
 
     textBtn?.addEventListener('click', () => {
