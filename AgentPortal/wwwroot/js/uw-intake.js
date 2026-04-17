@@ -86,7 +86,7 @@
       lifeCoverage: pick("uwLifeCoverage")
     };
 
-    const currencyIds = ["uwLoan", "uwHomeValue", "uwEquity", "uwPayment", "uwIncome", "uwAddlIncome", "uwCoverageAmount", "uwPremium"];
+    const currencyIds = ["uwLoan", "uwHomeValue", "uwEquity", "uwPayment", "uwIncome", "uwAddlIncome"];
 
     function toNumber(raw) {
       if (raw == null) return null;
@@ -119,8 +119,14 @@
         const el = document.getElementById(id);
         if (!el) return;
         el.addEventListener("input", () => {
-          const formatted = formatCurrencyValue(el.value);
-          if (formatted !== "") el.value = formatted;
+          const raw = el.value;
+          const cursorFromEnd = raw.length - (el.selectionEnd ?? raw.length);
+          const formatted = formatCurrencyValue(raw);
+          if (formatted !== "" && formatted !== raw) {
+            el.value = formatted;
+            const newPos = Math.max(0, formatted.length - cursorFromEnd);
+            el.setSelectionRange(newPos, newPos);
+          }
           if (id === "uwLoan" || id === "uwHomeValue") updateEquityFromInputs();
         });
         el.addEventListener("blur", () => {
