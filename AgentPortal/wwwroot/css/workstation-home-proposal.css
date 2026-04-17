@@ -119,16 +119,6 @@
     padding: 20px !important;
 }
 
-/* Scrim backdrop while quick-list is open */
-body:has(#proposalMenu:not([hidden]))::before,
-body:has(#uwMenu:not([hidden]))::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: rgba(5,10,22,.60);
-    z-index: 5099;
-    pointer-events: none;
-}
 
 /* ── Nav buttons: dark navy + gold border + white text ─────────── */
 #rbShell .hero-actions .hp-proposal-trigger,
