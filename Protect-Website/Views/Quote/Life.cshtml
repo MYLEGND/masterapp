@@ -53,7 +53,46 @@
     var goalStep = viewSteps[1];
     var tobaccoStep = viewSteps[2];
     var ageStep = viewSteps[3];
-    var ageValue = form.Age?.ToString() ?? form.Answer4 ?? form.AgeRange ?? string.Empty;
+    var selectedAgeBracket = string.Empty;
+    var ageValueNumber = form.Age;
+    if (!string.IsNullOrWhiteSpace(form.AgeRange) && (form.AgeRange.Contains('-') || form.AgeRange.Contains('+')))
+    {
+        selectedAgeBracket = form.AgeRange.Trim();
+    }
+    if (string.IsNullOrWhiteSpace(selectedAgeBracket) && !string.IsNullOrWhiteSpace(form.Answer4) && (form.Answer4.Contains('-') || form.Answer4.Contains('+')))
+    {
+        selectedAgeBracket = form.Answer4.Trim();
+    }
+    if (!ageValueNumber.HasValue && int.TryParse(form.Answer4, out var parsedAnswerAge))
+    {
+        ageValueNumber = parsedAnswerAge;
+    }
+    if (!ageValueNumber.HasValue && int.TryParse(form.AgeRange, out var parsedRangeAge))
+    {
+        ageValueNumber = parsedRangeAge;
+    }
+    if (string.IsNullOrWhiteSpace(selectedAgeBracket) && ageValueNumber.HasValue)
+    {
+        var ageNumber = ageValueNumber.Value;
+        if (ageNumber <= 24) selectedAgeBracket = "18-24";
+        else if (ageNumber <= 34) selectedAgeBracket = "25-34";
+        else if (ageNumber <= 44) selectedAgeBracket = "35-44";
+        else if (ageNumber <= 54) selectedAgeBracket = "45-54";
+        else selectedAgeBracket = "55+";
+    }
+    if (!ageValueNumber.HasValue)
+    {
+        ageValueNumber = selectedAgeBracket switch
+        {
+            "18-24" => 21,
+            "25-34" => 30,
+            "35-44" => 40,
+            "45-54" => 50,
+            "55+" => 60,
+            _ => null,
+        };
+    }
+    var ageValue = ageValueNumber?.ToString() ?? string.Empty;
     var usesLeanContactFields = true;
     var hasContactInput =
         !string.IsNullOrWhiteSpace(form.FirstName) ||
@@ -394,6 +433,9 @@ body.life-landing header .navbar .nav-link:focus {
 }
 .lq-choice-grid.lq-step1-twoup .lq-card span {
     overflow-wrap: anywhere;
+}
+.lq-choice-grid.lq-age-grid .lq-age-wide {
+    grid-column: 1 / -1;
 }
 @@media (min-width: 600px) {
     .lq-choice-grid.lq-grid-2 { grid-template-columns: repeat(2, 1fr); }
@@ -869,6 +911,7 @@ body.life-landing header .navbar .nav-link:focus {
     <div class="lq-header">
         <h1 class="hero-title">@cfg.Header</h1>
         <div class="lq-subtext">@cfg.Subheader</div>
+        <div class="lq-trust-note">Private • No pressure • Takes less than 30 seconds</div>
     </div>
 
     <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
@@ -882,12 +925,13 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="PageKey" value="@pageKey" />
         <input type="hidden" name="PageVariant" value="@pageVariant" />
         <input type="hidden" name="PageMode" value="@pageMode" />
-        <input type="hidden" name="AgeRange" id="AgeRange" value="@form.AgeRange" />
+        <input type="hidden" name="Age" id="Age" value="@ageValue" />
+        <input type="hidden" name="AgeRange" id="AgeRange" value="@selectedAgeBracket" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
         <input type="hidden" name="Answer2" id="Answer2" value="@form.Answer2" />
         <input type="hidden" name="Answer3" id="Answer3" value="@form.Answer3" />
-        <input type="hidden" name="Answer4" id="Answer4" value="@form.Answer4" />
+        <input type="hidden" name="Answer4" id="Answer4" value="@(string.IsNullOrWhiteSpace(selectedAgeBracket) ? form.Answer4 : selectedAgeBracket)" />
         <input type="hidden" name="SessionId" id="SessionId" />
         <input type="hidden" name="VisitorId" id="VisitorId" />
         <input type="hidden" name="UtmSource" id="UtmSource" />
@@ -906,8 +950,8 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-title">Let's make sure the people you love are protected</div>
-                <div class="lq-step-helper">Takes less than 30 seconds to see what may fit.</div>
+                <div class="lq-step-title">Let's see what protection actually fits your situation</div>
+                <div class="lq-step-helper">Takes less than 30 seconds - no pressure.</div>
                 <div class="lq-step-progress-wrap" aria-live="polite">
                     <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 4</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
@@ -958,24 +1002,33 @@ body.life-landing header .navbar .nav-link:focus {
                     <div class="lq-choice-label">Let's tailor this to you</div>
                     <div class="lq-choice-group">
                         <div style="font-weight:700;font-size:.9rem;color:rgba(248,250,252,0.72);margin-bottom:8px;" id="lbl-step1-age">@ageStep.Question</div>
-                        <div class="lq-field">
-                            <input
-                                type="number"
-                                id="Age"
-                                name="Age"
-                                class="form-control"
-                                inputmode="numeric"
-                                min="18"
-                                max="85"
-                                step="1"
-                                placeholder="Enter your age"
-                                value="@ageValue" />
+                        <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
+                            <label class="lq-card">
+                                <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
+                                <span>18-24</span>
+                            </label>
+                            <label class="lq-card">
+                                <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
+                                <span>25-34</span>
+                            </label>
+                            <label class="lq-card">
+                                <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
+                                <span>35-44</span>
+                            </label>
+                            <label class="lq-card">
+                                <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
+                                <span>45-54</span>
+                            </label>
+                            <label class="lq-card lq-age-wide">
+                                <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
+                                <span>55+</span>
+                            </label>
                         </div>
-                        <div class="lq-choice-error" id="err-step1-age">Please enter a valid age between 18 and 85.</div>
+                        <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See My Personalized Options</button>
+                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See What Fits Me</button>
                     </div>
                     <div class="lq-trust-note">Private • No obligation • Built for you</div>
                 </div>
@@ -999,7 +1052,7 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let's walk through this together</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let's walk through your options together - takes 5 minutes</div>
                 <div class="lq-step-helper">This is where we make sure you actually understand what fits — not just see options.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
@@ -1088,7 +1141,7 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-reach-note">We'll walk through your options right after this — no pressure.</div>
+                            <div class="lq-reach-note">We'll go over your options together and answer any questions — simple and clear.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -1144,6 +1197,14 @@ body.life-landing header .navbar .nav-link:focus {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
+  const ageRangeInputs = Array.from(form.querySelectorAll('input[name="AgeBracket"]'));
+  const AGE_RANGE_TO_NUMERIC = Object.freeze({
+    '18-24': 21,
+    '25-34': 30,
+    '35-44': 40,
+    '45-54': 50,
+    '55+': 60,
+  });
   const PROCESSING_BRIDGE_MS = 1500;
   const microStepViewEvents = [
     'life_step1_protecting_view',
@@ -1289,7 +1350,9 @@ body.life-landing header .navbar .nav-link:focus {
     const protectingWho = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
     const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
     const tobacco       = '';
-    const age           = asTrimmed(ageInput?.value)            || answerHidden[3]?.value || '';
+    const selectedAgeRange = selectedRadio('AgeBracket')?.value || ageHidden?.value || '';
+    const ageFromRange  = normalizedAgeFromRange(selectedAgeRange);
+    const age           = asTrimmed(ageInput?.value) || ageFromRange || asTrimmed(answerHidden[3]?.value);
     const ageNum        = Number.parseInt(age, 10);
     const offerKey      = '@cfg.OfferKey';
     const isGeneric     = offerKey === 'life';
@@ -1347,7 +1410,7 @@ body.life-landing header .navbar .nav-link:focus {
 
     const protectingWhoCode = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
     const coverageGoalCode  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
-    const ageVal            = asTrimmed(ageInput?.value) || answerHidden[3]?.value || '—';
+    const ageVal            = selectedRadio('AgeBracket')?.value || ageHidden?.value || answerHidden[3]?.value || asTrimmed(ageInput?.value) || '—';
 
     const rsProtecting = document.getElementById('rs-protecting');
     const rsGoal       = document.getElementById('rs-goal');
@@ -1383,6 +1446,11 @@ body.life-landing header .navbar .nav-link:focus {
 
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function normalizedAgeFromRange(ageRange) {
+    const mapped = AGE_RANGE_TO_NUMERIC[ageRange];
+    return Number.isFinite(mapped) ? String(mapped) : '';
   }
 
   function showChoiceError(errorId, show) {
@@ -1433,7 +1501,10 @@ body.life-landing header .navbar .nav-link:focus {
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
-    const ageValue = asTrimmed(ageInput?.value);
+    const selectedAgeRange = selectedRadio('AgeBracket')?.value || '';
+    const ageFromRange = normalizedAgeFromRange(selectedAgeRange);
+    const fallbackAgeValue = asTrimmed(ageInput?.value);
+    const resolvedAgeValue = ageFromRange || fallbackAgeValue;
 
     if (protecting) {
       answerHidden[0].value = protecting.value;
@@ -1442,11 +1513,27 @@ body.life-landing header .navbar .nav-link:focus {
       answerHidden[1].value = goal.value;
       focusHidden.value = goal.dataset.label || goal.value;
     }
-    answerHidden[3].value = ageValue;
-    ageHidden.value = ageValue;
+    if (ageInput) {
+      ageInput.value = resolvedAgeValue;
+    }
+    if (answerHidden[3]) {
+      answerHidden[3].value = selectedAgeRange || resolvedAgeValue;
+    }
+    if (ageHidden) {
+      ageHidden.value = selectedAgeRange;
+    }
   }
 
   function validateAgeOnly() {
+    const selectedAgeRange = selectedRadio('AgeBracket')?.value || '';
+    const ageFromRange = normalizedAgeFromRange(selectedAgeRange);
+    if (ageFromRange) {
+      if (ageInput) {
+        ageInput.value = ageFromRange;
+      }
+      showChoiceError('err-step1-age', false);
+      return true;
+    }
     const ageValue = asTrimmed(ageInput?.value);
     const ageNum = Number.parseInt(ageValue, 10);
     const hasValidAge = Number.isFinite(ageNum) && ageNum >= 18 && ageNum <= 85;
@@ -1522,8 +1609,8 @@ body.life-landing header .navbar .nav-link:focus {
       <div class="lq-step-panel" id="lifeMiniResultsPanel">
         <div class="lq-step-panel-pad">
           <div class="lq-step-progress">Your Results</div>
-          <div class="lq-step-title">Here's what could protect your situation right now</div>
-          <div class="lq-step-helper">Most people in your situation wait too long — this gives you clarity before that happens.</div>
+          <div class="lq-step-title">Here's what most people in your situation choose</div>
+          <div class="lq-step-helper">This is based on what you just told us - we'll walk you through it step by step.</div>
           <div class="lq-rec-card primary">
             <span class="lq-rec-badge primary">Best Match</span>
             <div class="lq-rec-title">${recs.primary.title}</div>
@@ -1533,6 +1620,7 @@ body.life-landing header .navbar .nav-link:focus {
             <span class="lq-rec-badge secondary">Also Worth Looking At</span>
             <div class="lq-rec-title">${recs.secondary.title}</div>
           </div>
+          <div class="lq-value-note">Most people in your situation end up saving money or getting more coverage than they expected.</div>
           <div class="lq-reach-note" style="margin-top:12px;">
             We'll walk through your options and pricing clearly on the next step.
           </div>
@@ -1590,7 +1678,7 @@ body.life-landing header .navbar .nav-link:focus {
     }
     if (!hasValidAge) {
       showStep1(2, true);
-      ageInput?.focus();
+      form.querySelector('input[name="AgeBracket"]')?.focus();
       return false;
     }
     return true;
@@ -1617,6 +1705,12 @@ body.life-landing header .navbar .nav-link:focus {
     if (step1Panel.hidden || currentMicroStep !== expectedStep) return;
     clearAutoAdvanceTimer();
     autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
+  }
+
+  function queueProcessingAdvanceFromAgeSelection() {
+    if (step1Panel.hidden || currentMicroStep !== 2) return;
+    clearAutoAdvanceTimer();
+    autoAdvanceTimer = window.setTimeout(() => step1ContinueBtn?.click(), 180);
   }
 
   function wireAutoAdvanceGroup(groupName, errorId, selectEvent, expectedStep, nextStep) {
@@ -1652,15 +1746,18 @@ body.life-landing header .navbar .nav-link:focus {
     showStep1(1, true);
   });
 
-  ageInput?.addEventListener('input', () => {
-    showChoiceError('err-step1-age', false);
-    syncStepOneAnswersFromUI();
-  });
-  ageInput?.addEventListener('change', () => {
-    const ageValue = asTrimmed(ageInput.value);
-    if (ageValue) {
-      trackEvent('step1_age_entered', { age: ageValue });
-    }
+  ageRangeInputs.forEach((radio) => {
+    radio.addEventListener('change', () => {
+      showChoiceError('err-step1-age', false);
+      syncStepOneAnswersFromUI();
+      trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
+      queueProcessingAdvanceFromAgeSelection();
+    });
+    radio.closest('label')?.addEventListener('click', () => {
+      setTimeout(() => {
+        if (radio.checked) queueProcessingAdvanceFromAgeSelection();
+      }, 0);
+    });
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1670,6 +1767,7 @@ body.life-landing header .navbar .nav-link:focus {
   });
 
   step1ContinueBtn?.addEventListener('click', () => {
+    clearAutoAdvanceTimer();
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) return;
     syncStepOneAnswersFromUI();
@@ -1677,7 +1775,8 @@ body.life-landing header .navbar .nav-link:focus {
       protectingWho: answerHidden[0]?.value || '',
       coverageGoal: answerHidden[1]?.value || '',
       tobaccoUse: '',
-      age: answerHidden[3]?.value || ''
+      age: answerHidden[3]?.value || '',
+      ageRange: ageHidden?.value || ''
     });
     showProcessingBridge(true);
   });
