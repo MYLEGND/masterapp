@@ -1422,11 +1422,9 @@
   }
 
   async function init() {
-    const tzLabelEl = document.getElementById('wa-tz-label');
-    if (tzLabelEl) {
-      tzLabelEl.textContent = viewerTz.id
-        ? `Times shown in your local timezone: ${viewerTz.id}`
-        : 'Times shown in your local timezone';
+    const tzTextEl = document.getElementById('wa-tz-text');
+    if (tzTextEl) {
+      tzTextEl.textContent = viewerTz.id || 'Local Timezone';
     }
     showMetaCallbackBanner();
     updateGrowthBaseLink();

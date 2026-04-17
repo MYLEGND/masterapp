@@ -110,22 +110,21 @@
       @Html.AntiForgeryToken()
     </form>
 
-    <div class="mb-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <div>
-                <h2 class="mb-0 fw-bold" style="color: var(--legend-gold);">Website Analytics</h2>
-                <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
-                <div class="section-subtext small" style="opacity:.65;" id="wa-tz-label"></div>
-            </div>
+    <div class="wa-page-header mb-3">
+        <div>
+            <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
+            <h2 class="wa-header-title">Website Analytics</h2>
+            <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
+        </div>
+        <div class="wa-header-right">
+            <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(canViewFounderTeamUi)
             {
-            <div class="ms-auto">
-                <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
-                        style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
-                    Team Performance
-                </button>
-            </div>
+            <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
+                    style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
+                Team Performance
+            </button>
             }
         </div>
     </div>

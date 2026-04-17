@@ -152,6 +152,78 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 .control-bar .date-group {
     min-width: 320px;
 }
+/* ── Page header hero ────────────────────────────────── */
+.wa-page-header {
+    background:
+        radial-gradient(820px 260px at -4% -20%, rgba(199,153,49,.18), transparent 52%),
+        radial-gradient(700px 260px at 104% -10%, rgba(45,80,140,.18), transparent 58%),
+        linear-gradient(158deg, #0b1530 0%, #0e1b3d 55%, #0b1530 100%);
+    border: 1.5px solid var(--legend-gold-border);
+    border-radius: 20px;
+    box-shadow:
+        0 24px 48px rgba(0,0,0,.28),
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 1px 0 rgba(199,153,49,.18) inset;
+    padding: 1.5rem 1.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--legend-ink);
+}
+.wa-header-kicker {
+    font-size: .7rem;
+    font-weight: 900;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: rgba(199,153,49,.7);
+    margin-bottom: .3rem;
+}
+.wa-header-title {
+    font-size: 2rem;
+    font-weight: 950;
+    color: var(--legend-gold);
+    margin: 0 0 .4rem;
+    line-height: 1.08;
+    text-shadow: 0 2px 22px rgba(199,153,49,.22);
+}
+.wa-header-sub {
+    margin: 0;
+    font-size: .88rem;
+    font-weight: 600;
+    color: rgba(216,222,234,.65);
+}
+.wa-header-sub strong {
+    color: #f0dfa0;
+    font-weight: 800;
+}
+.wa-header-right {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .55rem;
+}
+.wa-tz-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .3rem .85rem;
+    border-radius: 20px;
+    border: 1px solid rgba(199,153,49,.32);
+    background: rgba(199,153,49,.07);
+    color: rgba(216,222,234,.7);
+    font-size: .76rem;
+    font-weight: 700;
+    letter-spacing: .01em;
+    white-space: nowrap;
+}
+.wa-tz-chip-icon {
+    font-size: .82rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+/* ── Env badge (base + override for dark header) ─────── */
 .fa-env-badge {
     display: inline-block;
     margin-top: 4px;
@@ -162,6 +234,12 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     background: rgba(14,27,61,.12);
     font-weight: 800;
     font-size: 0.9rem;
+}
+.wa-page-header .fa-env-badge {
+    margin-top: 0;
+    background: rgba(14,27,61,.45);
+    border-color: rgba(166,128,35,.5);
+    font-size: .8rem;
 }
 .fa-kpi-grid .kpi-card {
     background: var(--legend-navy);
