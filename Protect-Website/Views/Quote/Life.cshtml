@@ -1035,9 +1035,8 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s walk through what actually fits your situation..</div>
-                <div class="lq-step-helper">Based on what you shared, there are a few options that may surprise you.
-We’ll walk through them together so you can see what actually makes sense — no pressure.</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s walk through what actually fits your situation.</div>
+                <div class="lq-step-helper">Based on what you shared, there are a few options that may surprise you. We’ll walk through them together so you can see what actually makes sense — no pressure.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -1051,19 +1050,12 @@ We’ll walk through them together so you can see what actually makes sense — 
                                 <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
-                        <div class="lq-field-row two full">
+                        <div class="lq-field-row full">
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-help">Best for a quick walkthrough of the recommendations based on your answers.</div>
+                                <div class="lq-field-help">We'll only reach out to walk through your options — nothing pushed, nothing rushed.</div>
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
-                            </div>
-                            <div class="lq-field">
-                                <label for="Email">Email (optional) @if (!usesLeanContactFields)
-                                {<span style="color:#f87171">*</span>}</label>
-                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" value="@form.Email" />
-                                <div class="lq-field-help">Optional — so you can receive a copy of your recommendation summary.</div>
-                                <div class="lq-field-err" id="err-Email">Please enter a valid email.</div>
                             </div>
                         </div>
                         @if (!usesLeanContactFields)
@@ -1136,7 +1128,7 @@ We’ll walk through them together so you can see what actually makes sense — 
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <div class="lq-trust-note">100% Secure • No Obligation</div>
+                        <div class="lq-trust-note">Private. Simple. Built around you.</div>
                         <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
                     </div>
                     <div class="lq-reassurance" hidden></div>
