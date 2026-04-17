@@ -104,10 +104,13 @@
     top: 50% !important;
     left: 50% !important;
     transform: translate(-50%, -50%) !important;
-    width: min(560px, 96vw) !important;
+    width: min(680px, 96vw) !important;
     min-width: unset !important;
+    height: min(82vh, 860px) !important;
     max-height: 82vh !important;
-    overflow-y: auto !important;
+    overflow-y: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
     z-index: 5100 !important;
     border-radius: 20px !important;
     border: 1.5px solid rgba(221,180,87,.72) !important;
@@ -141,7 +144,8 @@
     display: flex !important;
     flex-direction: column !important;
     gap: 8px !important;
-    max-height: 52vh !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
     overflow-y: auto !important;
 }
 
