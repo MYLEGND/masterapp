@@ -13786,72 +13786,122 @@ details.section{
         0 16px 32px rgba(0,0,0,.36);
 }
 
-/* ── Post-call outcome buttons: theme-tinted dark base ────────── */
-/* Default (fallback) */
+/* ── Post-call outcome buttons: semantic per-button colors ──────── */
+/* Shared base shape */
 #rbShell .lb-actions .lb-btn[data-outcome] {
     background: linear-gradient(160deg, #141e2e 0%, #0d1320 100%) !important;
-    border: 1.5px solid rgba(148,163,184,.28) !important;
-    color: #c8d4e0 !important;
+    border: 1.5px solid rgba(148,163,184,.3) !important;
+    color: #cbd5e1 !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 4px 12px rgba(0,0,0,.28) !important;
+    transition: border-color .18s, color .18s, transform .15s, box-shadow .18s !important;
 }
-#rbShell .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(148,163,184,.55) !important;
-    color: #e2e8f0 !important;
+
+/* No Answer — cool slate */
+#rbShell .lb-actions .lb-btn[data-outcome="NoAnswer"] {
+    border-color: rgba(100,116,139,.55) !important;
+    color: #94a3b8 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="NoAnswer"]:hover {
+    border-color: rgba(100,116,139,.9) !important;
+    color: #cbd5e1 !important;
     transform: translateY(-1px);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 8px 18px rgba(0,0,0,.34) !important;
 }
 
-/* Mortgage Protection — deep emerald tint */
-#rbShell.theme-mp .lb-actions .lb-btn[data-outcome] {
-    background: linear-gradient(160deg, #0a2018 0%, #061510 100%) !important;
-    border-color: rgba(34,197,94,.3) !important;
-    color: #a7f3cc !important;
+/* Contacted — sky blue */
+#rbShell .lb-actions .lb-btn[data-outcome="Contacted"] {
+    border-color: rgba(56,189,248,.55) !important;
+    color: #38bdf8 !important;
 }
-#rbShell.theme-mp .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(34,197,94,.6) !important;
-    color: #d1fae5 !important;
-}
-
-/* Final Expense — deep crimson tint */
-#rbShell.theme-fe .lb-actions .lb-btn[data-outcome] {
-    background: linear-gradient(160deg, #200a12 0%, #150609 100%) !important;
-    border-color: rgba(244,63,94,.3) !important;
-    color: #fda4b4 !important;
-}
-#rbShell.theme-fe .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(244,63,94,.6) !important;
-    color: #fecdd3 !important;
+#rbShell .lb-actions .lb-btn[data-outcome="Contacted"]:hover {
+    border-color: rgba(56,189,248,.9) !important;
+    color: #7dd3fc !important;
+    transform: translateY(-1px);
 }
 
-/* Medicare — deep blue tint */
-#rbShell.theme-med .lb-actions .lb-btn[data-outcome] {
-    background: linear-gradient(160deg, #0a1828 0%, #060f1a 100%) !important;
-    border-color: rgba(59,130,246,.3) !important;
-    color: #93c5fd !important;
+/* Follow Up — amber */
+#rbShell .lb-actions .lb-btn[data-outcome="FollowUp"] {
+    border-color: rgba(251,191,36,.55) !important;
+    color: #fbbf24 !important;
 }
-#rbShell.theme-med .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(59,130,246,.6) !important;
-    color: #bfdbfe !important;
-}
-
-/* Life Insurance — deep purple tint */
-#rbShell.theme-life .lb-actions .lb-btn[data-outcome] {
-    background: linear-gradient(160deg, #160e2e 0%, #0e081e 100%) !important;
-    border-color: rgba(168,85,247,.3) !important;
-    color: #d8b4fe !important;
-}
-#rbShell.theme-life .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(168,85,247,.6) !important;
-    color: #ede9fe !important;
-}
-
-/* Disability Insurance — deep amber tint */
-#rbShell.theme-di .lb-actions .lb-btn[data-outcome] {
-    background: linear-gradient(160deg, #1c1206 0%, #110b03 100%) !important;
-    border-color: rgba(245,158,11,.3) !important;
-    color: #fcd34d !important;
-}
-#rbShell.theme-di .lb-actions .lb-btn[data-outcome]:hover {
-    border-color: rgba(245,158,11,.6) !important;
+#rbShell .lb-actions .lb-btn[data-outcome="FollowUp"]:hover {
+    border-color: rgba(251,191,36,.9) !important;
     color: #fde68a !important;
+    transform: translateY(-1px);
+}
+
+/* Booked Meeting — emerald green */
+#rbShell .lb-actions .lb-btn[data-outcome="Booked"] {
+    border-color: rgba(34,197,94,.55) !important;
+    color: #4ade80 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="Booked"]:hover {
+    border-color: rgba(34,197,94,.9) !important;
+    color: #86efac !important;
+    transform: translateY(-1px);
+}
+
+/* Needs Docs — orange */
+#rbShell .lb-actions .lb-btn[data-outcome="NeedsDocs"] {
+    border-color: rgba(249,115,22,.55) !important;
+    color: #fb923c !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="NeedsDocs"]:hover {
+    border-color: rgba(249,115,22,.9) !important;
+    color: #fdba74 !important;
+    transform: translateY(-1px);
+}
+
+/* Policy Placed — gold/champagne */
+#rbShell .lb-actions .lb-btn[data-outcome="PolicyPlaced"] {
+    border-color: rgba(199,153,49,.65) !important;
+    color: #c79931 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="PolicyPlaced"]:hover {
+    border-color: rgba(199,153,49,1) !important;
+    color: #f0c84a !important;
+    transform: translateY(-1px);
+}
+
+/* AI Reception — violet */
+#rbShell .lb-actions .lb-btn[data-outcome="AIReception"] {
+    border-color: rgba(139,92,246,.55) !important;
+    color: #a78bfa !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="AIReception"]:hover {
+    border-color: rgba(139,92,246,.9) !important;
+    color: #c4b5fd !important;
+    transform: translateY(-1px);
+}
+
+/* Nurture — cyan/teal */
+#rbShell .lb-actions .lb-btn[data-outcome="Nurture"] {
+    border-color: rgba(6,182,212,.55) !important;
+    color: #22d3ee !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="Nurture"]:hover {
+    border-color: rgba(6,182,212,.9) !important;
+    color: #67e8f9 !important;
+    transform: translateY(-1px);
+}
+
+/* Not Interested — deep orange-red */
+#rbShell .lb-actions .lb-btn[data-outcome="NotInterested"] {
+    border-color: rgba(239,68,68,.5) !important;
+    color: #f87171 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="NotInterested"]:hover {
+    border-color: rgba(239,68,68,.85) !important;
+    color: #fca5a5 !important;
+    transform: translateY(-1px);
+}
+
+/* Lost — crimson red */
+#rbShell .lb-actions .lb-btn[data-outcome="Lost"] {
+    border-color: rgba(220,38,38,.55) !important;
+    color: #ef4444 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="Lost"]:hover {
+    border-color: rgba(220,38,38,.9) !important;
+    color: #fca5a5 !important;
+    transform: translateY(-1px);
 }
