@@ -950,8 +950,8 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-title">Let's see what protection actually fits your situation</div>
-                <div class="lq-step-helper">Takes less than 30 seconds — no pressure.</div>
+                <div class="lq-step-title">Let’s make sure the people you care about are actually protected</div>
+                <div class="lq-step-helper">This takes 30 seconds — and most people realize they’ve been underprotected.</div>
                 <div class="lq-step-progress-wrap" aria-live="polite">
                     <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 3</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
@@ -1052,7 +1052,7 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let's walk through your options together</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s go over what this actually looks like for you</div>
                 <div class="lq-step-helper">This is where we make sure you actually understand what fits — not just see options.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
@@ -1141,7 +1141,8 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-reach-note">We'll go over your options together and answer any questions — simple and clear.</div>
+                            <div class="lq-reach-note">This is where we break it down clearly — what fits, what it costs, and what actually makes sense for you.</div>
+                            <div class="lq-trust-note">Takes less than 2 minutes • No pressure • Just clarity</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -1609,8 +1610,8 @@ body.life-landing header .navbar .nav-link:focus {
       <div class="lq-step-panel" id="lifeMiniResultsPanel">
         <div class="lq-step-panel-pad">
           <div class="lq-step-progress">Your Results</div>
-          <div class="lq-step-title">Here's what most people in your situation choose</div>
-          <div class="lq-step-helper">This is based on what you just told us - we'll walk you through it step by step.</div>
+          <div class="lq-step-title">Based on what you told us, here’s what actually makes sense for your situation</div>
+          <div class="lq-step-helper">Most people are either overpaying or undercovered — this helps you avoid both.</div>
           <div class="lq-rec-card primary">
             <span class="lq-rec-badge primary">Best Match</span>
             <div class="lq-rec-title">${recs.primary.title}</div>
@@ -1620,7 +1621,6 @@ body.life-landing header .navbar .nav-link:focus {
             <span class="lq-rec-badge secondary">Also Worth Looking At</span>
             <div class="lq-rec-title">${recs.secondary.title}</div>
           </div>
-          <div class="lq-value-note">We’ll walk you through what may fit, what it may cost, and what makes the most sense for your situation.</div>
           <div class="lq-reach-note" style="margin-top:12px;">
             We'll walk through your options and pricing clearly on the next step.
           </div>
