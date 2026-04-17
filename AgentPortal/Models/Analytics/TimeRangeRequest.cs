@@ -18,9 +18,18 @@ public sealed class TimeRangeRequest
     public string Label { get; init; } = "Last 30 Days";
     public string Preset { get; init; } = "30d";
 
-    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null)
+    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, int timezoneOffsetMinutes = 0)
     {
         var now = DateTime.UtcNow;
+        // Clamp offset to a sane range to prevent abuse; 0 = UTC fallback.
+        var safeOffset = (timezoneOffsetMinutes >= -840 && timezoneOffsetMinutes <= 840) ? timezoneOffsetMinutes : 0;
+        // Derive the viewer's local "now" by applying the browser UTC offset.
+        // getTimezoneOffset() is positive for zones west of UTC (e.g. UTC-7 = +420).
+        var localNow = now.AddMinutes(-safeOffset);
+        // Local "today" midnight expressed as a UTC instant.
+        var localTodayUtc = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0, DateTimeKind.Utc)
+                                .AddMinutes(safeOffset);
+
         preset = (preset ?? "30d").ToLowerInvariant();
 
         DateTime start;
@@ -31,27 +40,29 @@ public sealed class TimeRangeRequest
         switch (preset)
         {
             case "today":
-                start = now.Date;
+                start = localTodayUtc;
                 grouping = TimeGrouping.Day;
                 label = "Today";
                 break;
             case "7d":
-                start = now.Date.AddDays(-6);
+                start = localTodayUtc.AddDays(-6);
                 grouping = TimeGrouping.Day;
                 label = "Last 7 Days";
                 break;
             case "30d":
-                start = now.Date.AddDays(-29);
+                start = localTodayUtc.AddDays(-29);
                 grouping = TimeGrouping.Day;
                 label = "Last 30 Days";
                 break;
             case "month":
-                start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                start = new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+                            .AddMinutes(safeOffset);
                 grouping = TimeGrouping.Day;
                 label = "This Month";
                 break;
             case "year":
-                start = new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                start = new DateTime(localNow.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc)
+                            .AddMinutes(safeOffset);
                 grouping = TimeGrouping.Month;
                 label = "This Year";
                 break;
@@ -67,7 +78,7 @@ public sealed class TimeRangeRequest
                 label = "Custom";
                 break;
             default:
-                start = now.Date.AddDays(-29);
+                start = localTodayUtc.AddDays(-29);
                 grouping = TimeGrouping.Day;
                 label = "Last 30 Days";
                 break;
