@@ -14371,3 +14371,16 @@ details.section{
         grid-row: 1 !important;
     }
 }
+
+/* Desktop-only filterbar order fix (do not affect mobile) */
+@media (min-width: 901px){
+    #rbShell .lb-filterbar [data-lb-slot="state"]{ order: 1; }
+    #rbShell .lb-filterbar [data-lb-slot="stage"]{ order: 2; }
+    #rbShell .lb-filterbar [data-lb-slot="calls"]{ order: 3; }
+    #rbShell .lb-filterbar [data-lb-slot="age"]{ order: 4; }
+    #rbShell .lb-filterbar [data-lb-slot="search"]{ order: 5; }
+    #rbShell .lb-filterbar [data-lb-slot="clear"]{ order: 6; }
+    #rbShell .lb-filterbar [data-lb-slot="zoom"]{ order: 7; }
+    #rbShell .lb-filterbar [data-lb-slot="note"]{ order: 8; }
+    #rbShell .lb-filterbar [data-lb-slot="crm"]{ order: 9; }
+}
