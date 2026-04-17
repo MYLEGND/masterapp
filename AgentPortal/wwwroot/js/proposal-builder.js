@@ -566,16 +566,18 @@
     closeMenu();
   });
 
-  // Only explicit exit buttons close the modal
-  overlay.addEventListener("click", (e) => {
-    // Intentionally ignore backdrop clicks to prevent accidental close
+  overlay.addEventListener("click", (event) => {
+    if (event.target !== overlay) return;
+    closeModal();
   });
   closeEls.forEach(el => el.addEventListener("click", closeModal));
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      // Keep Escape for menus only; do not close the proposal modal implicitly
-      closeMenu();
+    if (e.key !== "Escape") return;
+    if (!overlay.hidden) {
+      closeModal();
+      return;
     }
+    closeMenu();
   });
 
   ["leadId", "name"].forEach((key) => {

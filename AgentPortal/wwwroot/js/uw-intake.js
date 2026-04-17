@@ -733,13 +733,19 @@
       document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
     });
 
-    overlay.addEventListener("click", () => { /* no-op on backdrop click */ });
+    overlay.addEventListener("click", (event) => {
+      if (event.target !== overlay) return;
+      toggleModal(false);
+    });
     closeEls.forEach((el) => el.addEventListener("click", () => toggleModal(false)));
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        closeMenu();
-        document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+      if (event.key !== "Escape") return;
+      if (!overlay.hidden) {
+        toggleModal(false);
+        return;
       }
+      closeMenu();
+      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
     });
 
     ["leadId", "name"].forEach((key) => {

@@ -768,13 +768,20 @@
     document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
   });
 
-  overlay.addEventListener("click", () => { /* no-op */ });
+  overlay.addEventListener("click", (event) => {
+    if (event.target !== overlay) return;
+    closeModal();
+  });
   closeEls.forEach((el) => el.addEventListener("click", () => closeModal()));
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeMenu();
-      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    if (event.key !== "Escape") return;
+    const decisionModalOpen = !!document.querySelector("#captureDecisionModal.show");
+    if (!decisionModalOpen && !overlay.hidden) {
+      closeModal();
+      return;
     }
+    closeMenu();
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
   });
 
   ["leadId", "name"].forEach((key) => {

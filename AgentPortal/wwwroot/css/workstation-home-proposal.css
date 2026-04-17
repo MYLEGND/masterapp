@@ -37,13 +37,14 @@
 
 #proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;background:rgba(7,14,28,.72);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
 #proposalOverlay.hp-overlay[hidden]{display:none !important;}
-#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);padding:1rem 1.1rem;}
+#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;scrollbar-gutter:stable;border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);padding:1rem 1.1rem;}
 #proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
 #proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
 #proposalDialog .hp-dialog-icon{font-size:1.8rem;line-height:1;flex-shrink:0;}
 #proposalDialog .hp-dialog-title{font-weight:950;font-size:1.55rem;color:#f4d890;line-height:1.15;}
 #proposalDialog .hp-dialog-sub{color:#b9c5d8;font-weight:600;margin-top:.25rem;}
-#proposalDialog .hp-dialog-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:1.5px solid rgba(166,128,35,.44);background:rgba(255,255,255,.05);color:#f8fafc;font-size:1.7rem;line-height:1;flex-shrink:0;}
+#proposalDialog .hp-dialog-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:2px solid rgba(221,180,87,.78);background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));color:#f8fafc;font-size:1.7rem;line-height:1;flex-shrink:0;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.35);}
+#proposalDialog .hp-dialog-close:hover{border-color:#f2cf7f;background:linear-gradient(180deg,rgba(20,35,66,.98),rgba(15,29,56,.98));}
 #proposalDialog .hp-form{display:flex;flex-direction:column;gap:.55rem;}
 #proposalDialog .hp-form-meta{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;padding:.65rem .75rem;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.2);}
 #proposalDialog .hp-form-actions{display:flex;gap:.6rem;flex-wrap:wrap;align-self:flex-end;}
@@ -66,3 +67,32 @@
 #proposalDialog .hp-currency-sym,#proposalDialog .hp-currency-sfx{font-weight:900;color:#f4d890;flex-shrink:0;}
 #proposalDialog .hp-currency-input{flex:1 1 auto;background:transparent !important;border:none !important;box-shadow:none !important;color:#f8fafc !important;font-weight:700;font-size:.9rem;min-width:0;padding:0;}
 #proposalDialog .hp-currency-input:focus{outline:none;}
+
+@media (max-width: 900px){
+    #proposalOverlay.hp-overlay{
+        align-items:center;
+        justify-content:center;
+        padding:max(10px, env(safe-area-inset-top)) 10px max(10px, env(safe-area-inset-bottom)) 10px;
+    }
+    #proposalDialog.hp-dialog{
+        width:min(1380px,98vw);
+        max-height:calc(100dvh - 20px);
+        border-radius:16px;
+        padding:.8rem .8rem 1rem;
+    }
+    #proposalDialog .hp-dialog-head{
+        position:sticky;
+        top:0;
+        z-index:5;
+        margin:-0.8rem -0.8rem .7rem;
+        padding:.8rem .8rem .7rem;
+        border-radius:16px 16px 0 0;
+        background:linear-gradient(180deg,rgba(11,21,41,.98),rgba(15,29,56,.96));
+        backdrop-filter:blur(4px);
+    }
+    #proposalDialog .hp-dialog-close{
+        width:48px;
+        height:48px;
+        font-size:2rem;
+    }
+}

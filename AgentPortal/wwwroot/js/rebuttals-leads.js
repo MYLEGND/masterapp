@@ -1841,8 +1841,12 @@
     }, true);
 
     document.addEventListener('keydown', (event) => {
-      if (!pendingAction) return;
       if (event.key !== 'Escape') return;
+      if (noteOverlay && !noteOverlay.hidden) {
+        closeNoteModal();
+        return;
+      }
+      if (!pendingAction) return;
       resetPendingAction();
     });
 
@@ -1885,6 +1889,10 @@
       await openNoteModal();
     });
     noteCloseBtn?.addEventListener('click', () => {
+      closeNoteModal();
+    });
+    noteOverlay?.addEventListener('click', (event) => {
+      if (event.target !== noteOverlay) return;
       closeNoteModal();
     });
     noteDateInput?.addEventListener('change', async () => {
@@ -1939,9 +1947,6 @@
         if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
       });
     });
-    // Intentionally no outside-click/Escape close for Note to Self.
-    // Modal closes only when the explicit close button is clicked.
-
     // Initialize SignalR and active state sync
     if (signalRAvailable){
       try {
