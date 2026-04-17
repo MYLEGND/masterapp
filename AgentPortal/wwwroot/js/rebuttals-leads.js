@@ -1086,6 +1086,7 @@
             'RequestVerificationToken': token
           },
           credentials: 'include',
+          keepalive: true,
           body: `id=${encodeURIComponent(lead.leadId || '')}`
         }));
         if (res.ok){
@@ -1775,9 +1776,10 @@
       resetPendingAction({ preserveStatus: true });
       applyOptimisticCallIncrement(lead);
       setStatusMessage(`Dialing ${fmtPhone(digits) || digits}...`);
-      setTimeout(() => { window.location.href = `tel:${digits}`; }, 0);
       // Keep UI instant via optimistic update, then reconcile with server totals.
       incrementCallForLead(lead, { skipLocalFallback: true }).catch(() => {});
+      const launchDelayMs = isMobileScreen() ? 0 : 140;
+      setTimeout(() => { window.location.href = `tel:${digits}`; }, launchDelayMs);
     });
 
     textBtn?.addEventListener('click', () => {
