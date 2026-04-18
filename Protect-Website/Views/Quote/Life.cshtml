@@ -950,7 +950,7 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-title">Let’s make sure the people you care about are actually protected</div>
+                <div class="lq-step-title">If something happened to you tomorrow, would they actually be okay?</div>
                 <div class="lq-step-helper">This takes 30 seconds — and helps you see what may actually fit your situation.</div>
                 <div class="lq-step-progress-wrap" aria-live="polite">
                     <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 3</div>
@@ -1037,13 +1037,13 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Preparing</div>
-                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Preparing your review…</div>
-                <div class="lq-step-helper">Based on what you shared, we’re getting ready to walk you through what may fit best.</div>
+                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Analyzing your situation...</div>
+                <div class="lq-step-helper">We’re identifying what actually fits your situation — not guessing.</div>
                 <div class="lq-processing-bridge" aria-hidden="true">
                     <div class="lq-processing-track">
                         <div class="lq-processing-fill" id="lifeProcessingFill"></div>
                     </div>
-                    <div class="lq-processing-note">Preparing your review...</div>
+                    <div class="lq-processing-note">Matching you with the right protection strategy...</div>
                 </div>
             </div>
         </div>
@@ -1609,7 +1609,7 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel-pad">
           <div class="lq-step-progress">Your Results</div>
           <div class="lq-step-title">Based on what you told us, here’s what actually makes sense for your situation</div>
-          <div class="lq-step-helper">Most people don’t realize what they actually need until they see it laid out clearly.</div>
+          <div class="lq-step-helper">Most people are surprised by this — here’s why:</div>
           <div class="lq-rec-card primary">
             <span class="lq-rec-badge primary">Best Match</span>
             <div class="lq-rec-title">${recs.primary.title}</div>
@@ -1623,7 +1623,7 @@ body.life-landing header .navbar .nav-link:focus {
             We'll walk through your options and pricing clearly on the next step.
           </div>
           <div class="lq-step-actions">
-            <button class="btn-gold w-100" id="continueToContactBtn">Continue & Review My Options</button>
+            <button type="button" class="btn-gold w-100" id="continueToContactBtn">Continue & Review My Options</button>
           </div>
         </div>
       </div>
