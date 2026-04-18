@@ -51,7 +51,6 @@
     }
     var protectStep = viewSteps[0];
     var goalStep = viewSteps[1];
-    var tobaccoStep = viewSteps[2];
     var ageStep = viewSteps[3];
     var selectedAgeBracket = string.Empty;
     var ageValueNumber = form.Age;
@@ -930,7 +929,6 @@ body.life-landing header .navbar .nav-link:focus {
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
         <input type="hidden" name="Answer2" id="Answer2" value="@form.Answer2" />
-        <input type="hidden" name="Answer3" id="Answer3" value="@form.Answer3" />
         <input type="hidden" name="Answer4" id="Answer4" value="@(string.IsNullOrWhiteSpace(selectedAgeBracket) ? form.Answer4 : selectedAgeBracket)" />
         <input type="hidden" name="SessionId" id="SessionId" />
         <input type="hidden" name="VisitorId" id="VisitorId" />
@@ -1051,8 +1049,8 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s go over what this actually looks like for you</div>
-                <div class="lq-step-helper">We’ll make this simple, clear, and tailored to your situation.</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s break this down clearly for your situation</div>
+                <div class="lq-step-helper">What it looks like, what it costs, and what actually makes sense — no guesswork.</div>
                     <div class="lq-contact-grid">
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -1172,12 +1170,9 @@ body.life-landing header .navbar .nav-link:focus {
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
-  const answerHidden = [
-    document.getElementById('Answer1'),
-    document.getElementById('Answer2'),
-    document.getElementById('Answer3'),
-    document.getElementById('Answer4'),
-  ];
+  const answer1Hidden = document.getElementById('Answer1');
+  const answer2Hidden = document.getElementById('Answer2');
+  const answer4Hidden = document.getElementById('Answer4');
   const ageHidden = document.getElementById('AgeRange');
   const focusHidden = document.getElementById('ProtectFocus');
   const submitBtn = document.getElementById('submitLife');
@@ -1293,17 +1288,7 @@ body.life-landing header .navbar .nav-link:focus {
   // Whole Life: the default permanent / cash-value comparison path.
   //   Replaces IUL as the conservative permanent default for all age bands.
   //
-  // Q1 (protectingWho) and tobacco: informational context passed through to
-  //   the agent email. They do not change the primary/secondary output.
-
-  function getAgeBand(age) {
-    const n = Number.parseInt(age, 10);
-    if (!Number.isFinite(n)) return null;
-    if (n < 35) return 'young';   // under 35
-    if (n < 50) return 'mid';     // 35–49
-    if (n < 65) return 'senior';  // 50–64
-    return 'elder';               // 65+
-  }
+  // Q1 (protectingWho) does not change the primary/secondary output.
 
   // Pure goal + age dispatch. Returns { primaryKey, secondaryKey }.
   // Q1 does not override these results; it reinforces existing tendencies only.
@@ -1346,12 +1331,10 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function computeRecommendations() {
-    const protectingWho = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
-    const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
-    const tobacco       = '';
+    const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answer2Hidden?.value || '';
     const selectedAgeRange = selectedRadio('AgeBracket')?.value || ageHidden?.value || '';
     const ageFromRange  = normalizedAgeFromRange(selectedAgeRange);
-    const age           = asTrimmed(ageInput?.value) || ageFromRange || asTrimmed(answerHidden[3]?.value);
+    const age           = asTrimmed(ageInput?.value) || ageFromRange || asTrimmed(answer4Hidden?.value);
     const ageNum        = Number.parseInt(age, 10);
     const offerKey      = '@cfg.OfferKey';
     const isGeneric     = offerKey === 'life';
@@ -1380,54 +1363,6 @@ body.life-landing header .navbar .nav-link:focus {
       primary:   { key: primaryKey,   ...(PRODUCT_CONTENT[primaryKey]   || PRODUCT_CONTENT.life) },
       secondary: { key: secondaryKey, ...(PRODUCT_CONTENT[secondaryKey] || PRODUCT_CONTENT.life) },
     };
-  }
-
-  function renderRecCard(rec, isPrimary) {
-    const badgeClass = isPrimary ? 'primary' : 'secondary';
-    const badgeLabel = isPrimary ? 'Best Match' : 'Also Consider';
-    const cardClass  = isPrimary ? 'lq-rec-card primary' : 'lq-rec-card';
-    const bullets    = rec.bullets.map(b => `<li>${b}</li>`).join('');
-    return `<div class="${cardClass}">
-      <span class="lq-rec-badge ${badgeClass}">${badgeLabel}</span>
-      <div class="lq-rec-title">${rec.title}</div>
-      <div class="lq-rec-desc">${rec.desc}</div>
-      <ul class="lq-rec-bullets">${bullets}</ul>
-    </div>`;
-  }
-
-  function renderResults() {
-    const recs = computeRecommendations();
-
-    // Resolve human-readable labels from the selected radio's label span
-    function getLabelForRadio(name, code) {
-      return (
-        selectedRadio(name)?.closest('label')?.querySelector('span')?.textContent ||
-        form.querySelector(`input[name="${name}"][value="${code}"]`)?.closest('label')?.querySelector('span')?.textContent ||
-        code || '—'
-      );
-    }
-
-    const protectingWhoCode = selectedRadio('ProtectingWho')?.value || answerHidden[0]?.value || '';
-    const coverageGoalCode  = selectedRadio('CoverageGoal')?.value  || answerHidden[1]?.value || '';
-    const ageVal            = selectedRadio('AgeBracket')?.value || ageHidden?.value || answerHidden[3]?.value || asTrimmed(ageInput?.value) || '—';
-
-    const rsProtecting = document.getElementById('rs-protecting');
-    const rsGoal       = document.getElementById('rs-goal');
-    const rsAge        = document.getElementById('rs-age');
-    if (rsProtecting) rsProtecting.textContent = getLabelForRadio('ProtectingWho', protectingWhoCode);
-    if (rsGoal)       rsGoal.textContent       = getLabelForRadio('CoverageGoal',  coverageGoalCode);
-    if (rsAge)        rsAge.textContent        = ageVal;
-
-    const cardsEl = document.getElementById('lifeRecCards');
-    if (cardsEl) {
-      cardsEl.innerHTML = renderRecCard(recs.primary, true) + renderRecCard(recs.secondary, false);
-    }
-
-    // Store in hidden fields for POST passthrough
-    if (recPrimaryKeyEl)     recPrimaryKeyEl.value     = recs.primary.key;
-    if (recPrimaryTitleEl)   recPrimaryTitleEl.value   = recs.primary.title;
-    if (recSecondaryKeyEl)   recSecondaryKeyEl.value   = recs.secondary.key;
-    if (recSecondaryTitleEl) recSecondaryTitleEl.value = recs.secondary.title;
   }
 
   function trackEvent(eventType, metadata = {}) {
@@ -1506,17 +1441,17 @@ body.life-landing header .navbar .nav-link:focus {
     const resolvedAgeValue = ageFromRange || fallbackAgeValue;
 
     if (protecting) {
-      answerHidden[0].value = protecting.value;
+      answer1Hidden.value = protecting.value;
     }
     if (goal) {
-      answerHidden[1].value = goal.value;
+      answer2Hidden.value = goal.value;
       focusHidden.value = goal.dataset.label || goal.value;
     }
     if (ageInput) {
       ageInput.value = resolvedAgeValue;
     }
-    if (answerHidden[3]) {
-      answerHidden[3].value = selectedAgeRange || resolvedAgeValue;
+    if (answer4Hidden) {
+      answer4Hidden.value = selectedAgeRange || resolvedAgeValue;
     }
     if (ageHidden) {
       ageHidden.value = selectedAgeRange;
@@ -1770,10 +1705,9 @@ body.life-landing header .navbar .nav-link:focus {
     if (!validateStepOneComplete()) return;
     syncStepOneAnswersFromUI();
     trackEvent('life_step1_age_continue', {
-      protectingWho: answerHidden[0]?.value || '',
-      coverageGoal: answerHidden[1]?.value || '',
-      tobaccoUse: '',
-      age: answerHidden[3]?.value || '',
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
     showProcessingBridge(true);
@@ -1880,10 +1814,9 @@ body.life-landing header .navbar .nav-link:focus {
         pageVariant,
         pageMode,
         pagePath: window.location.pathname,
-        protectingWho: answerHidden[0]?.value || '',
-        coverageGoal: answerHidden[1]?.value || '',
-        tobaccoUse: '',
-        age: answerHidden[3]?.value || '',
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        age: answer4Hidden?.value || '',
         ageRange: ageHidden.value,
         protectFocus: focusHidden.value
       })
@@ -1938,9 +1871,9 @@ body.life-landing header .navbar .nav-link:focus {
     showStep2(false);
   } else {
     const initMicro = resolveInitialMicroStep();
-if (initMicro >= 2) {
-  showStep1(2, false);
-} else {
+    if (initMicro >= 2) {
+      showStep1(2, false);
+    } else {
       showStep1(initMicro, false);
     }
   }
