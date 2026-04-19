@@ -613,11 +613,12 @@ footer.footer {
 }
 
 #budget-embed .networth-tool {
-    border: 2px solid #a68023;
-    border-radius: 18px;
+    border: 1.8px solid rgba(166,128,35,.52);
+    border-radius: 16px;
     padding: 26px;
-    background-color: #fff;
-    box-shadow: 0 18px 50px rgba(0,0,0,0.14);
+    background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+    box-shadow: 0 40px 100px rgba(0,0,0,.58);
+    color: #f8fafc;
 }
 
 /* ============================== RESPONSIVE ============================== */
@@ -645,67 +646,78 @@ footer.footer {
 }
 input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
 
-/* ------------------------------ Finance Tools Container ------------------------------ */
-.finance-tools-container input.form-control {
-    border: .5px solid #a68023; 
-    border-radius: 0.5rem;
-    padding: 0.65rem 0.75rem;
-    font-weight: 700;           
-    font-size: 0.95rem;
-    transition: all 0.25s ease;
-    color: #222;                
-    background-color: #fff;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
+/* ------------------------------ Finance Tools — all tools theme ------------------------------ */
+#budget-embed input,
+#budget-embed select,
+#budget-embed textarea,
+#budget-embed input.form-control,
+#budget-embed select.form-control,
+#budget-embed .form-control,
+#budget-embed .form-select,
+.networth-tool input,
+.networth-tool select,
+.networth-tool textarea,
+.networth-tool input.form-control,
+.networth-tool select.form-control,
+.networth-tool .form-control,
+.networth-tool .form-select {
+    border: 1.5px solid rgba(166,128,35,.38) !important;
+    border-radius: 10px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
-.finance-tools-container input.form-control::placeholder {
-    color: #000;                
-    font-weight: 600;           
+#budget-embed input::placeholder,
+#budget-embed textarea::placeholder,
+.networth-tool input::placeholder,
+.networth-tool textarea::placeholder {
+    color: #64748b !important;
+    font-weight: 600;
 }
-.finance-tools-container input.form-control:focus {
-    outline: none;
-    border-color: #a68023;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-}
-.finance-tools-container input.positive {
-    border-color: #a68023; 
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    color: #1b3b1b;         
-    font-weight: 700;
-}
-.finance-tools-container input.negative {
-    border-color: #a68023; 
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    color: #000;         
-    font-weight: 700;
+#budget-embed input:focus,
+#budget-embed select:focus,
+#budget-embed textarea:focus,
+#budget-embed .form-control:focus,
+#budget-embed .form-select:focus,
+.networth-tool input:focus,
+.networth-tool select:focus,
+.networth-tool textarea:focus,
+.networth-tool .form-control:focus,
+.networth-tool .form-select:focus {
+    outline: none !important;
+    border-color: #ddb457 !important;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
 }
 
 /* ------------------------------ Gold Themed Buttons ------------------------------ */
 .btn-outline-gold {
-    color: #a68023;
-    border-color: #a68023;
+    color: #f4d890;
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
+    border: 1.5px solid rgba(199,153,49,.55);
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22);
     transition: all 0.2s ease;
 }
 .btn-outline-gold:hover {
-    background-color: #a68023;
-    color: #fff;
-    border-color: #a68023;
+    border-color: #ddb457;
+    box-shadow: 0 6px 18px rgba(0,0,0,.32);
+    color: #f4dc98;
 }
 
 /* ------------------------------ Budget Dropdown ------------------------------ */
 #budgetDropdown {
     transition: all 0.2s ease;
-    border: 1.5px solid #a68023; 
-    border-radius: 6px;
+    border: 1.5px solid rgba(199,153,49,.55);
+    border-radius: 10px;
     padding: 0.35rem 0.75rem;
     font-weight: 600;
-    background-color: #fff;
-    color: #333;
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
+    color: #f4d890;
     cursor: pointer;
 }
-#budgetDropdown:hover { border-color: #ffff; box-shadow: 0 2px 6px rgba(166,128,35,0.25); }
-#budgetDropdown option { border-bottom: 1px solid #fff; padding: 6px 10px; }
+#budgetDropdown:hover { border-color: #ddb457; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
+#budgetDropdown option { background: #0f1d38; color: #f8fafc; padding: 6px 10px; }
 #budgetDropdown option:last-child { border-bottom: none; }
-#budgetDropdown option:hover { background-color: #fdf6e3; color: #000; }
 
 /* ------------------------------ Output Spans / Highlights ------------------------------ */
 span[id^="elOut"],

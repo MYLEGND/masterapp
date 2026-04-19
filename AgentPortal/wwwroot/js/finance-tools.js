@@ -57,6 +57,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const financeRoot = document.getElementById("financeRoot");
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
+    const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
     const workspaceScope =
         clientUserId ||
         clientProfileId ||
@@ -84,7 +85,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
+        "BusinessSavingsAccelerator",
         "ExpenseLens",
+        "BusinessExpenseLens",
         "NetWorth",
         "CashFlow",
         "DebtClarity",
@@ -371,7 +374,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     const tools = [
         { id: "WealthForecast", name: "Wealth Forecast" },
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
+        ...(isBusinessClient ? [{ id: "BusinessSavingsAccelerator", name: "Business Savings Accelerator" }] : []),
         { id: "ExpenseLens", name: "Expense Lens" },
+        ...(isBusinessClient ? [{ id: "BusinessExpenseLens", name: "Business Expense Lens" }] : []),
         { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
         { id: "DebtClarity", name: "Debt Clarity" },
@@ -482,12 +487,14 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             await ensureChartJs();
             embedContainer.innerHTML = `
 <div class="networth-tool" style="
-    background:#ffffff; 
-    padding:40px; 
-    border-radius:20px; 
-    box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-    max-width:1200px; 
+    background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+    padding:40px;
+    border-radius:20px;
+    box-shadow:0 40px 100px rgba(0,0,0,.58);
+    border:1.8px solid rgba(166,128,35,.52);
+    max-width:1200px;
     margin:0 auto;
+    color:#f8fafc;
     font-family: 'Inter', sans-serif;
 ">
     <!-- Tooltip styles (safe + isolated) -->
@@ -778,7 +785,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             font-size:.9rem;
         }
         .wf-disrupt-sub{
-            color:#475569;
+            color:#b9c5d8;
             font-size:.82rem;
             line-height:1.25;
         }
@@ -4986,15 +4993,24 @@ markNeutral(savingsTipsOut);
 // ==========================================================
 // 2️⃣ SAVINGS ACCELERATOR (ELEVATED) + Tooltips
 // ==========================================================
-if (t.id === "SavingsAccelerator") {
+if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
+    const isBusinessSavingsAccelerator = t.id === "BusinessSavingsAccelerator";
+    const savingsToolStateId = isBusinessSavingsAccelerator ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
+    const linkedExpenseLensToolStateId = isBusinessSavingsAccelerator ? "BusinessExpenseLens" : "ExpenseLens";
+    const linkedExpenseLensUpdatedEvent = `${linkedExpenseLensToolStateId}:updated`;
+    const savingsSubtitle = isBusinessSavingsAccelerator
+        ? "Track business cash flow separately from personal money and allocate operating surplus with clarity."
+        : "Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.";
+
     embedContainer.innerHTML = `
-<div class="networth-tool p-4" 
-     style="background:#ffffff; 
-            border-radius:20px; 
-            box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-            border:1px solid rgba(166,128,35,0.35); 
-            max-width:1200px; 
+<div class="networth-tool p-4"
+     style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+            border-radius:20px;
+            box-shadow:0 40px 100px rgba(0,0,0,.58);
+            border:1.8px solid rgba(166,128,35,.52);
+            max-width:1200px;
             margin:0 auto;
+            color:#f8fafc;
             font-family: 'Inter', sans-serif;">
 
     <!-- Tooltip styles (safe + isolated) -->
@@ -5064,30 +5080,30 @@ if (t.id === "SavingsAccelerator") {
         ${t.name}
     </h3>
 
-    <p style="font-style:italic; color:#666; margin-bottom:20px;">
-        Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.
+    <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
+        ${savingsSubtitle}
     </p>
 
     <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
         <div style="flex:1; min-width:200px;">
             <div class="sa-label">
-                Net Cash Flow
+                ${isBusinessSavingsAccelerator ? "Business Net Cash Flow" : "Net Cash Flow"}
                 <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 3,800 • 5,200 (monthly take-home / net income)">i</span>
             </div>
             <div style="position:relative;">
                 <input id="saNet" type="text" class="form-control" placeholder="e.g., 2,000"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                       style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
         </div>
         <div style="flex:1; min-width:200px;">
             <div class="sa-label">
-                Essential Expenses
+                ${isBusinessSavingsAccelerator ? "Business Essential Expenses" : "Essential Expenses"}
                 <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 2,100 • 3,000 (rent, utilities, food, transport, insurance)">i</span>
             </div>
             <div style="position:relative;">
                 <input id="saEss" type="text" class="form-control" placeholder="e.g., 1,500"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                       style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
         </div>
@@ -5117,21 +5133,21 @@ if (t.id === "SavingsAccelerator") {
 
         <div class="d-flex gap-2 mt-3">
             <button id="saAddCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">+ Add Category</button>
+                    style="font-weight:600;">+ Add Category</button>
             <button id="saDelCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">- Delete Last</button>
+                    style="font-weight:600;">- Delete Last</button>
         </div>
     </div>
 
     <div id="saTips"
          style="padding:14px;
-                background:linear-gradient(135deg, #f1ede3, #e1d6b8);
+                background:rgba(255,255,255,.05);
+                border:1px solid rgba(166,128,35,.18);
                 border-left:5px solid #a68023;
                 font-style:italic;
-                color:#333;
+                color:#b9c5d8;
                 margin-top:20px;
-                border-radius:10px;
-                box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
+                border-radius:10px;">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
 </div>`;
@@ -5260,7 +5276,7 @@ if (t.id === "SavingsAccelerator") {
     };
 
     const applyExpenseLensToSavingsAccelerator = async () => {
-        const state = await loadPersistedState('ExpenseLens');
+        const state = await loadPersistedState(linkedExpenseLensToolStateId);
         const income = parseSavingsMoney(state?.income);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
 
@@ -5279,10 +5295,10 @@ if (t.id === "SavingsAccelerator") {
                 percent: row.querySelector('.allocation-percent').value || ''
             });
         });
-        savePersistedState('SavingsAccelerator', { net, ess, allocations });
+        savePersistedState(savingsToolStateId, { net, ess, allocations });
 
         // Push to shared Finance Profile (only fields this tool owns)
-        if (window.LegendFinanceProfile?.update) {
+        if (!isBusinessSavingsAccelerator && window.LegendFinanceProfile?.update) {
             const partial = {};
             const netNum = parseSavingsMoney(net);
             const essNum = parseSavingsMoney(ess);
@@ -5297,7 +5313,7 @@ if (t.id === "SavingsAccelerator") {
         categoryCount = 0;
         let created = 0;
 
-        const state = await loadPersistedState('SavingsAccelerator');
+        const state = await loadPersistedState(savingsToolStateId);
         saNetInput.value = state.net || '';
         saEssInput.value = state.ess || '';
 
@@ -5316,6 +5332,7 @@ if (t.id === "SavingsAccelerator") {
 
     const applyProfileToSavingsAccelerator = () => {
         const prof = window.LegendFinanceProfile?.get?.();
+        if (isBusinessSavingsAccelerator) return;
         if (!prof) return;
         if (saNetInput && !saNetInput.value) {
             saNetInput.value = prof.monthlyNet || prof.monthlyGross || '';
@@ -5468,7 +5485,7 @@ if (t.id === "SavingsAccelerator") {
         saPctTotal.textContent = '0%';
         saRemaining.textContent = '$0';
         saTips.textContent = 'Direct extra cash strategically across savings, debt reduction, and key priorities.';
-        clearPersistedState('SavingsAccelerator');
+        clearPersistedState(savingsToolStateId);
         hideTip();
         refreshSurplus();
     });
@@ -5478,7 +5495,7 @@ await loadAllocationState();
 	    applyProfileToSavingsAccelerator();
 	    window.addEventListener("FinanceProfile:updated", applyProfileToSavingsAccelerator);
 	    window.addEventListener("FinanceProfile:ready", applyProfileToSavingsAccelerator);
-	    window.addEventListener("ExpenseLens:updated", () => { applyExpenseLensToSavingsAccelerator(); });
+	    window.addEventListener(linkedExpenseLensUpdatedEvent, () => { applyExpenseLensToSavingsAccelerator(); });
 
 // ✅ Force correct colors AFTER state load (so it stays green/red)
 refreshSurplus();
@@ -5489,8 +5506,18 @@ refreshSurplus();
 /* -------------------------------
     3️⃣ EXPENSE LENS (ELEVATED)
 --------------------------------*/
-if (t.id === "ExpenseLens") {
+if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
     try {
+        const isBusinessExpenseLens = t.id === "BusinessExpenseLens";
+        const expenseLensToolStateId = isBusinessExpenseLens ? "BusinessExpenseLens" : "ExpenseLens";
+        const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
+        const expenseLensSubtitle = isBusinessExpenseLens
+            ? "Separate business operating income and recurring business bills from personal expenses."
+            : "Break down your income into categories and visualize spending percentages for better budgeting.";
+        const expenseLensDefaultTip = isBusinessExpenseLens
+            ? "Monitor business categories to identify operating costs, savings opportunities, and reinvestment capacity."
+            : "Monitor each category to identify areas to save or invest.";
+
         embedContainer.innerHTML = `
         <div class="networth-tool p-4"
              style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
@@ -5606,11 +5633,11 @@ if (t.id === "ExpenseLens") {
             </h3>
 
             <p style="font-style:italic; color:#666; margin-bottom:20px;">
-                Break down your income into categories and visualize spending percentages for better budgeting.
+                ${expenseLensSubtitle}
             </p>
 
             <div class="el-label">
-                Total Income
+                ${isBusinessExpenseLens ? "Business Total Income" : "Total Income"}
                 <span class="el-i" tabindex="0"
                       data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
             </div>
@@ -5646,7 +5673,7 @@ if (t.id === "ExpenseLens") {
                         margin-top:20px; 
                         border-radius:10px;
                         box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
-                Monitor each category to identify areas to save or invest.
+                ${expenseLensDefaultTip}
             </div>
 
             <div id="elMargin"
@@ -5822,13 +5849,13 @@ if (t.id === "ExpenseLens") {
                     categories.push({ index, name, due, frequency, amount });
                 });
                 const state = { income, categories, ...extraState };
-                savePersistedState('ExpenseLens', state);
+                savePersistedState(expenseLensToolStateId, state);
             } catch (e) { console.error(e); }
         };
 
         const loadExpenseLensState = async () => {
             try {
-                const state = await loadPersistedState('ExpenseLens');
+                const state = await loadPersistedState(expenseLensToolStateId);
                 categoriesContainer.innerHTML = '';
                 categoryCount = 0;
                 let categoriesCreated = 0;
@@ -5866,7 +5893,7 @@ if (t.id === "ExpenseLens") {
             } catch (e) { console.error(e); }
         };
 
-        const clearExpenseLensState = () => clearPersistedState('ExpenseLens');
+        const clearExpenseLensState = () => clearPersistedState(expenseLensToolStateId);
 
         // Active week filter (null = show all)
         let elActiveWeek = null;
@@ -6135,20 +6162,20 @@ if (t.id === "ExpenseLens") {
                 else if(pct <= 100) elTips.textContent = `You are spending ${pct.toFixed(1)}% of your income. Consider trimming non-essentials.`;
                 else elTips.textContent = `⚠️ You are overspending by ${(pct - 100).toFixed(1)}% of your income!`;
             } else {
-                elTips.textContent = 'Monitor each category to identify areas to save or invest.';
+                elTips.textContent = expenseLensDefaultTip;
             }
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent });
 
             // Push expenses + income into shared Finance Profile
-            if (window.LegendFinanceProfile?.update) {
+            if (!isBusinessExpenseLens && window.LegendFinanceProfile?.update) {
                 window.LegendFinanceProfile.update({
                     monthlyNet: income || undefined,
                     fixedExpenses: monthlyTotalSpent || undefined,
                     expenses: categoriesData
                 });
             }
-            window.dispatchEvent(new CustomEvent('ExpenseLens:updated', {
+            window.dispatchEvent(new CustomEvent(expenseLensUpdatedEvent, {
                 detail: {
                     income,
                     monthlyExpenseTotal: monthlyTotalSpent,
@@ -6473,7 +6500,7 @@ if (t.id === "ExpenseLens") {
             categoriesContainer.innerHTML = '';
             categoryCount = 0;
             createCategoryRow(++categoryCount);
-            elTips.textContent = 'Monitor each category to identify areas to save or invest.';
+            elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
             hideTip();
@@ -6499,6 +6526,7 @@ if (t.id === "ExpenseLens") {
 
         // Apply shared profile updates when fields are empty
         const applyProfileToExpenseLens = () => {
+            if (isBusinessExpenseLens) return;
             const prof = window.LegendFinanceProfile?.get?.();
             if (!prof) return;
 
@@ -6584,12 +6612,14 @@ if (t.id === "ExpenseLens") {
 --------------------------------*/
 if (t.id === "NetWorth") {
     embedContainer.innerHTML = `
-  <div class="networth-tool p-4" 
-       style="background:#ffffff;
+  <div class="networth-tool p-4"
+       style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
               border-radius:20px;
-              box-shadow:0 12px 35px rgba(166,128,35,0.15);
-              max-width:1200px; 
+              box-shadow:0 40px 100px rgba(0,0,0,.58);
+              border:1.8px solid rgba(166,128,35,.52);
+              max-width:1200px;
               margin:0 auto;
+              color:#f8fafc;
               font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -6659,7 +6689,7 @@ if (t.id === "NetWorth") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Track your total assets, liabilities, and net worth. See insights to grow your wealth.
         </p>
 
@@ -6672,7 +6702,7 @@ if (t.id === "NetWorth") {
                 </div>
                 <div style="position:relative;">
                     <input id="assets" type="text" class="form-control" placeholder="e.g., 150,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -6684,21 +6714,21 @@ if (t.id === "NetWorth") {
                 </div>
                 <div style="position:relative;">
                     <input id="liabs" type="text" class="form-control" placeholder="e.g., 50,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
         </div>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:rgba(255,255,255,.08);
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th>Assets</th>
-                <th>Liabilities</th>
-                <th>Net Worth</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="color:#f4d890;">Assets</th>
+                <th style="color:#f4d890;">Liabilities</th>
+                <th style="color:#f4d890;">Net Worth</th>
             </tr>
             <tr>
                 <td id="aVal">$0</td>
@@ -6708,31 +6738,32 @@ if (t.id === "NetWorth") {
         </table>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:rgba(255,255,255,.08);
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th>Net Worth to Assets Ratio</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="color:#f4d890; width:50%;">Net Worth to Assets Ratio</th>
                 <td id="nwRatio">0%</td>
             </tr>
             <tr>
-                <th>Liabilities to Assets Ratio</th>
+                <th style="color:#f4d890;">Liabilities to Assets Ratio</th>
                 <td id="liabRatio">0%</td>
             </tr>
             <tr>
-                <th>Wealth Status</th>
+                <th style="color:#f4d890;">Wealth Status</th>
                 <td id="wealthStatus">—</td>
             </tr>
         </table>
 
         <div id="nwTips"
              style="padding:12px;
-                    background:linear-gradient(135deg,#f1f3f6,#e4e7ec);
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
                     border-left:4px solid #a68023;
                     border-radius:8px;
                     font-style:italic;
-                    color:#333;
+                    color:#b9c5d8;
                     margin-top:14px;">
             Enter your assets and liabilities to get personalized insights.
         </div>
@@ -6909,11 +6940,13 @@ if (t.id === "NetWorth") {
 if (t.id === "CashFlow") {
     embedContainer.innerHTML = `
    <div class="networth-tool p-4"
-        style="background:#ffffff;
+        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                border-radius:20px;
-               box-shadow:0 12px 35px rgba(166,128,35,0.15);
-               max-width:1200px; 
+               box-shadow:0 40px 100px rgba(0,0,0,.58);
+               border:1.8px solid rgba(166,128,35,.52);
+               max-width:1200px;
                margin:0 auto;
+               color:#f8fafc;
                font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -6983,7 +7016,7 @@ if (t.id === "CashFlow") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Understand your monthly cash flow and uncover opportunities to save or invest.
         </p>
 
@@ -6997,9 +7030,7 @@ if (t.id === "CashFlow") {
                 <div style="position:relative;">
                     <input id="cfIncome" type="text" class="form-control"
                            placeholder="e.g., 5,000"
-                           style="border:1px solid #d6c48a;
-                                  box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-                                  font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -7012,9 +7043,7 @@ if (t.id === "CashFlow") {
                 <div style="position:relative;">
                     <input id="cfBills" type="text" class="form-control"
                            placeholder="e.g., 2,500"
-                           style="border:1px solid #d6c48a;
-                                  box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-                                  font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -7026,27 +7055,28 @@ if (t.id === "CashFlow") {
         </h5>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:rgba(255,255,255,.08);
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th style="width:50%; background:#f3f3f3;">Savings Potential</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="color:#f4d890; width:50%;">Savings Potential</th>
                 <td id="cfSavingsPotential">$0</td>
             </tr>
             <tr>
-                <th style="background:#f3f3f3;">Suggested Allocation</th>
+                <th style="color:#f4d890;">Suggested Allocation</th>
                 <td id="cfInvestPct">0%</td>
             </tr>
         </table>
 
         <div id="cfTips"
              style="padding:12px;
-                    background:linear-gradient(135deg,#f1f3f6,#e4e7ec);
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
                     border-left:4px solid #a68023;
                     border-radius:8px;
                     font-style:italic;
-                    color:#333;
+                    color:#b9c5d8;
                     margin-top:14px;">
             Enter your monthly income and bills to get personalized tips.
         </div>
@@ -7203,11 +7233,13 @@ if (t.id === "CashFlow") {
 if (t.id === "DebtClarity") {
     embedContainer.innerHTML = `
    <div class="networth-tool p-4"
-        style="background:#ffffff;
+        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                border-radius:20px;
-               box-shadow:0 12px 35px rgba(166,128,35,0.15);
-               max-width:1200px; 
+               box-shadow:0 40px 100px rgba(0,0,0,.58);
+               border:1.8px solid rgba(166,128,35,.52);
+               max-width:1200px;
                margin:0 auto;
+               color:#f8fafc;
                font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -7277,7 +7309,7 @@ if (t.id === "DebtClarity") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Quickly calculate your Debt-to-Income (DTI) ratio and get actionable guidance.
         </p>
 
@@ -7291,7 +7323,7 @@ if (t.id === "DebtClarity") {
                 <div style="position:relative;">
                     <input id="dcDebt" type="text" class="form-control"
                            placeholder="e.g., 40,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -7304,28 +7336,28 @@ if (t.id === "DebtClarity") {
                 <div style="position:relative;">
                     <input id="dcIncome" type="text" class="form-control"
                            placeholder="e.g., 80,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
         </div>
 
-        <h5 style="font-weight:700; margin-top:8px;">
+        <h5 style="font-weight:700; margin-top:8px; color:#f8fafc;">
             DTI Ratio:
             <span id="dcResult" style="color:#a68023; font-weight:900;">0%</span>
         </h5>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:rgba(255,255,255,.08);
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th style="width:40%; background:#f3f3f3;">DTI Status</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="color:#f4d890; width:40%;">DTI Status</th>
                 <td id="dcStatus">—</td>
             </tr>
             <tr>
-                <th style="background:#f3f3f3;">Recommendation</th>
+                <th style="color:#f4d890;">Recommendation</th>
                 <td id="dcTips">Enter your liabilities and income to receive guidance.</td>
             </tr>
         </table>
@@ -7498,12 +7530,13 @@ if (t.id === "DebtClarity") {
 if (t.id === "FinancialBuffer") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.12);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -7514,7 +7547,7 @@ if (t.id === "FinancialBuffer") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .fb-i{
                 display:inline-flex;
@@ -7573,7 +7606,7 @@ if (t.id === "FinancialBuffer") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#555; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Build a financial safety net to protect yourself from unexpected expenses.
         </p>
 
@@ -7584,23 +7617,24 @@ if (t.id === "FinancialBuffer") {
         </div>
         <div style="position:relative; margin-bottom:15px;">
             <input id="fbBills" type="text" class="form-control mb-3" placeholder="e.g., 2,500"
-                   style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; padding-right:30px;" />
+                   style="font-weight:700; color:#1E3A8A; padding-right:30px;" />
             <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
         </div>
 
         <div class="mb-3">
-            <h5 style="margin-bottom:6px;">1 Month Goal: <span id="fb1">$0</span></h5>
-            <h5 style="margin-bottom:6px;">3–6 Month Goal: <span id="fb3">$0</span></h5>
-            <h5 style="margin-bottom:6px;">12 Month Goal: <span id="fb12">$0</span></h5>
+            <h5 style="margin-bottom:6px; color:#f8fafc;">1 Month Goal: <span id="fb1">$0</span></h5>
+            <h5 style="margin-bottom:6px; color:#f8fafc;">3–6 Month Goal: <span id="fb3">$0</span></h5>
+            <h5 style="margin-bottom:6px; color:#f8fafc;">12 Month Goal: <span id="fb12">$0</span></h5>
         </div>
 
         <div id="fbTips"
              style="padding:12px;
-                    background:linear-gradient(135deg,#f1f3f6,#e4e7ec);
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
                     border-left:4px solid #a68023;
                     border-radius:8px;
                     font-style:italic;
-                    color:#333;
+                    color:#b9c5d8;
                     margin-top:14px;">
             Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.
         </div>
@@ -7750,12 +7784,13 @@ if (t.id === "FinancialBuffer") {
 if (t.id === "WealthProjection") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -7766,7 +7801,7 @@ if (t.id === "WealthProjection") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .wp-i{
                 display:inline-flex;

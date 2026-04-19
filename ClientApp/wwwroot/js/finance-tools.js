@@ -1,9 +1,63 @@
+// ── Global Finance Tools Theme ── injected once on load, covers every tool ──
+(function injectFinanceToolsTheme() {
+    if (document.getElementById('ft-dark-theme')) return;
+    const s = document.createElement('style');
+    s.id = 'ft-dark-theme';
+    s.textContent = `
+        #budget-embed input,
+        #budget-embed select,
+        #budget-embed textarea,
+        #budget-embed input.form-control,
+        #budget-embed select.form-control,
+        #budget-embed .form-control,
+        #budget-embed .form-select,
+        .networth-tool input,
+        .networth-tool select,
+        .networth-tool textarea,
+        .networth-tool input.form-control,
+        .networth-tool select.form-control,
+        .networth-tool .form-control,
+        .networth-tool .form-select {
+            background-color: rgba(255,255,255,.92) !important;
+            border: 1.5px solid rgba(166,128,35,.38) !important;
+            border-radius: 10px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+            transition: border-color .15s ease, box-shadow .15s ease !important;
+        }
+        #budget-embed input:focus,
+        #budget-embed select:focus,
+        #budget-embed textarea:focus,
+        #budget-embed .form-control:focus,
+        #budget-embed .form-select:focus,
+        .networth-tool input:focus,
+        .networth-tool select:focus,
+        .networth-tool textarea:focus,
+        .networth-tool .form-control:focus,
+        .networth-tool .form-select:focus {
+            border-color: #ddb457 !important;
+            box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+            outline: none !important;
+        }
+        #budget-embed input[type="date"],
+        .networth-tool input[type="date"] { color-scheme: light; }
+        #budget-embed .btn-outline-gold,
+        .networth-tool .btn-outline-gold {
+            background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+            border: 1.5px solid rgba(199,153,49,.55) !important;
+            border-radius: 10px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+        }
+    `;
+    document.head.appendChild(s);
+})();
+
 document.addEventListener("DOMContentLoaded", async function () {
     const dropdown = document.getElementById("budgetDropdown");
     const embedContainer = document.getElementById("budget-embed");
     const financeRoot = document.getElementById("financeRoot");
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
+    const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
     const workspaceScope =
         clientUserId ||
         clientProfileId ||
@@ -17,7 +71,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
+        "BusinessSavingsAccelerator",
         "ExpenseLens",
+        "BusinessExpenseLens",
         "NetWorth",
         "CashFlow",
         "DebtClarity",
@@ -283,14 +339,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     function applyToolBoxStyles(container) {
         if (!container) return;
 
-        // Visual styling only, no width/height
         container.style.boxSizing = 'border-box';
         container.style.overflow = 'visible';
-        container.style.border = '1px solid #d6c48a';
+        container.style.border = '1.8px solid rgba(166,128,35,.52)';
         container.style.borderRadius = '16px';
-        container.style.backgroundColor = '#ffffff'; // pure white
-        container.style.boxShadow = '0 10px 28px rgba(166,128,35,0.12)'; // soft gold shadow
+        container.style.background = 'radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99))';
+        container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
+        container.style.color = '#f8fafc';
     }
 
     // ------------------- Global Tooltip Hide (bind once) -------------------
@@ -311,7 +367,9 @@ document.addEventListener("DOMContentLoaded", async function () {
     const tools = [
         { id: "WealthForecast", name: "Wealth Forecast" },
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
+        ...(isBusinessClient ? [{ id: "BusinessSavingsAccelerator", name: "Business Savings Accelerator" }] : []),
         { id: "ExpenseLens", name: "Expense Lens" },
+        ...(isBusinessClient ? [{ id: "BusinessExpenseLens", name: "Business Expense Lens" }] : []),
         { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
         { id: "DebtClarity", name: "Debt Clarity" },
@@ -904,7 +962,15 @@ markNeutral(savingsTipsOut);
 // ==========================================================
 // 2️⃣ SAVINGS ACCELERATOR (ELEVATED) + Tooltips
 // ==========================================================
-if (t.id === "SavingsAccelerator") {
+if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
+    const isBusinessSavingsAccelerator = t.id === "BusinessSavingsAccelerator";
+    const savingsToolStateId = isBusinessSavingsAccelerator ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
+    const linkedExpenseLensToolStateId = isBusinessSavingsAccelerator ? "BusinessExpenseLens" : "ExpenseLens";
+    const linkedExpenseLensUpdatedEvent = `${linkedExpenseLensToolStateId}:updated`;
+    const savingsSubtitle = isBusinessSavingsAccelerator
+        ? "Track business cash flow separately from personal money and allocate operating surplus with clarity."
+        : "Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.";
+
     embedContainer.innerHTML = `
 <div class="networth-tool p-4" 
      style="background:#ffffff; 
@@ -983,13 +1049,13 @@ if (t.id === "SavingsAccelerator") {
     </h3>
 
     <p style="font-style:italic; color:#666; margin-bottom:20px;">
-        Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.
+        ${savingsSubtitle}
     </p>
 
     <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
         <div style="flex:1; min-width:200px;">
             <div class="sa-label">
-                Net Cash Flow
+                ${isBusinessSavingsAccelerator ? "Business Net Cash Flow" : "Net Cash Flow"}
                 <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 3,800 • 5,200 (monthly take-home / net income)">i</span>
             </div>
             <div style="position:relative;">
@@ -1000,7 +1066,7 @@ if (t.id === "SavingsAccelerator") {
         </div>
         <div style="flex:1; min-width:200px;">
             <div class="sa-label">
-                Essential Expenses
+                ${isBusinessSavingsAccelerator ? "Business Essential Expenses" : "Essential Expenses"}
                 <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 2,100 • 3,000 (rent, utilities, food, transport, insurance)">i</span>
             </div>
             <div style="position:relative;">
@@ -1178,7 +1244,7 @@ if (t.id === "SavingsAccelerator") {
     };
 
     const applyExpenseLensToSavingsAccelerator = async () => {
-        const state = await loadPersistedState('ExpenseLens');
+        const state = await loadPersistedState(linkedExpenseLensToolStateId);
         const income = parseSavingsMoney(state?.income);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
 
@@ -1197,7 +1263,7 @@ if (t.id === "SavingsAccelerator") {
                 percent: row.querySelector('.allocation-percent').value || ''
             });
         });
-        savePersistedState('SavingsAccelerator', { net, ess, allocations });
+        savePersistedState(savingsToolStateId, { net, ess, allocations });
     };
 
     const loadAllocationState = async () => {
@@ -1205,7 +1271,7 @@ if (t.id === "SavingsAccelerator") {
         categoryCount = 0;
         let created = 0;
 
-        const state = await loadPersistedState('SavingsAccelerator');
+        const state = await loadPersistedState(savingsToolStateId);
         saNetInput.value = state.net || '';
         saEssInput.value = state.ess || '';
 
@@ -1365,14 +1431,14 @@ if (t.id === "SavingsAccelerator") {
         saPctTotal.textContent = '0%';
         saRemaining.textContent = '$0';
         saTips.textContent = 'Direct extra cash strategically across savings, debt reduction, and key priorities.';
-        clearPersistedState('SavingsAccelerator');
+        clearPersistedState(savingsToolStateId);
         hideTip();
         refreshSurplus();
     });
 
  await loadAllocationState();
  await applyExpenseLensToSavingsAccelerator();
- window.addEventListener("ExpenseLens:updated", () => { applyExpenseLensToSavingsAccelerator(); });
+ window.addEventListener(linkedExpenseLensUpdatedEvent, () => { applyExpenseLensToSavingsAccelerator(); });
 
 // ✅ Force correct colors AFTER state load (so it stays green/red)
 refreshSurplus();
@@ -1383,8 +1449,18 @@ refreshSurplus();
 /* -------------------------------
     3️⃣ EXPENSE LENS (ELEVATED)
 --------------------------------*/
-if (t.id === "ExpenseLens") {
+if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
     try {
+        const isBusinessExpenseLens = t.id === "BusinessExpenseLens";
+        const expenseLensToolStateId = isBusinessExpenseLens ? "BusinessExpenseLens" : "ExpenseLens";
+        const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
+        const expenseLensSubtitle = isBusinessExpenseLens
+            ? "Separate business operating income and recurring business bills from personal expenses."
+            : "Break down your income into categories and visualize spending percentages for better budgeting.";
+        const expenseLensDefaultTip = isBusinessExpenseLens
+            ? "Monitor business categories to identify operating costs, savings opportunities, and reinvestment capacity."
+            : "Monitor each category to identify areas to save or invest.";
+
         embedContainer.innerHTML = `
         <div class="networth-tool p-4" 
              style="background:#ffffff; 
@@ -1464,11 +1540,11 @@ if (t.id === "ExpenseLens") {
             </h3>
 
             <p style="font-style:italic; color:#666; margin-bottom:20px;">
-                Break down your income into categories and visualize spending percentages for better budgeting.
+                ${expenseLensSubtitle}
             </p>
 
             <div class="el-label">
-                Total Income
+                ${isBusinessExpenseLens ? "Business Total Income" : "Total Income"}
                 <span class="el-i" tabindex="0"
                       data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
             </div>
@@ -1504,7 +1580,7 @@ if (t.id === "ExpenseLens") {
                         margin-top:20px; 
                         border-radius:10px;
                         box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
-                Monitor each category to identify areas to save or invest.
+                ${expenseLensDefaultTip}
             </div>
 
             <div id="elMargin"
@@ -1629,13 +1705,13 @@ if (t.id === "ExpenseLens") {
                     categories.push({ index, name, amount, due, frequency });
                 });
                 const state = { income, categories, ...extraState };
-                savePersistedState('ExpenseLens', state);
+                savePersistedState(expenseLensToolStateId, state);
             } catch (e) { console.error(e); }
         };
 
         const loadExpenseLensState = async () => {
             try {
-                const state = await loadPersistedState('ExpenseLens');
+                const state = await loadPersistedState(expenseLensToolStateId);
                 categoriesContainer.innerHTML = '';
                 categoryCount = 0;
                 let categoriesCreated = 0;
@@ -1655,7 +1731,7 @@ if (t.id === "ExpenseLens") {
             } catch (e) { console.error(e); }
         };
 
-        const clearExpenseLensState = () => clearPersistedState('ExpenseLens');
+        const clearExpenseLensState = () => clearPersistedState(expenseLensToolStateId);
 
         // Active week filter (null = show all)
         let elActiveWeek = null;
@@ -1913,11 +1989,11 @@ if (t.id === "ExpenseLens") {
                 else if(pct <= 100) elTips.textContent = `You are spending ${pct.toFixed(1)}% of your income. Consider trimming non-essentials.`;
                 else elTips.textContent = `⚠️ You are overspending by ${(pct - 100).toFixed(1)}% of your income!`;
             } else {
-                elTips.textContent = 'Monitor each category to identify areas to save or invest.';
+                elTips.textContent = expenseLensDefaultTip;
             }
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent });
-            window.dispatchEvent(new CustomEvent('ExpenseLens:updated', {
+            window.dispatchEvent(new CustomEvent(expenseLensUpdatedEvent, {
                 detail: {
                     income,
                     monthlyExpenseTotal: monthlyTotalSpent,
@@ -2240,7 +2316,7 @@ if (t.id === "ExpenseLens") {
             categoriesContainer.innerHTML = '';
             categoryCount = 0;
             createCategoryRow(++categoryCount);
-            elTips.textContent = 'Monitor each category to identify areas to save or invest.';
+            elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
             hideTip();

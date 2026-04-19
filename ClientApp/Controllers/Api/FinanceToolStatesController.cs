@@ -15,6 +15,11 @@ namespace ClientApp.Controllers.Api;
 public class FinanceToolStatesController : ControllerBase
 {
     private const string ProtectionSnapshotToolId = "ProtectionSnapshot";
+    private static readonly HashSet<string> BusinessOnlyToolIds = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BusinessExpenseLens",
+        "BusinessSavingsAccelerator"
+    };
 
     private readonly MasterAppDbContext _db;
     private readonly EffectiveClientContextService _clientContext;
@@ -36,6 +41,32 @@ public class FinanceToolStatesController : ControllerBase
     private async Task<EffectiveClientContext?> GetEffectiveClientContextAsync()
     {
         return await _clientContext.ResolveAsync(User, Request.Cookies);
+    }
+
+    private static bool IsBusinessOnlyTool(string? toolId)
+        => !string.IsNullOrWhiteSpace(toolId) && BusinessOnlyToolIds.Contains(toolId.Trim());
+
+    private static bool IsBusinessClient(string? crmNotes)
+    {
+        if (string.IsNullOrWhiteSpace(crmNotes))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(crmNotes);
+            if (doc.RootElement.TryGetProperty("recordType", out var prop) && prop.ValueKind == JsonValueKind.String)
+            {
+                var value = (prop.GetString() ?? string.Empty).Trim();
+                return value.Equals("BusinessClient", StringComparison.OrdinalIgnoreCase)
+                    || value.Equals("Business Client", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch
+        {
+            // Treat malformed CRM metadata as a regular client.
+        }
+
+        return false;
     }
 
     private static string NormalizeProtectionSnapshotJson(string? jsonState)
@@ -94,6 +125,9 @@ public class FinanceToolStatesController : ControllerBase
         if (string.IsNullOrWhiteSpace(normalizedToolId))
             return BadRequest("ToolId required.");
 
+        if (IsBusinessOnlyTool(normalizedToolId) && !IsBusinessClient(context.Profile.CrmNotes))
+            return Forbid();
+
         var row = await _db.FinanceToolStates
             .AsNoTracking()
             .FirstOrDefaultAsync(x =>
@@ -133,6 +167,9 @@ public class FinanceToolStatesController : ControllerBase
         var normalizedToolId = (request.ToolId ?? "").Trim();
         if (string.IsNullOrWhiteSpace(normalizedToolId))
             return BadRequest("ToolId required.");
+
+        if (IsBusinessOnlyTool(normalizedToolId) && !IsBusinessClient(context.Profile.CrmNotes))
+            return Forbid();
 
         if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
@@ -189,6 +226,9 @@ public class FinanceToolStatesController : ControllerBase
         var normalizedToolId = (toolId ?? "").Trim();
         if (string.IsNullOrWhiteSpace(normalizedToolId))
             return BadRequest("ToolId required.");
+
+        if (IsBusinessOnlyTool(normalizedToolId) && !IsBusinessClient(context.Profile.CrmNotes))
+            return Forbid();
 
         if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();

@@ -1,6 +1,7 @@
 <div id="financeRoot"
      data-client-profile-id="@ViewBag.ClientProfileId"
-     data-client-user-id="@ViewBag.ClientUserId"></div>
+     data-client-user-id="@ViewBag.ClientUserId"
+     data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"></div>
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
 </form>

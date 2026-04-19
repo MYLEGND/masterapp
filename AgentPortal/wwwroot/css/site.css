@@ -683,29 +683,44 @@ footer.footer {
 }
 input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
 
-/* ------------------------------ Finance Tools Container ------------------------------ */
+/* ------------------------------ Finance Tools Theme — all tools ------------------------------ */
+#budget-embed input,
+#budget-embed select,
+#budget-embed textarea,
 #budget-embed input.form-control,
+#budget-embed select.form-control,
 #budget-embed .form-control,
+#budget-embed .form-select,
+.networth-tool input,
+.networth-tool select,
+.networth-tool textarea,
 .networth-tool input.form-control,
-.networth-tool .form-control {
-    border: 1.5px solid rgba(166,128,35,.34) !important;
-    border-radius: 0.5rem !important;
-    padding: 0.65rem 0.75rem;
-    font-weight: 700;
-    font-size: 0.95rem;
-    transition: border-color .15s ease, box-shadow .15s ease;
+.networth-tool select.form-control,
+.networth-tool .form-control,
+.networth-tool .form-select {
+    border: 1.5px solid rgba(166,128,35,.38) !important;
+    border-radius: 10px !important;
     background: rgba(255,255,255,.92) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
-#budget-embed input.form-control::placeholder,
-.networth-tool input.form-control::placeholder {
+#budget-embed input::placeholder,
+#budget-embed textarea::placeholder,
+.networth-tool input::placeholder,
+.networth-tool textarea::placeholder {
     color: #64748b !important;
     font-weight: 600;
 }
-#budget-embed input.form-control:focus,
+#budget-embed input:focus,
+#budget-embed select:focus,
+#budget-embed textarea:focus,
 #budget-embed .form-control:focus,
-.networth-tool input.form-control:focus,
-.networth-tool .form-control:focus {
+#budget-embed .form-select:focus,
+.networth-tool input:focus,
+.networth-tool select:focus,
+.networth-tool textarea:focus,
+.networth-tool .form-control:focus,
+.networth-tool .form-select:focus {
     outline: none !important;
     border-color: #ddb457 !important;
     box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;

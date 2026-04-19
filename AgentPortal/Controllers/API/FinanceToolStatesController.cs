@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using System.Text.Json.Nodes;
 
@@ -14,6 +15,12 @@ namespace AgentPortal.Controllers.API
     [Route("api/finance-state")]
     public class FinanceToolStatesController : ControllerBase
     {
+        private static readonly HashSet<string> BusinessOnlyToolIds = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "BusinessExpenseLens",
+            "BusinessSavingsAccelerator"
+        };
+
         private readonly MasterAppDbContext _db;
         private readonly EffectiveAgentContext _agentContext;
 
@@ -96,6 +103,22 @@ namespace AgentPortal.Controllers.API
                 : null;
         }
 
+        private static bool IsBusinessOnlyTool(string? toolId)
+            => !string.IsNullOrWhiteSpace(toolId) && BusinessOnlyToolIds.Contains(toolId.Trim());
+
+        private async Task<bool> IsBusinessClientProfileAsync(Guid clientProfileId)
+        {
+            var crmNotes = await _db.ClientProfiles
+                .AsNoTracking()
+                .Where(x => x.Id == clientProfileId)
+                .Select(x => x.CrmNotes)
+                .FirstOrDefaultAsync();
+
+            var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
+            var recordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
+            return string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
+        }
+
         public class SaveFinanceStateRequest
         {
             public Guid ClientProfileId { get; set; }
@@ -142,15 +165,20 @@ namespace AgentPortal.Controllers.API
             if (string.IsNullOrWhiteSpace(toolId))
                 return BadRequest();
 
+            var normalizedToolId = toolId.Trim();
+
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(clientProfileId, clientUserId);
             if (resolvedClientProfileId == null)
+                return Forbid();
+
+            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
                 .AsNoTracking()
                 .FirstOrDefaultAsync(x =>
                     x.ClientProfileId == resolvedClientProfileId.Value &&
-                    x.ToolId == toolId);
+                    x.ToolId == normalizedToolId);
 
             return Ok(new
             {
@@ -167,10 +195,12 @@ namespace AgentPortal.Controllers.API
             if (req == null || string.IsNullOrWhiteSpace(req.ToolId))
                 return BadRequest();
 
+            var normalizedToolId = req.ToolId.Trim();
+
             try
             {
                 var root = JsonNode.Parse(req.JsonState) as JsonObject ?? new JsonObject();
-                if (string.Equals(req.ToolId, "DistributionPlanner", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(normalizedToolId, "DistributionPlanner", StringComparison.OrdinalIgnoreCase))
                 {
                     var canonical = root["canonicalInput"] as JsonObject;
                     if (canonical != null)
@@ -190,17 +220,20 @@ namespace AgentPortal.Controllers.API
             if (resolvedClientProfileId == null)
                 return Forbid();
 
+            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
+                return Forbid();
+
             var row = await _db.FinanceToolStates
                 .FirstOrDefaultAsync(x =>
                     x.ClientProfileId == resolvedClientProfileId.Value &&
-                    x.ToolId == req.ToolId);
+                    x.ToolId == normalizedToolId);
 
             if (row == null)
             {
                 row = new FinanceToolState
                 {
                     ClientProfileId = resolvedClientProfileId.Value,
-                    ToolId = req.ToolId.Trim(),
+                    ToolId = normalizedToolId,
                     JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState,
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
@@ -225,14 +258,19 @@ namespace AgentPortal.Controllers.API
             if (string.IsNullOrWhiteSpace(toolId))
                 return BadRequest();
 
+            var normalizedToolId = toolId.Trim();
+
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(clientProfileId, clientUserId);
             if (resolvedClientProfileId == null)
+                return Forbid();
+
+            if (IsBusinessOnlyTool(normalizedToolId) && !await IsBusinessClientProfileAsync(resolvedClientProfileId.Value))
                 return Forbid();
 
             var row = await _db.FinanceToolStates
                 .FirstOrDefaultAsync(x =>
                     x.ClientProfileId == resolvedClientProfileId.Value &&
-                    x.ToolId == toolId);
+                    x.ToolId == normalizedToolId);
 
             if (row != null)
             {
