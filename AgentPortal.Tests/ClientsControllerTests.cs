@@ -44,6 +44,19 @@ public class ClientsControllerTests
         await db.SaveChangesAsync();
     }
 
+    private static async Task SeedAgentProfileAsync(MasterAppDbContext db, string agentId, string npn = "12345678")
+    {
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = agentId,
+            AgentUpn = $"{agentId}@example.com",
+            Npn = npn,
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+    }
+
     [Fact]
     public async Task CreateAction_Redirects_ForClient()
     {
@@ -159,5 +172,51 @@ public class ClientsControllerTests
         Assert.False(persistedMeta.UsePersonalZoomLink);
         Assert.Equal("10:30", persistedMeta.MeetingTime);
         Assert.Equal(30, persistedMeta.MeetingDurationMinutes);
+    }
+
+    [Fact]
+    public async Task Edit_WhenPortalClientChangesToBusinessClient_MovesToBusinessClientBucket()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        var clientUserId = Guid.NewGuid().ToString();
+        const string email = "business@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "Client",
+            PipelineStage = "NewLead"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+        await SeedAgentProfileAsync(db, agentId);
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Edit(new EditClientViewModel
+        {
+            ClientUserId = clientUserId,
+            RecordType = "BusinessClient",
+            HasPortalAccess = true,
+            FirstName = "Client",
+            LastName = "One",
+            Email = email,
+            Phone = "555-111-2222",
+            MaritalStatus = "Single",
+            CrmStatus = "Active",
+            CrmPriority = "Normal"
+        });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("BusinessClient", persistedMeta.RecordType);
+        Assert.Equal("BusinessClient", persistedMeta.PipelineStage);
     }
 }

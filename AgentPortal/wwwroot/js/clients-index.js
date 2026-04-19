@@ -764,6 +764,38 @@ function getAntiForgeryToken(scope){
   return any?.value || "";
 }
 
+async function deleteClientRecord(clientUserId){
+  const token = getAntiForgeryToken();
+  if (!token){
+    throw new Error("Missing antiforgery token.");
+  }
+
+  const formData = new FormData();
+  formData.append("__RequestVerificationToken", token);
+  formData.append("clientUserId", clientUserId);
+
+  const res = await fetch("/Clients/Delete", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "X-Requested-With": "fetch"
+    },
+    body: formData
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await res.json().catch(() => null)
+    : null;
+
+  if (!res.ok || payload?.ok === false){
+    throw new Error(payload?.error || `Delete failed (${res.status})`);
+  }
+
+  toast("Client deleted. Reloading…");
+  window.location.href = payload?.redirectUrl || "/Clients";
+}
+
 async function postJson(url, payload){
   const token = getAntiForgeryToken();
   const res = await fetch(url, {
@@ -2935,19 +2967,8 @@ document.addEventListener("click", (e) => {
   if (deleteClientId){
     if (!confirm("Delete this client? This will remove the profile + household + Entra login for this client.")) return;
 
-    const f = document.getElementById("__af");
-    if (!f) return toast("Missing antiforgery form.");
-
-    f.setAttribute("action", "/Clients/Delete");
-    f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
-
-    const inp = document.createElement("input");
-    inp.type = "hidden";
-    inp.name = "clientUserId";
-    inp.value = deleteClientId;
-    f.appendChild(inp);
-
-    f.submit();
+    void deleteClientRecord(deleteClientId)
+      .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
     return;
   }
 });
@@ -4699,41 +4720,8 @@ btnDeleteClient?.addEventListener("click", () => {
   if (!activeClientId) return;
   if (!confirm("ARE YOU SURE YOU WANT TO DELETE THIS CLIENT? This removes the profile, household, and portal access.")) return;
 
-  const f = document.getElementById("__af");
-  if (!f) {
-    // Fallback path when the hidden antiforgery form isn't on the page
-    const token = getAntiForgeryToken();
-    if (!token){
-      toast("Missing antiforgery token.");
-      return;
-    }
-    const formData = new FormData();
-    formData.append("__RequestVerificationToken", token);
-    formData.append("clientUserId", activeClientId);
-    fetch("/Clients/Delete", {
-      method: "POST",
-      credentials: "include",
-      body: formData
-    })
-    .then(res => {
-      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
-      toast("Client deleted. Reloading…");
-      window.location.href = "/Clients";
-    })
+  void deleteClientRecord(activeClientId)
     .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
-    return;
-  }
-
-  f.setAttribute("action", "/Clients/Delete");
-  f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
-
-  const inp = document.createElement("input");
-  inp.type = "hidden";
-  inp.name = "clientUserId";
-  inp.value = activeClientId;
-  f.appendChild(inp);
-
-  f.submit();
 });
 
 btnAddActivity?.addEventListener("click", () => {

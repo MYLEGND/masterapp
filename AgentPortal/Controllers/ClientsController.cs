@@ -2900,12 +2900,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         if (!string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
         {
-            var currentStage = NormalizePipelineStage(meta.PipelineStage);
-            if (currentStage is "Client" or "BusinessClient")
-            {
-                meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
-                meta.StageEnteredUtc = DateTime.UtcNow;
-            }
+            meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
+            meta.StageEnteredUtc = DateTime.UtcNow;
         }
 
         if (hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
@@ -4797,13 +4793,21 @@ meta.Activities ??= new List<ClientCrmActivity>();
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(string clientUserId)
     {
+        var isFetchRequest = string.Equals(Request.Headers["X-Requested-With"], "fetch", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
 
         var clientUserIdNorm = NormLower(clientUserId);
         if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+        {
+            if (isFetchRequest)
+                return BadRequest(new { ok = false, error = "Client id is required." });
+
             return RedirectToAction(nameof(Index));
+        }
 
         // Ownership check
         var linked = await _db.AgentClients.AnyAsync(x =>
@@ -4847,6 +4851,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
             await tx.CommitAsync();
 
             TempData["Created"] = "Client deleted (profile + household + client shared finance + Entra account removed).";
+
+            if (isFetchRequest)
+                return Json(new { ok = true, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+
             return RedirectToAction(nameof(Index));
         }
         catch (Exception ex)
@@ -4855,6 +4863,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             await tx.RollbackAsync();
             TempData["Created"] = $"Delete failed: {ex.Message}";
+
+            if (isFetchRequest)
+                return StatusCode(StatusCodes.Status500InternalServerError, new { ok = false, error = ex.Message });
+
             return RedirectToAction(nameof(Index));
         }
     }
