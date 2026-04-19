@@ -948,6 +948,166 @@ namespace AgentPortal.Controllers;
         return new string(required.ToArray());
     }
 
+    private sealed record PortalAccessEnableResult(
+        string OldClientUserId,
+        string NewClientUserId,
+        string RecordType,
+        string LoginUpn,
+        string OneTimePassword,
+        string PipelineStage,
+        string ClientPortalUrl,
+        bool EmailSent,
+        string? Warning);
+
+    private async Task<PortalAccessEnableResult> EnablePortalAccessInternalAsync(
+        ClientProfile profile,
+        string recordType,
+        string emailNorm)
+    {
+        var oldClientUserId = NormLower(profile.ClientUserId);
+        var firstName = Norm(profile.FirstName);
+        var lastName = Norm(profile.LastName);
+        var oneTimePassword = GenerateOneTimePassword();
+        string? newClientObjectId = null;
+        string? loginUpn = null;
+        var createdGraphUser = false;
+        var committed = false;
+
+        try
+        {
+            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
+                firstName,
+                lastName,
+                emailNorm,
+                oneTimePassword
+            );
+
+            newClientObjectId = NormLower(newClientObjectId);
+            loginUpn = Norm(loginUpn);
+
+            if (string.IsNullOrWhiteSpace(newClientObjectId))
+                throw new Exception("Provisioning returned an empty client user id.");
+
+            if (string.IsNullOrWhiteSpace(loginUpn))
+                throw new Exception("Provisioning returned an empty login UPN.");
+
+            createdGraphUser = true;
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+
+            var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+            meta.RecordType = recordType;
+            meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
+            meta.StageEnteredUtc = DateTime.UtcNow;
+            var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
+            var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
+
+            var recreatedLinks = agentLinks.Select(link => new AgentClient
+            {
+                AgentUserId = link.AgentUserId,
+                ClientUserId = newClientObjectId,
+                AgentUpn = link.AgentUpn,
+                CreatedUtc = link.CreatedUtc
+            }).ToList();
+
+            var recreatedHousehold = householdMembers.Select(member => new HouseholdMember
+            {
+                ClientUserId = newClientObjectId,
+                RelationshipType = member.RelationshipType,
+                FirstName = member.FirstName,
+                LastName = member.LastName,
+                DOB = member.DOB,
+                Email = member.Email,
+                Phone = member.Phone,
+                CreatedUtc = member.CreatedUtc,
+                UpdatedUtc = DateTime.UtcNow
+            }).ToList();
+
+            if (agentLinks.Count > 0)
+                _db.AgentClients.RemoveRange(agentLinks);
+
+            if (householdMembers.Count > 0)
+                _db.HouseholdMembers.RemoveRange(householdMembers);
+
+            await _db.SaveChangesAsync();
+
+            var updatedUtc = DateTime.UtcNow;
+            var serializedMeta = ClientCrmMetaSerializer.Serialize(meta);
+            var profileId = profile.Id;
+
+            _db.Entry(profile).State = EntityState.Detached;
+
+            var updatedRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE ClientProfiles
+                SET ClientUserId = {newClientObjectId},
+                    CrmNotes = {serializedMeta},
+                    CrmStatus = {"Active"},
+                    UpdatedUtc = {updatedUtc}
+                WHERE Id = {profileId}");
+
+            if (updatedRows != 1)
+                throw new Exception("Portal conversion failed while updating the client profile record.");
+
+            if (recreatedLinks.Count > 0)
+                _db.AgentClients.AddRange(recreatedLinks);
+
+            if (recreatedHousehold.Count > 0)
+                _db.HouseholdMembers.AddRange(recreatedHousehold);
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            committed = true;
+
+            var pipelineStage = DefaultPipelineStageForRecordType(recordType);
+            var clientPortalBaseUrl = GetClientPortalBaseUrl();
+            string? emailWarning = null;
+
+            try
+            {
+                await _provisioning.SendClientWelcomeEmailAsync(
+                    emailNorm,
+                    firstName,
+                    loginUpn,
+                    oneTimePassword,
+                    clientPortalBaseUrl,
+                    newClientObjectId,
+                    forceIdLink: true
+                );
+            }
+            catch (Exception mailEx)
+            {
+                _logger.LogError(
+                    mailEx,
+                    "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
+                    emailNorm,
+                    newClientObjectId
+                );
+
+                emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
+            }
+
+            return new PortalAccessEnableResult(
+                OldClientUserId: oldClientUserId,
+                NewClientUserId: newClientObjectId,
+                RecordType: recordType,
+                LoginUpn: loginUpn,
+                OneTimePassword: oneTimePassword,
+                PipelineStage: pipelineStage,
+                ClientPortalUrl: $"{clientPortalBaseUrl}/support/view-as-client/{profile.Id}",
+                EmailSent: string.IsNullOrWhiteSpace(emailWarning),
+                Warning: emailWarning);
+        }
+        catch
+        {
+            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
+            {
+                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
+            }
+
+            throw;
+        }
+    }
+
     private static string NormalizeWaitingOn(string? value)
         => ClientCrmMetaSerializer.NormalizeWaitingOn(value);
 
@@ -4182,144 +4342,24 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (emailCollision)
             return Conflict("That email is already tied to another client record.");
 
-        var firstName = Norm(profile.FirstName);
-        var lastName = Norm(profile.LastName);
-        var oneTimePassword = GenerateOneTimePassword();
-        string? newClientObjectId = null;
-        string? loginUpn = null;
-        var createdGraphUser = false;
-        var committed = false;
-
         try
         {
-            var personalEmail = emailNorm
-                ?? throw new InvalidOperationException("Portal client email is required before enabling portal access.");
-
-            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                firstName,
-                lastName,
-                personalEmail,
-                oneTimePassword
-            );
-
-            newClientObjectId = NormLower(newClientObjectId);
-            loginUpn = Norm(loginUpn);
-
-            if (string.IsNullOrWhiteSpace(newClientObjectId))
-                throw new Exception("Provisioning returned an empty client user id.");
-
-            if (string.IsNullOrWhiteSpace(loginUpn))
-                throw new Exception("Provisioning returned an empty login UPN.");
-
-            createdGraphUser = true;
-
-            await using var tx = await _db.Database.BeginTransactionAsync();
-
-            var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-            meta.RecordType = recordType;
-            meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
-            meta.StageEnteredUtc = DateTime.UtcNow;
-            var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-            var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-
-            var recreatedLinks = agentLinks.Select(link => new AgentClient
-            {
-                AgentUserId = link.AgentUserId,
-                ClientUserId = newClientObjectId,
-                AgentUpn = link.AgentUpn,
-                CreatedUtc = link.CreatedUtc
-            }).ToList();
-
-            var recreatedHousehold = householdMembers.Select(member => new HouseholdMember
-            {
-                ClientUserId = newClientObjectId,
-                RelationshipType = member.RelationshipType,
-                FirstName = member.FirstName,
-                LastName = member.LastName,
-                DOB = member.DOB,
-                Email = member.Email,
-                Phone = member.Phone,
-                CreatedUtc = member.CreatedUtc,
-                UpdatedUtc = DateTime.UtcNow
-            }).ToList();
-
-            if (agentLinks.Count > 0)
-                _db.AgentClients.RemoveRange(agentLinks);
-
-            if (householdMembers.Count > 0)
-                _db.HouseholdMembers.RemoveRange(householdMembers);
-
-            await _db.SaveChangesAsync();
-
-            var updatedUtc = DateTime.UtcNow;
-            var serializedMeta = ClientCrmMetaSerializer.Serialize(meta);
-            var profileId = profile.Id;
-
-            _db.Entry(profile).State = EntityState.Detached;
-
-            var updatedRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE ClientProfiles
-                SET ClientUserId = {newClientObjectId},
-                    CrmNotes = {serializedMeta},
-                    CrmStatus = {"Active"},
-                    UpdatedUtc = {updatedUtc}
-                WHERE Id = {profileId}");
-
-            if (updatedRows != 1)
-                throw new Exception("Portal conversion failed while updating the client profile record.");
-
-            if (recreatedLinks.Count > 0)
-                _db.AgentClients.AddRange(recreatedLinks);
-
-            if (recreatedHousehold.Count > 0)
-                _db.HouseholdMembers.AddRange(recreatedHousehold);
-
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-            committed = true;
-
-            var clientPortalUrl = GetClientPortalBaseUrl();
-            string? emailWarning = null;
-
-            try
-            {
-                await _provisioning.SendClientWelcomeEmailAsync(
-                    emailNorm,
-                    firstName,
-                    loginUpn,
-                    oneTimePassword,
-                    clientPortalUrl,
-                    newClientObjectId,
-                    forceIdLink: true
-                );
-            }
-            catch (Exception mailEx)
-            {
-                _logger.LogError(
-                    mailEx,
-                    "Portal access email failed after successful conversion. AgentOid={AgentOid} Email={Email} ClientUserId={ClientUserId}",
-                    agentOid,
-                    emailNorm,
-                    newClientObjectId
-                );
-
-                emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
-            }
+            var result = await EnablePortalAccessInternalAsync(profile, recordType, emailNorm);
 
             return Json(new
             {
-                oldClientUserId,
-                newClientUserId = newClientObjectId,
-                recordType,
-                recordTypeLabel = RecordTypeLabel(recordType),
-                loginUpn,
-                oneTimePassword,
+                oldClientUserId = result.OldClientUserId,
+                newClientUserId = result.NewClientUserId,
+                recordType = result.RecordType,
+                recordTypeLabel = RecordTypeLabel(result.RecordType),
+                loginUpn = result.LoginUpn,
+                oneTimePassword = result.OneTimePassword,
                 portalAccessEnabled = true,
-                pipelineStage = DefaultPipelineStageForRecordType(recordType),
-                pipelineStageLabel = StageLabel(DefaultPipelineStageForRecordType(recordType)),
-                clientPortalUrl = $"{clientPortalUrl}/support/view-as-client/{profile.Id}",
-                emailSent = string.IsNullOrWhiteSpace(emailWarning),
-                warning = emailWarning
+                pipelineStage = result.PipelineStage,
+                pipelineStageLabel = StageLabel(result.PipelineStage),
+                clientPortalUrl = result.ClientPortalUrl,
+                emailSent = result.EmailSent,
+                warning = result.Warning
             });
         }
         catch (Exception ex)
@@ -4331,11 +4371,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 emailNorm,
                 oldClientUserId
             );
-
-            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
-            {
-                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
-            }
 
             return StatusCode(StatusCodes.Status500InternalServerError,
                 $"Failed to convert this lead into a portal {RecordTypeLabel(recordType).ToLowerInvariant()}: {ex.Message}");

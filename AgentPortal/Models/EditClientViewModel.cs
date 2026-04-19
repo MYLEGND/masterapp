@@ -15,17 +15,13 @@ namespace AgentPortal.Models
 
         public bool HasPortalAccess { get; set; }
 
-        [Required(ErrorMessage = "First name is required.")]
         public string FirstName { get; set; } = "";
 
-        [Required(ErrorMessage = "Last name is required.")]
         public string LastName { get; set; } = "";
 
-        [Required(ErrorMessage = "Email is required.")]
         [EmailAddress(ErrorMessage = "Enter a valid email address.")]
         public string Email { get; set; } = "";
 
-        [Required(ErrorMessage = "Phone is required.")]
         public string Phone { get; set; } = "";
 
         /// <summary>
@@ -37,7 +33,6 @@ namespace AgentPortal.Models
         [StringLength(64)]
         public string? AgentPhone { get; set; }
 
-        [Required(ErrorMessage = "Marital status is required.")]
         public string MaritalStatus { get; set; } = "";
 
         public DateTime? DOB { get; set; }
@@ -80,6 +75,9 @@ namespace AgentPortal.Models
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
+            var normalizedRecordType = ClientCrmMetaSerializer.NormalizeRecordType(RecordType);
+            var portalEnabledOrRequested = HasPortalAccess || normalizedRecordType is "Client" or "BusinessClient";
+
             // ✅ Valid phone (US-friendly). Accepts (xxx) xxx-xxxx, xxx-xxx-xxxx, +1..., etc.
             var p = (Phone ?? "").Trim();
             if (!string.IsNullOrWhiteSpace(p))
@@ -88,12 +86,29 @@ namespace AgentPortal.Models
                     yield return new ValidationResult("Enter a valid phone number.", new[] { nameof(Phone) });
             }
 
-            var normalizedRecordType = ClientCrmMetaSerializer.NormalizeRecordType(RecordType);
             if (normalizedRecordType is not ("Lead" or "Client" or "BusinessClient"))
             {
                 yield return new ValidationResult(
                     "Record type must be Lead, Client, or Business Client.",
                     new[] { nameof(RecordType) });
+            }
+
+            if (portalEnabledOrRequested)
+            {
+                if (string.IsNullOrWhiteSpace(FirstName))
+                    yield return new ValidationResult(
+                        "First name is required for portal-enabled records.",
+                        new[] { nameof(FirstName) });
+
+                if (string.IsNullOrWhiteSpace(LastName))
+                    yield return new ValidationResult(
+                        "Last name is required for portal-enabled records.",
+                        new[] { nameof(LastName) });
+
+                if (string.IsNullOrWhiteSpace(Email))
+                    yield return new ValidationResult(
+                        "Email is required for portal-enabled records.",
+                        new[] { nameof(Email) });
             }
 
             bool needsSO =
