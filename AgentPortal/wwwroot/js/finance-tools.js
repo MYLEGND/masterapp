@@ -293,10 +293,10 @@ document.addEventListener("DOMContentLoaded", async function () {
         // Visual styling only, no width/height
         container.style.boxSizing = 'border-box';
         container.style.overflow = 'visible';
-        container.style.border = '1px solid #d6c48a';
+        container.style.border = '1.8px solid rgba(166,128,35,.52)';
         container.style.borderRadius = '16px';
-        container.style.backgroundColor = '#ffffff'; // pure white
-        container.style.boxShadow = '0 10px 28px rgba(166,128,35,0.12)'; // soft gold shadow
+        container.style.background = 'radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99))';
+        container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
     }
 
@@ -5376,11 +5376,11 @@ refreshSurplus();
 if (t.id === "ExpenseLens") {
     try {
         embedContainer.innerHTML = `
-        <div class="networth-tool p-4" 
-             style="background:#ffffff; 
-                    border-radius:20px; 
-                    box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-                    border:1px solid rgba(166,128,35,0.35); 
+        <div class="networth-tool p-4"
+             style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99));
+                    border-radius:20px;
+                    box-shadow:0 40px 100px rgba(0,0,0,.58);
+                    border:1.8px solid rgba(166,128,35,.52);
                     max-width:1200px; margin:0 auto;
                     font-family: 'Inter', sans-serif;">
 
@@ -5466,21 +5466,21 @@ if (t.id === "ExpenseLens") {
                 <input id="elIncome" type="text" 
                        class="form-control mb-3"
                        placeholder="Enter total monthly income"
-                       style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; padding-right:30px;" />
+                       style="border:1.5px solid rgba(166,128,35,.34); background:rgba(255,255,255,.07); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); border-radius:8px; font-weight:700; color:#1E3A8A; padding-right:30px;" />
                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
 
             <div id="elCategories" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
 
             <div class="d-flex gap-2 mt-3" style="gap:12px; flex-wrap:wrap;">
-                <button id="elAddCat" 
+                <button id="elAddCat"
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
+                        style="background:linear-gradient(155deg,#0d1f42,#0a1630); border:1.5px solid rgba(199,153,49,.55); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.22); color:#1E3A8A; font-weight:600;">
                     + Add Category
                 </button>
-                <button id="elDelCat" 
+                <button id="elDelCat"
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
+                        style="background:linear-gradient(155deg,#0d1f42,#0a1630); border:1.5px solid rgba(199,153,49,.55); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.22); color:#1E3A8A; font-weight:600;">
                     - Delete Last
                 </button>
             </div>
@@ -5671,10 +5671,10 @@ if (t.id === "ExpenseLens") {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
-            div.style.background = "#fafafa";
+            div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = "10px";
             div.style.borderRadius = "10px";
-            div.style.border = "1px solid #eee";
+            div.style.border = "1.5px solid rgba(166,128,35,.24)";
             div.style.columnGap = "12px";
             div.style.rowGap = "10px";
             div.style.flexWrap = "wrap";
@@ -5684,7 +5684,9 @@ if (t.id === "ExpenseLens") {
             nameInput.id = `elCatName${index}`;
             nameInput.className = "form-control flex-grow-1";
             nameInput.placeholder = `Category ${index} Name`;
-            nameInput.style.border = "1px solid #ddd";
+            nameInput.style.border = "1.5px solid rgba(166,128,35,.34)";
+            nameInput.style.background = "rgba(255,255,255,.07)";
+            nameInput.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.05)";
             nameInput.style.color = "#1E3A8A";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
@@ -5700,8 +5702,9 @@ if (t.id === "ExpenseLens") {
             dueInput.id = `elCatDue${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
-            dueInput.style.border = "2px solid #38BDF8";
-            dueInput.style.backgroundColor = "#F0F9FF";
+            dueInput.style.border = "1.5px solid rgba(166,128,35,.34)";
+            dueInput.style.backgroundColor = "rgba(255,255,255,.07)";
+            dueInput.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.05)";
             dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
             dueInput.value = toCurrentMonthDue(preDue);
@@ -5719,7 +5722,9 @@ if (t.id === "ExpenseLens") {
             amountInput.className = "form-control";
             amountInput.placeholder = "Amount";
             amountInput.style.width = "100%";
-            amountInput.style.border = "1px solid #d6c48a";
+            amountInput.style.border = "1.5px solid rgba(166,128,35,.34)";
+            amountInput.style.background = "rgba(255,255,255,.07)";
+            amountInput.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,.05)";
             amountInput.style.fontWeight = "700";
             amountInput.style.color = "#1E3A8A";
             amountInput.value = preAmount;
