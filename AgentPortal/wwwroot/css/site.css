@@ -10,6 +10,18 @@
     --legend-shadow: 0 16px 36px rgba(0,0,0,.32);
     --legend-shadow-soft: 0 10px 22px rgba(0,0,0,.18);
     --legend-line:#d9b35a;
+
+    /* Finance tool dark theme tokens (used on all tool pages) */
+    --gold:#d1a034;
+    --goldSoft: rgba(209,160,52,.16);
+    --lineDark:#8f6c1b;
+    --ink:#f8fafc;
+    --muted:#9fb0cd;
+    --borderSoft: rgba(159,176,205,.22);
+    --navyPanel:#111827;
+    --navyField:#121a2b;
+    --shadowA: 0 18px 55px rgba(0,0,0,0.45);
+    --shadowB: 0 22px 70px rgba(0,0,0,0.52);
 }
 
 /* ------------------------------ Base font sizing -------------------------------- */

@@ -846,6 +846,20 @@ input.form-control:focus {
     --client-shadow-strong: 0 22px 48px rgba(64,47,11,.14);
     --client-inset: inset 0 1px 0 rgba(255,255,255,.90);
     --client-ring: 0 0 0 .22rem rgba(166,128,35,.18);
+
+    /* Finance tool dark theme tokens (used on tool pages + Index) */
+    --gold:#d1a034;
+    --goldSoft: rgba(209,160,52,.16);
+    --lineDark:#8f6c1b;
+    --ink:#f8fafc;
+    --muted:#9fb0cd;
+    --borderSoft: rgba(159,176,205,.22);
+    --card:#111827;
+    --navyBase:#0b111f;
+    --navyPanel:#111827;
+    --navyField:#121a2b;
+    --shadowA: 0 18px 55px rgba(0,0,0,0.45);
+    --shadowB: 0 22px 70px rgba(0,0,0,0.52);
 }
 
 html,
@@ -883,7 +897,6 @@ main .bk-card,
 main .modalx-card,
 main .finance-header,
 main .finance-side-card,
-main #budget-embed .networth-tool,
 main .home-tools,
 main .ff-home-card,
 main .category-container,
@@ -909,7 +922,6 @@ main .bk-card,
 main .modalx-card,
 main .finance-header,
 main .finance-side-card,
-main #budget-embed .networth-tool,
 main .home-tools,
 main .ff-home-card,
 main .category-container,

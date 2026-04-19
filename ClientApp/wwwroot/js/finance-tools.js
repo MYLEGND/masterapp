@@ -1775,10 +1775,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
-            div.style.background = "#fafafa";
+            div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = "10px";
             div.style.borderRadius = "10px";
-            div.style.border = "1px solid #eee";
+            div.style.border = "1.5px solid rgba(166,128,35,.24)";
             div.style.columnGap = "12px";
             div.style.rowGap = "10px";
             div.style.flexWrap = "wrap";
@@ -1788,7 +1788,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             nameInput.id = `elCatName${index}`;
             nameInput.className = "form-control flex-grow-1";
             nameInput.placeholder = `Category ${index} Name`;
-            nameInput.style.border = "1px solid #ddd";
+            nameInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
+            nameInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
+            nameInput.style.setProperty("border-radius", "10px", "important");
+            nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             nameInput.style.color = "#1E3A8A";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
@@ -1804,8 +1807,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             dueInput.id = `elCatDue${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
-            dueInput.style.border = "2px solid #38BDF8";
-            dueInput.style.backgroundColor = "#F0F9FF";
+            dueInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
+            dueInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
+            dueInput.style.setProperty("border-radius", "10px", "important");
+            dueInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
             dueInput.value = toCurrentMonthDue(preDue);
@@ -1815,9 +1820,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const frequencySelect = document.createElement("select");
             frequencySelect.id = `elCatFrequency${index}`;
             frequencySelect.className = "form-select";
-            frequencySelect.style.border = "1px solid #d6c48a";
-            frequencySelect.style.fontWeight = "700";
-            frequencySelect.style.color = "#1E3A8A";
+            frequencySelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
+            frequencySelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
+            frequencySelect.style.setProperty("border-radius", "10px", "important");
+            frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
+            frequencySelect.style.setProperty("color", "#1E3A8A", "important");
+            frequencySelect.style.setProperty("font-weight", "700", "important");
             frequencySelect.style.flex = "0 1 132px";
             frequencySelect.style.minWidth = "124px";
             EL_BILL_FREQUENCIES.forEach(option => {
@@ -1840,7 +1848,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             amountInput.className = "form-control";
             amountInput.placeholder = "Amount";
             amountInput.style.width = "100%";
-            amountInput.style.border = "1px solid #d6c48a";
+            amountInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
+            amountInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
+            amountInput.style.setProperty("border-radius", "10px", "important");
+            amountInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             amountInput.style.fontWeight = "700";
             amountInput.style.color = "#1E3A8A";
             amountInput.value = preAmount;
@@ -1903,15 +1914,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 div.style.opacity = "1";
                 div.draggable = false;
                 document.querySelectorAll('[id^="elCatRow"]').forEach(r => {
-                    r.style.border = "1px solid #eee";
+                    r.style.border = "1.5px solid rgba(166,128,35,.24)";
                 });
             });
             div.addEventListener("dragover", (e) => {
                 e.preventDefault();
-                if (div !== elDragSrc) div.style.border = "2px solid #38BDF8";
+                if (div !== elDragSrc) div.style.border = "2px solid #ddb457";
             });
             div.addEventListener("dragleave", () => {
-                div.style.border = "1px solid #eee";
+                div.style.border = "1.5px solid rgba(166,128,35,.24)";
             });
             div.addEventListener("drop", (e) => {
                 e.preventDefault();
@@ -1919,7 +1930,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const rect = div.getBoundingClientRect();
                     const after = e.clientY > rect.top + rect.height / 2;
                     categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
-                    div.style.border = "1px solid #eee";
+                    div.style.border = "1.5px solid rgba(166,128,35,.24)";
                     refreshExpenseLensViews();
                 }
             });
