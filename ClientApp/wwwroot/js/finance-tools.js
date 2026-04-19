@@ -1528,6 +1528,24 @@ if (t.id === "ExpenseLens") {
             return !isNaN(val) && val !== '' ? Number(val).toLocaleString() : '';
         };
 
+        const EL_BILL_FREQUENCIES = [
+            { value: 'monthly', label: 'Monthly' },
+            { value: 'weekly', label: 'Weekly' },
+            { value: 'biweekly', label: 'Bi-weekly' },
+        ];
+
+        const normalizeBillFrequency = (value) => {
+            const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+            if (normalized === 'weekly') return 'weekly';
+            if (normalized === 'biweekly') return 'biweekly';
+            return 'monthly';
+        };
+
+        const elFrequencyLabel = (value) => {
+            const normalized = normalizeBillFrequency(value);
+            return EL_BILL_FREQUENCIES.find(f => f.value === normalized)?.label || 'Monthly';
+        };
+
         // -----------------------------
         // State Handling
         // -----------------------------
@@ -1537,10 +1555,15 @@ if (t.id === "ExpenseLens") {
                 const categories = [];
                 document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                     const index = row.id.replace('elCatRow', '');
-                    const name = document.getElementById(`elCatName${index}`).value || '';
-                    const amount = document.getElementById(`elCatAmount${index}`).value || '';
-                    const due = document.getElementById(`elCatDue${index}`) ? document.getElementById(`elCatDue${index}`).value || '' : '';
-                    categories.push({ index, name, amount, due });
+                    const nameEl = document.getElementById(`elCatName${index}`);
+                    const amountEl = document.getElementById(`elCatAmount${index}`);
+                    const dueEl = document.getElementById(`elCatDue${index}`);
+                    const frequencyEl = document.getElementById(`elCatFrequency${index}`);
+                    const name = nameEl ? nameEl.value || '' : '';
+                    const amount = amountEl ? amountEl.value || '' : '';
+                    const due = dueEl ? dueEl.value || '' : '';
+                    const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
+                    categories.push({ index, name, amount, due, frequency });
                 });
                 const state = { income, categories };
                 savePersistedState('ExpenseLens', state);
@@ -1559,7 +1582,7 @@ if (t.id === "ExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '');
+                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '', cat.frequency || cat.recurrence);
                             categoriesCreated++;
                         });
                     }
@@ -1585,15 +1608,27 @@ if (t.id === "ExpenseLens") {
             const now = new Date();
             const y = now.getFullYear();
             const m = String(now.getMonth() + 1).padStart(2, '0');
+            const days = new Date(y, now.getMonth() + 1, 0).getDate();
             if (!savedDate) return `${y}-${m}-01`;
-            const day = savedDate.split('-')[2] || '01';
+            const parsedDay = parseInt(savedDate.split('-')[2] || '1', 10);
+            const clampedDay = Math.min(Math.max(Number.isFinite(parsedDay) ? parsedDay : 1, 1), days);
+            const day = String(clampedDay).padStart(2, '0');
             return `${y}-${m}-${day}`;
+        };
+
+        const refreshExpenseLensViews = () => {
+            if (elActiveWeek) {
+                elApplyWeekFilter(elActiveWeek);
+                return;
+            }
+            refreshExpenseLens();
+            if (weekPanel?.style.display !== 'none') renderWeekPanel();
         };
 
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '') => {
+        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly') => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
@@ -1614,7 +1649,7 @@ if (t.id === "ExpenseLens") {
             nameInput.style.color = "#1E3A8A";
             nameInput.style.flex = "1 1 220px";
             nameInput.value = preName;
-            nameInput.addEventListener("input", saveExpenseLensState);
+            nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Due date field
             const dueWrapper = document.createElement("div");
@@ -1631,8 +1666,25 @@ if (t.id === "ExpenseLens") {
             dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
             dueInput.value = toCurrentMonthDue(preDue);
-            dueInput.addEventListener("input", saveExpenseLensState);
+            dueInput.addEventListener("input", refreshExpenseLensViews);
             dueWrapper.appendChild(dueInput);
+
+            const frequencySelect = document.createElement("select");
+            frequencySelect.id = `elCatFrequency${index}`;
+            frequencySelect.className = "form-select";
+            frequencySelect.style.border = "1px solid #d6c48a";
+            frequencySelect.style.fontWeight = "700";
+            frequencySelect.style.color = "#1E3A8A";
+            frequencySelect.style.flex = "0 1 132px";
+            frequencySelect.style.minWidth = "124px";
+            EL_BILL_FREQUENCIES.forEach(option => {
+                const opt = document.createElement("option");
+                opt.value = option.value;
+                opt.textContent = option.label;
+                frequencySelect.appendChild(opt);
+            });
+            frequencySelect.value = normalizeBillFrequency(preFrequency);
+            frequencySelect.addEventListener("change", refreshExpenseLensViews);
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
@@ -1679,7 +1731,7 @@ if (t.id === "ExpenseLens") {
             deleteBtn.style.cursor = "pointer";
             deleteBtn.addEventListener("click", () => {
                 categoriesContainer.removeChild(div);
-                refreshExpenseLens();
+                refreshExpenseLensViews();
             });
 
             // Format numbers with commas on blur
@@ -1687,7 +1739,7 @@ if (t.id === "ExpenseLens") {
                 amountInput.value = formatNumber(amountInput.value);
             });
 
-            amountInput.addEventListener("input", refreshExpenseLens);
+            amountInput.addEventListener("input", refreshExpenseLensViews);
 
             // Drag handle — drag only activates from this grip, never from inputs
             const dragHandle = document.createElement("span");
@@ -1725,14 +1777,14 @@ if (t.id === "ExpenseLens") {
                     const after = e.clientY > rect.top + rect.height / 2;
                     categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
                     div.style.border = "1px solid #eee";
-                    saveExpenseLensState();
-                    refreshExpenseLens();
+                    refreshExpenseLensViews();
                 }
             });
 
             div.appendChild(dragHandle);
             div.appendChild(nameInput);
             div.appendChild(dueWrapper);
+            div.appendChild(frequencySelect);
             div.appendChild(amountWrapper);
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
@@ -1750,12 +1802,14 @@ if (t.id === "ExpenseLens") {
             const categoriesData = [];
 
             document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
-                const row = document.getElementById(`elCatRow${input.id.replace('elCatAmount','')}`);
-                if (row && row.style.display === 'none') return;
                 const val = +input.value.replace(/,/g,'') || 0;
-                totalSpent += val;
                 const index = input.id.replace('elCatAmount','');
-                const pct = income > 0 ? ((val/income)*100).toFixed(1)+'%' : '0%';
+                const monthOccurrences = elGetBillOccurrenceDays(index);
+                const activeOccurrences = elActiveWeek ? elGetBillOccurrenceDays(index, elActiveWeek) : monthOccurrences;
+                const occurrenceCount = elActiveWeek ? activeOccurrences.length : monthOccurrences.length;
+                const rowTotal = val * occurrenceCount;
+                const monthlyTotal = val * monthOccurrences.length;
+                const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = document.getElementById(`elOut${index}`);
                 pctEl.textContent = pct;
                 const dollarSign = input.nextElementSibling;
@@ -1763,7 +1817,18 @@ if (t.id === "ExpenseLens") {
                 else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
 
                 const name = (document.getElementById(`elCatName${index}`).value || `Category ${index}`).trim();
-                categoriesData.push({ name, amount: val });
+                const due = document.getElementById(`elCatDue${index}`)?.value || '';
+                const frequency = elGetBillFrequency(index);
+                categoriesData.push({
+                    name,
+                    amount: monthlyTotal,
+                    due,
+                    frequency,
+                    occurrenceAmount: val
+                });
+
+                if (elActiveWeek && occurrenceCount === 0) return;
+                totalSpent += rowTotal;
             });
 
             const remaining = income - totalSpent;
@@ -1795,12 +1860,15 @@ if (t.id === "ExpenseLens") {
         elIncome.addEventListener("input", refreshExpenseLens);
         elIncome.addEventListener("blur", () => { elIncome.value = formatNumber(elIncome.value); });
 
-        addBtn.addEventListener("click", () => createCategoryRow(++categoryCount));
+        addBtn.addEventListener("click", () => {
+            createCategoryRow(++categoryCount);
+            refreshExpenseLensViews();
+        });
         delBtn.addEventListener("click", () => {
             const lastRow = categoriesContainer.lastElementChild;
             if(lastRow){
                 categoriesContainer.removeChild(lastRow);
-                refreshExpenseLens();
+                refreshExpenseLensViews();
             }
         });
 
@@ -1815,21 +1883,65 @@ if (t.id === "ExpenseLens") {
             { label: 'Week 5', start: 29, end: 31 },
         ];
 
-        const elGetDay = (val) => {
+        const elDaysInMonth = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+
+        const elParseDueDate = (val) => {
             if (!val) return null;
-            const d = parseInt((val.split('-')[2] || ''), 10);
-            return isNaN(d) ? null : d;
+            const parts = val.split('-').map(part => parseInt(part, 10));
+            if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
+            return new Date(parts[0], parts[1] - 1, parts[2]);
         };
 
-        const elDaysInMonth = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        const elGetBillFrequency = (index) => {
+            const frequencyEl = document.getElementById(`elCatFrequency${index}`);
+            return normalizeBillFrequency(frequencyEl?.value || 'monthly');
+        };
+
+        const elGetBillOccurrenceDays = (index, week = null) => {
+            const dueEl = document.getElementById(`elCatDue${index}`);
+            const dueDate = elParseDueDate(dueEl?.value);
+            if (!dueDate) return [];
+
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth();
+            const days = elDaysInMonth();
+            const frequency = elGetBillFrequency(index);
+            const inRange = (day) => !week || (day >= week.start && day <= Math.min(week.end, days));
+            const occurrences = [];
+
+            if (frequency === 'monthly') {
+                const day = Math.min(dueDate.getDate(), days);
+                return inRange(day) ? [day] : [];
+            }
+
+            if (frequency === 'weekly') {
+                const targetWeekday = dueDate.getDay();
+                for (let day = 1; day <= days; day++) {
+                    if (new Date(y, m, day).getDay() === targetWeekday && inRange(day)) {
+                        occurrences.push(day);
+                    }
+                }
+                return occurrences;
+            }
+
+            const anchorDay = Math.min(dueDate.getDate(), days);
+            const anchorDate = new Date(y, m, anchorDay);
+            for (let day = 1; day <= days; day++) {
+                const currentDate = new Date(y, m, day);
+                const diffDays = Math.round((currentDate - anchorDate) / 86400000);
+                if (diffDays % 14 === 0 && inRange(day)) {
+                    occurrences.push(day);
+                }
+            }
+            return occurrences;
+        };
 
         const elApplyWeekFilter = (week) => {
             elActiveWeek = week;
             document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                 const idx = row.id.replace('elCatRow', '');
-                const dueEl = document.getElementById(`elCatDue${idx}`);
-                const day = elGetDay(dueEl?.value);
-                const show = !week || (day !== null && day >= week.start && day <= week.end);
+                const show = !week || elGetBillOccurrenceDays(idx, week).length > 0;
                 // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
                 if (show) {
                     row.style.removeProperty('display');
@@ -1876,7 +1988,11 @@ if (t.id === "ExpenseLens") {
                 const idx = row.id.replace('elCatRow', '');
                 const amtEl = document.getElementById(`elCatAmount${idx}`);
                 const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
-                if (amt > 0) { grandTotal += amt; grandCount++; }
+                const occurrences = elGetBillOccurrenceDays(idx);
+                if (amt > 0 && occurrences.length > 0) {
+                    grandTotal += amt * occurrences.length;
+                    grandCount += occurrences.length;
+                }
             });
 
             // Show All row
@@ -1901,15 +2017,21 @@ if (t.id === "ExpenseLens") {
                 const bills = [];
                 document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                     const idx = row.id.replace('elCatRow', '');
-                    const dueEl  = document.getElementById(`elCatDue${idx}`);
                     const amtEl  = document.getElementById(`elCatAmount${idx}`);
                     const nameEl = document.getElementById(`elCatName${idx}`);
-                    const day = elGetDay(dueEl?.value);
-                    if (day !== null && day >= week.start && day <= week.end) {
+                    const frequency = elGetBillFrequency(idx);
+                    const occurrences = elGetBillOccurrenceDays(idx, week);
+                    occurrences.forEach(day => {
                         const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
+                        if (amt <= 0) return;
                         weekTotal += amt;
-                        bills.push({ name: nameEl?.value?.trim() || '(Unnamed)', amount: amt, day });
-                    }
+                        bills.push({
+                            name: nameEl?.value?.trim() || '(Unnamed)',
+                            amount: amt,
+                            day,
+                            frequency
+                        });
+                    });
                 });
                 bills.sort((a, b) => a.day - b.day);
                 const billCount = bills.length;
@@ -1961,7 +2083,7 @@ if (t.id === "ExpenseLens") {
 
                         const bName = document.createElement('span');
                         bName.style.cssText = 'flex:1;font-size:0.8rem;color:#CBD5E1;font-weight:600;';
-                        bName.textContent = bill.name;
+                        bName.textContent = bill.frequency === 'monthly' ? bill.name : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
 
                         const bDue = document.createElement('span');
                         bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
@@ -2065,9 +2187,7 @@ if (t.id === "ExpenseLens") {
             if (!currentWeek) return;
             const hasThisWeek = [...document.querySelectorAll('[id^="elCatRow"]')].some(row => {
                 const idx = row.id.replace('elCatRow', '');
-                const dueEl = document.getElementById(`elCatDue${idx}`);
-                const day = elGetDay(dueEl?.value);
-                return day !== null && day >= currentWeek.start && day <= currentWeek.end;
+                return elGetBillOccurrenceDays(idx, currentWeek).length > 0;
             });
             if (hasThisWeek) elApplyWeekFilter(currentWeek);
         })();
@@ -2079,6 +2199,7 @@ if (t.id === "ExpenseLens") {
 
             // Rows (dynamic)
             document.querySelectorAll('[id^="elCatName"]').forEach(n => markNeutral(n));     // labels
+            document.querySelectorAll('[id^="elCatFrequency"]').forEach(f => markNeutral(f)); // frequency
             document.querySelectorAll('[id^="elCatAmount"]').forEach(a => markExpense(a));  // spending
             document.querySelectorAll('[id^="elOut"]').forEach(p => markExpense(p));        // % outputs
 
@@ -2093,7 +2214,9 @@ if (t.id === "ExpenseLens") {
                 const income = +elIncome.value.replace(/,/g, '') || 0;
                 let totalSpent = 0;
                 document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
-                    totalSpent += (+input.value.replace(/,/g, '') || 0);
+                    const idx = input.id.replace('elCatAmount', '');
+                    const occurrenceCount = elGetBillOccurrenceDays(idx).length;
+                    totalSpent += (+input.value.replace(/,/g, '') || 0) * occurrenceCount;
                 });
                 const remaining = income - totalSpent;
                 if (remaining >= 0) markIncome(elMargin);
