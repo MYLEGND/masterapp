@@ -1690,6 +1690,42 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         // -----------------------------
+        // Default Expense Templates
+        // -----------------------------
+        const getDefaultPersonalExpenseRows = () => [
+            'Rent / Mortgage','Property Taxes','Home Insurance','HOA',
+            'Electricity','Water','Gas','Internet','Mobile Phone',
+            'Groceries','Dining / Eating Out',
+            'Auto Payment','Auto Insurance','Fuel','Auto Maintenance / Repairs',
+            'Health Insurance','Medical / Prescriptions','Life Insurance','Disability Insurance',
+            'Childcare','Tuition / School','Child Support / Alimony',
+            'Personal / Household Items','Subscriptions','Entertainment / Recreation',
+            'Gym / Fitness','Pet Expenses','Savings Contribution',
+            'Debt Payment - Credit Cards','Debt Payment - Student Loans',
+            'Debt Payment - Personal Loans','Miscellaneous'
+        ].map(name => ({ name, amount: '', due: null, frequency: 'monthly', isTemplate: true }));
+
+        const getDefaultBusinessExpenseRows = () => [
+            'Rent / Lease','CAM / Property Costs','Utilities','Internet','Phone / Communications',
+            'Payroll','Payroll Taxes','Contractors / 1099 Labor','Owner Draw / Owner Pay',
+            'Insurance - General Liability','Insurance - Workers Comp','Insurance - Commercial Auto',
+            'Professional Services - CPA / Bookkeeping','Professional Services - Legal',
+            'Software / SaaS Subscriptions','Merchant Processing Fees','Advertising / Marketing',
+            'Office Supplies','Equipment / Maintenance','Vehicle Expense / Fuel',
+            'Travel','Meals / Entertainment','Inventory / Cost of Goods',
+            'Shipping / Postage','Licenses / Permits','Taxes Set Aside',
+            'Debt Payment - Business Loans','Bank Charges / Fees',
+            'Training / Education','Miscellaneous'
+        ].map(name => ({ name, amount: '', due: null, frequency: 'monthly', isTemplate: true }));
+
+        const injectDefaultExpenseRows = () => {
+            const defaults = isBusinessExpenseLens ? getDefaultBusinessExpenseRows() : getDefaultPersonalExpenseRows();
+            defaults.forEach(row => {
+                createCategoryRow(++categoryCount, row.name, row.amount, row.due, row.frequency, row.isTemplate);
+            });
+        };
+
+        // -----------------------------
         // State Handling
         // -----------------------------
         const saveExpenseLensState = (extraState = {}) => {
@@ -1706,7 +1742,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const amount = amountEl ? amountEl.value || '' : '';
                     const due = dueEl ? dueEl.value || '' : '';
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
-                    categories.push({ index, name, amount, due, frequency });
+                    const isTemplate = row.dataset.isTemplate === 'true';
+                    categories.push({ index, name, amount, due, frequency, isTemplate });
                 });
                 const state = { income, categories, ...extraState };
                 savePersistedState(expenseLensToolStateId, state);
@@ -1725,12 +1762,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '', cat.frequency || cat.recurrence);
+                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '', cat.frequency || cat.recurrence, cat.isTemplate === true);
                             categoriesCreated++;
                         });
                     }
                 }
-                if (categoriesCreated === 0) createCategoryRow(++categoryCount);
+                if (categoriesCreated === 0) injectDefaultExpenseRows();
                 refreshExpenseLens();
             } catch (e) { console.error(e); }
         };
@@ -1771,10 +1808,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly') => {
+        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly', isTemplate = false) => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `elCatRow${index}`;
+            div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = "10px";
             div.style.borderRadius = "10px";
@@ -2328,9 +2366,23 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         addClearButton(container, () => {
             elIncome.value = '';
-            categoriesContainer.innerHTML = '';
-            categoryCount = 0;
-            createCategoryRow(++categoryCount);
+            // Reset template rows in-place; remove custom rows entirely
+            Array.from(document.querySelectorAll('[id^="elCatRow"]')).forEach(row => {
+                if (row.dataset.isTemplate === 'true') {
+                    const idx = row.id.replace('elCatRow', '');
+                    const amtEl = document.getElementById(`elCatAmount${idx}`);
+                    const dueEl = document.getElementById(`elCatDue${idx}`);
+                    const freqEl = document.getElementById(`elCatFrequency${idx}`);
+                    if (amtEl) amtEl.value = '';
+                    if (dueEl) dueEl.value = toCurrentMonthDue(null);
+                    if (freqEl) freqEl.value = 'monthly';
+                } else {
+                    categoriesContainer.removeChild(row);
+                }
+            });
+            // Set categoryCount to highest remaining index so new rows get unique IDs
+            categoryCount = Array.from(document.querySelectorAll('[id^="elCatRow"]'))
+                .reduce((max, r) => Math.max(max, parseInt(r.id.replace('elCatRow', '')) || 0), 0);
             elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
