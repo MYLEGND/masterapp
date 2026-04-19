@@ -2953,11 +2953,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
         var agentNpn = agentProfile.Npn?.Trim();
         model.AgentNpn = agentNpn;
 
-        var isPortalClient = hasPortalAccess || wantsPortalRecord;
-        if (isPortalClient && string.IsNullOrWhiteSpace(agentNpn))
+        if (requiresPortalEnable && string.IsNullOrWhiteSpace(agentNpn))
         {
             ModelState.AddModelError(nameof(EditClientViewModel.AgentNpn),
-                "Add your NPN in Manage Profile before editing portal clients.");
+                "Add your NPN in Manage Profile before enabling portal access for this record.");
         }
 
         if (!ModelState.IsValid)
@@ -3009,7 +3008,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         );
 
-        profile.CrmStatus = crmStatus;
+        profile.CrmStatus = requestedRecordType switch
+        {
+            "Client" or "BusinessClient" => "Active",
+            "Lead" => "Lead",
+            _ => crmStatus
+        };
         profile.CrmPriority = crmPriority;
         profile.CrmLastTouch = model.CrmLastTouch;
         profile.CrmNextDate = model.CrmNextDate;
@@ -3053,7 +3057,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             meta.StageEnteredUtc = DateTime.UtcNow;
         }
 
-        if (hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
+        if (wantsPortalRecord && hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
             profile.CrmStatus.Equals("Lead", StringComparison.OrdinalIgnoreCase) ||
             profile.CrmStatus.Equals("Prospect", StringComparison.OrdinalIgnoreCase)))
         {
@@ -3146,7 +3150,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
                     : $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}. ⚠ {conversion.Warning}";
 
                 if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
-                    return Redirect(returnUrl);
+                {
+                    var conversionReturnUrl = returnUrl
+                        .Replace(conversion.OldClientUserId, conversion.NewClientUserId, StringComparison.OrdinalIgnoreCase)
+                        .Replace(Uri.EscapeDataString(conversion.OldClientUserId), Uri.EscapeDataString(conversion.NewClientUserId), StringComparison.OrdinalIgnoreCase);
+                    return Redirect(conversionReturnUrl);
+                }
 
                 return RedirectToAction(nameof(Index));
             }
@@ -4872,18 +4881,41 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         try
         {
-            // Safety: ensure only one owner link exists before deleting Entra
-            var linkCount = await _db.AgentClients.CountAsync(x => x.ClientUserId == clientUserIdNorm);
-            if (linkCount != 1)
-                throw new Exception("Safety stop: client is linked to multiple agents. Refusing to delete Entra user.");
-
-            // Delete Entra user
-            await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
-
-            // DB cleanup
             var allLinks = await _db.AgentClients
                 .Where(x => x.ClientUserId == clientUserIdNorm)
                 .ToListAsync();
+
+            var currentAgentLinks = allLinks
+                .Where(x => x.AgentUserId == agentOid)
+                .ToList();
+
+            // If another agent also has this client, remove only this agent's relationship.
+            // Deleting the shared profile/account would break the other agent and the client app.
+            if (allLinks.Count > currentAgentLinks.Count)
+            {
+                if (currentAgentLinks.Count > 0)
+                    _db.AgentClients.RemoveRange(currentAgentLinks);
+
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+
+                const string unlinkedMessage = "Client removed from your Agent Portal. The shared client profile remains active for the other assigned agent(s).";
+                TempData["Created"] = unlinkedMessage;
+
+                if (isFetchRequest)
+                    return Json(new { ok = true, removedOnly = true, message = unlinkedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+
+                return RedirectToAction(nameof(Index));
+            }
+
+            var profile = await _db.ClientProfiles
+                .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
+
+            // Delete Entra only for real portal users. Lead-only records use synthetic ids.
+            if (HasPortalAccess(clientUserIdNorm))
+                await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
+
+            // DB cleanup
             if (allLinks.Count > 0)
                 _db.AgentClients.RemoveRange(allLinks);
 
@@ -4893,10 +4925,22 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (household.Count > 0)
                 _db.HouseholdMembers.RemoveRange(household);
 
-            var profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
             if (profile != null)
+            {
+                var financeToolStates = await _db.FinanceToolStates
+                    .Where(x => x.ClientProfileId == profile.Id)
+                    .ToListAsync();
+                if (financeToolStates.Count > 0)
+                    _db.FinanceToolStates.RemoveRange(financeToolStates);
+
+                var financialPlans = await _db.ClientFinancialPlans
+                    .Where(x => x.ClientId == profile.Id)
+                    .ToListAsync();
+                if (financialPlans.Count > 0)
+                    _db.ClientFinancialPlans.RemoveRange(financialPlans);
+
                 _db.ClientProfiles.Remove(profile);
+            }
 
             await _db.SaveChangesAsync();
             await tx.CommitAsync();

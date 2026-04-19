@@ -5632,7 +5632,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ${t.name}
             </h3>
 
-            <p style="font-style:italic; color:#666; margin-bottom:20px;">
+            <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
                 ${expenseLensSubtitle}
             </p>
 
@@ -8087,12 +8087,13 @@ if (t.id === "WealthProjection") {
 if (t.id === "FreedomIndex") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -8103,7 +8104,7 @@ if (t.id === "FreedomIndex") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .fi-i{
                 display:inline-flex;
@@ -8388,12 +8389,13 @@ if (t.id === "FreedomIndex") {
 if (t.id === "DebtAssetPulse") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -8404,7 +8406,7 @@ if (t.id === "DebtAssetPulse") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .dap-i{
                 display:inline-flex;

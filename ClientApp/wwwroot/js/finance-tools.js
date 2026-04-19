@@ -1051,7 +1051,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         ${t.name}
     </h3>
 
-    <p style="font-style:italic; color:#666; margin-bottom:20px;">
+    <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
         ${savingsSubtitle}
     </p>
 
@@ -1104,9 +1104,9 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
 
         <div class="d-flex gap-2 mt-3">
             <button id="saAddCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">+ Add Category</button>
+                    style="font-weight:600;">+ Add Category</button>
             <button id="saDelCat" class="btn btn-outline-gold"
-                    style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">- Delete Last</button>
+                    style="font-weight:600;">- Delete Last</button>
         </div>
     </div>
 
@@ -1465,12 +1465,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             : "Monitor each category to identify areas to save or invest.";
 
         embedContainer.innerHTML = `
-        <div class="networth-tool p-4" 
-             style="background:#ffffff; 
-                    border-radius:20px; 
-                    box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-                    border:1px solid rgba(166,128,35,0.35); 
+        <div class="networth-tool p-4"
+             style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+                    border-radius:20px;
+                    box-shadow:0 40px 100px rgba(0,0,0,.58);
+                    border:1.8px solid rgba(166,128,35,.52);
                     max-width:1200px; margin:0 auto;
+                    color:#f8fafc;
                     font-family: 'Inter', sans-serif;">
 
             <!-- Tooltip styles (safe + isolated) -->
@@ -1542,7 +1543,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ${t.name}
             </h3>
 
-            <p style="font-style:italic; color:#666; margin-bottom:20px;">
+            <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
                 ${expenseLensSubtitle}
             </p>
 
@@ -1564,12 +1565,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             <div class="d-flex gap-2 mt-3" style="gap:12px; flex-wrap:wrap;">
                 <button id="elAddCat" 
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
+                        style="font-weight:600;">
                     + Add Category
                 </button>
                 <button id="elDelCat" 
                         class="btn btn-outline-gold"
-                        style="border:1px solid #a68023; color:#1E3A8A; font-weight:600;">
+                        style="font-weight:600;">
                     - Delete Last
                 </button>
             </div>
@@ -2394,12 +2395,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 --------------------------------*/
 if (t.id === "NetWorth") {
     embedContainer.innerHTML = `
-  <div class="networth-tool p-4" 
-       style="background:#ffffff;
+  <div class="networth-tool p-4"
+       style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
               border-radius:20px;
-              box-shadow:0 12px 35px rgba(166,128,35,0.15);
-              max-width:1200px; 
+              box-shadow:0 40px 100px rgba(0,0,0,.58);
+              border:1.8px solid rgba(166,128,35,.52);
+              max-width:1200px;
               margin:0 auto;
+              color:#f8fafc;
               font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -2469,7 +2472,7 @@ if (t.id === "NetWorth") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Track your total assets, liabilities, and net worth. See insights to grow your wealth.
         </p>
 
@@ -2719,11 +2722,13 @@ if (t.id === "NetWorth") {
 if (t.id === "CashFlow") {
     embedContainer.innerHTML = `
    <div class="networth-tool p-4"
-        style="background:#ffffff;
+        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                border-radius:20px;
-               box-shadow:0 12px 35px rgba(166,128,35,0.15);
-               max-width:1200px; 
+               box-shadow:0 40px 100px rgba(0,0,0,.58);
+               border:1.8px solid rgba(166,128,35,.52);
+               max-width:1200px;
                margin:0 auto;
+               color:#f8fafc;
                font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -2793,7 +2798,7 @@ if (t.id === "CashFlow") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Understand your monthly cash flow and uncover opportunities to save or invest.
         </p>
 
@@ -3013,11 +3018,13 @@ if (t.id === "CashFlow") {
 if (t.id === "DebtClarity") {
     embedContainer.innerHTML = `
    <div class="networth-tool p-4"
-        style="background:#ffffff;
+        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                border-radius:20px;
-               box-shadow:0 12px 35px rgba(166,128,35,0.15);
-               max-width:1200px; 
+               box-shadow:0 40px 100px rgba(0,0,0,.58);
+               border:1.8px solid rgba(166,128,35,.52);
+               max-width:1200px;
                margin:0 auto;
+               color:#f8fafc;
                font-family: 'Inter', sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -3087,7 +3094,7 @@ if (t.id === "DebtClarity") {
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#666; margin-bottom:18px;">
+        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
             Quickly calculate your Debt-to-Income (DTI) ratio and get actionable guidance.
         </p>
 
@@ -3283,12 +3290,13 @@ if (t.id === "DebtClarity") {
 if (t.id === "FinancialBuffer") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.12);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -3299,7 +3307,7 @@ if (t.id === "FinancialBuffer") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .fb-i{
                 display:inline-flex;
@@ -3513,12 +3521,13 @@ if (t.id === "FinancialBuffer") {
 if (t.id === "WealthProjection") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -3529,7 +3538,7 @@ if (t.id === "WealthProjection") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .wp-i{
                 display:inline-flex;
@@ -3815,12 +3824,13 @@ if (t.id === "WealthProjection") {
 if (t.id === "FreedomIndex") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -3831,7 +3841,7 @@ if (t.id === "FreedomIndex") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .fi-i{
                 display:inline-flex;
@@ -4116,12 +4126,13 @@ if (t.id === "FreedomIndex") {
 if (t.id === "DebtAssetPulse") {
     embedContainer.innerHTML = `
     <div class="networth-tool p-4"
-         style="background:#ffffff;
+         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                 border-radius:20px;
-                box-shadow:0 12px 35px rgba(166,128,35,0.15);
-                border:1px solid rgba(166,128,35,0.35);
+                box-shadow:0 40px 100px rgba(0,0,0,.58);
+                border:1.8px solid rgba(166,128,35,.52);
                 max-width:600px;
                 margin:0 auto;
+                color:#f8fafc;
                 font-family:'Inter',sans-serif;">
 
         <!-- Tooltip styles (safe + isolated) -->
@@ -4132,7 +4143,7 @@ if (t.id === "DebtAssetPulse") {
                 gap:8px;
                 margin-bottom:6px;
                 font-weight:800;
-                color:#444;
+                color:#a68023;
             }
             .dap-i{
                 display:inline-flex;

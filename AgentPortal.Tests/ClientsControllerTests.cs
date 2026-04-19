@@ -218,6 +218,52 @@ public class ClientsControllerTests
         var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
         Assert.Equal("BusinessClient", persistedMeta.RecordType);
         Assert.Equal("BusinessClient", persistedMeta.PipelineStage);
+        Assert.Equal("Active", persisted.CrmStatus);
+    }
+
+    [Fact]
+    public async Task Edit_WhenPortalClientChangesToBusinessClient_DoesNotRequireNpnForExistingPortalAccess()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        var clientUserId = Guid.NewGuid().ToString();
+        const string email = "no-npn-business@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "Client",
+            PipelineStage = "Client"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Edit(new EditClientViewModel
+        {
+            ClientUserId = clientUserId,
+            RecordType = "BusinessClient",
+            HasPortalAccess = true,
+            FirstName = "Client",
+            LastName = "One",
+            Email = email,
+            Phone = "555-111-2222",
+            MaritalStatus = "Single",
+            CrmStatus = "Active",
+            CrmPriority = "Normal"
+        });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("BusinessClient", persistedMeta.RecordType);
+        Assert.Equal("BusinessClient", persistedMeta.PipelineStage);
     }
 
     [Fact]
@@ -264,6 +310,7 @@ public class ClientsControllerTests
         var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
         Assert.Equal("Lead", persistedMeta.RecordType);
         Assert.Equal("NewLead", persistedMeta.PipelineStage);
+        Assert.Equal("Lead", persisted.CrmStatus);
     }
 
     [Fact]
@@ -343,5 +390,91 @@ public class ClientsControllerTests
         Assert.Equal("Lead", persistedMeta.RecordType);
         Assert.Equal("Qualified", persistedMeta.PipelineStage);
         Assert.False(Guid.TryParse(persisted.ClientUserId, out _));
+    }
+
+    [Fact]
+    public async Task Delete_WhenLeadOnlyRecord_RemovesLocalProfileWithoutPortalDelete()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string clientUserId = "lead-delete";
+        const string email = "";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "Lead",
+            PipelineStage = "NewLead"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+        var profile = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        db.FinanceToolStates.Add(new FinanceToolState
+        {
+            ClientProfileId = profile.Id,
+            ToolId = "ExpenseLens",
+            JsonState = "{}"
+        });
+        db.ClientFinancialPlans.Add(new ClientFinancialPlan
+        {
+            ClientId = profile.Id,
+            JsonData = "{}",
+            UpdatedBy = agentId
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Delete(clientUserId);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+        Assert.Empty(await db.ClientProfiles.ToListAsync());
+        Assert.Empty(await db.AgentClients.ToListAsync());
+        Assert.Empty(await db.FinanceToolStates.ToListAsync());
+        Assert.Empty(await db.ClientFinancialPlans.ToListAsync());
+    }
+
+    [Fact]
+    public async Task Delete_WhenSharedClient_RemovesOnlyCurrentAgentLink()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string otherAgentId = "agent-2";
+        var clientUserId = Guid.NewGuid().ToString();
+        const string email = "shared-delete@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "BusinessClient",
+            PipelineStage = "BusinessClient"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = otherAgentId,
+            ClientUserId = clientUserId,
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Delete(clientUserId);
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+        Assert.Single(await db.ClientProfiles.ToListAsync());
+        var remainingLink = Assert.Single(await db.AgentClients.ToListAsync());
+        Assert.Equal(otherAgentId, remainingLink.AgentUserId);
+        Assert.Equal(clientUserId, remainingLink.ClientUserId);
     }
 }

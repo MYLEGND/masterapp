@@ -792,7 +792,7 @@ async function deleteClientRecord(clientUserId){
     throw new Error(payload?.error || `Delete failed (${res.status})`);
   }
 
-  toast("Client deleted. Reloading…");
+  toast(payload?.message || "Client deleted. Reloading…");
   window.location.href = payload?.redirectUrl || "/Clients";
 }
 
