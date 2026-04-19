@@ -219,4 +219,129 @@ public class ClientsControllerTests
         Assert.Equal("BusinessClient", persistedMeta.RecordType);
         Assert.Equal("BusinessClient", persistedMeta.PipelineStage);
     }
+
+    [Fact]
+    public async Task Edit_WhenPortalClientChangesToLead_MovesToLeadBucket()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        var clientUserId = Guid.NewGuid().ToString();
+        const string email = "leadify@example.com";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "Client",
+            PipelineStage = "Client"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, email, ClientCrmMetaSerializer.Serialize(meta));
+        await SeedAgentProfileAsync(db, agentId);
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Edit(new EditClientViewModel
+        {
+            ClientUserId = clientUserId,
+            RecordType = "Lead",
+            HasPortalAccess = true,
+            FirstName = "Client",
+            LastName = "One",
+            Email = email,
+            Phone = "555-111-2222",
+            MaritalStatus = "Single",
+            CrmStatus = "Active",
+            CrmPriority = "Normal"
+        });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("Lead", persistedMeta.RecordType);
+        Assert.Equal("NewLead", persistedMeta.PipelineStage);
+    }
+
+    [Fact]
+    public async Task Edit_WhenLeadWithoutEmailStaysLead_CanStillSave()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string clientUserId = "lead-no-email";
+
+        var meta = new ClientCrmMeta
+        {
+            RecordType = "Lead",
+            PipelineStage = "Contacted"
+        };
+
+        await SeedOwnedClientAsync(db, agentId, clientUserId, string.Empty, ClientCrmMetaSerializer.Serialize(meta));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Edit(new EditClientViewModel
+        {
+            ClientUserId = clientUserId,
+            RecordType = "Lead",
+            FirstName = "Lead",
+            LastName = "Only",
+            Email = string.Empty,
+            Phone = string.Empty,
+            MaritalStatus = string.Empty,
+            CrmStatus = "Lead",
+            CrmPriority = "Normal"
+        });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+
+        var persisted = await db.ClientProfiles.SingleAsync(x => x.ClientUserId == clientUserId);
+        Assert.Equal(string.Empty, persisted.Email);
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("Lead", persistedMeta.RecordType);
+        Assert.Equal("Contacted", persistedMeta.PipelineStage);
+    }
+
+    [Fact]
+    public async Task Create_WhenLeadCreated_PersistsRequestedLeadBucket()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+
+        var result = await controller.Create(new CreateClientViewModel
+        {
+            RecordType = "Lead",
+            FirstName = "Fresh",
+            LastName = "Lead",
+            Email = string.Empty,
+            Phone = "555-222-3333",
+            MaritalStatus = string.Empty,
+            CrmStatus = "Lead",
+            CrmPriority = "Normal",
+            PipelineStage = "Qualified"
+        });
+
+        var redirect = Assert.IsType<RedirectToActionResult>(result);
+        Assert.Equal(nameof(ClientsController.Index), redirect.ActionName);
+
+        var persisted = await db.ClientProfiles.SingleAsync();
+        var persistedMeta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("Lead", persistedMeta.RecordType);
+        Assert.Equal("Qualified", persistedMeta.PipelineStage);
+        Assert.False(Guid.TryParse(persisted.ClientUserId, out _));
+    }
 }

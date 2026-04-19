@@ -2898,43 +2898,43 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (!linked)
             return Forbid();
 
-        var emailNorm = NormalizeEmail(model.Email);
-        if (string.IsNullOrWhiteSpace(emailNorm))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required.");
-            model.IsDobLocked = ProfileHasDob(clientUserIdNorm);
-            model.HasPortalAccess = HasPortalAccess(clientUserIdNorm);
-            PrepareEditView(model, returnUrl);
-            return View(model);
-        }
-
-        // Prevent changing email to one that already exists for SOME OTHER client
-        var emailCollision = await _db.ClientProfiles.AsNoTracking()
-            .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != clientUserIdNorm);
-
-        if (emailCollision)
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.Email),
-                "BLOCKED (409): That email is already used by another client. Choose a different email.");
-            Response.StatusCode = StatusCodes.Status409Conflict;
-            model.IsDobLocked = ProfileHasDob(clientUserIdNorm);
-            model.HasPortalAccess = HasPortalAccess(clientUserIdNorm);
-            PrepareEditView(model, returnUrl);
-            return View(model);
-        }
-
         var profile = await _db.ClientProfiles
             .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
 
         if (profile == null)
             return NotFound();
 
+        var emailNorm = NormalizeEmail(model.Email);
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
         var existingRecordType = ResolveRecordType(profile.ClientUserId, meta);
         var hasPortalAccess = HasPortalAccess(profile.ClientUserId);
         var requestedRecordType = NormalizeRecordType(model.RecordType);
+        var wantsPortalRecord = IsPortalRecordType(requestedRecordType);
+        var requiresPortalEnable = !hasPortalAccess && wantsPortalRecord;
         model.RecordType = requestedRecordType;
         model.HasPortalAccess = hasPortalAccess;
+
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.FirstName ?? string.Empty).Trim()))
+            ModelState.AddModelError(nameof(EditClientViewModel.FirstName), "First name is required for portal-enabled records.");
+
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.LastName ?? string.Empty).Trim()))
+            ModelState.AddModelError(nameof(EditClientViewModel.LastName), "Last name is required for portal-enabled records.");
+
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace(emailNorm))
+            ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required for portal-enabled records.");
+
+        if (!string.IsNullOrWhiteSpace(emailNorm))
+        {
+            var emailCollision = await _db.ClientProfiles.AsNoTracking()
+                .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != clientUserIdNorm);
+
+            if (emailCollision)
+            {
+                ModelState.AddModelError(nameof(EditClientViewModel.Email),
+                    "BLOCKED (409): That email is already used by another client. Choose a different email.");
+                Response.StatusCode = StatusCodes.Status409Conflict;
+            }
+        }
 
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
         if (agentProfile == null)
@@ -2953,23 +2953,11 @@ meta.Activities ??= new List<ClientCrmActivity>();
         var agentNpn = agentProfile.Npn?.Trim();
         model.AgentNpn = agentNpn;
 
-        var isPortalClient = hasPortalAccess || IsPortalRecordType(requestedRecordType);
+        var isPortalClient = hasPortalAccess || wantsPortalRecord;
         if (isPortalClient && string.IsNullOrWhiteSpace(agentNpn))
         {
             ModelState.AddModelError(nameof(EditClientViewModel.AgentNpn),
                 "Add your NPN in Manage Profile before editing portal clients.");
-        }
-
-        if (!hasPortalAccess && !string.Equals(requestedRecordType, "Lead", StringComparison.OrdinalIgnoreCase))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
-                "Use Quick View conversion to turn a lead into a client or business client.");
-        }
-
-        if (hasPortalAccess && string.Equals(requestedRecordType, "Lead", StringComparison.OrdinalIgnoreCase))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
-                "Portal-enabled records cannot be changed back to Lead.");
         }
 
         if (!ModelState.IsValid)
@@ -2992,7 +2980,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             profile.DOB = model.DOB.Value.Date;
         model.IsDobLocked = profile.DOB.HasValue;
 
-        meta.RecordType = hasPortalAccess ? requestedRecordType : "Lead";
+        if (!requiresPortalEnable)
+            meta.RecordType = requestedRecordType;
 
         // =========================
         // CRM fields (DB-backed)
@@ -3058,7 +3047,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (changed)
             agentProfile.UpdatedUtc = DateTime.UtcNow;
 
-        if (!string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
+        if (!requiresPortalEnable && !string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
         {
             meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
             meta.StageEnteredUtc = DateTime.UtcNow;
@@ -3144,6 +3133,37 @@ meta.Activities ??= new List<ClientCrmActivity>();
         }
 
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+
+        if (requiresPortalEnable)
+        {
+            await _db.SaveChangesAsync();
+
+            try
+            {
+                var conversion = await EnablePortalAccessInternalAsync(profile, requestedRecordType, emailNorm ?? string.Empty);
+                TempData["Created"] = conversion.EmailSent
+                    ? $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}"
+                    : $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}. ⚠ {conversion.Warning}";
+
+                if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+                    return Redirect(returnUrl);
+
+                return RedirectToAction(nameof(Index));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to enable portal access during edit. AgentOid={AgentOid} ClientUserId={ClientUserId} RequestedRecordType={RequestedRecordType}",
+                    agentOid,
+                    clientUserIdNorm,
+                    requestedRecordType);
+
+                ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
+                    $"Failed to convert this lead into a portal {RecordTypeLabel(requestedRecordType).ToLowerInvariant()}: {ex.Message}");
+                PrepareEditView(model, returnUrl);
+                return View(model);
+            }
+        }
 
         await _db.SaveChangesAsync();
 
@@ -4437,12 +4457,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (!IsPortalRecordType(normalizedRecordType))
                 normalizedRecordType = currentRecordType;
 
-            var currentStage = NormalizePipelineStage(meta.PipelineStage);
-            if (!string.Equals(currentRecordType, normalizedRecordType, StringComparison.OrdinalIgnoreCase) &&
-                (currentStage is "Client" or "BusinessClient" || normalizedStage is "Client" or "BusinessClient"))
-            {
+            if (!string.Equals(currentRecordType, normalizedRecordType, StringComparison.OrdinalIgnoreCase))
                 normalizedStage = DefaultPipelineStageForRecordType(normalizedRecordType);
-            }
         }
 
         if (!string.Equals(meta.PipelineStage, normalizedStage, StringComparison.Ordinal))

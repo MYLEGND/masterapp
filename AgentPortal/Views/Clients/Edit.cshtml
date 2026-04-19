@@ -7,8 +7,8 @@
     var clientUserId = Model?.ClientUserId ?? "";
     var recordTypeLabel = Model?.RecordType == "BusinessClient" ? "Business Client" : (Model?.RecordType == "Client" ? "Client" : "Lead");
     var recordTypeHelp = Model?.HasPortalAccess == true
-        ? "Portal-enabled records can switch between Client and Business Client here."
-        : "Leads stay as leads here. Use Quick View conversion to enable Client or Business Client access.";
+        ? "Switch between Lead, Client, and Business Client here. Existing portal access stays active after save."
+        : "You can save this record as Lead, Client, or Business Client here. Choosing Client or Business Client will enable portal access on save.";
     var hasPortalAccess = Model?.HasPortalAccess == true;
 
     ViewBag.ClientUserId = Model?.ClientUserId;
@@ -360,18 +360,28 @@
                         <span class="pill">@recordTypeLabel</span>
                     </div>
                     <div class="record-types">
-                        <label class="record-option @(hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="Lead" disabled="@hasPortalAccess" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Lead" />
                             <span>Lead</span>
                         </label>
-                        <label class="record-option @(!hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="Client" disabled="@(!hasPortalAccess)" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Client" />
                             <span>Client</span>
                         </label>
-                        <label class="record-option @(!hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="BusinessClient" disabled="@(!hasPortalAccess)" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="BusinessClient" />
                             <span>Business Client</span>
                         </label>
+                    </div>
+                    <div class="note" style="margin-top:8px;">
+                        @if (hasPortalAccess)
+                        {
+                            <text>Saving as Lead reclassifies the CRM bucket without deleting the existing portal login.</text>
+                        }
+                        else
+                        {
+                            <text>Saving as Client or Business Client will run the portal welcome flow after the record is updated.</text>
+                        }
                     </div>
                     <span asp-validation-for="RecordType" class="text-danger validation"></span>
                 </div>

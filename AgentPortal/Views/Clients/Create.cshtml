@@ -530,27 +530,32 @@
 
                         <div>
                             <label class="label" for="CrmLastTouch">Last Touch</label>
-                            <input type="date" class="input" id="CrmLastTouch" name="CrmLastTouch" />
+                            <input asp-for="CrmLastTouch" type="date" class="input" id="CrmLastTouch" />
+                            <span asp-validation-for="CrmLastTouch" class="text-danger validation"></span>
                         </div>
 
                         <div>
                             <label class="label" for="CrmNextDate">Next Action Date</label>
-                            <input type="date" class="input" id="CrmNextDate" name="CrmNextDate" />
+                            <input asp-for="CrmNextDate" type="date" class="input" id="CrmNextDate" />
+                            <span asp-validation-for="CrmNextDate" class="text-danger validation"></span>
                         </div>
 
                         <div class="full">
                             <label class="label" for="CrmNextText">Next Action (what will you do?)</label>
-                            <input type="text" class="input" id="CrmNextText" name="CrmNextText" />
+                            <input asp-for="CrmNextText" type="text" class="input" id="CrmNextText" />
+                            <span asp-validation-for="CrmNextText" class="text-danger validation"></span>
                         </div>
 
                         <div class="full">
                             <label class="label" for="CrmTags">Tags (comma separated)</label>
-                            <input type="text" class="input" id="CrmTags" name="CrmTags" />
+                            <input asp-for="CrmTags" type="text" class="input" id="CrmTags" />
+                            <span asp-validation-for="CrmTags" class="text-danger validation"></span>
                         </div>
 
                         <div class="full">
                             <label class="label" for="CrmNotes">Relationship Notes</label>
-                            <textarea class="input" id="CrmNotes" name="CrmNotes" style="min-height:96px; resize:vertical;"></textarea>
+                            <textarea asp-for="CrmNotes" class="input" id="CrmNotes" style="min-height:96px; resize:vertical;"></textarea>
+                            <span asp-validation-for="CrmNotes" class="text-danger validation"></span>
                         </div>
                     </div>
 
