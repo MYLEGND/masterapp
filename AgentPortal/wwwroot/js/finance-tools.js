@@ -1,3 +1,56 @@
+// ── Global Finance Tools Theme ── injected once on load, covers every tool ──
+(function injectFinanceToolsTheme() {
+    if (document.getElementById('ft-dark-theme')) return;
+    const s = document.createElement('style');
+    s.id = 'ft-dark-theme';
+    s.textContent = `
+        #budget-embed input,
+        #budget-embed select,
+        #budget-embed textarea,
+        #budget-embed input.form-control,
+        #budget-embed select.form-control,
+        #budget-embed .form-control,
+        #budget-embed .form-select,
+        .networth-tool input,
+        .networth-tool select,
+        .networth-tool textarea,
+        .networth-tool input.form-control,
+        .networth-tool select.form-control,
+        .networth-tool .form-control,
+        .networth-tool .form-select {
+            background-color: rgba(255,255,255,.92) !important;
+            border: 1.5px solid rgba(166,128,35,.38) !important;
+            border-radius: 10px !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+            transition: border-color .15s ease, box-shadow .15s ease !important;
+        }
+        #budget-embed input:focus,
+        #budget-embed select:focus,
+        #budget-embed textarea:focus,
+        #budget-embed .form-control:focus,
+        #budget-embed .form-select:focus,
+        .networth-tool input:focus,
+        .networth-tool select:focus,
+        .networth-tool textarea:focus,
+        .networth-tool .form-control:focus,
+        .networth-tool .form-select:focus {
+            border-color: #ddb457 !important;
+            box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+            outline: none !important;
+        }
+        #budget-embed input[type="date"],
+        .networth-tool input[type="date"] { color-scheme: light; }
+        #budget-embed .btn-outline-gold,
+        .networth-tool .btn-outline-gold {
+            background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+            border: 1.5px solid rgba(199,153,49,.55) !important;
+            border-radius: 10px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+        }
+    `;
+    document.head.appendChild(s);
+})();
+
 document.addEventListener("DOMContentLoaded", async function () {
     const dropdown = document.getElementById("budgetDropdown");
     const embedContainer = document.getElementById("budget-embed");
@@ -295,7 +348,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         container.style.overflow = 'visible';
         container.style.border = '1.8px solid rgba(166,128,35,.52)';
         container.style.borderRadius = '16px';
-        container.style.background = 'radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99))';
+        container.style.background = 'radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99))';
         container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
     }
@@ -5155,6 +5208,67 @@ if (t.id === "SavingsAccelerator") {
         });
     });
 
+    const parseSavingsMoney = (value) => +(String(value || '').replace(/,/g, '')) || 0;
+
+    const normalizeSavingsBillFrequency = (value) => {
+        const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+        if (normalized === 'weekly') return 'weekly';
+        if (normalized === 'biweekly') return 'biweekly';
+        return 'monthly';
+    };
+
+    const getSavingsExpenseOccurrences = (category) => {
+        const frequency = normalizeSavingsBillFrequency(category?.frequency || category?.recurrence);
+        if (frequency === 'monthly') return 1;
+
+        const due = category?.due || '';
+        const parts = due.split('-').map(part => parseInt(part, 10));
+        if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return 0;
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const days = new Date(year, month + 1, 0).getDate();
+        const dueDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        let occurrences = 0;
+
+        if (frequency === 'weekly') {
+            const targetWeekday = dueDate.getDay();
+            for (let day = 1; day <= days; day++) {
+                if (new Date(year, month, day).getDay() === targetWeekday) occurrences++;
+            }
+            return occurrences;
+        }
+
+        const anchorDay = Math.min(dueDate.getDate(), days);
+        const anchorDate = new Date(year, month, anchorDay);
+        for (let day = 1; day <= days; day++) {
+            const diffDays = Math.round((new Date(year, month, day) - anchorDate) / 86400000);
+            if (diffDays % 14 === 0) occurrences++;
+        }
+        return occurrences;
+    };
+
+    const calculateExpenseLensMonthlyTotal = (state) => {
+        const savedTotal = parseSavingsMoney(state?.monthlyExpenseTotal);
+        if (savedTotal > 0) return savedTotal;
+        return (state?.categories || []).reduce((sum, category) => {
+            const amount = parseSavingsMoney(category?.amount);
+            const occurrences = getSavingsExpenseOccurrences(category);
+            return sum + (amount * occurrences);
+        }, 0);
+    };
+
+    const applyExpenseLensToSavingsAccelerator = async () => {
+        const state = await loadPersistedState('ExpenseLens');
+        const income = parseSavingsMoney(state?.income);
+        const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
+
+        if (income > 0) saNetInput.value = formatNumber(income);
+        if (monthlyExpenses > 0) saEssInput.value = formatNumber(monthlyExpenses);
+        refreshSurplus();
+    };
+
     const saveAllocationState = () => {
         const net = saNetInput.value || '';
         const ess = saEssInput.value || '';
@@ -5170,8 +5284,8 @@ if (t.id === "SavingsAccelerator") {
         // Push to shared Finance Profile (only fields this tool owns)
         if (window.LegendFinanceProfile?.update) {
             const partial = {};
-            const netNum = +net.replace(/,/g, '') || 0;
-            const essNum = +ess.replace(/,/g, '') || 0;
+            const netNum = parseSavingsMoney(net);
+            const essNum = parseSavingsMoney(ess);
             if (net) partial.monthlyNet = netNum;
             if (ess) partial.fixedExpenses = essNum;
             window.LegendFinanceProfile.update(partial);
@@ -5360,9 +5474,11 @@ if (t.id === "SavingsAccelerator") {
     });
 
 await loadAllocationState();
-    applyProfileToSavingsAccelerator();
-    window.addEventListener("FinanceProfile:updated", applyProfileToSavingsAccelerator);
-    window.addEventListener("FinanceProfile:ready", applyProfileToSavingsAccelerator);
+	    await applyExpenseLensToSavingsAccelerator();
+	    applyProfileToSavingsAccelerator();
+	    window.addEventListener("FinanceProfile:updated", applyProfileToSavingsAccelerator);
+	    window.addEventListener("FinanceProfile:ready", applyProfileToSavingsAccelerator);
+	    window.addEventListener("ExpenseLens:updated", () => { applyExpenseLensToSavingsAccelerator(); });
 
 // ✅ Force correct colors AFTER state load (so it stays green/red)
 refreshSurplus();
@@ -5377,7 +5493,7 @@ if (t.id === "ExpenseLens") {
     try {
         embedContainer.innerHTML = `
         <div class="networth-tool p-4"
-             style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99));
+             style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                     border-radius:20px;
                     box-shadow:0 40px 100px rgba(0,0,0,.58);
                     border:1.8px solid rgba(166,128,35,.52);
@@ -5450,7 +5566,7 @@ if (t.id === "ExpenseLens") {
                 .networth-tool input.form-control,
                 .networth-tool select.form-control,
                 .networth-tool .form-control {
-                    background-color: rgba(15,26,50,.95) !important;
+                    background-color: rgba(255,255,255,.92) !important;
                     border: 1.5px solid rgba(166,128,35,.38) !important;
                     border-radius: 10px !important;
                     box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
@@ -5502,7 +5618,7 @@ if (t.id === "ExpenseLens") {
                 <input id="elIncome" type="text" 
                        class="form-control mb-3"
                        placeholder="Enter total monthly income"
-                       style="border:1.5px solid rgba(166,128,35,.38); background-color:rgba(15,26,50,.95); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); border-radius:10px; font-weight:700; color:#1E3A8A; padding-right:30px;" />
+                       style="border:1.5px solid rgba(166,128,35,.38); background-color:rgba(255,255,255,.92); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); border-radius:10px; font-weight:700; color:#1E3A8A; padding-right:30px;" />
                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
 
@@ -5563,7 +5679,7 @@ if (t.id === "ExpenseLens") {
 
         // Force elIncome input to match Proposal/UW form — inline !important beats all CSS
         if (elIncome) {
-            elIncome.style.setProperty('background-color', 'rgba(15,26,50,.95)', 'important');
+            elIncome.style.setProperty('background-color', 'rgba(255,255,255,.92)', 'important');
             elIncome.style.setProperty('border', '1.5px solid rgba(166,128,35,.38)', 'important');
             elIncome.style.setProperty('border-radius', '10px', 'important');
             elIncome.style.setProperty('box-shadow', 'inset 0 1px 0 rgba(255,255,255,.05)', 'important');
@@ -5585,7 +5701,7 @@ if (t.id === "ExpenseLens") {
                 #budget-embed input.form-control,
                 #budget-embed select.form-control,
                 #budget-embed .form-control {
-                    background-color: rgba(15,26,50,.95) !important;
+                    background-color: rgba(255,255,255,.92) !important;
                     border: 1.5px solid rgba(166,128,35,.38) !important;
                     border-radius: 10px !important;
                     box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
@@ -5689,7 +5805,7 @@ if (t.id === "ExpenseLens") {
         // -----------------------------
         // State Handling
         // -----------------------------
-        const saveExpenseLensState = () => {
+        const saveExpenseLensState = (extraState = {}) => {
             try {
                 const income = elIncome.value || '';
                 const categories = [];
@@ -5705,7 +5821,7 @@ if (t.id === "ExpenseLens") {
                     const amount = amountEl ? amountEl.value || '' : '';
                     categories.push({ index, name, due, frequency, amount });
                 });
-                const state = { income, categories };
+                const state = { income, categories, ...extraState };
                 savePersistedState('ExpenseLens', state);
             } catch (e) { console.error(e); }
         };
@@ -5803,7 +5919,7 @@ if (t.id === "ExpenseLens") {
             nameInput.id = `elCatName${index}`;
             nameInput.className = "form-control flex-grow-1";
             nameInput.placeholder = `Category ${index} Name`;
-            nameInput.style.setProperty("background-color", "rgba(15,26,50,.95)", "important");
+            nameInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
             nameInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
             nameInput.style.setProperty("border-radius", "10px", "important");
             nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
@@ -5822,7 +5938,7 @@ if (t.id === "ExpenseLens") {
             dueInput.id = `elCatDue${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
-            dueInput.style.setProperty("background-color", "rgba(15,26,50,.95)", "important");
+            dueInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
             dueInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
             dueInput.style.setProperty("border-radius", "10px", "important");
             dueInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
@@ -5835,7 +5951,7 @@ if (t.id === "ExpenseLens") {
             const frequencySelect = document.createElement("select");
             frequencySelect.id = `elCatFrequency${index}`;
             frequencySelect.className = "form-select";
-            frequencySelect.style.setProperty("background-color", "rgba(15,26,50,.95)", "important");
+            frequencySelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
             frequencySelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
             frequencySelect.style.setProperty("border-radius", "10px", "important");
             frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
@@ -5863,7 +5979,7 @@ if (t.id === "ExpenseLens") {
             amountInput.className = "form-control";
             amountInput.placeholder = "Amount";
             amountInput.style.width = "100%";
-            amountInput.style.setProperty("background-color", "rgba(15,26,50,.95)", "important");
+            amountInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
             amountInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
             amountInput.style.setProperty("border-radius", "10px", "important");
             amountInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
@@ -5968,6 +6084,7 @@ if (t.id === "ExpenseLens") {
         const refreshExpenseLens = () => {
             const income = +elIncome.value.replace(/,/g,'') || 0;
             let totalSpent = 0;
+            let monthlyTotalSpent = 0;
             const categoriesData = [];
 
             document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
@@ -5978,6 +6095,7 @@ if (t.id === "ExpenseLens") {
                 const occurrenceCount = elActiveWeek ? activeOccurrences.length : monthOccurrences.length;
                 const rowTotal = val * occurrenceCount;
                 const monthlyTotal = val * monthOccurrences.length;
+                monthlyTotalSpent += monthlyTotal;
                 const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = document.getElementById(`elOut${index}`);
                 pctEl.textContent = pct;
@@ -6020,15 +6138,23 @@ if (t.id === "ExpenseLens") {
                 elTips.textContent = 'Monitor each category to identify areas to save or invest.';
             }
 
-            saveExpenseLensState();
+            saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent });
 
             // Push expenses + income into shared Finance Profile
             if (window.LegendFinanceProfile?.update) {
                 window.LegendFinanceProfile.update({
                     monthlyNet: income || undefined,
+                    fixedExpenses: monthlyTotalSpent || undefined,
                     expenses: categoriesData
                 });
             }
+            window.dispatchEvent(new CustomEvent('ExpenseLens:updated', {
+                detail: {
+                    income,
+                    monthlyExpenseTotal: monthlyTotalSpent,
+                    expenses: categoriesData
+                }
+            }));
         };
 
         // -----------------------------

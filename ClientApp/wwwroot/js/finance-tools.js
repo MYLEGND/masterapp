@@ -1126,6 +1126,67 @@ if (t.id === "SavingsAccelerator") {
         });
     });
 
+    const parseSavingsMoney = (value) => +(String(value || '').replace(/,/g, '')) || 0;
+
+    const normalizeSavingsBillFrequency = (value) => {
+        const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+        if (normalized === 'weekly') return 'weekly';
+        if (normalized === 'biweekly') return 'biweekly';
+        return 'monthly';
+    };
+
+    const getSavingsExpenseOccurrences = (category) => {
+        const frequency = normalizeSavingsBillFrequency(category?.frequency || category?.recurrence);
+        if (frequency === 'monthly') return 1;
+
+        const due = category?.due || '';
+        const parts = due.split('-').map(part => parseInt(part, 10));
+        if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return 0;
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const days = new Date(year, month + 1, 0).getDate();
+        const dueDate = new Date(parts[0], parts[1] - 1, parts[2]);
+        let occurrences = 0;
+
+        if (frequency === 'weekly') {
+            const targetWeekday = dueDate.getDay();
+            for (let day = 1; day <= days; day++) {
+                if (new Date(year, month, day).getDay() === targetWeekday) occurrences++;
+            }
+            return occurrences;
+        }
+
+        const anchorDay = Math.min(dueDate.getDate(), days);
+        const anchorDate = new Date(year, month, anchorDay);
+        for (let day = 1; day <= days; day++) {
+            const diffDays = Math.round((new Date(year, month, day) - anchorDate) / 86400000);
+            if (diffDays % 14 === 0) occurrences++;
+        }
+        return occurrences;
+    };
+
+    const calculateExpenseLensMonthlyTotal = (state) => {
+        const savedTotal = parseSavingsMoney(state?.monthlyExpenseTotal);
+        if (savedTotal > 0) return savedTotal;
+        return (state?.categories || []).reduce((sum, category) => {
+            const amount = parseSavingsMoney(category?.amount);
+            const occurrences = getSavingsExpenseOccurrences(category);
+            return sum + (amount * occurrences);
+        }, 0);
+    };
+
+    const applyExpenseLensToSavingsAccelerator = async () => {
+        const state = await loadPersistedState('ExpenseLens');
+        const income = parseSavingsMoney(state?.income);
+        const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
+
+        if (income > 0) saNetInput.value = formatNumber(income);
+        if (monthlyExpenses > 0) saEssInput.value = formatNumber(monthlyExpenses);
+        refreshSurplus();
+    };
+
     const saveAllocationState = () => {
         const net = saNetInput.value || '';
         const ess = saEssInput.value || '';
@@ -1310,6 +1371,8 @@ if (t.id === "SavingsAccelerator") {
     });
 
  await loadAllocationState();
+ await applyExpenseLensToSavingsAccelerator();
+ window.addEventListener("ExpenseLens:updated", () => { applyExpenseLensToSavingsAccelerator(); });
 
 // ✅ Force correct colors AFTER state load (so it stays green/red)
 refreshSurplus();
@@ -1549,7 +1612,7 @@ if (t.id === "ExpenseLens") {
         // -----------------------------
         // State Handling
         // -----------------------------
-        const saveExpenseLensState = () => {
+        const saveExpenseLensState = (extraState = {}) => {
             try {
                 const income = elIncome.value || '';
                 const categories = [];
@@ -1565,7 +1628,7 @@ if (t.id === "ExpenseLens") {
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
                     categories.push({ index, name, amount, due, frequency });
                 });
-                const state = { income, categories };
+                const state = { income, categories, ...extraState };
                 savePersistedState('ExpenseLens', state);
             } catch (e) { console.error(e); }
         };
@@ -1799,6 +1862,7 @@ if (t.id === "ExpenseLens") {
         const refreshExpenseLens = () => {
             const income = +elIncome.value.replace(/,/g,'') || 0;
             let totalSpent = 0;
+            let monthlyTotalSpent = 0;
             const categoriesData = [];
 
             document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
@@ -1809,6 +1873,7 @@ if (t.id === "ExpenseLens") {
                 const occurrenceCount = elActiveWeek ? activeOccurrences.length : monthOccurrences.length;
                 const rowTotal = val * occurrenceCount;
                 const monthlyTotal = val * monthOccurrences.length;
+                monthlyTotalSpent += monthlyTotal;
                 const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = document.getElementById(`elOut${index}`);
                 pctEl.textContent = pct;
@@ -1851,7 +1916,14 @@ if (t.id === "ExpenseLens") {
                 elTips.textContent = 'Monitor each category to identify areas to save or invest.';
             }
 
-            saveExpenseLensState();
+            saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent });
+            window.dispatchEvent(new CustomEvent('ExpenseLens:updated', {
+                detail: {
+                    income,
+                    monthlyExpenseTotal: monthlyTotalSpent,
+                    expenses: categoriesData
+                }
+            }));
         };
 
         // -----------------------------
