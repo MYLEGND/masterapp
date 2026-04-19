@@ -596,20 +596,32 @@ body.finance-support-open{ overflow: hidden; }
 .finance-main{ border: 2px solid var(--lineDark) !important; background: var(--navyPanel) !important; }
 
 .finance-action-container input,
-.finance-goals-container input,
-#budget-embed .form-control,
-#budget-embed select,
-#budget-embed textarea{
+.finance-goals-container input{
     border: 2px solid var(--lineDark) !important;
-    background: #ffffff !important;
-    color: #111827 !important;
+    background: var(--navyField) !important;
+    color: #f5f7fb !important;
 }
 
 #budget-embed input,
 #budget-embed select,
-#budget-embed textarea{
-    background: #ffffff !important;
+#budget-embed textarea,
+#budget-embed .form-control,
+#budget-embed .form-select{
+    background: rgba(255,255,255,.92) !important;
     color: #111827 !important;
+    border: 1.5px solid rgba(166,128,35,.38) !important;
+    border-radius: 10px !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+#budget-embed input:focus,
+#budget-embed select:focus,
+#budget-embed textarea:focus,
+#budget-embed .form-control:focus,
+#budget-embed .form-select:focus{
+    border-color: #ddb457 !important;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+    outline: none !important;
 }
 
 .finance-shell .action-row,

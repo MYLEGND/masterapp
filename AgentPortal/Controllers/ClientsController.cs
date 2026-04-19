@@ -4912,7 +4912,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
 
             // Delete Entra only for real portal users. Lead-only records use synthetic ids.
-            if (HasPortalAccess(clientUserIdNorm))
+            var hadPortalAccess = HasPortalAccess(clientUserIdNorm);
+            if (hadPortalAccess)
                 await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
 
             // DB cleanup
@@ -4945,10 +4946,13 @@ meta.Activities ??= new List<ClientCrmActivity>();
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
 
-            TempData["Created"] = "Client deleted (profile + household + client shared finance + Entra account removed).";
+            var deletedMessage = hadPortalAccess
+                ? "Client deleted (profile + household + client shared finance + Entra account removed)."
+                : "Client deleted (profile + household + client shared finance removed).";
+            TempData["Created"] = deletedMessage;
 
             if (isFetchRequest)
-                return Json(new { ok = true, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+                return Json(new { ok = true, message = deletedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
 
             return RedirectToAction(nameof(Index));
         }
