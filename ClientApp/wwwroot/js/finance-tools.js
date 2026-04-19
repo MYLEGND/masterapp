@@ -439,12 +439,14 @@ function markWithSuffix(markFn, el) {
             await ensureChartJs();
             embedContainer.innerHTML = `
 <div class="networth-tool" style="
-    background:#ffffff; 
-    padding:40px; 
-    border-radius:20px; 
-    box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-    max-width:1200px; 
+    background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+    padding:40px;
+    border-radius:20px;
+    box-shadow:0 40px 100px rgba(0,0,0,.58);
+    border:1.8px solid rgba(166,128,35,.52);
+    max-width:1200px;
     margin:0 auto;
+    color:#f8fafc;
     font-family: 'Inter', sans-serif;
 ">
     <!-- Tooltip styles (safe + isolated) -->
@@ -972,13 +974,14 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         : "Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.";
 
     embedContainer.innerHTML = `
-<div class="networth-tool p-4" 
-     style="background:#ffffff; 
-            border-radius:20px; 
-            box-shadow:0 12px 35px rgba(166,128,35,0.15); 
-            border:1px solid rgba(166,128,35,0.35); 
-            max-width:1200px; 
+<div class="networth-tool p-4"
+     style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
+            border-radius:20px;
+            box-shadow:0 40px 100px rgba(0,0,0,.58);
+            border:1.8px solid rgba(166,128,35,.52);
+            max-width:1200px;
             margin:0 auto;
+            color:#f8fafc;
             font-family: 'Inter', sans-serif;">
 
     <!-- Tooltip styles (safe + isolated) -->
