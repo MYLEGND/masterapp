@@ -49,7 +49,19 @@ function withAgentTimeZone(init = {}){
 }
 if (window.fetch){
   const __origFetch = window.fetch.bind(window);
-  window.fetch = (input, init = {}) => __origFetch(input, withAgentTimeZone(init));
+  window.fetch = (input, init = {}) => {
+    const patched = withAgentTimeZone(init);
+    // Mark every fetch so the server can return 401 instead of redirecting to Azure AD
+    patched.headers.set("X-Requested-With", "XMLHttpRequest");
+    return __origFetch(input, patched).then(res => {
+      // If the server says the session expired, force a full page reload to re-auth
+      if (res.status === 401) {
+        const currentPath = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/MicrosoftIdentity/Account/SignIn?returnUrl=${currentPath}`;
+      }
+      return res;
+    });
+  };
 }
 
 function loadJSON(key, fallback){

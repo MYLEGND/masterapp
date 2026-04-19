@@ -532,6 +532,24 @@ builder.Services.AddSingleton<GraphServiceClient>(sp =>
     return new GraphServiceClient(cred, new[] { "https://graph.microsoft.com/.default" });
 });
 
+// For OIDC challenges (Graph token expiry), also return 401 for AJAX requests
+// instead of redirecting to Azure AD — same reason as the cookie handler below.
+builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, oidcOptions =>
+{
+    var original = oidcOptions.Events?.OnRedirectToIdentityProvider;
+    oidcOptions.Events ??= new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents();
+    oidcOptions.Events.OnRedirectToIdentityProvider = async ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            ctx.HandleResponse();
+            return;
+        }
+        if (original != null) await original(ctx);
+    };
+});
+
 // Cookie behavior (kept)
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -545,6 +563,29 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/MicrosoftIdentity/Account/SignIn";
     options.LogoutPath = "/MicrosoftIdentity/Account/SignOut";
     options.AccessDeniedPath = "/Access/Denied";
+
+    // For AJAX/fetch calls, return 401 instead of redirecting to Azure AD.
+    // Without this, fetch() follows the 302 cross-origin → CORS blocks it.
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 
 builder.Services.AddAuthorization();
