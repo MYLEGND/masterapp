@@ -639,39 +639,31 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wb-tipbox b{ font-weight:900; }
         .wb-tipbox.show{ opacity:1; transform:translateY(0); }
         .wf-chart-wrap{
-            width:100%;
+            width:min(430px, 100%);
             min-height:280px;
-            padding:10px 4px 4px;
+            padding:8px 0 0;
+            align-self:center;
         }
         .wf-chart-wrap canvas{
             width:100% !important;
-            height:320px !important;
+            height:300px !important;
         }
         .wf-output-col{
             display:flex;
             flex-direction:column;
             gap:12px;
-            align-items:stretch;
-            min-width:0;
-        }
-        .wf-main-grid{
-            display:grid;
-            grid-template-columns:minmax(0, 1.08fr) minmax(420px, .92fr);
-            gap:44px;
-            align-items:start;
-            width:100%;
-        }
-        .wf-input-col{
-            min-width:0;
+            align-items:center;
         }
         .wf-toggle-row{
             display:flex;
             gap:18px;
             align-items:center;
             justify-content:center;
-            min-height:42px;
-            margin:0 0 4px;
+            min-height:28px;
+            width:min(430px, 100%);
+            margin:0 0 2px;
             flex-wrap:wrap;
+            align-self:center;
         }
         .wf-toggle-label{
             display:inline-flex;
@@ -702,6 +694,18 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             display:flex;
             flex-direction:column;
             gap:8px;
+        }
+        .wf-output-actions{
+            width:min(420px, 100%);
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            align-self:center;
+            margin-top:2px;
+        }
+        .wf-output-actions .wf-dist-launch-btn{
+            width:100%;
+            justify-content:center;
         }
         .wf-stat-row{
             display:flex;
@@ -747,12 +751,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wf-title-stack{flex:1;}
         .wf-actions{
             display:flex;
-            align-items:stretch;
-            gap:10px;
+            align-items:center;
+            gap:12px;
             flex-wrap:nowrap;
             justify-content:flex-end;
             flex-shrink:0;
-            align-self:start;
             position:relative;
             z-index:7;
         }
@@ -760,7 +763,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             flex:0 0 auto;
             margin:0;
             border-radius:12px !important;
-            height:42px;
+            height:40px;
             display:inline-flex;
             align-items:center;
             justify-content:center;
@@ -770,9 +773,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             display:inline-flex;
             align-items:center;
             justify-content:center;
-            height:42px;
-            min-width:88px;
-            padding:0 16px;
+            height:40px;
+            min-width:78px;
+            padding:0 14px;
             border-radius:12px !important;
             font-weight:700;
             font-size:.82rem;
@@ -810,12 +813,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             font-weight: 900;
             letter-spacing: .4px;
             border-radius: 12px;
-            height: 42px;
-            padding: 0 22px;
+            height: 40px;
+            padding: 0 18px;
             cursor: pointer;
             font-family: Inter, sans-serif;
             font-size: .92rem;
-            min-width: 200px;
+            min-width: 190px;
             pointer-events: auto;
             position: relative;
             z-index: 5;
@@ -938,7 +941,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             row-gap:12px;
         }
         @media (max-width: 980px){
-            .wf-main-grid{grid-template-columns:1fr;gap:28px;}
             .wf-actions{justify-content:flex-start;}
             .wf-output-col{min-width:0;}
         }
@@ -953,9 +955,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
       </div>
       <div id="wfActions" class="wf-actions"></div>
     </div>
-    <div class="wf-main-grid">
+    <div style="display:flex; flex-wrap:wrap; gap:44px; align-items:flex-start;">
         <!-- Inputs Column -->
-        <div class="wf-input-col">
+        <div style="flex:1 1 400px; min-width:400px;">
             <div class="wf-input-grid">
                 <div class="wf-row row-primary">
                     <div>
@@ -1064,7 +1066,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             <input id="wbDisruptMonths" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
                         </div>
                         <div>
-                            <label class="wb-label">Disability Income Replacement %</label>
+                            <label class="wb-label">Income Replacement %</label>
                             <div style="position:relative;">
                                 <input id="wbDisabilityPct" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#1E3A8A; padding-right:30px;" placeholder="0" />
                                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
@@ -1077,7 +1079,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         </div>
 
         <!-- Outputs + Chart -->
-        <div class="wf-output-col">
+        <div style="flex:1 1 420px; min-width:420px;" class="wf-output-col">
             <div class="wf-toggle-row">
                 <label class="wf-toggle-label" style="color:#22c55e;">
                     <input id="wf_toggleWealth" type="checkbox" checked> Projected Wealth
@@ -1109,6 +1111,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 <span id="wbEarnings" style="display:none">$0</span>
                 <span id="wbWealth" style="display:none">$0</span>
             </div>
+            <div id="wfOutputActions" class="wf-output-actions"></div>
         </div>
     </div>
 
@@ -1869,16 +1872,17 @@ markNeutral(savingsTipsOut);
             }, wfActionsHost);
 
             // ========================
-            // DISTRIBUTION BUTTON (left of Clear)
+            // DISTRIBUTION BUTTON
             // ========================
             const distBtn = document.createElement('button');
             distBtn.type = 'button';
             distBtn.innerHTML = '<span class="wfd-btn-icon">&#9654;</span> Distribution Planner';
             distBtn.className = 'wf-dist-launch-btn';
-            if (wfActionsHost) {
-                const clearBtn = wfActionsHost.querySelector('.clear-btn');
-                if (clearBtn) wfActionsHost.insertBefore(distBtn, clearBtn);
-                else wfActionsHost.appendChild(distBtn);
+            const wfOutputActionsHost = document.getElementById('wfOutputActions');
+            if (wfOutputActionsHost) {
+                wfOutputActionsHost.appendChild(distBtn);
+            } else if (wfActionsHost) {
+                wfActionsHost.appendChild(distBtn);
             } else {
                 container.appendChild(distBtn);
             }
