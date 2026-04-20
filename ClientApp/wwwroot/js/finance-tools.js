@@ -54,6 +54,8 @@
 document.addEventListener("DOMContentLoaded", async function () {
     const dropdown = document.getElementById("budgetDropdown");
     const embedContainer = document.getElementById("budget-embed");
+    const financeShell = document.querySelector(".finance-shell");
+    const financeToolsRow = document.querySelector(".finance-tools-row");
     const financeRoot = document.getElementById("financeRoot");
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
@@ -82,6 +84,11 @@ document.addEventListener("DOMContentLoaded", async function () {
         "FreedomIndex",
         "DebtAssetPulse"
     ]);
+    const setDualToolMode = (enabled) => {
+        financeShell?.classList.toggle("finance-shell--dual-tools", !!enabled);
+        financeToolsRow?.classList.toggle("finance-tools-row--dual-tools", !!enabled);
+        document.body.classList.toggle("finance-dual-tools-open", !!enabled);
+    };
 
     function getStateKeys(key) {
         if (!key) return [];
@@ -483,6 +490,7 @@ function markWithSuffix(markFn, el) {
         // clear UI
         embedContainer.innerHTML = '';
         embedContainer.classList.remove('finance-main--dual');
+        setDualToolMode(false);
 
         // close any active tooltip cleanly
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
@@ -1040,6 +1048,7 @@ if (t.id === "SavingsAccelerator") {
     try {
     const renderSavingsAcceleratorInstance = async (renderToolId, hostElement) => {
     const isBusinessSA = renderToolId === "BusinessSavingsAccelerator";
+    const isDualPanel = hostElement.classList.contains('expense-lens-dual-panel');
     const prefix = isBusinessSA ? 'bsa' : 'sa';
     const pid = (name) => `${prefix}${name}`;
     const saStateId = isBusinessSA ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
@@ -1281,16 +1290,19 @@ if (t.id === "SavingsAccelerator") {
         const row = document.createElement('div');
         row.className = 'sa-alloc-row d-flex align-items-center mb-2 gap-2';
         row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
+        row.style.flexWrap = isDualPanel ? 'wrap' : 'nowrap';
+        row.style.alignItems = isDualPanel ? 'stretch' : 'center';
 
         const name = document.createElement('input');
         name.className = 'form-control sa-alloc-name';
-        name.style.flex = '2';
+        name.style.flex = isDualPanel ? '1 1 100%' : '2';
+        if (isDualPanel) name.style.minWidth = '100%';
         name.placeholder = `Category ${index}`;
         name.value = preName;
         name.addEventListener('input', saveAllocationState);
 
         const amtWrap = document.createElement('div');
-        amtWrap.style.cssText = 'flex:1;position:relative;';
+        amtWrap.style.cssText = `flex:${isDualPanel ? '1 1 160px' : '1'};position:relative;`;
 
         const amt = document.createElement('input');
         amt.className = 'form-control sa-alloc-amount';
@@ -1308,7 +1320,7 @@ if (t.id === "SavingsAccelerator") {
         amtWrap.appendChild(dollar);
 
         const pctWrap = document.createElement('div');
-        pctWrap.style.cssText = 'flex:1;position:relative;';
+        pctWrap.style.cssText = `flex:${isDualPanel ? '1 1 120px' : '1'};position:relative;`;
 
         const pct = document.createElement('input');
         pct.className = 'form-control sa-alloc-percent';
@@ -1422,6 +1434,7 @@ if (t.id === "SavingsAccelerator") {
     }; // end renderSavingsAcceleratorInstance
 
     if (isBusinessClient) {
+        setDualToolMode(true);
         embedContainer.classList.add('finance-main--dual');
         embedContainer.innerHTML = `
             <div class="expense-lens-dual-shell">
@@ -1801,7 +1814,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.style.border = "1.5px solid rgba(166,128,35,.24)";
             div.style.columnGap = isDualPanel ? "7px" : "12px";
             div.style.rowGap = "8px";
-            div.style.flexWrap = "nowrap";
+            div.style.flexWrap = isDualPanel ? "wrap" : "nowrap";
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
@@ -1813,16 +1826,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             nameInput.style.setProperty("border-radius", "10px", "important");
             nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             nameInput.style.color = "#1E3A8A";
-            nameInput.style.flex = isDualPanel ? "1 1 0" : "1 1 220px";
-            nameInput.style.minWidth = isDualPanel ? "0" : "";
+            nameInput.style.flex = isDualPanel ? "1 1 100%" : "1 1 220px";
+            nameInput.style.minWidth = isDualPanel ? "100%" : "";
             nameInput.value = preName;
             nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Due date field
             const dueWrapper = document.createElement("div");
             dueWrapper.style.position = "relative";
-            dueWrapper.style.flex = isDualPanel ? "0 0 100px" : "1 1 140px";
-            dueWrapper.style.minWidth = isDualPanel ? "100px" : "130px";
+            dueWrapper.style.flex = isDualPanel ? "1 1 132px" : "1 1 140px";
+            dueWrapper.style.minWidth = isDualPanel ? "124px" : "130px";
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
@@ -1849,8 +1862,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             frequencySelect.style.setProperty("color", "#1E3A8A", "important");
             frequencySelect.style.setProperty("font-weight", "700", "important");
-            frequencySelect.style.flex = isDualPanel ? "0 0 100px" : "0 1 132px";
-            frequencySelect.style.minWidth = isDualPanel ? "100px" : "124px";
+            frequencySelect.style.flex = isDualPanel ? "1 1 132px" : "0 1 132px";
+            frequencySelect.style.minWidth = "124px";
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -1862,8 +1875,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
-            amountWrapper.style.flex = isDualPanel ? "0 0 100px" : "1 1 150px";
-            amountWrapper.style.minWidth = isDualPanel ? "100px" : "140px";
+            amountWrapper.style.flex = isDualPanel ? "1 1 140px" : "1 1 150px";
+            amountWrapper.style.minWidth = isDualPanel ? "132px" : "140px";
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
@@ -1893,8 +1906,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
-            percentSpan.style.minWidth = isDualPanel ? "52px" : "80px";
-            percentSpan.style.flex = isDualPanel ? "0 0 52px" : "0 0 90px";
+            percentSpan.style.minWidth = isDualPanel ? "66px" : "80px";
+            percentSpan.style.flex = isDualPanel ? "0 0 66px" : "0 0 90px";
             percentSpan.style.textAlign = "right";
             percentSpan.style.fontWeight = "700";
             percentSpan.style.color = "#1E3A8A";
@@ -2590,6 +2603,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         if (isBusinessClient && t.id === "ExpenseLens") {
+            setDualToolMode(true);
             embedContainer.classList.add('finance-main--dual');
             embedContainer.innerHTML = `
                 <div class="expense-lens-dual-shell">
