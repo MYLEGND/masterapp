@@ -422,11 +422,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     // ------------------- Tools -------------------
-  const tools = [
-    { id: "WealthForecast", name: "Wealth Forecast" },
-    { id: "ExpenseLens", name: "Expense Lens" },
-    { id: "SavingsAccelerator", name: "Savings Accelerator" },
-    { id: "NetWorth", name: "Net Worth Tracker" },
+    const tools = [
+        { id: "WealthForecast", name: "Wealth Forecast" },
+        { id: "ExpenseLens", name: "Expense Lens" },
+        { id: "SavingsAccelerator", name: "Savings Accelerator" },
+        { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
         { id: "DebtClarity", name: "Debt Clarity" },
         { id: "FinancialBuffer", name: "Financial Buffer" },
@@ -2249,29 +2249,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const weekPanel = document.createElement('div');
-        weekPanel.style.cssText = 'display:none;position:fixed;top:0;left:0;transform:none;z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:14px 16px;width:min(340px, calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:min(420px, calc(100vh - 24px));overflow-y:auto;overflow-x:hidden;box-shadow:0 16px 44px rgba(30,58,138,0.42);';
+        weekPanel.className = 'expense-lens-week-panel';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:16px 18px;width:min(440px, calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 40px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);';
         document.body.appendChild(weekPanel);
 
-        const positionWeekPanel = (triggerEl) => {
-            if (!triggerEl) return;
-            const rect = triggerEl.getBoundingClientRect();
-            const panelWidth = Math.min(340, Math.max(280, window.innerWidth - 24));
-            const gap = 10;
-            const left = Math.min(
-                window.innerWidth - panelWidth - 12,
-                Math.max(12, rect.right - panelWidth)
-            );
-            const estimatedHeight = Math.min(420, Math.max(240, window.innerHeight - 24));
-            const roomBelow = window.innerHeight - rect.bottom;
-            const showAbove = roomBelow < estimatedHeight && rect.top > roomBelow;
-            const top = showAbove
-                ? Math.max(12, rect.top - estimatedHeight - gap)
-                : Math.min(window.innerHeight - estimatedHeight - 12, rect.bottom + gap);
+        const positionWeekPanel = () => {
+            weekPanel.style.top = '50%';
+            weekPanel.style.left = '50%';
+            weekPanel.style.transform = 'translate(-50%,-50%)';
+            weekPanel.style.width = 'min(440px, calc(100vw - 32px))';
+            weekPanel.style.maxHeight = 'min(560px, calc(100vh - 40px))';
+        };
 
-            weekPanel.style.width = `${panelWidth}px`;
-            weekPanel.style.maxWidth = `${Math.max(260, window.innerWidth - 24)}px`;
-            weekPanel.style.left = `${left}px`;
-            weekPanel.style.top = `${top}px`;
+        const hideOtherWeekPanels = () => {
+            document.querySelectorAll('.expense-lens-week-panel').forEach(panel => {
+                if (panel !== weekPanel) panel.style.display = 'none';
+            });
         };
 
         const renderWeekPanel = () => {
@@ -2451,6 +2444,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (isOpen) { weekPanel.style.display = 'none'; return; }
             renderWeekPanel();
             positionWeekPanel(weeklyBtn);
+            hideOtherWeekPanels();
             weekPanel.style.display = 'block';
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
@@ -2473,6 +2467,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (isOpen) { weekPanel.style.display = 'none'; return; }
             renderWeekPanel();
             positionWeekPanel(weeklyBtnTop);
+            hideOtherWeekPanels();
             weekPanel.style.display = 'block';
         });
         // Wrap the income input row in a flex container so the button sits cleanly to the right.
