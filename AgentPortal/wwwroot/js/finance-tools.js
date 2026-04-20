@@ -6390,9 +6390,33 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const rangeEnd   = week ? week.endDate   : new Date(y, m, days);
 
             if (frequency === 'monthly') {
-                const dayNum = Math.min(dueDate.getDate(), days);
-                const d = new Date(y, m, dayNum);
+                const dayNum = dueDate.getDate();
+
+                // Current month occurrence
+                const d = new Date(y, m, Math.min(dayNum, days));
                 if (d >= rangeStart && d <= rangeEnd) occurrences.push(d);
+
+                // When a week filter crosses a month boundary, also check adjacent months
+                // so bills due on e.g. May 1 appear in the Apr 26–May 2 week
+                if (week) {
+                    const wStartMonth = rangeStart.getFullYear() * 12 + rangeStart.getMonth();
+                    const wEndMonth   = rangeEnd.getFullYear()   * 12 + rangeEnd.getMonth();
+                    const curMonth    = y * 12 + m;
+
+                    if (wStartMonth < curMonth) {
+                        // Week starts in previous month
+                        const prevDays = new Date(y, m, 0).getDate();
+                        const dp = new Date(y, m - 1, Math.min(dayNum, prevDays));
+                        if (dp >= rangeStart && dp <= rangeEnd) occurrences.push(dp);
+                    }
+                    if (wEndMonth > curMonth) {
+                        // Week ends in next month
+                        const nextDays = new Date(y, m + 2, 0).getDate();
+                        const dn = new Date(y, m + 1, Math.min(dayNum, nextDays));
+                        if (dn >= rangeStart && dn <= rangeEnd) occurrences.push(dn);
+                    }
+                }
+
                 return occurrences;
             }
 
