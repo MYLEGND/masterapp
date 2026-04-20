@@ -194,7 +194,8 @@ builder.Services.AddAuthentication(options =>
 {
     options.Authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
     options.ClientId = clientId;
-    options.ClientSecret = clientSecret ?? "";
+    if (!string.IsNullOrWhiteSpace(clientSecret))
+        options.ClientSecret = clientSecret;
     options.CallbackPath = callbackPath;
 
     options.ResponseType = "code";

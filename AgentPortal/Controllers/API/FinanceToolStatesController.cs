@@ -106,6 +106,18 @@ namespace AgentPortal.Controllers.API
         private static bool IsBusinessOnlyTool(string? toolId)
             => !string.IsNullOrWhiteSpace(toolId) && BusinessOnlyToolIds.Contains(toolId.Trim());
 
+        private static bool IsAgentWorkspaceRequest(Guid clientProfileId, string? clientUserId)
+            => clientProfileId == Guid.Empty && string.IsNullOrWhiteSpace(clientUserId);
+
+        private string GetAgentStateOwnerKey()
+        {
+            var primary = Norm(_agentContext.EffectiveAgentOid);
+            if (!string.IsNullOrWhiteSpace(primary))
+                return primary;
+
+            return GetCurrentUserKeys().FirstOrDefault() ?? string.Empty;
+        }
+
         private async Task<bool> IsBusinessClientProfileAsync(Guid clientProfileId)
         {
             var crmNotes = await _db.ClientProfiles
@@ -167,6 +179,29 @@ namespace AgentPortal.Controllers.API
 
             var normalizedToolId = toolId.Trim();
 
+            if (IsAgentWorkspaceRequest(clientProfileId, clientUserId))
+            {
+                if (IsBusinessOnlyTool(normalizedToolId))
+                    return Forbid();
+
+                var agentUserId = GetAgentStateOwnerKey();
+                if (string.IsNullOrWhiteSpace(agentUserId))
+                    return Forbid();
+
+                var agentRow = await _db.AgentFinanceToolStates
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(x =>
+                        x.AgentUserId == agentUserId &&
+                        x.ToolId == normalizedToolId);
+
+                return Ok(new
+                {
+                    found = agentRow != null,
+                    jsonState = agentRow?.JsonState ?? "{}",
+                    clientProfileId = Guid.Empty
+                });
+            }
+
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(clientProfileId, clientUserId);
             if (resolvedClientProfileId == null)
                 return Forbid();
@@ -216,6 +251,43 @@ namespace AgentPortal.Controllers.API
                 return BadRequest("Invalid JSON state.");
             }
 
+            if (IsAgentWorkspaceRequest(req.ClientProfileId, req.ClientUserId))
+            {
+                if (IsBusinessOnlyTool(normalizedToolId))
+                    return Forbid();
+
+                var agentUserId = GetAgentStateOwnerKey();
+                if (string.IsNullOrWhiteSpace(agentUserId))
+                    return Forbid();
+
+                var agentRow = await _db.AgentFinanceToolStates
+                    .FirstOrDefaultAsync(x =>
+                        x.AgentUserId == agentUserId &&
+                        x.ToolId == normalizedToolId);
+
+                if (agentRow == null)
+                {
+                    agentRow = new AgentFinanceToolState
+                    {
+                        AgentUserId = agentUserId,
+                        ToolId = normalizedToolId,
+                        JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState,
+                        CreatedUtc = DateTime.UtcNow,
+                        UpdatedUtc = DateTime.UtcNow
+                    };
+
+                    _db.AgentFinanceToolStates.Add(agentRow);
+                }
+                else
+                {
+                    agentRow.JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState;
+                    agentRow.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                await _db.SaveChangesAsync();
+                return Ok(new { ok = true });
+            }
+
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(req.ClientProfileId, req.ClientUserId);
             if (resolvedClientProfileId == null)
                 return Forbid();
@@ -259,6 +331,29 @@ namespace AgentPortal.Controllers.API
                 return BadRequest();
 
             var normalizedToolId = toolId.Trim();
+
+            if (IsAgentWorkspaceRequest(clientProfileId, clientUserId))
+            {
+                if (IsBusinessOnlyTool(normalizedToolId))
+                    return Forbid();
+
+                var agentUserId = GetAgentStateOwnerKey();
+                if (string.IsNullOrWhiteSpace(agentUserId))
+                    return Forbid();
+
+                var agentRow = await _db.AgentFinanceToolStates
+                    .FirstOrDefaultAsync(x =>
+                        x.AgentUserId == agentUserId &&
+                        x.ToolId == normalizedToolId);
+
+                if (agentRow != null)
+                {
+                    _db.AgentFinanceToolStates.Remove(agentRow);
+                    await _db.SaveChangesAsync();
+                }
+
+                return Ok(new { ok = true });
+            }
 
             var resolvedClientProfileId = await ResolveAccessibleClientProfileIdAsync(clientProfileId, clientUserId);
             if (resolvedClientProfileId == null)

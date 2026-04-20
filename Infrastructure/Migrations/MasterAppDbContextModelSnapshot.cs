@@ -353,6 +353,40 @@ namespace Infrastructure.Migrations
                     b.ToTable("AgentZoomLinks");
                 });
 
+            modelBuilder.Entity("Domain.Entities.AgentFinanceToolState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("JsonState")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentUserId", "ToolId")
+                        .IsUnique();
+
+                    b.ToTable("AgentFinanceToolStates");
+                });
+
             modelBuilder.Entity("Domain.Entities.AgentTrackingAlias", b =>
                 {
                     b.Property<Guid>("Id")

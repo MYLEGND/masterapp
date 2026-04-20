@@ -81,7 +81,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
-    const canUseServerState = clientUserId.length > 0 || clientProfileId.length > 0;
+    const canUseServerState = true;
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
