@@ -1835,7 +1835,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const due = dueEl ? dueEl.value || '' : '';
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
                     const isTemplate = row.dataset.isTemplate === 'true';
-                    categories.push({ index, name, amount, due, frequency, isTemplate });
+                    const isPinned = row.dataset.isPinned === 'true';
+                    categories.push({ index, name, amount, due, frequency, isTemplate, isPinned });
                 });
                 const state = { income, categories, ...extraState };
                 savePersistedState(expenseLensToolStateId, state);
@@ -1854,7 +1855,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '', cat.frequency || cat.recurrence, cat.isTemplate === true);
+                            createCategoryRow(++categoryCount, cat.name, cat.amount, cat.due || '', cat.frequency || cat.recurrence, cat.isTemplate === true, cat.isPinned === true);
                             categoriesCreated++;
                         });
                     }
@@ -1898,26 +1899,46 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (weekPanel?.style.display !== 'none') renderWeekPanel();
         };
 
+        const isExpenseRowPinned = (row) => row?.dataset?.isPinned === 'true';
+
+        const keepPinnedExpenseRowsAtTop = () => {
+            const rows = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`));
+            if (rows.length < 2) return;
+
+            const ordered = [
+                ...rows.filter(isExpenseRowPinned),
+                ...rows.filter(row => !isExpenseRowPinned(row))
+            ];
+            const changed = ordered.some((row, index) => row !== rows[index]);
+            if (!changed) return;
+            ordered.forEach(row => categoriesContainer.appendChild(row));
+        };
+
         const sortExpenseRowsByAllocatedPercent = () => {
             const rows = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`));
             if (rows.length < 2) return;
 
-            const sorted = rows
+            const mapped = rows
                 .map((row, order) => {
                     const sortValue = Number.parseFloat(row.dataset.expenseSortValue || '0');
                     const amount = Number.parseFloat(row.dataset.expenseSortAmount || '0');
                     return {
                         row,
                         order,
+                        isPinned: isExpenseRowPinned(row),
                         sortValue: Number.isFinite(sortValue) ? sortValue : 0,
                         hasAmount: Number.isFinite(amount) && amount > 0
                     };
-                })
+                });
+            const sorted = [
+                ...mapped.filter(item => item.isPinned),
+                ...mapped.filter(item => !item.isPinned)
                 .sort((a, b) => {
                     if (b.sortValue !== a.sortValue) return b.sortValue - a.sortValue;
                     if (a.hasAmount !== b.hasAmount) return a.hasAmount ? -1 : 1;
                     return a.order - b.order;
-                });
+                })
+            ];
 
             const changed = sorted.some((item, index) => item.row !== rows[index]);
             if (!changed) return;
@@ -1927,11 +1948,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly', isTemplate = false) => {
+        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly', isTemplate = false, isPinned = false) => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
+            div.dataset.isPinned = isPinned ? 'true' : 'false';
             div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = isDualPanel ? "7px" : "10px";
             div.style.borderRadius = "10px";
@@ -2063,13 +2085,46 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             amountInput.addEventListener("input", refreshExpenseLensViews);
 
+            const leftControls = document.createElement("div");
+            leftControls.style.cssText = `display:flex;align-items:center;justify-content:flex-start;gap:${isDualPanel ? "3px" : "5px"};flex:0 0 ${isDualPanel ? "38px" : "54px"};min-width:${isDualPanel ? "38px" : "54px"};`;
+
             // Drag handle — drag only activates from this grip, never from inputs
             const dragHandle = document.createElement("span");
             dragHandle.textContent = "⠿";
             dragHandle.title = "Drag to reorder";
-            dragHandle.style.cssText = `cursor:grab;color:#1E3A8A;font-size:${isDualPanel ? "1rem" : "1.2rem"};padding:0 4px 0 0;user-select:none;flex:0 0 ${isDualPanel ? "12px" : "auto"};opacity:0.5;`;
-            dragHandle.addEventListener("mousedown", () => { div.draggable = true; });
-            dragHandle.addEventListener("mouseup",   () => { div.draggable = false; });
+            dragHandle.style.cssText = `cursor:grab;color:#1E3A8A;font-size:${isDualPanel ? "1rem" : "1.2rem"};display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "14px" : "18px"};height:${isDualPanel ? "26px" : "30px"};user-select:none;opacity:0.55;touch-action:none;`;
+            dragHandle.addEventListener("pointerdown", () => { div.draggable = true; });
+            dragHandle.addEventListener("pointerup",   () => { div.draggable = false; });
+            dragHandle.addEventListener("pointercancel", () => { div.draggable = false; });
+
+            const pinBtn = document.createElement("button");
+            pinBtn.type = "button";
+            pinBtn.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "20px" : "28px"};height:${isDualPanel ? "24px" : "30px"};border-radius:7px;border:1px solid rgba(30,58,138,.18);background:rgba(255,255,255,.04);color:#1E3A8A;font-size:${isDualPanel ? ".78rem" : ".9rem"};font-weight:900;line-height:1;cursor:pointer;padding:0;flex:0 0 ${isDualPanel ? "20px" : "28px"};`;
+
+            const syncPinButton = () => {
+                const pinned = isExpenseRowPinned(div);
+                pinBtn.textContent = pinned ? "★" : "☆";
+                pinBtn.title = pinned ? "Pinned to top" : "Pin to top";
+                pinBtn.setAttribute("aria-label", pinned ? "Unpin category from top" : "Pin category to top");
+                pinBtn.setAttribute("aria-pressed", pinned ? "true" : "false");
+                pinBtn.style.background = pinned ? "rgba(166,128,35,.22)" : "rgba(255,255,255,.04)";
+                pinBtn.style.borderColor = pinned ? "rgba(166,128,35,.65)" : "rgba(30,58,138,.18)";
+                pinBtn.style.color = pinned ? "#A68023" : "#1E3A8A";
+                pinBtn.style.opacity = pinned ? "1" : ".62";
+                div.style.boxShadow = pinned ? "inset 4px 0 0 rgba(166,128,35,.86)" : "";
+            };
+
+            pinBtn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                div.dataset.isPinned = isExpenseRowPinned(div) ? 'false' : 'true';
+                syncPinButton();
+                keepPinnedExpenseRowsAtTop();
+                refreshExpenseLensViews();
+            });
+            syncPinButton();
+            leftControls.appendChild(dragHandle);
+            leftControls.appendChild(pinBtn);
 
             // Drag events on the row
             div.draggable = false;
@@ -2081,6 +2136,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.addEventListener("dragend", () => {
                 div.style.opacity = "1";
                 div.draggable = false;
+                elDragSrc = null;
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(r => {
                     r.style.border = "1.5px solid rgba(166,128,35,.24)";
                 });
@@ -2098,12 +2154,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const rect = div.getBoundingClientRect();
                     const after = e.clientY > rect.top + rect.height / 2;
                     categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
+                    keepPinnedExpenseRowsAtTop();
                     div.style.border = "1.5px solid rgba(166,128,35,.24)";
                     refreshExpenseLensViews();
                 }
             });
 
-            div.appendChild(dragHandle);
+            div.appendChild(leftControls);
             div.appendChild(nameInput);
             div.appendChild(dueWrapper);
             div.appendChild(frequencySelect);
@@ -2149,6 +2206,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     rowEl.dataset.expenseSortValue = String(income > 0 ? (rowTotal / income) * 100 : rowTotal);
                     rowEl.dataset.expenseSortAmount = String(rowTotal);
                 }
+                const isPinned = isExpenseRowPinned(rowEl);
                 const dollarSign = input.nextElementSibling;
                 if (val > 0) { markExpense(input); markExpense(pctEl); if (dollarSign) markExpense(dollarSign); }
                 else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
@@ -2161,7 +2219,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     amount: monthlyTotal,
                     due,
                     frequency,
+                    isPinned,
                     occurrenceAmount: val,
+                    _isPinned: isPinned,
                     _sortValue: income > 0 ? (rowTotal / income) * 100 : rowTotal,
                     _sortOrder: categoriesData.length
                 });
@@ -2195,12 +2255,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const monthlyRemaining = income - monthlyTotalSpent;
             const badge = elById('RemainingBadge');
             if (badge) {
-                if (income === 0) {
-                    badge.textContent = 'Remaining: —';
-                    badge.style.background = 'rgba(255,255,255,0.04)';
-                    badge.style.color = '#64748B';
-                    badge.style.borderColor = 'rgba(100,116,139,0.35)';
-                } else if (monthlyRemaining >= 0) {
+                if (monthlyRemaining >= 0) {
                     badge.textContent = `Remaining: $${monthlyRemaining.toLocaleString()}`;
                     badge.style.background = 'rgba(34,197,94,0.12)';
                     badge.style.color = '#22c55e';
@@ -2224,11 +2279,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (shouldSortRows) {
                 sortExpenseRowsByAllocatedPercent();
                 categoriesData.sort((a, b) => {
+                    if (a._isPinned !== b._isPinned) return a._isPinned ? -1 : 1;
+                    if (a._isPinned && b._isPinned) return a._sortOrder - b._sortOrder;
                     if (b._sortValue !== a._sortValue) return b._sortValue - a._sortValue;
                     return a._sortOrder - b._sortOrder;
                 });
             }
             categoriesData.forEach(category => {
+                delete category._isPinned;
                 delete category._sortValue;
                 delete category._sortOrder;
             });
@@ -2674,29 +2732,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             'color:#64748B;letter-spacing:0.01em;',
             'transition:background .2s,color .2s,border-color .2s;'
         ].join('');
-        elRemainingBadge.textContent = 'Remaining: —';
+        elRemainingBadge.textContent = 'Remaining: $0';
         incomeFlexWrap.appendChild(elRemainingBadge);
         incomeFlexWrap.appendChild(weeklyBtnTop);
 
         addClearButton(container, () => {
             elIncome.value = '';
-            // Reset template rows in-place; remove custom rows entirely
-            Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)).forEach(row => {
-                if (row.dataset.isTemplate === 'true') {
-                    const idx = row.id.replace(elId('CatRow'), '');
-                    const amtEl = elById(`CatAmount${idx}`);
-                    const dueEl = elById(`CatDue${idx}`);
-                    const freqEl = elById(`CatFrequency${idx}`);
-                    if (amtEl) amtEl.value = '';
-                    if (dueEl) dueEl.value = toCurrentMonthDue(null);
-                    if (freqEl) freqEl.value = 'monthly';
-                } else {
-                    categoriesContainer.removeChild(row);
-                }
-            });
-            // Set categoryCount to highest remaining index so new rows get unique IDs
-            categoryCount = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`))
-                .reduce((max, r) => Math.max(max, parseInt(r.id.replace(elId('CatRow'), '')) || 0), 0);
+            categoriesContainer.innerHTML = '';
+            categoryCount = 0;
+            injectDefaultExpenseRows();
             elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
