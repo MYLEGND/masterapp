@@ -1560,8 +1560,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
         const expenseLensIdPrefix = isBusinessExpenseLens ? "elBusiness" : "elPersonal";
         const expenseLensTitle = isBusinessExpenseLens
-            ? "Business Expense Lens"
-            : (isBusinessClient ? "Personal Expense Lens" : "Expense Lens");
+            ? "Business Expenses"
+            : "Personal Expenses";
         const elId = (name) => `${expenseLensIdPrefix}${name}`;
         const elById = (name) => document.getElementById(elId(name));
         const expenseLensSubtitle = isBusinessExpenseLens
@@ -2757,7 +2757,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         if (isBusinessClient && t.id === "ExpenseLens") {
             const popoutBody = createDualToolPopout(
-                "Expense Lens",
+                "Expenses",
                 "Personal and business expense forms side by side, outside the normal tool container."
             );
             popoutBody.innerHTML = `
