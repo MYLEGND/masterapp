@@ -5705,33 +5705,30 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         style="background:linear-gradient(155deg,#0d1f42,#0a1630); border:1.5px solid rgba(199,153,49,.55); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.22); color:#1E3A8A; font-weight:600;">
                     + Add Category
                 </button>
-                <button id="${elId('DelCat')}"
-                        class="btn btn-outline-gold"
-                        style="background:linear-gradient(155deg,#0d1f42,#0a1630); border:1.5px solid rgba(199,153,49,.55); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.22); color:#1E3A8A; font-weight:600;">
-                    - Delete Last
-                </button>
+            </div>
+
+            <div id="${elId('MarginWrap')}" style="margin-top:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div id="${elId('Margin')}"
+                     style="display:inline-flex;align-items:center;height:38px;padding:0 16px;
+                            border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
+                            font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
+                            transition:background .2s,color .2s,border-color .2s;">
+                    Remaining Balance: $0
+                </div>
             </div>
 
             <div id="${elId('Tips')}"
                  style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
                 ${expenseLensDefaultTip}
             </div>
-
-            <div id="${elId('Margin')}"
-                 style="margin-top:18px;display:inline-flex;align-items:center;height:38px;padding:0 16px;
-                        border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
-                        font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
-                        transition:background .2s,color .2s,border-color .2s;">
-                Remaining Balance: $0
-            </div>
         </div>`;
 
         const container = hostElement.querySelector('.networth-tool');
         const categoriesContainer = elById("Categories");
         const addBtn = elById("AddCat");
-        const delBtn = elById("DelCat");
         const elTips = elById("Tips");
         const elMargin = elById("Margin");
+        const elMarginWrap = elById("MarginWrap");
         const elIncome = elById("Income");
         
 
@@ -6302,13 +6299,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             createCategoryRow(++categoryCount);
             refreshExpenseLensViews();
         });
-        delBtn.addEventListener("click", () => {
-            const lastRow = categoriesContainer.lastElementChild;
-            if(lastRow){
-                categoriesContainer.removeChild(lastRow);
-                refreshExpenseLensViews();
-            }
-        });
 
         // -----------------------------------------
         // Weekly Bill Tracker
@@ -6646,7 +6636,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             });
         };
 
-        // Weekly button — sits directly right of Delete Last in the category action row
+        // Weekly button — sits in the category action row
         const weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
@@ -6662,6 +6652,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
         addBtn.parentElement.appendChild(weeklyBtn);
+        if (elMarginWrap) {
+            elMarginWrap.appendChild(weekPanel);
+        }
 
         // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
         const weeklyBtnTop = document.createElement('button');
