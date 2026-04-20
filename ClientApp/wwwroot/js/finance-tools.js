@@ -84,10 +84,49 @@ document.addEventListener("DOMContentLoaded", async function () {
         "FreedomIndex",
         "DebtAssetPulse"
     ]);
+    const removeDualToolPopout = () => {
+        document.getElementById("financeDualToolPopout")?.remove();
+    };
     const setDualToolMode = (enabled) => {
+        if (!enabled) removeDualToolPopout();
         financeShell?.classList.toggle("finance-shell--dual-tools", !!enabled);
         financeToolsRow?.classList.toggle("finance-tools-row--dual-tools", !!enabled);
         document.body.classList.toggle("finance-dual-tools-open", !!enabled);
+    };
+    const closeDualToolPopout = () => {
+        removeDualToolPopout();
+        setDualToolMode(false);
+        embedContainer.innerHTML = "";
+        embedContainer.classList.remove("finance-main--dual");
+        if (dropdown) dropdown.value = "";
+        saveSelectedToolId("");
+    };
+    const createDualToolPopout = (title, subtitle) => {
+        removeDualToolPopout();
+        setDualToolMode(true);
+        embedContainer.innerHTML = "";
+        embedContainer.classList.add("finance-main--dual");
+
+        const popout = document.createElement("section");
+        popout.id = "financeDualToolPopout";
+        popout.className = "finance-dual-popout";
+        popout.setAttribute("role", "dialog");
+        popout.setAttribute("aria-modal", "true");
+        popout.setAttribute("aria-label", title);
+        popout.innerHTML = `
+            <div class="finance-dual-popout__header">
+                <div>
+                    <div class="finance-dual-popout__eyebrow">Business client workspace</div>
+                    <h2 class="finance-dual-popout__title">${title}</h2>
+                    <p class="finance-dual-popout__sub">${subtitle}</p>
+                </div>
+                <button type="button" class="finance-dual-popout__close" data-dual-popout-close>Close</button>
+            </div>
+            <div class="finance-dual-popout__body"></div>
+        `;
+        popout.querySelector("[data-dual-popout-close]")?.addEventListener("click", closeDualToolPopout);
+        document.body.appendChild(popout);
+        return popout.querySelector(".finance-dual-popout__body");
     };
 
     function getStateKeys(key) {
@@ -1434,9 +1473,11 @@ if (t.id === "SavingsAccelerator") {
     }; // end renderSavingsAcceleratorInstance
 
     if (isBusinessClient) {
-        setDualToolMode(true);
-        embedContainer.classList.add('finance-main--dual');
-        embedContainer.innerHTML = `
+        const popoutBody = createDualToolPopout(
+            "Savings Accelerator",
+            "Personal and business savings allocation side by side, outside the normal tool container."
+        );
+        popoutBody.innerHTML = `
             <div class="expense-lens-dual-shell">
                 <div class="expense-lens-dual-panel" id="savingsPersonalHost"></div>
                 <div class="expense-lens-dual-panel" id="savingsBusinessHost"></div>
@@ -2603,9 +2644,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         if (isBusinessClient && t.id === "ExpenseLens") {
-            setDualToolMode(true);
-            embedContainer.classList.add('finance-main--dual');
-            embedContainer.innerHTML = `
+            const popoutBody = createDualToolPopout(
+                "Expense Lens",
+                "Personal and business expense forms side by side, outside the normal tool container."
+            );
+            popoutBody.innerHTML = `
                 <div class="expense-lens-dual-shell">
                     <div class="expense-lens-dual-panel" id="expenseLensPersonalHost"></div>
                     <div class="expense-lens-dual-panel" id="expenseLensBusinessHost"></div>
