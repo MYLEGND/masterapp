@@ -2180,6 +2180,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const weekStart = new Date(cursor);
                 const weekEnd = new Date(cursor);
                 weekEnd.setDate(weekEnd.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
 
                 const isCurrent = ctx.now >= weekStart && ctx.now <= weekEnd;
 
