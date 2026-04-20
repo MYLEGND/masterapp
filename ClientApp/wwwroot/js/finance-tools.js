@@ -1860,7 +1860,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     }
                 }
                 if (categoriesCreated === 0) injectDefaultExpenseRows();
-                refreshExpenseLens();
+                refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
 
@@ -1888,12 +1888,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return `${y}-${m}-${day}`;
         };
 
-        const refreshExpenseLensViews = () => {
+        const refreshExpenseLensViews = (options = {}) => {
+            const shouldSortRows = !!options.sortRows;
             if (elActiveWeek) {
-                elApplyWeekFilter(elActiveWeek);
+                elApplyWeekFilter(elActiveWeek, { sortRows: shouldSortRows });
                 return;
             }
-            refreshExpenseLens();
+            refreshExpenseLens({ sortRows: shouldSortRows });
             if (weekPanel?.style.display !== 'none') renderWeekPanel();
         };
 
@@ -1977,6 +1978,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const shouldPreserveDueDate = resolvedPreFrequency === 'weekly' || resolvedPreFrequency === 'biweekly';
             dueInput.value = shouldPreserveDueDate && preDue ? preDue : toCurrentMonthDue(preDue);
             dueInput.addEventListener("input", refreshExpenseLensViews);
+            dueInput.addEventListener("blur", () => refreshExpenseLensViews({ sortRows: true }));
             dueWrapper.appendChild(dueInput);
 
             const frequencySelect = document.createElement("select");
@@ -1998,7 +2000,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 frequencySelect.appendChild(opt);
             });
             frequencySelect.value = resolvedPreFrequency;
-            frequencySelect.addEventListener("change", refreshExpenseLensViews);
+            frequencySelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
@@ -2056,6 +2058,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             // Format numbers with commas on blur
             amountInput.addEventListener("blur", () => {
                 amountInput.value = formatNumber(amountInput.value);
+                refreshExpenseLensViews({ sortRows: true });
             });
 
             amountInput.addEventListener("input", refreshExpenseLensViews);
@@ -2122,7 +2125,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Refresh Function
         // -----------------------------
-        const refreshExpenseLens = () => {
+        const refreshExpenseLens = (options = {}) => {
+            const shouldSortRows = !!options.sortRows;
             const income = +elIncome.value.replace(/,/g,'') || 0;
             let totalSpent = 0;
             let monthlyTotalSpent = 0;
@@ -2217,11 +2221,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 elTips.textContent = expenseLensDefaultTip;
             }
 
-            sortExpenseRowsByAllocatedPercent();
-            categoriesData.sort((a, b) => {
-                if (b._sortValue !== a._sortValue) return b._sortValue - a._sortValue;
-                return a._sortOrder - b._sortOrder;
-            });
+            if (shouldSortRows) {
+                sortExpenseRowsByAllocatedPercent();
+                categoriesData.sort((a, b) => {
+                    if (b._sortValue !== a._sortValue) return b._sortValue - a._sortValue;
+                    return a._sortOrder - b._sortOrder;
+                });
+            }
             categoriesData.forEach(category => {
                 delete category._sortValue;
                 delete category._sortOrder;
@@ -2242,7 +2248,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // Event Listeners
         // -----------------------------
         elIncome.addEventListener("input", refreshExpenseLens);
-        elIncome.addEventListener("blur", () => { elIncome.value = formatNumber(elIncome.value); });
+        elIncome.addEventListener("blur", () => {
+            elIncome.value = formatNumber(elIncome.value);
+            refreshExpenseLens({ sortRows: true });
+        });
 
         addBtn.addEventListener("click", () => {
             createCategoryRow(++categoryCount);
@@ -2395,7 +2404,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return occurrences;
         };
 
-        const elApplyWeekFilter = (week) => {
+        const elApplyWeekFilter = (week, options = {}) => {
+            const shouldSortRows = options.sortRows !== false;
             elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                 const idx = row.id.replace(elId('CatRow'), '');
@@ -2410,7 +2420,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
             const _topBtn = elById('WeeklyBtnTop');
             if (_topBtn) _topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
-            refreshExpenseLens();
+            refreshExpenseLens({ sortRows: shouldSortRows });
             renderWeekPanel();
         };
 
@@ -2692,7 +2702,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             clearExpenseLensState();
             hideTip();
             elApplyWeekFilter(null);
-            refreshExpenseLens();
+            refreshExpenseLens({ sortRows: true });
         });
 
         await loadExpenseLensState();
@@ -2750,7 +2760,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // ✅ Force style application after DOM paint (this is what kills the “refresh page” issue)
         requestAnimationFrame(() => {
             applyExpenseLensColors();
-            refreshExpenseLens();            // ensures Remaining Balance + tip text is current
+            refreshExpenseLens({ sortRows: true });            // ensures Remaining Balance + tip text is current
             applyExpenseLensColors();        // re-apply after refresh updates DOM text
         });
         };
