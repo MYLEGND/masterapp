@@ -1294,7 +1294,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
     const createAllocationRow = (index, preName = '', prePercent = '') => {
         const row = document.createElement('div');
         row.className = 'allocation-row d-flex align-items-center mb-2 gap-2';
-        row.style.cssText = 'background:#fafafa;padding:8px;border-radius:10px;border:1px solid #eee;';
+        row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
 
         const name = document.createElement('input');
         name.className = 'form-control allocation-name';
@@ -1309,12 +1309,15 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         const amt = document.createElement('input');
         amt.className = 'form-control allocation-amount';
         amt.readOnly = true;
-        amt.style.cssText = 'border:1px solid #d6c48a;font-weight:700;color:#1E3A8A;background:#f3f0e8;';
+        amt.style.cssText = 'font-weight:700;';
+        amt.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
+        amt.style.setProperty('border', '1.5px solid rgba(166,128,35,.38)', 'important');
+        amt.style.setProperty('color', '#1a2540', 'important');
         amt.value = '';
 
         const dollar = document.createElement('span');
         dollar.textContent = '$';
-        dollar.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;';
+        dollar.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
         amtWrap.appendChild(amt);
         amtWrap.appendChild(dollar);
 
@@ -1324,18 +1327,21 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         const pct = document.createElement('input');
         pct.className = 'form-control allocation-percent';
         pct.value = prePercent || '';
-        pct.style.cssText = 'font-weight:700;color:#1E3A8A;padding-right:28px;';
+        pct.style.cssText = 'font-weight:700;padding-right:28px;';
+        pct.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
+        pct.style.setProperty('border', '1.5px solid rgba(166,128,35,.38)', 'important');
+        pct.style.setProperty('color', '#1a2540', 'important');
         pct.oninput = refreshSurplus;
 
         const pctSign = document.createElement('span');
         pctSign.textContent = '%';
-        pctSign.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;';
+        pctSign.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
         pctWrap.appendChild(pct);
         pctWrap.appendChild(pctSign);
 
         const del = document.createElement('button');
         del.textContent = '✕';
-        del.style.cssText = 'border:none;background:transparent;color:#1E3A8A;font-weight:900;cursor:pointer;';
+        del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;';
         del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
 
         row.append(name, amtWrap, pctWrap, del);
@@ -2567,14 +2573,14 @@ if (t.id === "NetWorth") {
         </div>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th>Assets</th>
-                <th>Liabilities</th>
-                <th>Net Worth</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="color:#f4d890;">Assets</th>
+                <th style="color:#f4d890;">Liabilities</th>
+                <th style="color:#f4d890;">Net Worth</th>
             </tr>
             <tr>
                 <td id="aVal">$0</td>
@@ -2584,31 +2590,32 @@ if (t.id === "NetWorth") {
         </table>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
             <tr>
-                <th>Net Worth to Assets Ratio</th>
+                <th style="color:#f4d890;">Net Worth to Assets Ratio</th>
                 <td id="nwRatio">0%</td>
             </tr>
             <tr>
-                <th>Liabilities to Assets Ratio</th>
+                <th style="color:#f4d890;">Liabilities to Assets Ratio</th>
                 <td id="liabRatio">0%</td>
             </tr>
             <tr>
-                <th>Wealth Status</th>
+                <th style="color:#f4d890;">Wealth Status</th>
                 <td id="wealthStatus">—</td>
             </tr>
         </table>
 
         <div id="nwTips"
              style="padding:12px;
-                    background:linear-gradient(135deg,#f1f3f6,#e4e7ec);
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
                     border-left:4px solid #a68023;
                     border-radius:8px;
                     font-style:italic;
-                    color:#333;
+                    color:#f8fafc;
                     margin-top:14px;">
             Enter your assets and liabilities to get personalized insights.
         </div>
@@ -2904,27 +2911,28 @@ if (t.id === "CashFlow") {
         </h5>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th style="width:50%; background:#f3f3f3;">Savings Potential</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="width:50%; color:#f4d890;">Savings Potential</th>
                 <td id="cfSavingsPotential">$0</td>
             </tr>
             <tr>
-                <th style="background:#f3f3f3;">Suggested Allocation</th>
+                <th style="color:#f4d890;">Suggested Allocation</th>
                 <td id="cfInvestPct">0%</td>
             </tr>
         </table>
 
         <div id="cfTips"
              style="padding:12px;
-                    background:linear-gradient(135deg,#f1f3f6,#e4e7ec);
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
                     border-left:4px solid #a68023;
                     border-radius:8px;
                     font-style:italic;
-                    color:#333;
+                    color:#f8fafc;
                     margin-top:14px;">
             Enter your monthly income and bills to get personalized tips.
         </div>
@@ -3196,16 +3204,16 @@ if (t.id === "DebtClarity") {
         </h5>
 
         <table class="table mt-3"
-               style="background:#fafafa;
+               style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
                       border-radius:12px;
                       overflow:hidden;
-                      border:1px solid #eee; font-weight:700; font-size:1.1rem; color:#222;">
-            <tr>
-                <th style="width:40%; background:#f3f3f3;">DTI Status</th>
+                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
+            <tr style="background:rgba(166,128,35,.15);">
+                <th style="width:40%; color:#f4d890;">DTI Status</th>
                 <td id="dcStatus">—</td>
             </tr>
             <tr>
-                <th style="background:#f3f3f3;">Recommendation</th>
+                <th style="color:#f4d890;">Recommendation</th>
                 <td id="dcTips">Enter your liabilities and income to receive guidance.</td>
             </tr>
         </table>
@@ -3688,30 +3696,31 @@ if (t.id === "WealthProjection") {
         <input id="wpMonths" type="number" class="form-control mb-3" placeholder="e.g., 18"
                style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
 
-        <div style="background:#fafafa; border-radius:12px; padding:14px; border:1px solid #eee; margin-bottom:10px;">
+        <div style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; padding:14px; border:1px solid rgba(166,128,35,.22); margin-bottom:10px; color:#f8fafc;">
             <h5 style="font-weight:700;">
-                Projected Net Worth (Custom Months): 
+                Projected Net Worth (Custom Months):
                 <span id="wpOut" style="color:#a68023; font-weight:800;">$0</span>
             </h5>
             <h6 style="margin-top:8px;">
-                Projection in 6 Months: 
+                Projection in 6 Months:
                 <span id="wp6" style="color:#a68023; font-weight:700;">$0</span>
             </h6>
             <h6>
-                Projection in 12 Months: 
+                Projection in 12 Months:
                 <span id="wp12" style="color:#a68023; font-weight:700;">$0</span>
             </h6>
         </div>
 
         <div id="wpTips"
-             style="padding:14px; 
-                    background:linear-gradient(135deg, #f1ede3, #e1d6b8); 
-                    border-left:5px solid #a68023; 
-                    font-style:italic; 
-                    color:#333; 
-                    margin-top:15px; 
+             style="padding:14px;
+                    background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
+                    border-left:5px solid #a68023;
+                    font-style:italic;
+                    color:#f8fafc;
+                    margin-top:15px;
                     border-radius:10px;
-                    box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
+                    box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
             Tip: Regularly increase your monthly surplus to accelerate your wealth growth.
         </div>
     </div>`;
@@ -3995,17 +4004,18 @@ if (t.id === "FreedomIndex") {
             Freedom Index: <span id="fiOut" style="color:#a68023; font-weight:800;">0</span>
         </h5>
 
-        <table class="table mt-3" style="background:#fafafa; border-radius:12px; overflow:hidden; border:1px solid #eee;">
-            <tr><th style="width:45%; background:#f3f3f3;">Net Worth</th><td id="fiNetOut">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Annual Expenses</th><td id="fiExpOut">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Passive Income</th><td id="fiPassiveOut">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Months of Freedom</th><td id="fiMonths">0</td></tr>
+        <table class="table mt-3" style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; overflow:hidden; border:1px solid rgba(166,128,35,.22); color:#f8fafc;">
+            <tr><th style="width:45%; background:rgba(0,0,0,.2); color:#a68023;">Net Worth</th><td id="fiNetOut">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Annual Expenses</th><td id="fiExpOut">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Passive Income</th><td id="fiPassiveOut">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Months of Freedom</th><td id="fiMonths">0</td></tr>
         </table>
 
         <div id="fiAdvice"
-             style="padding:14px; background:linear-gradient(135deg, #f1ede3, #e1d6b8);
-                    border-left:5px solid #a68023; font-style:italic; color:#333; margin-top:15px;
-                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
+             style="padding:14px; background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
+                    border-left:5px solid #a68023; font-style:italic; color:#f8fafc; margin-top:15px;
+                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
             Enter your values to see recommendations.
         </div>
     </div>`;
@@ -4298,17 +4308,18 @@ if (t.id === "DebtAssetPulse") {
             <span id="dapOut" style="color:#1E3A8A; font-weight:800;">0</span>
         </h5>
 
-        <table class="table mt-3" style="background:#fafafa; border-radius:12px; overflow:hidden; border:1px solid #eee;">
-            <tr><th style="width:45%; background:#f3f3f3;">Assets</th><td id="dapAssets">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Liabilities</th><td id="dapLiabilities">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Net Worth</th><td id="dapNetWorth">$0</td></tr>
-            <tr><th style="background:#f3f3f3;">Monthly Income</th><td id="dapMonthlyIncome">$0</td></tr>
+        <table class="table mt-3" style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; overflow:hidden; border:1px solid rgba(166,128,35,.22); color:#f8fafc;">
+            <tr><th style="width:45%; background:rgba(0,0,0,.2); color:#a68023;">Assets</th><td id="dapAssets">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Liabilities</th><td id="dapLiabilities">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Net Worth</th><td id="dapNetWorth">$0</td></tr>
+            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Monthly Income</th><td id="dapMonthlyIncome">$0</td></tr>
         </table>
 
         <div id="dapAdvice"
-             style="padding:14px; background:linear-gradient(135deg, #f1ede3, #e1d6b8);
-                    border-left:5px solid #a68023; font-style:italic; color:#333; margin-top:15px;
-                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
+             style="padding:14px; background:rgba(255,255,255,.05);
+                    border:1px solid rgba(166,128,35,.18);
+                    border-left:5px solid #a68023; font-style:italic; color:#f8fafc; margin-top:15px;
+                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
             Enter values to get guidance on your financial health.
         </div>
     </div>`;
