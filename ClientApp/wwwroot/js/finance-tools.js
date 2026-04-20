@@ -1897,6 +1897,32 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (weekPanel?.style.display !== 'none') renderWeekPanel();
         };
 
+        const sortExpenseRowsByAllocatedPercent = () => {
+            const rows = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`));
+            if (rows.length < 2) return;
+
+            const sorted = rows
+                .map((row, order) => {
+                    const sortValue = Number.parseFloat(row.dataset.expenseSortValue || '0');
+                    const amount = Number.parseFloat(row.dataset.expenseSortAmount || '0');
+                    return {
+                        row,
+                        order,
+                        sortValue: Number.isFinite(sortValue) ? sortValue : 0,
+                        hasAmount: Number.isFinite(amount) && amount > 0
+                    };
+                })
+                .sort((a, b) => {
+                    if (b.sortValue !== a.sortValue) return b.sortValue - a.sortValue;
+                    if (a.hasAmount !== b.hasAmount) return a.hasAmount ? -1 : 1;
+                    return a.order - b.order;
+                });
+
+            const changed = sorted.some((item, index) => item.row !== rows[index]);
+            if (!changed) return;
+            sorted.forEach(item => categoriesContainer.appendChild(item.row));
+        };
+
         // -----------------------------
         // Create Category Row
         // -----------------------------
@@ -2114,6 +2140,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = elById(`Out${index}`);
                 pctEl.textContent = pct;
+                const rowEl = input.closest(`[id^="${elId('CatRow')}"]`);
+                if (rowEl) {
+                    rowEl.dataset.expenseSortValue = String(income > 0 ? (rowTotal / income) * 100 : rowTotal);
+                    rowEl.dataset.expenseSortAmount = String(rowTotal);
+                }
                 const dollarSign = input.nextElementSibling;
                 if (val > 0) { markExpense(input); markExpense(pctEl); if (dollarSign) markExpense(dollarSign); }
                 else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
@@ -2126,7 +2157,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     amount: monthlyTotal,
                     due,
                     frequency,
-                    occurrenceAmount: val
+                    occurrenceAmount: val,
+                    _sortValue: income > 0 ? (rowTotal / income) * 100 : rowTotal,
+                    _sortOrder: categoriesData.length
                 });
 
                 if (elActiveWeek && occurrenceCount === 0) return;
@@ -2183,6 +2216,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             } else {
                 elTips.textContent = expenseLensDefaultTip;
             }
+
+            sortExpenseRowsByAllocatedPercent();
+            categoriesData.sort((a, b) => {
+                if (b._sortValue !== a._sortValue) return b._sortValue - a._sortValue;
+                return a._sortOrder - b._sortOrder;
+            });
+            categoriesData.forEach(category => {
+                delete category._sortValue;
+                delete category._sortOrder;
+            });
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
             window.dispatchEvent(new CustomEvent(expenseLensUpdatedEvent, {
