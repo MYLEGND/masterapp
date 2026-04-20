@@ -5711,15 +5711,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             </div>
 
             <div id="${elId('Margin')}"
-                 style="margin-top:18px;
-                        padding:16px;
-                        background:#f8f6f0;
-                        border-radius:12px;
-                        font-weight:800;
-                        color:#222;
-                        font-size:1.1rem;
-                        text-align:center;
-                        border:1px solid #dbd9d3;">
+                 style="margin-top:18px;display:inline-flex;align-items:center;height:38px;padding:0 16px;
+                        border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
+                        font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
+                        transition:background .2s,color .2s,border-color .2s;">
                 Remaining Balance: $0
             </div>
         </div>`;
@@ -6225,16 +6220,25 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             if (elActiveWeek) {
                 elMargin.textContent = `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
-                markExpense(elMargin);
+                elMargin.style.background = 'rgba(239,68,68,0.12)';
+                elMargin.style.color = '#ef4444';
+                elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
             } else {
                 elMargin.textContent = `Remaining Balance: $${remaining.toLocaleString()}`;
-                if (remaining >= 0) markIncome(elMargin);
-                else markExpense(elMargin);
+                if (remaining >= 0) {
+                    elMargin.style.background = 'rgba(34,197,94,0.12)';
+                    elMargin.style.color = '#22c55e';
+                    elMargin.style.borderColor = 'rgba(34,197,94,0.45)';
+                } else {
+                    elMargin.style.background = 'rgba(239,68,68,0.12)';
+                    elMargin.style.color = '#ef4444';
+                    elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
+                }
             }
 
             // Top remaining balance badge — always reflects full-month income vs all monthly bills
             const monthlyRemaining = income - monthlyTotalSpent;
-            const badge = elById(elId('RemainingBadge'));
+            const badge = elById('RemainingBadge');
             if (badge) {
                 if (income === 0) {
                     badge.textContent = 'Remaining: —';
@@ -6677,7 +6681,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         incomeInputRow.style.cssText = 'position:relative;margin-bottom:0;';
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
-        incomeFlexWrap.appendChild(weeklyBtnTop);
 
         // Remaining balance badge — live read of monthly income minus all monthly bills
         const elRemainingBadge = document.createElement('div');
@@ -6692,6 +6695,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         ].join('');
         elRemainingBadge.textContent = 'Remaining: —';
         incomeFlexWrap.appendChild(elRemainingBadge);
+        incomeFlexWrap.appendChild(weeklyBtnTop);
 
         addClearButton(container, () => {
             elIncome.value = '';
@@ -6787,9 +6791,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             markNeutral(elTips);
 
             // Remaining Balance (based on current computed values)
-            // When a week filter is active, the label shows "Week X Due: $N" — always red (it's a bill amount).
             if (elActiveWeek) {
-                markExpense(elMargin);
+                elMargin.style.background = 'rgba(239,68,68,0.12)';
+                elMargin.style.color = '#ef4444';
+                elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
             } else {
                 const income = +elIncome.value.replace(/,/g, '') || 0;
                 let totalSpent = 0;
@@ -6799,8 +6804,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     totalSpent += (+input.value.replace(/,/g, '') || 0) * occurrenceCount;
                 });
                 const remaining = income - totalSpent;
-                if (remaining >= 0) markIncome(elMargin);
-                else markExpense(elMargin);
+                if (remaining >= 0) {
+                    elMargin.style.background = 'rgba(34,197,94,0.12)';
+                    elMargin.style.color = '#22c55e';
+                    elMargin.style.borderColor = 'rgba(34,197,94,0.45)';
+                } else {
+                    elMargin.style.background = 'rgba(239,68,68,0.12)';
+                    elMargin.style.color = '#ef4444';
+                    elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
+                }
             }
         };
 
