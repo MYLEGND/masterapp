@@ -6953,19 +6953,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         incomeFlexWrap.appendChild(elRemainingBadge);
         incomeFlexWrap.appendChild(weeklyBtnTop);
 
-        addClearButton(container, () => {
-            elIncome.value = '';
-            categoriesContainer.innerHTML = '';
-            categoryCount = 0;
-            injectDefaultExpenseRows();
-            elTips.textContent = expenseLensDefaultTip;
-            elMargin.textContent = 'Remaining Balance: $0';
-            clearExpenseLensState();
-            hideTip();
-            elApplyWeekFilter(null);
-            refreshExpenseLens({ sortRows: true });
-        });
-
         await loadExpenseLensState();
 
         // Auto-apply current week filter on load if any bills are due this week.
