@@ -1,4 +1,9 @@
-﻿CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+﻿-- SAFETY WARNING:
+-- Do not run this historical migration script against production during publish.
+-- It contains DROP TABLE statements for ClientProfiles, AgentClients, and FinanceToolStates.
+-- Use EF migrations or reviewed, environment-specific SQL only after a production backup/snapshot.
+
+CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
     "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
     "ProductVersion" TEXT NOT NULL
 );
@@ -991,4 +996,3 @@ INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
 VALUES ('20260401070000_AddRowVersionConcurrency_SqlServer', '10.0.2');
 
 COMMIT;
-

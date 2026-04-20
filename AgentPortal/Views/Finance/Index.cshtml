@@ -14,6 +14,9 @@
      data-client-profile-id="@ViewBag.ClientProfileId"
      data-client-user-id="@clientUserId"
      data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"></div>
+<form id="__af" method="post" style="display:none;">
+    @Html.AntiForgeryToken()
+</form>
 
 <div class="container-fluid finance-shell mt-5">
 

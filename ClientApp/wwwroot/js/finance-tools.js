@@ -101,6 +101,10 @@ document.addEventListener("DOMContentLoaded", async function () {
         return keys.length > 0 ? keys[0] : key;
     }
 
+    const serverSaveQueue = new Map();
+    const serverSaveTimers = new Map();
+    const serverSaveInFlight = new Set();
+
     function normalizePersistedState(key, value) {
         if (key !== "ActionTracker") return value ?? {};
 
@@ -186,6 +190,69 @@ document.addEventListener("DOMContentLoaded", async function () {
         || document.querySelector('input[name="__RequestVerificationToken"]')?.value
         || "";
 
+    function postServerState(primaryKey, jsonState, keepalive = false) {
+        const token = getAntiForgeryToken();
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["RequestVerificationToken"] = token;
+
+        return fetch("/api/finance-state/save", {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: JSON.stringify({ clientProfileId, clientUserId, toolId: primaryKey, jsonState }),
+            keepalive
+        });
+    }
+
+    function scheduleServerStateFlush(primaryKey, delayMs = 300) {
+        if (serverSaveTimers.has(primaryKey)) {
+            clearTimeout(serverSaveTimers.get(primaryKey));
+        }
+
+        serverSaveTimers.set(primaryKey, setTimeout(() => {
+            serverSaveTimers.delete(primaryKey);
+            flushServerState(primaryKey);
+        }, delayMs));
+    }
+
+    async function flushServerState(primaryKey, keepalive = false) {
+        if (!canUseServerState || !serverSaveQueue.has(primaryKey)) return;
+        if (serverSaveInFlight.has(primaryKey)) return;
+
+        const jsonState = serverSaveQueue.get(primaryKey);
+        serverSaveQueue.delete(primaryKey);
+        serverSaveInFlight.add(primaryKey);
+
+        let shouldRetry = false;
+        try {
+            const res = await postServerState(primaryKey, jsonState, keepalive);
+            if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        } catch (_) {
+            if (!keepalive) {
+                shouldRetry = true;
+                serverSaveQueue.set(primaryKey, jsonState);
+            }
+        } finally {
+            serverSaveInFlight.delete(primaryKey);
+            if (serverSaveQueue.has(primaryKey)) {
+                scheduleServerStateFlush(primaryKey, shouldRetry ? 2500 : 0);
+            }
+        }
+    }
+
+    function flushAllServerState(keepalive = false) {
+        Array.from(serverSaveTimers.values()).forEach(timer => clearTimeout(timer));
+        serverSaveTimers.clear();
+        Array.from(serverSaveQueue.keys()).forEach(key => {
+            flushServerState(key, keepalive);
+        });
+    }
+
+    window.addEventListener("pagehide", () => flushAllServerState(true));
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") flushAllServerState(true);
+    });
+
     function savePersistedState(key, state) {
         const normalizedState = normalizePersistedState(key, state);
         const jsonState = JSON.stringify(normalizedState ?? {});
@@ -196,29 +263,20 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         if (!canUseServerState) return;
 
-        const token = getAntiForgeryToken();
-        const buildHeaders = (contentType) => {
-            const headers = contentType ? { "Content-Type": contentType } : {};
-            if (token) headers["RequestVerificationToken"] = token;
-            return headers;
-        };
-
-        const payload = { clientProfileId, clientUserId, toolId: primaryKey, jsonState };
-
-        const attempt = async (headers, body) => fetch("/api/finance-state/save", {
-            method: "POST",
-            credentials: "include",
-            headers,
-            body
-        });
-
-        attempt(buildHeaders("application/json"), JSON.stringify(payload))
-            .catch(() => attempt(buildHeaders("application/x-www-form-urlencoded; charset=UTF-8"), new URLSearchParams(payload).toString()))
-            .catch(() => { });
+        serverSaveQueue.set(primaryKey, jsonState);
+        scheduleServerStateFlush(primaryKey);
     }
 
     function clearPersistedState(key) {
         const keys = getStateKeys(key);
+        keys.forEach(k => {
+            serverSaveQueue.delete(k);
+            if (serverSaveTimers.has(k)) {
+                clearTimeout(serverSaveTimers.get(k));
+                serverSaveTimers.delete(k);
+            }
+        });
+
         if (!canUseServerState) {
             keys.forEach(storageRemove);
         }

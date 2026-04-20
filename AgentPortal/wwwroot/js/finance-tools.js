@@ -120,6 +120,40 @@ document.addEventListener("DOMContentLoaded", async function () {
         return keys.length > 0 ? keys[0] : key;
     }
 
+    function normalizePersistedState(key, value) {
+        if (key !== "ActionTracker") return value ?? {};
+
+        if (Array.isArray(value)) {
+            return value.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        if (Array.isArray(value?.goals)) {
+            return value.goals.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        if (Array.isArray(value?.items)) {
+            return value.items.map(item => ({
+                name: typeof item?.name === "string" ? item.name : "",
+                done: Boolean(item?.done)
+            }));
+        }
+
+        return [];
+    }
+
+    const localStateKey = (key) =>
+        (key && key.startsWith('DistributionPlanner')) ? plannerScopeKey(key) : scopeKey(key);
+
+    const serverSaveQueue = new Map();
+    const serverSaveTimers = new Map();
+    const serverSaveInFlight = new Set();
+
     // Lazy-load Chart.js when needed (Wealth Forecast graph)
     let chartJsPromise = null;
     async function ensureChartJs() {
@@ -158,70 +192,119 @@ document.addEventListener("DOMContentLoaded", async function () {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload?.found) {
-                            return JSON.parse(payload?.jsonState || "{}");
+                            return normalizePersistedState(candidateKey, JSON.parse(payload?.jsonState || "{}"));
                         }
                     }
                 } catch (_) { }
             }
         }
 
-        // Fallback to local cache if server empty/unavailable
+        // Recovery path for old browser-only state: load it once, then push it to the server.
         for (const candidateKey of keys) {
-                const localKey = (candidateKey && candidateKey.startsWith('DistributionPlanner')) ? plannerScopeKey(candidateKey) : scopeKey(candidateKey);
-                const raw = localStorage.getItem(localKey);
+                const raw = localStorage.getItem(localStateKey(candidateKey));
                 if (raw) {
-                    return JSON.parse(raw || "{}");
+                    const state = normalizePersistedState(candidateKey, JSON.parse(raw || "{}"));
+                    if (canUseServerState) {
+                        savePersistedState(candidateKey, state, { skipLocalCache: true, immediate: true });
+                    }
+                    return state;
                 }
             }
 
-        return {};
+        return normalizePersistedState(key, {});
     }
 
-                function savePersistedState(key, state) {
-                    if ((disableLocalForWF && (key || "").includes("WealthForecast")) ||
-                        (disableLocalForDP && (key || "").includes("DistributionPlanner"))) return;
-                    const jsonState = JSON.stringify(state || {});
-                    const primaryKey = getPrimaryStateKey(key);
-                    // Always cache locally for instant restores and offline/dev use
-                    const localKey = (primaryKey && primaryKey.startsWith('DistributionPlanner')) ? plannerScopeKey(primaryKey) : scopeKey(primaryKey);
-                    localStorage.setItem(localKey, jsonState);
+    function postServerState(primaryKey, jsonState, keepalive = false) {
+        const token = getAntiForgeryToken();
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["RequestVerificationToken"] = token;
 
-                    if (!canUseServerState) return;
+        return fetch("/api/finance-state/save", {
+            method: "POST",
+            credentials: "include",
+            headers,
+            body: JSON.stringify({ clientProfileId, clientUserId, toolId: primaryKey, jsonState }),
+            keepalive
+        });
+    }
 
-                    const payload = {
-                        clientProfileId,
-                        clientUserId,
-                        toolId: primaryKey,
-                        jsonState
-                    };
+    function scheduleServerStateFlush(primaryKey, delayMs = 300) {
+        if (serverSaveTimers.has(primaryKey)) {
+            clearTimeout(serverSaveTimers.get(primaryKey));
+        }
 
-                    const token = getAntiForgeryToken();
-                    const buildHeaders = (contentType) => {
-                        const headers = contentType ? { "Content-Type": contentType } : {};
-                        if (token) headers["RequestVerificationToken"] = token;
-                        return headers;
-                    };
+        serverSaveTimers.set(primaryKey, setTimeout(() => {
+            serverSaveTimers.delete(primaryKey);
+            flushServerState(primaryKey);
+        }, delayMs));
+    }
 
-                    const attempt = async (headers, body) => fetch("/api/finance-state/save", {
-                        method: "POST",
-                        credentials: "include",
-                        headers,
-                        body
-                    });
+    async function flushServerState(primaryKey, keepalive = false) {
+        if (!canUseServerState || !serverSaveQueue.has(primaryKey)) return;
+        if (serverSaveInFlight.has(primaryKey)) return;
 
-                    attempt(buildHeaders("application/json"), JSON.stringify(payload))
-                        .catch(() => attempt(buildHeaders("application/x-www-form-urlencoded; charset=UTF-8"), new URLSearchParams(payload).toString()))
-                        .catch(() => { });
-                }
+        const jsonState = serverSaveQueue.get(primaryKey);
+        serverSaveQueue.delete(primaryKey);
+        serverSaveInFlight.add(primaryKey);
+
+        let shouldRetry = false;
+        try {
+            const res = await postServerState(primaryKey, jsonState, keepalive);
+            if (!res.ok) throw new Error(`Save failed (${res.status})`);
+        } catch (_) {
+            if (!keepalive) {
+                shouldRetry = true;
+                serverSaveQueue.set(primaryKey, jsonState);
+            }
+        } finally {
+            serverSaveInFlight.delete(primaryKey);
+            if (serverSaveQueue.has(primaryKey)) {
+                scheduleServerStateFlush(primaryKey, shouldRetry ? 2500 : 0);
+            }
+        }
+    }
+
+    function flushAllServerState(keepalive = false) {
+        Array.from(serverSaveTimers.values()).forEach(timer => clearTimeout(timer));
+        serverSaveTimers.clear();
+        Array.from(serverSaveQueue.keys()).forEach(key => {
+            flushServerState(key, keepalive);
+        });
+    }
+
+    window.addEventListener("pagehide", () => flushAllServerState(true));
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") flushAllServerState(true);
+    });
+
+    function savePersistedState(key, state, options = {}) {
+        if ((disableLocalForWF && (key || "").includes("WealthForecast")) ||
+            (disableLocalForDP && (key || "").includes("DistributionPlanner"))) return;
+
+        const primaryKey = getPrimaryStateKey(key);
+        const normalizedState = normalizePersistedState(primaryKey, state);
+        const jsonState = JSON.stringify(normalizedState ?? {});
+
+        if (!options.skipLocalCache) {
+            localStorage.setItem(localStateKey(primaryKey), jsonState);
+        }
+
+        if (!canUseServerState) return;
+
+        serverSaveQueue.set(primaryKey, jsonState);
+        scheduleServerStateFlush(primaryKey, options.immediate ? 0 : 300);
+    }
 
     function clearPersistedState(key) {
         const keys = getStateKeys(key);
-        if (!canUseServerState) {
-            keys.forEach(k => {
-                const localKey = (k && k.startsWith('DistributionPlanner')) ? plannerScopeKey(k) : scopeKey(k);
-                localStorage.removeItem(localKey);
-            });
-        }
+        keys.forEach(k => {
+            localStorage.removeItem(localStateKey(k));
+            serverSaveQueue.delete(k);
+            if (serverSaveTimers.has(k)) {
+                clearTimeout(serverSaveTimers.get(k));
+                serverSaveTimers.delete(k);
+            }
+        });
 
         if (!canUseServerState) return;
 

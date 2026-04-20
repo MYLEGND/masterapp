@@ -3,6 +3,8 @@
 ## Pre-Deploy
 
 ### Database
+- [ ] Create or verify a fresh Azure SQL backup / point-in-time restore point before any publish.
+- [ ] Do **not** run ad-hoc SQL files against production unless they have been reviewed for destructive commands like `DROP TABLE`, `TRUNCATE`, or broad `DELETE`.
 - [ ] All pending EF Core migrations applied to Azure SQL:
   ```
   dotnet ef database update --project Infrastructure --startup-project AgentPortal \

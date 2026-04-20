@@ -229,7 +229,44 @@ builder.Services.AddAuthentication(options =>
             }
 
             return Task.CompletedTask;
+        },
+
+        // Return 401 for AJAX requests instead of redirecting to Azure AD
+        OnRedirectToIdentityProvider = ctx =>
+        {
+            if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.HandleResponse();
+                return Task.CompletedTask;
+            }
+            return Task.CompletedTask;
         }
+    };
+});
+
+builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+{
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
     };
 });
 
