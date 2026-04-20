@@ -483,6 +483,7 @@ function markWithSuffix(markFn, el) {
 
         // clear UI
         embedContainer.innerHTML = '';
+        embedContainer.classList.remove('finance-main--dual');
 
         // close any active tooltip cleanly
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
@@ -2579,36 +2580,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         if (isBusinessClient && t.id === "ExpenseLens") {
+            embedContainer.classList.add('finance-main--dual');
             embedContainer.innerHTML = `
-                <style>
-                    .expense-lens-dual-shell {
-                        width: min(1840px, calc(100vw - 32px));
-                        margin: 0 auto 50px;
-                        position: relative;
-                        left: 50%;
-                        transform: translateX(-50%);
-                        display: grid;
-                        grid-template-columns: repeat(2, minmax(0, 1fr));
-                        gap: 18px;
-                        align-items: stretch;
-                    }
-                    .expense-lens-dual-panel {
-                        min-width: 0;
-                        display: flex;
-                    }
-                    .expense-lens-dual-panel > .networth-tool {
-                        width: 100% !important;
-                        max-width: none !important;
-                        margin: 0 !important;
-                        min-height: 100%;
-                    }
-                    @media (max-width: 1100px) {
-                        .expense-lens-dual-shell {
-                            width: min(100%, calc(100vw - 20px));
-                            grid-template-columns: 1fr;
-                        }
-                    }
-                </style>
                 <div class="expense-lens-dual-shell">
                     <div class="expense-lens-dual-panel" id="expenseLensPersonalHost"></div>
                     <div class="expense-lens-dual-panel" id="expenseLensBusinessHost"></div>
