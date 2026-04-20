@@ -457,7 +457,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     const tools = [
         { id: "WealthForecast", name: "Wealth Forecast" },
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
-        ...(isBusinessClient ? [{ id: "BusinessSavingsAccelerator", name: "Business Savings Accelerator" }] : []),
         { id: "ExpenseLens", name: "Expense Lens" },
         { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
@@ -5076,175 +5075,101 @@ markNeutral(savingsTipsOut);
 // ==========================================================
 // 2️⃣ SAVINGS ACCELERATOR (ELEVATED) + Tooltips
 // ==========================================================
-if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
-    const isBusinessSavingsAccelerator = t.id === "BusinessSavingsAccelerator";
-    const savingsToolStateId = isBusinessSavingsAccelerator ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
-    const linkedExpenseLensToolStateId = isBusinessSavingsAccelerator ? "BusinessExpenseLens" : "ExpenseLens";
-    const linkedExpenseLensUpdatedEvent = `${linkedExpenseLensToolStateId}:updated`;
-    const savingsSubtitle = isBusinessSavingsAccelerator
+if (t.id === "SavingsAccelerator") {
+    try {
+    const renderSavingsAcceleratorInstance = async (renderToolId, hostElement) => {
+    const isBusinessSA = renderToolId === "BusinessSavingsAccelerator";
+    const isBusinessSavingsAccelerator = isBusinessSA; // alias for legacy refs
+    const prefix = isBusinessSA ? 'bsa' : 'sa';
+    const pid = (name) => `${prefix}${name}`;
+    const saStateId = isBusinessSA ? "BusinessSavingsAccelerator" : "SavingsAccelerator";
+    const savingsToolStateId = saStateId; // alias
+    const linkedELStateId = isBusinessSA ? "BusinessExpenseLens" : "ExpenseLens";
+    const linkedELEvent = `${linkedELStateId}:updated`;
+    const saTitle = isBusinessSA
+        ? "Business Savings Accelerator"
+        : (isBusinessClient ? "Personal Savings Accelerator" : "Savings Accelerator");
+    const savingsSubtitle = isBusinessSA
         ? "Track business cash flow separately from personal money and allocate operating surplus with clarity."
         : "Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.";
 
-    embedContainer.innerHTML = `
+    hostElement.innerHTML = `
 <div class="networth-tool p-4"
-     style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-            border-radius:20px;
-            box-shadow:0 40px 100px rgba(0,0,0,.58);
-            border:1.8px solid rgba(166,128,35,.52);
-            max-width:1200px;
-            margin:0 auto;
-            color:#f8fafc;
-            font-family: 'Inter', sans-serif;">
-
-    <!-- Tooltip styles (safe + isolated) -->
+     style="background:radial-gradient(900px 320px at 0% 0%,rgba(166,128,35,.12),transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+            border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.58);
+            border:1.8px solid rgba(166,128,35,.52);max-width:1200px;margin:0 auto;
+            color:#f8fafc;font-family:'Inter',sans-serif;">
     <style>
-        .sa-label{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            margin-bottom:6px;
-            font-weight:700;
-            color:#a68023;
-        }
-        .sa-i{
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            width:18px;
-            height:18px;
-            border-radius:999px;
-            background:#fff;
-            border:1px solid rgba(210,31,43,.9);
-            color:#d21f2b;
-            font-weight:900;
-            font-size:12px;
-            line-height:1;
-            cursor:pointer;
-            user-select:none;
-            transform: translateY(-1px);
-            box-shadow:0 6px 18px rgba(0,0,0,.08);
-        }
-        .sa-i:focus{
-            outline:none;
-            box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-        }
-        #saTipLayer{
-            position:fixed;
-            inset:0;
-            pointer-events:none;
-            z-index:2147483647;
-        }
-        .sa-tipbox{
-            position:absolute;
-            max-width:min(360px, 86vw);
-            background:#fff;
-            color:#111;
-            border:1px solid rgba(0,0,0,.12);
-            border-left:4px solid #d21f2b;
-            padding:12px 12px;
-            border-radius:14px;
-            font-size:12.8px;
-            font-weight:650;
-            line-height:1.35;
-            box-shadow:0 18px 45px rgba(0,0,0,.18);
-            opacity:0;
-            transform:translateY(6px);
-            transition:opacity .12s ease, transform .12s ease;
-            pointer-events:none;
-            white-space:normal;
-        }
-        .sa-tipbox b{ font-weight:900; }
-        .sa-tipbox.show{ opacity:1; transform:translateY(0); }
+        .${prefix}-label{display:inline-flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:800;color:#a68023;}
+        .${prefix}-i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#fff;border:1px solid rgba(210,31,43,.9);color:#d21f2b;font-weight:900;font-size:12px;line-height:1;cursor:pointer;user-select:none;transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.08);}
+        .${prefix}-i:focus{outline:none;box-shadow:0 0 0 3px rgba(210,31,43,.18),0 10px 25px rgba(0,0,0,.10);}
+        #${pid('TipLayer')}{position:fixed;inset:0;pointer-events:none;z-index:2147483647;}
+        .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
+        .${prefix}-tipbox b{font-weight:900;}
+        .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
     </style>
-
-    <div id="saTipLayer"></div>
-
-    <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
-        ${t.name}
-    </h3>
-
-    <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
-        ${savingsSubtitle}
-    </p>
-
-    <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
-        <div style="flex:1; min-width:200px;">
-            <div class="sa-label">
-                ${isBusinessSavingsAccelerator ? "Business Net Cash Flow" : "Net Cash Flow"}
-                <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 3,800 • 5,200 (monthly take-home / net income)">i</span>
+    <div id="${pid('TipLayer')}"></div>
+    <h3 style="color:#a68023;font-weight:900;letter-spacing:0.5px;font-size:2rem;">${saTitle}</h3>
+    <p style="font-style:italic;color:#b9c5d8;margin-bottom:20px;">${savingsSubtitle}</p>
+    <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+            <div class="${prefix}-label">
+                ${isBusinessSA ? "Business Net Cash Flow" : "Net Cash Flow"}
+                <span class="${prefix}-i" tabindex="0" data-tip="<b>Examples:</b> 3,800 • 5,200 (monthly take-home / net income)">i</span>
             </div>
             <div style="position:relative;">
-                <input id="saNet" type="text" class="form-control" placeholder="e.g., 2,000"
-                       style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <input id="${pid('Net')}" type="text" class="form-control" placeholder="e.g., 2,000"
+                       style="border:1px solid #d6c48a;box-shadow:inset 0 0 6px rgba(166,128,35,0.15);font-weight:700;font-size:1.1rem;color:#1E3A8A;padding-right:30px;"/>
+                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;">$</span>
             </div>
         </div>
-        <div style="flex:1; min-width:200px;">
-            <div class="sa-label">
-                ${isBusinessSavingsAccelerator ? "Business Essential Expenses" : "Essential Expenses"}
-                <span class="sa-i" tabindex="0" data-tip="<b>Examples:</b> 2,100 • 3,000 (rent, utilities, food, transport, insurance)">i</span>
+        <div style="flex:1;min-width:200px;">
+            <div class="${prefix}-label">
+                ${isBusinessSA ? "Business Essential Expenses" : "Essential Expenses"}
+                <span class="${prefix}-i" tabindex="0" data-tip="<b>Examples:</b> 2,100 • 3,000 (rent, utilities, food, transport, insurance)">i</span>
             </div>
             <div style="position:relative;">
-                <input id="saEss" type="text" class="form-control" placeholder="e.g., 1,500"
-                       style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <input id="${pid('Ess')}" type="text" class="form-control" placeholder="e.g., 1,500"
+                       style="border:1px solid #d6c48a;box-shadow:inset 0 0 6px rgba(166,128,35,0.15);font-weight:700;font-size:1.1rem;color:#1E3A8A;padding-right:30px;"/>
+                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;">$</span>
             </div>
         </div>
     </div>
-
-    <h5 style="margin-top:10px; font-weight:700; color:#fff;">
-        Surplus:
-        <span id="saOut" style="color:#a68023; font-weight:900;">$0</span>
+    <h5 style="margin-top:10px;font-weight:700;color:#fff;">
+        Surplus: <span id="${pid('Out')}" style="color:#a68023;font-weight:900;">$0</span>
     </h5>
-
     <div class="mt-4">
-        <h5 style="color:#a68023; font-weight:700; border-bottom:1px solid rgba(166,128,35,0.35); padding-bottom:6px;">
-            Cash Flow Allocation
-        </h5>
-
-        <!-- New totals row: Remaining Surplus left on the left, Total Allocated on the right -->
+        <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Cash Flow Allocation</h5>
         <div class="d-flex align-items-center mb-3" style="gap:8px;">
-            <div style="flex:2; font-weight:700; color:#fff; text-align:left;">
-                Remaining Surplus: <span id="saRemaining" style="color:#a68023; font-weight:900;">$0</span>
+            <div style="flex:2;font-weight:700;color:#fff;text-align:left;">
+                Remaining Surplus: <span id="${pid('Remaining')}" style="color:#a68023;font-weight:900;">$0</span>
             </div>
-            <div style="flex:1; text-align:right; font-weight:700; color:#fff;">
-                Total Allocated: <span id="saPctTotal" style="color:#a68023; font-weight:900;">0%</span>
+            <div style="flex:1;text-align:right;font-weight:700;color:#fff;">
+                Total Allocated: <span id="${pid('PctTotal')}" style="color:#a68023;font-weight:900;">0%</span>
             </div>
         </div>
-
-        <div id="allocationContainer" class="mt-3"></div>
-
+        <div id="${pid('AllocContainer')}" class="mt-3"></div>
         <div class="d-flex gap-2 mt-3">
-            <button id="saAddCat" class="btn btn-outline-gold"
-                    style="font-weight:600;">+ Add Category</button>
-            <button id="saDelCat" class="btn btn-outline-gold"
-                    style="font-weight:600;">- Delete Last</button>
+            <button id="${pid('AddCat')}" class="btn btn-outline-gold" style="font-weight:600;">+ Add Category</button>
+            <button id="${pid('DelCat')}" class="btn btn-outline-gold" style="font-weight:600;">- Delete Last</button>
         </div>
     </div>
-
-    <div id="saTips"
-         style="padding:14px;
-                background:rgba(255,255,255,.05);
-                border:1px solid rgba(166,128,35,.18);
-                border-left:5px solid #a68023;
-                font-style:italic;
-                color:#b9c5d8;
-                margin-top:20px;
-                border-radius:10px;">
+    <div id="${pid('Tips')}"
+         style="padding:14px;background:rgba(255,255,255,.055);border-left:5px solid rgba(166,128,35,.7);font-style:italic;color:#f8fafc;margin-top:20px;border-radius:10px;box-shadow:inset 0 0 12px rgba(166,128,35,0.12);">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
 </div>`;
 
-    const container = embedContainer.querySelector('.networth-tool');
-    const saNetInput = document.getElementById('saNet');
-    const saEssInput = document.getElementById('saEss');
-    const saOut = document.getElementById('saOut');
-    const saTips = document.getElementById('saTips');
-    const allocationContainer = document.getElementById('allocationContainer');
-    const addBtn = document.getElementById('saAddCat');
-    const delBtn = document.getElementById('saDelCat');
-    const saPctTotal = document.getElementById('saPctTotal');
-    const saRemaining = document.getElementById('saRemaining');
+    const container = hostElement.querySelector('.networth-tool');
+    const saNetInput = document.getElementById(pid('Net'));
+    const saEssInput = document.getElementById(pid('Ess'));
+    const saOut = document.getElementById(pid('Out'));
+    const saTips = document.getElementById(pid('Tips'));
+    const allocationContainer = document.getElementById(pid('AllocContainer'));
+    const addBtn = document.getElementById(pid('AddCat'));
+    const delBtn = document.getElementById(pid('DelCat'));
+    const saPctTotal = document.getElementById(pid('PctTotal'));
+    const saRemaining = document.getElementById(pid('Remaining'));
 
     let categoryCount = 0;
 
@@ -5262,9 +5187,9 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
     };
 
     // ----- Tooltip engine (overlay) -----
-    const tipLayer = document.getElementById('saTipLayer');
+    const tipLayer = document.getElementById(pid('TipLayer'));
     const tipBox = document.createElement('div');
-    tipBox.className = 'sa-tipbox';
+    tipBox.className = `${prefix}-tipbox`;
     tipLayer.appendChild(tipBox);
 
     const showTip = (el) => {
@@ -5295,7 +5220,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
     // Register for global click binder
     window.__LegendHideActiveTip = hideTip;
 
-    container.querySelectorAll('.sa-i').forEach(el => {
+    container.querySelectorAll(`.${prefix}-i`).forEach(el => {
         el.addEventListener('mouseenter', () => showTip(el));
         el.addEventListener('mouseleave', hideTip);
         el.addEventListener('focus', () => showTip(el));
@@ -5357,7 +5282,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
     };
 
     const applyExpenseLensToSavingsAccelerator = async () => {
-        const state = await loadPersistedState(linkedExpenseLensToolStateId);
+        const state = await loadPersistedState(linkedELStateId);
         const income = parseSavingsMoney(state?.income);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
 
@@ -5370,16 +5295,16 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         const net = saNetInput.value || '';
         const ess = saEssInput.value || '';
         const allocations = [];
-        document.querySelectorAll('.allocation-row').forEach(row => {
+        allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             allocations.push({
-                name: row.querySelector('.allocation-name').value || '',
-                percent: row.querySelector('.allocation-percent').value || ''
+                name: row.querySelector('.sa-alloc-name').value || '',
+                percent: row.querySelector('.sa-alloc-percent').value || ''
             });
         });
-        savePersistedState(savingsToolStateId, { net, ess, allocations });
+        savePersistedState(saStateId, { net, ess, allocations });
 
         // Push to shared Finance Profile (only fields this tool owns)
-        if (!isBusinessSavingsAccelerator && window.LegendFinanceProfile?.update) {
+        if (!isBusinessSA && window.LegendFinanceProfile?.update) {
             const partial = {};
             const netNum = parseSavingsMoney(net);
             const essNum = parseSavingsMoney(ess);
@@ -5426,11 +5351,11 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
 
     const createAllocationRow = (index, preName = '', prePercent = '') => {
         const row = document.createElement('div');
-        row.className = 'allocation-row d-flex align-items-center mb-2 gap-2';
+        row.className = 'sa-alloc-row d-flex align-items-center mb-2 gap-2';
         row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
 
         const name = document.createElement('input');
-        name.className = 'form-control allocation-name';
+        name.className = 'form-control sa-alloc-name';
         name.style.flex = '2';
         name.placeholder = `Category ${index}`;
         name.value = preName;
@@ -5440,7 +5365,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         amtWrap.style.cssText = 'flex:1;position:relative;';
 
         const amt = document.createElement('input');
-        amt.className = 'form-control allocation-amount';
+        amt.className = 'form-control sa-alloc-amount';
         amt.readOnly = true;
         amt.style.cssText = 'font-weight:700;';
         amt.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
@@ -5458,7 +5383,7 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         pctWrap.style.cssText = 'flex:1;position:relative;';
 
         const pct = document.createElement('input');
-        pct.className = 'form-control allocation-percent';
+        pct.className = 'form-control sa-alloc-percent';
         pct.value = prePercent || '';
         pct.style.cssText = 'font-weight:700;padding-right:28px;';
         pct.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
@@ -5495,9 +5420,9 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         let usedPct = 0;
         let totalAllocatedAmt = 0;
 
-        document.querySelectorAll('.allocation-row').forEach(row => {
-            const pctInput = row.querySelector('.allocation-percent');
-            const amtInput = row.querySelector('.allocation-amount');
+        allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
+            const pctInput = row.querySelector('.sa-alloc-percent');
+            const amtInput = row.querySelector('.sa-alloc-amount');
 
             let pct = +pctInput.value || 0;
             if (usedPct + pct > 100) pct = Math.max(0, 100 - usedPct);
@@ -5542,9 +5467,9 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         markNeutral(saTips);
 
         // Rows — percent input + % suffix, name, amount + $ suffix
-        document.querySelectorAll('.allocation-percent').forEach(p => markWithSuffix(markNeutral, p));
-        document.querySelectorAll('.allocation-name').forEach(n => markNeutral(n));
-        document.querySelectorAll('.allocation-amount').forEach(a => {
+        allocationContainer.querySelectorAll('.sa-alloc-percent').forEach(p => markWithSuffix(markNeutral, p));
+        allocationContainer.querySelectorAll('.sa-alloc-name').forEach(n => markNeutral(n));
+        allocationContainer.querySelectorAll('.sa-alloc-amount').forEach(a => {
             if (surplus > 0) markWithSuffix(markIncome, a);
             else if (surplus < 0) markWithSuffix(markExpense, a);
             else markWithSuffix(markNeutral, a);
@@ -5577,16 +5502,30 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
         refreshSurplus();
     });
 
-await loadAllocationState();
-	    await applyExpenseLensToSavingsAccelerator();
-	    applyProfileToSavingsAccelerator();
-	    window.addEventListener("FinanceProfile:updated", applyProfileToSavingsAccelerator);
-	    window.addEventListener("FinanceProfile:ready", applyProfileToSavingsAccelerator);
-	    window.addEventListener(linkedExpenseLensUpdatedEvent, () => { applyExpenseLensToSavingsAccelerator(); });
+    await loadAllocationState();
+    await applyExpenseLensToSavingsAccelerator();
+    applyProfileToSavingsAccelerator();
+    window.addEventListener("FinanceProfile:updated", applyProfileToSavingsAccelerator);
+    window.addEventListener("FinanceProfile:ready", applyProfileToSavingsAccelerator);
+    window.addEventListener(linkedELEvent, applyExpenseLensToSavingsAccelerator);
+    refreshSurplus();
 
-// ✅ Force correct colors AFTER state load (so it stays green/red)
-refreshSurplus();
+    }; // end renderSavingsAcceleratorInstance
 
+    if (isBusinessClient) {
+        embedContainer.classList.add('finance-main--dual');
+        embedContainer.innerHTML = `
+            <div class="expense-lens-dual-shell">
+                <div class="expense-lens-dual-panel" id="savingsPersonalHost"></div>
+                <div class="expense-lens-dual-panel" id="savingsBusinessHost"></div>
+            </div>
+        `;
+        await renderSavingsAcceleratorInstance("SavingsAccelerator", document.getElementById('savingsPersonalHost'));
+        await renderSavingsAcceleratorInstance("BusinessSavingsAccelerator", document.getElementById('savingsBusinessHost'));
+    } else {
+        await renderSavingsAcceleratorInstance("SavingsAccelerator", embedContainer);
+    }
+    } catch(e) { console.error('SavingsAccelerator error:', e); }
 }
 
 
@@ -5597,6 +5536,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
     try {
         const renderExpenseLensInstance = async (renderToolId, hostElement) => {
         const isBusinessExpenseLens = renderToolId === "BusinessExpenseLens";
+        const isDualPanel = hostElement.classList.contains('expense-lens-dual-panel');
         const expenseLensToolStateId = isBusinessExpenseLens ? "BusinessExpenseLens" : "ExpenseLens";
         const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
         const expenseLensIdPrefix = isBusinessExpenseLens ? "elBusiness" : "elPersonal";
@@ -6066,12 +6006,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
-            div.style.padding = "10px";
+            div.style.padding = isDualPanel ? "7px" : "10px";
             div.style.borderRadius = "10px";
             div.style.border = "1.5px solid rgba(166,128,35,.24)";
-            div.style.columnGap = "12px";
-            div.style.rowGap = "10px";
-            div.style.flexWrap = "wrap";
+            div.style.columnGap = isDualPanel ? "7px" : "12px";
+            div.style.rowGap = "8px";
+            div.style.flexWrap = "nowrap";
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
@@ -6083,15 +6023,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             nameInput.style.setProperty("border-radius", "10px", "important");
             nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             nameInput.style.color = "#1E3A8A";
-            nameInput.style.flex = "1 1 220px";
+            nameInput.style.flex = isDualPanel ? "1 1 0" : "1 1 220px";
+            nameInput.style.minWidth = isDualPanel ? "0" : "";
             nameInput.value = preName;
             nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Premium blue due date field
             const dueWrapper = document.createElement("div");
             dueWrapper.style.position = "relative";
-            dueWrapper.style.flex = "1 1 140px";
-            dueWrapper.style.minWidth = "130px";
+            dueWrapper.style.flex = isDualPanel ? "0 0 100px" : "1 1 140px";
+            dueWrapper.style.minWidth = isDualPanel ? "100px" : "130px";
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
@@ -6118,8 +6059,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             frequencySelect.style.setProperty("color", "#1E3A8A", "important");
             frequencySelect.style.setProperty("font-weight", "700", "important");
-            frequencySelect.style.flex = "0 1 132px";
-            frequencySelect.style.minWidth = "124px";
+            frequencySelect.style.flex = isDualPanel ? "0 0 100px" : "0 1 132px";
+            frequencySelect.style.minWidth = isDualPanel ? "100px" : "124px";
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -6131,8 +6072,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
-            amountWrapper.style.flex = "1 1 150px";
-            amountWrapper.style.minWidth = "140px";
+            amountWrapper.style.flex = isDualPanel ? "0 0 100px" : "1 1 150px";
+            amountWrapper.style.minWidth = isDualPanel ? "100px" : "140px";
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
@@ -6162,8 +6103,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
-            percentSpan.style.minWidth = "80px";
-            percentSpan.style.flex = "0 0 90px";
+            percentSpan.style.minWidth = isDualPanel ? "52px" : "80px";
+            percentSpan.style.flex = isDualPanel ? "0 0 52px" : "0 0 90px";
             percentSpan.style.textAlign = "right";
             percentSpan.style.fontWeight = "700";
             percentSpan.style.color = "#1E3A8A";
@@ -8962,8 +8903,8 @@ if (t.id === "DebtAssetPulse") {
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
     const savedToolId = await loadSelectedToolId();
-    const normalizedSavedToolId = isBusinessClient && savedToolId === "BusinessExpenseLens"
-        ? "ExpenseLens"
+    const normalizedSavedToolId = isBusinessClient && (savedToolId === "BusinessExpenseLens" || savedToolId === "BusinessSavingsAccelerator")
+        ? (savedToolId === "BusinessSavingsAccelerator" ? "SavingsAccelerator" : "ExpenseLens")
         : savedToolId;
     if (normalizedSavedToolId && tools.some(tool => tool.id === normalizedSavedToolId)) {
         dropdown.value = normalizedSavedToolId;
