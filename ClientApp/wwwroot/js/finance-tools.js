@@ -1049,8 +1049,8 @@ if (t.id === "SavingsAccelerator") {
         ? "Business Savings Accelerator"
         : (isBusinessClient ? "Personal Savings Accelerator" : "Savings Accelerator");
     const savingsSubtitle = isBusinessSA
-        ? "Track business cash flow separately from personal money and allocate operating surplus with clarity."
-        : "Calculate your monthly surplus and optimize how you allocate it for maximum wealth building.";
+        ? "Pull the business remaining balance from Expense Lens and allocate operating surplus with clarity."
+        : "Pull the remaining balance from Expense Lens and optimize how you allocate it for maximum wealth building.";
 
     hostElement.innerHTML = `
 <div class="networth-tool p-4"
@@ -1085,10 +1085,10 @@ if (t.id === "SavingsAccelerator") {
         </div>
     </div>
     <div class="mt-4">
-        <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Cash Flow Allocation</h5>
+        <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Savings Allocation Plan</h5>
         <div class="d-flex align-items-center mb-3" style="gap:8px;">
             <div style="flex:2;font-weight:700;color:#fff;text-align:left;">
-                Remaining Surplus: <span id="${pid('Remaining')}" style="color:#a68023;font-weight:900;">$0</span>
+                Remaining Allocation: <span id="${pid('Remaining')}" style="color:#a68023;font-weight:900;">$0</span>
             </div>
             <div style="flex:1;text-align:right;font-weight:700;color:#fff;">
                 Total Allocated: <span id="${pid('PctTotal')}" style="color:#a68023;font-weight:900;">0%</span>
@@ -1235,12 +1235,14 @@ if (t.id === "SavingsAccelerator") {
         const state = event?.detail || await loadPersistedState(linkedELStateId);
         const income = parseSavingsMoney(state?.income);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
+        const hasSavedRemaining = state && Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining');
+        const savingsAllocation = hasSavedRemaining ? parseSavingsMoney(state.monthlyRemaining) : income - monthlyExpenses;
         const hasCategoryData = Array.isArray(state?.categories)
             && state.categories.some(category => parseSavingsMoney(category?.amount || category?.occurrenceAmount));
         const hasSourceData = !!state
             && (String(state?.income ?? '').trim() !== '' || monthlyExpenses !== 0 || hasCategoryData);
 
-        saAllocationInput.value = hasSourceData ? formatNumber(income - monthlyExpenses) : '';
+        saAllocationInput.value = hasSourceData ? formatNumber(savingsAllocation) : '';
         refreshSurplus();
     };
 
@@ -1367,7 +1369,7 @@ if (t.id === "SavingsAccelerator") {
             ? 'Complete Expense Lens first so Savings Accelerator can pull the remaining balance automatically.'
             : surplus <= 0
             ? '⚠️ Expense Lens shows no remaining balance to allocate. Adjust income or bills there first.'
-            : '✅ Good surplus! Use surplus funds strategically for savings and financial goals.';
+            : '✅ Good remaining balance! Allocate it strategically across savings and financial goals.';
 
         // ==========================================================
         // ✅ COLOR CODING — INPUTS + OUTPUTS + ROWS (FULL COVERAGE)
@@ -1563,7 +1565,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         style="font-weight:600;">
                     + Add Category
                 </button>
-                <div id="${elId('ActionMeta')}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-left:auto;">
+                <div id="${elId('ActionMeta')}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
                     <div id="${elId('Margin')}"
                          style="display:inline-flex;align-items:center;height:38px;padding:0 16px;
                                 border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
@@ -2059,11 +2061,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 elTips.textContent = expenseLensDefaultTip;
             }
 
-            saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent });
+            saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
             window.dispatchEvent(new CustomEvent(expenseLensUpdatedEvent, {
                 detail: {
                     income,
                     monthlyExpenseTotal: monthlyTotalSpent,
+                    monthlyRemaining,
                     expenses: categoriesData
                 }
             }));
