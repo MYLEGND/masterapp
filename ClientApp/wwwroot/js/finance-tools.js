@@ -586,21 +586,31 @@ function markWithSuffix(markFn, el) {
             border:1.5px solid #d1a034;
             border-radius:14px;
             box-shadow:0 12px 28px rgba(0,0,0,.25);
-            padding:12px 14px;
-            color:#eaf2ff;
+            padding:14px 16px;
+            display:flex;
+            flex-direction:column;
+            gap:8px;
         }
-        .wf-summary-box table{
-            color:#eaf2ff;
-            background:transparent;
+        .wf-stat-row{
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            padding:9px 14px;
+            border-radius:6px;
+            background:rgba(255,255,255,0.04);
+            border:1px solid rgba(148,163,184,0.12);
         }
-        .wf-summary-box th{
-            color:#f1f5f9;
-            font-weight:800;
-            width: 52%;
+        .wf-stat-label{
+            color:#94A3B8;
+            font-weight:700;
+            font-size:0.8rem;
+            letter-spacing:0.04em;
+            text-transform:uppercase;
         }
-        .wf-summary-box td{
-            color:#eaf2ff;
+        .wf-stat-value{
+            color:#38BDF8;
             font-weight:900;
+            font-size:0.92rem;
         }
         .wf-tip-text{
             color:#d4a820 !important;
@@ -685,16 +695,21 @@ function markWithSuffix(markFn, el) {
                 <canvas id="wfChart" aria-label="Wealth forecast chart" role="img"></canvas>
             </div>
             <div class="wf-summary-box">
-                <table class="table table-sm mb-2">
-                    <tr><th>Real Growth Rate</th><td id="wbRealGrowth">0%</td></tr>
-                    <tr><th>Savings</th><td id="wbSavingsPercent">0%</td></tr>
-                    <tr><th>Annual Savings</th><td id="wbActualSavings">$0</td></tr>
-                </table>
-                <table class="table table-sm mb-0">
-                    <tr><th>Tips & Suggestions</th><td id="wbSavingsTips" class="wf-tip-text" style="margin-top:0;padding:10px 14px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
-                        Enter your profile above to calculate savings.
-                    </td></tr>
-                </table>
+                <div class="wf-stat-row">
+                    <span class="wf-stat-label">Real Growth Rate</span>
+                    <span id="wbRealGrowth" class="wf-stat-value">0%</span>
+                </div>
+                <div class="wf-stat-row">
+                    <span class="wf-stat-label">Avg Savings Rate</span>
+                    <span id="wbSavingsPercent" class="wf-stat-value">0%</span>
+                </div>
+                <div class="wf-stat-row">
+                    <span class="wf-stat-label">Avg Annual Savings</span>
+                    <span id="wbActualSavings" class="wf-stat-value">$0</span>
+                </div>
+                <div id="wbSavingsTips" class="wf-tip-text" style="padding:10px 14px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+                    Enter your profile above to calculate savings.
+                </div>
                 <!-- hidden holders to keep IDs for logic -->
                 <span id="wbEarnings" style="display:none">$0</span>
                 <span id="wbWealth" style="display:none">$0</span>
