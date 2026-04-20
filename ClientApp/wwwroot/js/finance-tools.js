@@ -1457,9 +1457,16 @@ refreshSurplus();
 --------------------------------*/
 if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
     try {
-        const isBusinessExpenseLens = t.id === "BusinessExpenseLens";
+        const renderExpenseLensInstance = async (renderToolId, hostElement) => {
+        const isBusinessExpenseLens = renderToolId === "BusinessExpenseLens";
         const expenseLensToolStateId = isBusinessExpenseLens ? "BusinessExpenseLens" : "ExpenseLens";
         const expenseLensUpdatedEvent = `${expenseLensToolStateId}:updated`;
+        const expenseLensIdPrefix = isBusinessExpenseLens ? "elBusiness" : "elPersonal";
+        const expenseLensTitle = isBusinessExpenseLens
+            ? "Business Expense Lens"
+            : (isBusinessClient ? "Personal Expense Lens" : "Expense Lens");
+        const elId = (name) => `${expenseLensIdPrefix}${name}`;
+        const elById = (name) => document.getElementById(elId(name));
         const expenseLensSubtitle = isBusinessExpenseLens
             ? "Separate business operating income and recurring business bills from personal expenses."
             : "Break down your income into categories and visualize spending percentages for better budgeting.";
@@ -1467,7 +1474,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             ? "Monitor business categories to identify operating costs, savings opportunities, and reinvestment capacity."
             : "Monitor each category to identify areas to save or invest.";
 
-        embedContainer.innerHTML = `
+        hostElement.innerHTML = `
         <div class="networth-tool p-4"
              style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
                     border-radius:20px;
@@ -1509,7 +1516,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     outline:none;
                     box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
                 }
-                #elTipLayer{
+                #${elId('TipLayer')}{
                     position:fixed;
                     inset:0;
                     pointer-events:none;
@@ -1540,10 +1547,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                
             </style>
 
-            <div id="elTipLayer"></div>
+            <div id="${elId('TipLayer')}"></div>
 
             <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
-                ${t.name}
+                ${expenseLensTitle}
             </h3>
 
             <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
@@ -1556,29 +1563,29 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                       data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
             </div>
             <div style="position:relative; margin-bottom:15px;">
-                <input id="elIncome" type="text" 
+                <input id="${elId('Income')}" type="text"
                        class="form-control mb-3"
                        placeholder="Enter total monthly income"
                        style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; padding-right:30px;" />
                 <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
             </div>
 
-            <div id="elCategories" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
+            <div id="${elId('Categories')}" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
 
             <div class="d-flex gap-2 mt-3" style="gap:12px; flex-wrap:wrap;">
-                <button id="elAddCat" 
+                <button id="${elId('AddCat')}"
                         class="btn btn-outline-gold"
                         style="font-weight:600;">
                     + Add Category
                 </button>
-                <button id="elDelCat" 
+                <button id="${elId('DelCat')}"
                         class="btn btn-outline-gold"
                         style="font-weight:600;">
                     - Delete Last
                 </button>
             </div>
 
-            <div id="elTips"
+            <div id="${elId('Tips')}"
                  style="padding:14px; 
                         background:linear-gradient(135deg, #f1ede3, #e1d6b8); 
                         border-left:5px solid #a68023; 
@@ -1590,7 +1597,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ${expenseLensDefaultTip}
             </div>
 
-            <div id="elMargin"
+            <div id="${elId('Margin')}"
                  style="margin-top:18px;
                         padding:16px;
                         background:#f8f6f0;
@@ -1604,13 +1611,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             </div>
         </div>`;
 
-        const container = embedContainer.querySelector('.networth-tool');
-        const categoriesContainer = document.getElementById("elCategories");
-        const addBtn = document.getElementById("elAddCat");
-        const delBtn = document.getElementById("elDelCat");
-        const elTips = document.getElementById("elTips");
-        const elMargin = document.getElementById("elMargin");
-        const elIncome = document.getElementById("elIncome");
+        const container = hostElement.querySelector('.networth-tool');
+        const categoriesContainer = elById("Categories");
+        const addBtn = elById("AddCat");
+        const delBtn = elById("DelCat");
+        const elTips = elById("Tips");
+        const elMargin = elById("Margin");
+        const elIncome = elById("Income");
        
 
        
@@ -1619,7 +1626,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         applyToolBoxStyles(container);
 
         // ✅ TOOLTIP ENGINE (overlay)
-        const tipLayer = document.getElementById('elTipLayer');
+        const tipLayer = elById('TipLayer');
         const tipBox = document.createElement('div');
         tipBox.className = 'el-tipbox';
         tipLayer.appendChild(tipBox);
@@ -1735,12 +1742,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             try {
                 const income = elIncome.value || '';
                 const categories = [];
-                document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                    const index = row.id.replace('elCatRow', '');
-                    const nameEl = document.getElementById(`elCatName${index}`);
-                    const amountEl = document.getElementById(`elCatAmount${index}`);
-                    const dueEl = document.getElementById(`elCatDue${index}`);
-                    const frequencyEl = document.getElementById(`elCatFrequency${index}`);
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                    const index = row.id.replace(elId('CatRow'), '');
+                    const nameEl = elById(`CatName${index}`);
+                    const amountEl = elById(`CatAmount${index}`);
+                    const dueEl = elById(`CatDue${index}`);
+                    const frequencyEl = elById(`CatFrequency${index}`);
                     const name = nameEl ? nameEl.value || '' : '';
                     const amount = amountEl ? amountEl.value || '' : '';
                     const due = dueEl ? dueEl.value || '' : '';
@@ -1814,7 +1821,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly', isTemplate = false) => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
-            div.id = `elCatRow${index}`;
+            div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = "10px";
@@ -1826,7 +1833,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
-            nameInput.id = `elCatName${index}`;
+            nameInput.id = `${elId('CatName')}${index}`;
             nameInput.className = "form-control flex-grow-1";
             nameInput.placeholder = `Category ${index} Name`;
             nameInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
@@ -1845,7 +1852,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             dueWrapper.style.minWidth = "130px";
             const dueInput = document.createElement("input");
             dueInput.type = "date";
-            dueInput.id = `elCatDue${index}`;
+            dueInput.id = `${elId('CatDue')}${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
             dueInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
@@ -1861,7 +1868,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             dueWrapper.appendChild(dueInput);
 
             const frequencySelect = document.createElement("select");
-            frequencySelect.id = `elCatFrequency${index}`;
+            frequencySelect.id = `${elId('CatFrequency')}${index}`;
             frequencySelect.className = "form-select";
             frequencySelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
             frequencySelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
@@ -1887,7 +1894,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
-            amountInput.id = `elCatAmount${index}`;
+            amountInput.id = `${elId('CatAmount')}${index}`;
             amountInput.className = "form-control";
             amountInput.placeholder = "Amount";
             amountInput.style.width = "100%";
@@ -1912,7 +1919,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             amountWrapper.appendChild(dollarSpan);
 
             const percentSpan = document.createElement("span");
-            percentSpan.id = `elOut${index}`;
+            percentSpan.id = `${elId('Out')}${index}`;
             percentSpan.style.minWidth = "80px";
             percentSpan.style.flex = "0 0 90px";
             percentSpan.style.textAlign = "right";
@@ -1956,7 +1963,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.addEventListener("dragend", () => {
                 div.style.opacity = "1";
                 div.draggable = false;
-                document.querySelectorAll('[id^="elCatRow"]').forEach(r => {
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(r => {
                     r.style.border = "1.5px solid rgba(166,128,35,.24)";
                 });
             });
@@ -1999,9 +2006,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             let monthlyTotalSpent = 0;
             const categoriesData = [];
 
-            document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
                 const val = +input.value.replace(/,/g,'') || 0;
-                const index = input.id.replace('elCatAmount','');
+                const index = input.id.replace(elId('CatAmount'),'');
                 const monthOccurrences = elGetBillOccurrenceDays(index);
                 const activeOccurrences = elActiveWeek ? elGetBillOccurrenceDays(index, elActiveWeek) : monthOccurrences;
                 const occurrenceCount = elActiveWeek ? activeOccurrences.length : monthOccurrences.length;
@@ -2009,14 +2016,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const monthlyTotal = val * monthOccurrences.length;
                 monthlyTotalSpent += monthlyTotal;
                 const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
-                const pctEl = document.getElementById(`elOut${index}`);
+                const pctEl = elById(`Out${index}`);
                 pctEl.textContent = pct;
                 const dollarSign = input.nextElementSibling;
                 if (val > 0) { markExpense(input); markExpense(pctEl); if (dollarSign) markExpense(dollarSign); }
                 else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
 
-                const name = (document.getElementById(`elCatName${index}`).value || `Category ${index}`).trim();
-                const due = document.getElementById(`elCatDue${index}`)?.value || '';
+                const name = (elById(`CatName${index}`).value || `Category ${index}`).trim();
+                const due = elById(`CatDue${index}`)?.value || '';
                 const frequency = elGetBillFrequency(index);
                 categoriesData.push({
                     name,
@@ -2141,12 +2148,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elGetBillFrequency = (index) => {
-            const frequencyEl = document.getElementById(`elCatFrequency${index}`);
+            const frequencyEl = elById(`CatFrequency${index}`);
             return normalizeBillFrequency(frequencyEl?.value || 'monthly');
         };
 
         const elGetBillOccurrenceDays = (index, week = null) => {
-            const dueEl = document.getElementById(`elCatDue${index}`);
+            const dueEl = elById(`CatDue${index}`);
             const dueDate = elParseDueDate(dueEl?.value);
             if (!dueDate) return [];
 
@@ -2182,8 +2189,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const elApplyWeekFilter = (week) => {
             elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
-            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                const idx = row.id.replace('elCatRow', '');
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
                 const show = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
                 // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
                 if (show) {
@@ -2193,7 +2200,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
             });
             weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
-            const _topBtn = document.getElementById('elWeeklyBtnTop');
+            const _topBtn = elById('WeeklyBtnTop');
             if (_topBtn) _topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
             refreshExpenseLens();
             renderWeekPanel();
@@ -2232,9 +2239,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             // Pre-compute grand total for "Show All" row — reads live DOM so it always reflects current bills
             let grandTotal = 0;
             let grandCount = 0;
-            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                const idx = row.id.replace('elCatRow', '');
-                const amtEl = document.getElementById(`elCatAmount${idx}`);
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
+                const amtEl = elById(`CatAmount${idx}`);
                 const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
                 const occurrences = elGetBillOccurrenceDays(idx);
                 if (amt > 0 && occurrences.length > 0) {
@@ -2263,10 +2270,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weeks.forEach(week => {
                 let weekTotal = 0;
                 const bills = [];
-                document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                    const idx = row.id.replace('elCatRow', '');
-                    const amtEl  = document.getElementById(`elCatAmount${idx}`);
-                    const nameEl = document.getElementById(`elCatName${idx}`);
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                    const idx = row.id.replace(elId('CatRow'), '');
+                    const amtEl  = elById(`CatAmount${idx}`);
+                    const nameEl = elById(`CatName${idx}`);
                     const frequency = elGetBillFrequency(idx);
                     const occurrences = elGetBillOccurrenceDays(idx, week);
                     occurrences.forEach(day => {
@@ -2386,7 +2393,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
         const weeklyBtnTop = document.createElement('button');
-        weeklyBtnTop.id = 'elWeeklyBtnTop';
+        weeklyBtnTop.id = elId('WeeklyBtnTop');
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly ▾';
         weeklyBtnTop.className = 'btn';
@@ -2414,12 +2421,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         addClearButton(container, () => {
             elIncome.value = '';
             // Reset template rows in-place; remove custom rows entirely
-            Array.from(document.querySelectorAll('[id^="elCatRow"]')).forEach(row => {
+            Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)).forEach(row => {
                 if (row.dataset.isTemplate === 'true') {
-                    const idx = row.id.replace('elCatRow', '');
-                    const amtEl = document.getElementById(`elCatAmount${idx}`);
-                    const dueEl = document.getElementById(`elCatDue${idx}`);
-                    const freqEl = document.getElementById(`elCatFrequency${idx}`);
+                    const idx = row.id.replace(elId('CatRow'), '');
+                    const amtEl = elById(`CatAmount${idx}`);
+                    const dueEl = elById(`CatDue${idx}`);
+                    const freqEl = elById(`CatFrequency${idx}`);
                     if (amtEl) amtEl.value = '';
                     if (dueEl) dueEl.value = toCurrentMonthDue(null);
                     if (freqEl) freqEl.value = 'monthly';
@@ -2428,8 +2435,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
             });
             // Set categoryCount to highest remaining index so new rows get unique IDs
-            categoryCount = Array.from(document.querySelectorAll('[id^="elCatRow"]'))
-                .reduce((max, r) => Math.max(max, parseInt(r.id.replace('elCatRow', '')) || 0), 0);
+            categoryCount = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`))
+                .reduce((max, r) => Math.max(max, parseInt(r.id.replace(elId('CatRow'), '')) || 0), 0);
             elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
@@ -2446,8 +2453,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         (() => {
             const currentWeek = elGetCurrentCalendarWeek();
             if (!currentWeek) return;
-            const hasThisWeek = [...document.querySelectorAll('[id^="elCatRow"]')].some(row => {
-                const idx = row.id.replace('elCatRow', '');
+            const hasThisWeek = [...categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)].some(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
                 return elGetBillOccurrenceDays(idx, currentWeek).length > 0;
             });
             if (hasThisWeek) elApplyWeekFilter(currentWeek);
@@ -2459,10 +2466,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             markIncome(elIncome);
 
             // Rows (dynamic)
-            document.querySelectorAll('[id^="elCatName"]').forEach(n => markNeutral(n));     // labels
-            document.querySelectorAll('[id^="elCatFrequency"]').forEach(f => markNeutral(f)); // frequency
-            document.querySelectorAll('[id^="elCatAmount"]').forEach(a => markExpense(a));  // spending
-            document.querySelectorAll('[id^="elOut"]').forEach(p => markExpense(p));        // % outputs
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatName')}"]`).forEach(n => markNeutral(n));     // labels
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatFrequency')}"]`).forEach(f => markNeutral(f)); // frequency
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => markExpense(a));  // spending
+            categoriesContainer.querySelectorAll(`[id^="${elId('Out')}"]`).forEach(p => markExpense(p));        // % outputs
 
             // Tips
             markNeutral(elTips);
@@ -2474,8 +2481,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             } else {
                 const income = +elIncome.value.replace(/,/g, '') || 0;
                 let totalSpent = 0;
-                document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
-                    const idx = input.id.replace('elCatAmount', '');
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
+                    const idx = input.id.replace(elId('CatAmount'), '');
                     const occurrenceCount = elGetBillOccurrenceDays(idx).length;
                     totalSpent += (+input.value.replace(/,/g, '') || 0) * occurrenceCount;
                 });
@@ -2491,6 +2498,48 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             refreshExpenseLens();            // ensures Remaining Balance + tip text is current
             applyExpenseLensColors();        // re-apply after refresh updates DOM text
         });
+        };
+
+        if (isBusinessClient && t.id === "ExpenseLens") {
+            embedContainer.innerHTML = `
+                <style>
+                    .expense-lens-dual-shell {
+                        width: min(1840px, calc(100vw - 32px));
+                        margin: 0 auto 50px;
+                        display: grid;
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                        gap: 18px;
+                        align-items: stretch;
+                    }
+                    .expense-lens-dual-panel {
+                        min-width: 0;
+                        display: flex;
+                    }
+                    .expense-lens-dual-panel > .networth-tool {
+                        width: 100% !important;
+                        max-width: none !important;
+                        margin: 0 !important;
+                        min-height: 100%;
+                    }
+                    @media (max-width: 1100px) {
+                        .expense-lens-dual-shell {
+                            width: min(100%, calc(100vw - 20px));
+                            grid-template-columns: 1fr;
+                        }
+                    }
+                </style>
+                <div class="expense-lens-dual-shell">
+                    <div class="expense-lens-dual-panel" id="expenseLensPersonalHost"></div>
+                    <div class="expense-lens-dual-panel" id="expenseLensBusinessHost"></div>
+                </div>
+            `;
+            const personalHost = document.getElementById("expenseLensPersonalHost");
+            const businessHost = document.getElementById("expenseLensBusinessHost");
+            await renderExpenseLensInstance("ExpenseLens", personalHost);
+            await renderExpenseLensInstance("BusinessExpenseLens", businessHost);
+        } else {
+            await renderExpenseLensInstance(t.id, embedContainer);
+        }
 
     } catch (e) {
         console.error('ExpenseLens initialization error:', e);

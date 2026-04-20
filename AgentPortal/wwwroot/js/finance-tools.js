@@ -6315,12 +6315,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elGetBillFrequency = (index) => {
-            const frequencyEl = document.getElementById(`elCatFrequency${index}`);
+            const frequencyEl = elById(`CatFrequency${index}`);
             return normalizeBillFrequency(frequencyEl?.value || 'monthly');
         };
 
         const elGetBillOccurrenceDays = (index, week = null) => {
-            const dueEl = document.getElementById(`elCatDue${index}`);
+            const dueEl = elById(`CatDue${index}`);
             const dueDate = elParseDueDate(dueEl?.value);
             if (!dueDate) return [];
 
@@ -6356,8 +6356,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const elApplyWeekFilter = (week) => {
             elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
-            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                const idx = row.id.replace('elCatRow', '');
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
                 const show = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
                 // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
                 if (show) {
@@ -6367,7 +6367,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
             });
             weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
-            const _topBtn = document.getElementById('elWeeklyBtnTop');
+            const _topBtn = elById('WeeklyBtnTop');
             if (_topBtn) _topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
             refreshExpenseLens();
             renderWeekPanel();
@@ -6406,9 +6406,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             // Pre-compute grand total for "Show All" row — reads live DOM so it always reflects current bills
             let grandTotal = 0;
             let grandCount = 0;
-            document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                const idx = row.id.replace('elCatRow', '');
-                const amtEl = document.getElementById(`elCatAmount${idx}`);
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
+                const amtEl = elById(`CatAmount${idx}`);
                 const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
                 const occurrences = elGetBillOccurrenceDays(idx);
                 if (amt > 0 && occurrences.length > 0) {
@@ -6437,10 +6437,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weeks.forEach(week => {
                 let weekTotal = 0;
                 const bills = [];
-                document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
-                    const idx = row.id.replace('elCatRow', '');
-                    const amtEl  = document.getElementById(`elCatAmount${idx}`);
-                    const nameEl = document.getElementById(`elCatName${idx}`);
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                    const idx = row.id.replace(elId('CatRow'), '');
+                    const amtEl  = elById(`CatAmount${idx}`);
+                    const nameEl = elById(`CatName${idx}`);
                     const frequency = elGetBillFrequency(idx);
                     const occurrences = elGetBillOccurrenceDays(idx, week);
                     occurrences.forEach(day => {
@@ -6562,7 +6562,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
         const weeklyBtnTop = document.createElement('button');
-        weeklyBtnTop.id = 'elWeeklyBtnTop';
+        weeklyBtnTop.id = elId('WeeklyBtnTop');
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly ▾';
         weeklyBtnTop.className = 'btn';
@@ -6590,12 +6590,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         addClearButton(container, () => {
             elIncome.value = '';
             // Reset template rows in-place; remove custom rows entirely
-            Array.from(document.querySelectorAll('[id^="elCatRow"]')).forEach(row => {
+            Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)).forEach(row => {
                 if (row.dataset.isTemplate === 'true') {
-                    const idx = row.id.replace('elCatRow', '');
-                    const amtEl = document.getElementById(`elCatAmount${idx}`);
-                    const dueEl = document.getElementById(`elCatDue${idx}`);
-                    const freqEl = document.getElementById(`elCatFrequency${idx}`);
+                    const idx = row.id.replace(elId('CatRow'), '');
+                    const amtEl = elById(`CatAmount${idx}`);
+                    const dueEl = elById(`CatDue${idx}`);
+                    const freqEl = elById(`CatFrequency${idx}`);
                     if (amtEl) amtEl.value = '';
                     if (dueEl) dueEl.value = toCurrentMonthDue(null);
                     if (freqEl) freqEl.value = 'monthly';
@@ -6604,8 +6604,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
             });
             // Set categoryCount to highest remaining index so new rows get unique IDs
-            categoryCount = Array.from(document.querySelectorAll('[id^="elCatRow"]'))
-                .reduce((max, r) => Math.max(max, parseInt(r.id.replace('elCatRow', '')) || 0), 0);
+            categoryCount = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`))
+                .reduce((max, r) => Math.max(max, parseInt(r.id.replace(elId('CatRow'), '')) || 0), 0);
             elTips.textContent = expenseLensDefaultTip;
             elMargin.textContent = 'Remaining Balance: $0';
             clearExpenseLensState();
@@ -6622,8 +6622,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         (() => {
             const currentWeek = elGetCurrentCalendarWeek();
             if (!currentWeek) return;
-            const hasThisWeek = [...document.querySelectorAll('[id^="elCatRow"]')].some(row => {
-                const idx = row.id.replace('elCatRow', '');
+            const hasThisWeek = [...categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)].some(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
                 return elGetBillOccurrenceDays(idx, currentWeek).length > 0;
             });
             if (hasThisWeek) elApplyWeekFilter(currentWeek);
@@ -6641,10 +6641,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
 
             // If categories are empty or all blank, fill from profile
-            const rows = Array.from(categoriesContainer.querySelectorAll('[id^=\"elCatRow\"]'));
+            const rows = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`));
             const allBlank = rows.length === 0 || rows.every(r => {
-                const n = r.querySelector('[id^=\"elCatName\"]')?.value?.trim() || '';
-                const a = r.querySelector('[id^=\"elCatAmount\"]')?.value?.trim() || '';
+                const n = r.querySelector(`[id^="${elId('CatName')}"]`)?.value?.trim() || '';
+                const a = r.querySelector(`[id^="${elId('CatAmount')}"]`)?.value?.trim() || '';
                 return !n && !a;
             });
             if (allBlank) {
@@ -6672,10 +6672,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             markIncome(elIncome);
 
             // Rows (dynamic)
-            document.querySelectorAll('[id^="elCatName"]').forEach(n => markNeutral(n));     // labels
-            document.querySelectorAll('[id^="elCatFrequency"]').forEach(f => markNeutral(f)); // frequency
-            document.querySelectorAll('[id^="elCatAmount"]').forEach(a => markExpense(a));  // spending
-            document.querySelectorAll('[id^="elOut"]').forEach(p => markExpense(p));        // % outputs
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatName')}"]`).forEach(n => markNeutral(n));     // labels
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatFrequency')}"]`).forEach(f => markNeutral(f)); // frequency
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => markExpense(a));  // spending
+            categoriesContainer.querySelectorAll(`[id^="${elId('Out')}"]`).forEach(p => markExpense(p));        // % outputs
 
             // Tips
             markNeutral(elTips);
@@ -6687,8 +6687,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             } else {
                 const income = +elIncome.value.replace(/,/g, '') || 0;
                 let totalSpent = 0;
-                document.querySelectorAll('[id^="elCatAmount"]').forEach(input => {
-                    const idx = input.id.replace('elCatAmount', '');
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
+                    const idx = input.id.replace(elId('CatAmount'), '');
                     const occurrenceCount = elGetBillOccurrenceDays(idx).length;
                     totalSpent += (+input.value.replace(/,/g, '') || 0) * occurrenceCount;
                 });
@@ -6704,6 +6704,48 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             refreshExpenseLens();            // ensures Remaining Balance + tip text is current
             applyExpenseLensColors();        // re-apply after refresh updates DOM text
         });
+        };
+
+        if (isBusinessClient && t.id === "ExpenseLens") {
+            embedContainer.innerHTML = `
+                <style>
+                    .expense-lens-dual-shell {
+                        width: min(1840px, calc(100vw - 32px));
+                        margin: 0 auto 50px;
+                        display: grid;
+                        grid-template-columns: repeat(2, minmax(0, 1fr));
+                        gap: 18px;
+                        align-items: stretch;
+                    }
+                    .expense-lens-dual-panel {
+                        min-width: 0;
+                        display: flex;
+                    }
+                    .expense-lens-dual-panel > .networth-tool {
+                        width: 100% !important;
+                        max-width: none !important;
+                        margin: 0 !important;
+                        min-height: 100%;
+                    }
+                    @media (max-width: 1100px) {
+                        .expense-lens-dual-shell {
+                            width: min(100%, calc(100vw - 20px));
+                            grid-template-columns: 1fr;
+                        }
+                    }
+                </style>
+                <div class="expense-lens-dual-shell">
+                    <div class="expense-lens-dual-panel" id="expenseLensPersonalHost"></div>
+                    <div class="expense-lens-dual-panel" id="expenseLensBusinessHost"></div>
+                </div>
+            `;
+            const personalHost = document.getElementById("expenseLensPersonalHost");
+            const businessHost = document.getElementById("expenseLensBusinessHost");
+            await renderExpenseLensInstance("ExpenseLens", personalHost);
+            await renderExpenseLensInstance("BusinessExpenseLens", businessHost);
+        } else {
+            await renderExpenseLensInstance(t.id, embedContainer);
+        }
 
     } catch (e) {
         console.error('ExpenseLens initialization error:', e);
