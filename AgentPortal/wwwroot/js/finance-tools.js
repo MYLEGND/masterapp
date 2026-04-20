@@ -676,7 +676,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             font-weight:900;
         }
         .wf-tip-text{
-            color:#c9d7ff !important;
+            color:#d4a820 !important;
             font-style:italic;
         }
         .wfd-pos{color:#22c55e;}
@@ -1031,7 +1031,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     <tr><th>Avg Annual Savings</th><td id="wbActualSavings">$0</td></tr>
                 </table>
                 <table class="table table-sm mb-0">
-                    <tr><th>Tips & Suggestions</th><td id="wbSavingsTips" class="wf-tip-text">
+                    <tr><th>Tips & Suggestions</th><td id="wbSavingsTips" class="wf-tip-text" style="margin-top:0;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
                         Enter your profile above to calculate savings.
                     </td></tr>
                 </table>
@@ -5155,7 +5155,7 @@ if (t.id === "SavingsAccelerator") {
         </div>
     </div>
     <div id="${pid('Tips')}"
-         style="padding:14px;background:rgba(255,255,255,.055);border-left:5px solid rgba(166,128,35,.7);font-style:italic;color:#f8fafc;margin-top:20px;border-radius:10px;box-shadow:inset 0 0 12px rgba(166,128,35,0.12);">
+         style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
 </div>`;
@@ -5464,7 +5464,6 @@ if (t.id === "SavingsAccelerator") {
 
         if (usedPct >= 100) markExpense(saPctTotal); else markGold(saPctTotal);
         markGold(saRemaining);
-        markNeutral(saTips);
 
         // Rows — percent input + % suffix, name, amount + $ suffix
         allocationContainer.querySelectorAll('.sa-alloc-percent').forEach(p => markWithSuffix(markNeutral, p));
@@ -5699,14 +5698,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             </div>
 
             <div id="${elId('Tips')}"
-                 style="padding:14px; 
-                        background:linear-gradient(135deg, #f1ede3, #e1d6b8); 
-                        border-left:5px solid #a68023; 
-                        font-style:italic; 
-                        color:#333; 
-                        margin-top:20px; 
-                        border-radius:10px;
-                        box-shadow:inset 0 0 12px rgba(166,128,35,0.25);">
+                 style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
                 ${expenseLensDefaultTip}
             </div>
 
@@ -6787,9 +6779,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => markExpense(a));  // spending
             categoriesContainer.querySelectorAll(`[id^="${elId('Out')}"]`).forEach(p => markExpense(p));        // % outputs
 
-            // Tips
-            markNeutral(elTips);
-
             // Remaining Balance (based on current computed values)
             if (elActiveWeek) {
                 elMargin.style.background = 'rgba(239,68,68,0.12)';
@@ -6997,14 +6986,7 @@ if (t.id === "NetWorth") {
         </table>
 
         <div id="nwTips"
-             style="padding:12px;
-                    background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:4px solid #a68023;
-                    border-radius:8px;
-                    font-style:italic;
-                    color:#b9c5d8;
-                    margin-top:14px;">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Enter your assets and liabilities to get personalized insights.
         </div>
 
@@ -7310,14 +7292,7 @@ if (t.id === "CashFlow") {
         </table>
 
         <div id="cfTips"
-             style="padding:12px;
-                    background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:4px solid #a68023;
-                    border-radius:8px;
-                    font-style:italic;
-                    color:#b9c5d8;
-                    margin-top:14px;">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Enter your monthly income and bills to get personalized tips.
         </div>
     </div>`;
@@ -7598,7 +7573,7 @@ if (t.id === "DebtClarity") {
             </tr>
             <tr>
                 <th style="color:#f4d890;">Recommendation</th>
-                <td id="dcTips">Enter your liabilities and income to receive guidance.</td>
+                <td id="dcTips" style="margin-top:0;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">Enter your liabilities and income to receive guidance.</td>
             </tr>
         </table>
     </div>`;
@@ -7868,14 +7843,7 @@ if (t.id === "FinancialBuffer") {
         </div>
 
         <div id="fbTips"
-             style="padding:12px;
-                    background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:4px solid #a68023;
-                    border-radius:8px;
-                    font-style:italic;
-                    color:#b9c5d8;
-                    margin-top:14px;">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.
         </div>
     </div>`;
@@ -8144,15 +8112,7 @@ if (t.id === "WealthProjection") {
         </div>
 
         <div id="wpTips"
-             style="padding:14px;
-                    background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:5px solid #a68023;
-                    font-style:italic;
-                    color:#f8fafc;
-                    margin-top:15px;
-                    border-radius:10px;
-                    box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Tip: Regularly increase your monthly surplus to accelerate your wealth growth.
         </div>
     </div>`;
@@ -8444,10 +8404,7 @@ if (t.id === "FreedomIndex") {
         </table>
 
         <div id="fiAdvice"
-             style="padding:14px; background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:5px solid #a68023; font-style:italic; color:#f8fafc; margin-top:15px;
-                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Enter your values to see recommendations.
         </div>
     </div>`;
@@ -8748,10 +8705,7 @@ if (t.id === "DebtAssetPulse") {
         </table>
 
         <div id="dapAdvice"
-             style="padding:14px; background:rgba(255,255,255,.05);
-                    border:1px solid rgba(166,128,35,.18);
-                    border-left:5px solid #a68023; font-style:italic; color:#f8fafc; margin-top:15px;
-                    border-radius:10px; box-shadow:inset 0 0 12px rgba(166,128,35,0.15);">
+             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
             Enter values to get guidance on your financial health.
         </div>
     </div>`;
