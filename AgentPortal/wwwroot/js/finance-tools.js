@@ -6291,6 +6291,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 else markExpense(elMargin);
             }
 
+            // Top remaining balance badge — always reflects full-month income vs all monthly bills
+            const monthlyRemaining = income - monthlyTotalSpent;
+            const badge = elById(elId('RemainingBadge'));
+            if (badge) {
+                if (income === 0) {
+                    badge.textContent = 'Remaining: —';
+                    badge.style.background = 'rgba(255,255,255,0.04)';
+                    badge.style.color = '#64748B';
+                    badge.style.borderColor = 'rgba(100,116,139,0.35)';
+                } else if (monthlyRemaining >= 0) {
+                    badge.textContent = `Remaining: $${monthlyRemaining.toLocaleString()}`;
+                    badge.style.background = 'rgba(34,197,94,0.12)';
+                    badge.style.color = '#22c55e';
+                    badge.style.borderColor = 'rgba(34,197,94,0.45)';
+                } else {
+                    badge.textContent = `Remaining: -$${Math.abs(monthlyRemaining).toLocaleString()}`;
+                    badge.style.background = 'rgba(239,68,68,0.12)';
+                    badge.style.color = '#ef4444';
+                    badge.style.borderColor = 'rgba(239,68,68,0.45)';
+                }
+            }
+
             if(pct > 1) {
                 if(pct > 1 && pct <= 80) elTips.textContent = `✅ You are spending ${pct.toFixed(1)}% of your income. Good balance!`;
                 else if(pct <= 100) elTips.textContent = `You are spending ${pct.toFixed(1)}% of your income. Consider trimming non-essentials.`;
@@ -6691,6 +6713,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
         incomeFlexWrap.appendChild(weeklyBtnTop);
+
+        // Remaining balance badge — live read of monthly income minus all monthly bills
+        const elRemainingBadge = document.createElement('div');
+        elRemainingBadge.id = elId('RemainingBadge');
+        elRemainingBadge.style.cssText = [
+            'display:flex;align-items:center;height:38px;padding:0 16px;',
+            'border-radius:6px;border:2px solid rgba(100,116,139,0.35);',
+            'background:rgba(255,255,255,0.04);',
+            'font-weight:800;font-size:0.875rem;white-space:nowrap;',
+            'color:#64748B;letter-spacing:0.01em;',
+            'transition:background .2s,color .2s,border-color .2s;'
+        ].join('');
+        elRemainingBadge.textContent = 'Remaining: —';
+        incomeFlexWrap.appendChild(elRemainingBadge);
 
         addClearButton(container, () => {
             elIncome.value = '';
