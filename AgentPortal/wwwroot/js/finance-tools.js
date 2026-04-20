@@ -639,19 +639,19 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wb-tipbox b{ font-weight:900; }
         .wb-tipbox.show{ opacity:1; transform:translateY(0); }
         .wf-chart-wrap{
-            width:min(430px, 100%);
-            min-height:280px;
-            padding:8px 0 0;
+            width:min(440px, 100%);
+            min-height:270px;
+            padding:2px 0 0;
             align-self:center;
         }
         .wf-chart-wrap canvas{
             width:100% !important;
-            height:300px !important;
+            height:290px !important;
         }
         .wf-output-col{
             display:flex;
             flex-direction:column;
-            gap:12px;
+            gap:10px;
             align-items:center;
         }
         .wf-toggle-row{
@@ -660,8 +660,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             align-items:center;
             justify-content:center;
             min-height:28px;
-            width:min(430px, 100%);
-            margin:0 0 2px;
+            width:min(440px, 100%);
+            margin:0;
             flex-wrap:wrap;
             align-self:center;
         }
@@ -684,7 +684,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             border-radius:3px !important;
         }
         .wf-summary-box{
-            width: min(420px, 100%);
+            width: min(440px, 100%);
             align-self:center;
             background: rgba(15,23,42,.92);
             border:1.5px solid #d1a034;
@@ -696,12 +696,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             gap:8px;
         }
         .wf-output-actions{
-            width:min(420px, 100%);
+            width:min(440px, 100%);
             display:flex;
             justify-content:center;
             align-items:center;
             align-self:center;
-            margin-top:2px;
+            margin-top:0;
         }
         .wf-output-actions .wf-dist-launch-btn{
             width:100%;
@@ -1747,7 +1747,7 @@ markNeutral(savingsTipsOut);
                             data: {
                                 labels,
                                 datasets: [{
-                                    label: "Projected Wealth (toggle)",
+                                    label: "Projected Wealth",
                                     data: wealthPoints,
                                     borderWidth: 3,
                                     tension: 0.25,
@@ -1757,7 +1757,7 @@ markNeutral(savingsTipsOut);
                                     pointHoverRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 8 : 0,
                                     pointHitRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 12 : 0
                                 },{
-                                    label: "Cumulative Spending (toggle)",
+                                    label: "Cumulative Spending",
                                     data: spendPoints,
                                     borderWidth: 3,
                                     tension: 0.25,
@@ -1772,19 +1772,7 @@ markNeutral(savingsTipsOut);
                                 responsive: true,
                                 maintainAspectRatio: false,
                                 plugins: {
-                                    legend: { 
-                                        display: true, 
-                                        labels:{ color:"#eaf2ff", usePointStyle:true, boxWidth:14, padding:18 },
-                                        onHover: (e) => { e.native.target.style.cursor = 'pointer'; },
-                                        onLeave: (e) => { e.native.target.style.cursor = 'default'; },
-                                        onClick: (e, legendItem, legend) => {
-                                            const index = legendItem.datasetIndex;
-                                            const ci = legend.chart;
-                                            const meta = ci.getDatasetMeta(index);
-                                            meta.hidden = meta.hidden === null ? !ci.data.datasets[index].hidden : null;
-                                            ci.update();
-                                        }
-                                    },
+                                    legend: { display: false },
                                     tooltip: {
                                         callbacks: {
                                             label: ctx => ` ${ctx.dataset.label}: ${ctx.formattedValue}`
