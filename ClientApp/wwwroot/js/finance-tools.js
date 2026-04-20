@@ -369,7 +369,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
         ...(isBusinessClient ? [{ id: "BusinessSavingsAccelerator", name: "Business Savings Accelerator" }] : []),
         { id: "ExpenseLens", name: "Expense Lens" },
-        ...(isBusinessClient ? [{ id: "BusinessExpenseLens", name: "Business Expense Lens" }] : []),
         { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
         { id: "DebtClarity", name: "Debt Clarity" },
@@ -1227,10 +1226,8 @@ if (t.id === "SavingsAccelerator" || t.id === "BusinessSavingsAccelerator") {
             return occurrences;
         }
 
-        const anchorDay = Math.min(dueDate.getDate(), days);
-        const anchorDate = new Date(year, month, anchorDay);
         for (let day = 1; day <= days; day++) {
-            const diffDays = Math.round((new Date(year, month, day) - anchorDate) / 86400000);
+            const diffDays = Math.round((new Date(year, month, day) - dueDate) / 86400000);
             if (diffDays % 14 === 0) occurrences++;
         }
         return occurrences;
@@ -1857,7 +1854,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             dueInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             dueInput.style.setProperty("color", "#0284C7", "important");
             dueInput.style.setProperty("font-weight", "700", "important");
-            dueInput.value = toCurrentMonthDue(preDue);
+            const resolvedPreFrequency = normalizeBillFrequency(preFrequency);
+            const shouldPreserveDueDate = resolvedPreFrequency === 'weekly' || resolvedPreFrequency === 'biweekly';
+            dueInput.value = shouldPreserveDueDate && preDue ? preDue : toCurrentMonthDue(preDue);
             dueInput.addEventListener("input", refreshExpenseLensViews);
             dueWrapper.appendChild(dueInput);
 
@@ -1878,7 +1877,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 opt.textContent = option.label;
                 frequencySelect.appendChild(opt);
             });
-            frequencySelect.value = normalizeBillFrequency(preFrequency);
+            frequencySelect.value = resolvedPreFrequency;
             frequencySelect.addEventListener("change", refreshExpenseLensViews);
 
             const amountWrapper = document.createElement("div");
@@ -2082,15 +2081,57 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------------------
         // Weekly Bill Tracker
         // -----------------------------------------
-        const EL_WEEK_RANGES = [
-            { label: 'Week 1', start: 1,  end: 7  },
-            { label: 'Week 2', start: 8,  end: 14 },
-            { label: 'Week 3', start: 15, end: 21 },
-            { label: 'Week 4', start: 22, end: 28 },
-            { label: 'Week 5', start: 29, end: 31 },
-        ];
+        const EL_WEEK_START_DAY = 0; // Sunday, matching the standard US calendar grid.
 
-        const elDaysInMonth = () => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        const elMonthContext = () => {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = now.getMonth();
+            return {
+                now,
+                year,
+                month,
+                days: new Date(year, month + 1, 0).getDate(),
+                monthLabel: now.toLocaleString('default', { month: 'short' }),
+                monthYearLabel: now.toLocaleString('default', { month: 'long', year: 'numeric' })
+            };
+        };
+
+        const elDaysInMonth = () => elMonthContext().days;
+
+        const elBuildCalendarWeeks = () => {
+            const ctx = elMonthContext();
+            const weeks = [];
+            let start = 1;
+
+            while (start <= ctx.days) {
+                const startDate = new Date(ctx.year, ctx.month, start);
+                const calendarOffset = (startDate.getDay() - EL_WEEK_START_DAY + 7) % 7;
+                const end = Math.min(ctx.days, start + (6 - calendarOffset));
+                const weekNumber = weeks.length + 1;
+
+                weeks.push({
+                    id: `${ctx.year}-${String(ctx.month + 1).padStart(2, '0')}-${String(start).padStart(2, '0')}`,
+                    label: `Week ${weekNumber}`,
+                    start,
+                    end,
+                    year: ctx.year,
+                    month: ctx.month,
+                    rangeLabel: `${ctx.monthLabel} ${start}${end === start ? '' : `-${end}`}`,
+                    isCurrent: ctx.now.getFullYear() === ctx.year
+                        && ctx.now.getMonth() === ctx.month
+                        && ctx.now.getDate() >= start
+                        && ctx.now.getDate() <= end
+                });
+
+                start = end + 1;
+            }
+
+            return weeks;
+        };
+
+        const elGetCurrentCalendarWeek = () => elBuildCalendarWeeks().find(week => week.isCurrent) || null;
+        const elSameCalendarWeek = (a, b) => Boolean(a && b && a.id === b.id);
 
         const elParseDueDate = (val) => {
             if (!val) return null;
@@ -2109,12 +2150,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const dueDate = elParseDueDate(dueEl?.value);
             if (!dueDate) return [];
 
-            const now = new Date();
-            const y = now.getFullYear();
-            const m = now.getMonth();
-            const days = elDaysInMonth();
+            const { year: y, month: m, days } = elMonthContext();
             const frequency = elGetBillFrequency(index);
-            const inRange = (day) => !week || (day >= week.start && day <= Math.min(week.end, days));
+            const inRange = (day) => !week || (day >= week.start && day <= week.end);
             const occurrences = [];
 
             if (frequency === 'monthly') {
@@ -2132,11 +2170,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 return occurrences;
             }
 
-            const anchorDay = Math.min(dueDate.getDate(), days);
-            const anchorDate = new Date(y, m, anchorDay);
             for (let day = 1; day <= days; day++) {
                 const currentDate = new Date(y, m, day);
-                const diffDays = Math.round((currentDate - anchorDate) / 86400000);
+                const diffDays = Math.round((currentDate - dueDate) / 86400000);
                 if (diffDays % 14 === 0 && inRange(day)) {
                     occurrences.push(day);
                 }
@@ -2145,10 +2181,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elApplyWeekFilter = (week) => {
-            elActiveWeek = week;
+            elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
             document.querySelectorAll('[id^="elCatRow"]').forEach(row => {
                 const idx = row.id.replace('elCatRow', '');
-                const show = !week || elGetBillOccurrenceDays(idx, week).length > 0;
+                const show = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
                 // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
                 if (show) {
                     row.style.removeProperty('display');
@@ -2156,9 +2192,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     row.style.setProperty('display', 'none', 'important');
                 }
             });
-            weeklyBtn.textContent = week ? `${week.label} ▾` : 'Weekly ▾';
+            weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
             const _topBtn = document.getElementById('elWeeklyBtnTop');
-            if (_topBtn) _topBtn.textContent = week ? `${week.label} ▾` : 'Weekly ▾';
+            if (_topBtn) _topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
             refreshExpenseLens();
             renderWeekPanel();
         };
@@ -2168,23 +2204,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         document.body.appendChild(weekPanel);
 
         const renderWeekPanel = () => {
-            const days = elDaysInMonth();
-            const now = new Date();
-            const monthLabel = now.toLocaleString('default', { month: 'short' });
-            const weeks = EL_WEEK_RANGES.filter(w => w.start <= days);
+            const { monthLabel, monthYearLabel } = elMonthContext();
+            const weeks = elBuildCalendarWeeks();
             weekPanel.innerHTML = '';
 
             // Header with close button
             const header = document.createElement('div');
             header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(56,189,248,0.25);';
+            const titleWrap = document.createElement('div');
+            titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
             const title = document.createElement('span');
             title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.95rem;letter-spacing:0.05em;';
             title.textContent = 'WEEKLY BILL TRACKER';
+            const subtitle = document.createElement('span');
+            subtitle.style.cssText = 'color:#94A3B8;font-size:0.72rem;font-weight:700;';
+            subtitle.textContent = `Calendar weeks for ${monthYearLabel}`;
             const closeX = document.createElement('span');
             closeX.textContent = '✕';
             closeX.style.cssText = 'cursor:pointer;color:#64748B;font-size:1rem;font-weight:700;line-height:1;padding:2px 4px;';
             closeX.addEventListener('click', (e) => { e.stopPropagation(); weekPanel.style.display = 'none'; });
-            header.appendChild(title);
+            titleWrap.appendChild(title);
+            titleWrap.appendChild(subtitle);
+            header.appendChild(titleWrap);
             header.appendChild(closeX);
             weekPanel.appendChild(header);
 
@@ -2242,8 +2283,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 });
                 bills.sort((a, b) => a.day - b.day);
                 const billCount = bills.length;
-                const isActive   = elActiveWeek?.label   === week.label;
-                const isExpanded = elExpandedWeek?.label === week.label;
+                const isActive   = elSameCalendarWeek(elActiveWeek, week);
+                const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
 
                 const weekBlock = document.createElement('div');
                 weekBlock.style.cssText = 'border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid rgba(56,189,248,0.1);';
@@ -2254,7 +2295,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const wLabel = document.createElement('span');
                 wLabel.style.cssText = `font-weight:700;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
-                wLabel.textContent = `${week.label}  (Days ${week.start}–${Math.min(week.end, days)})`;
+                wLabel.textContent = `${week.label}  (${week.rangeLabel})`;
 
                 const rightGroup = document.createElement('div');
                 rightGroup.style.cssText = 'display:flex;align-items:center;gap:10px;';
@@ -2316,7 +2357,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 // Click: toggle this week's detail + apply as the active week filter.
                 summaryRow.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    elExpandedWeek = (elExpandedWeek?.label === week.label) ? null : week;
+                    elExpandedWeek = elSameCalendarWeek(elExpandedWeek, week) ? null : week;
                     elApplyWeekFilter(week);
                 });
 
@@ -2403,8 +2444,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // This makes the tool time-aware: the user sees only today's relevant bills
         // by default rather than every bill. "Show All Bills" in the weekly panel resets it.
         (() => {
-            const todayDay = new Date().getDate();
-            const currentWeek = EL_WEEK_RANGES.find(w => todayDay >= w.start && todayDay <= w.end);
+            const currentWeek = elGetCurrentCalendarWeek();
             if (!currentWeek) return;
             const hasThisWeek = [...document.querySelectorAll('[id^="elCatRow"]')].some(row => {
                 const idx = row.id.replace('elCatRow', '');
@@ -4507,8 +4547,11 @@ if (t.id === "DebtAssetPulse") {
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
     const savedToolId = await loadSelectedToolId();
-    if (savedToolId && tools.some(tool => tool.id === savedToolId)) {
-        dropdown.value = savedToolId;
+    const normalizedSavedToolId = isBusinessClient && savedToolId === "BusinessExpenseLens"
+        ? "ExpenseLens"
+        : savedToolId;
+    if (normalizedSavedToolId && tools.some(tool => tool.id === normalizedSavedToolId)) {
+        dropdown.value = normalizedSavedToolId;
         dropdown.dispatchEvent(new Event("change"));
     } else {
         // Default to Wealth Forecast on first load
