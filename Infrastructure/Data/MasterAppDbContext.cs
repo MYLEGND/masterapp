@@ -14,6 +14,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentAssistant> AgentAssistants => Set<AgentAssistant>();
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
     public DbSet<FinanceToolState> FinanceToolStates => Set<FinanceToolState>();
+    public DbSet<AgentFinanceToolState> AgentFinanceToolStates => Set<AgentFinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
 public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
@@ -508,6 +509,25 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
                 .IsRequired();
 
             e.HasIndex(x => new { x.ClientProfileId, x.ToolId })
+                .IsUnique();
+        });
+
+        modelBuilder.Entity<AgentFinanceToolState>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.AgentUserId)
+                .IsRequired()
+                .HasMaxLength(450);
+
+            e.Property(x => x.ToolId)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            e.Property(x => x.JsonState)
+                .IsRequired();
+
+            e.HasIndex(x => new { x.AgentUserId, x.ToolId })
                 .IsUnique();
         });
 

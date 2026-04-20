@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
     const plannerScopeKey = (key) => `legend-finance:user:${effectiveUserScope}:${key}`;
     const selectedToolStateId = "__workspace__";
-    const disableLocalForWF = true; // Phase 2B: Wealth Forecast server-only
+    const disableLocalForWF = false; // Wealth Forecast also saves through FinanceToolStates when a client context exists.
     const disableLocalForDP = true; // Phase 2C: Distribution Planner server-only
     const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
