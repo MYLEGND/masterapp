@@ -2506,6 +2506,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     .expense-lens-dual-shell {
                         width: min(1840px, calc(100vw - 32px));
                         margin: 0 auto 50px;
+                        position: relative;
+                        left: 50%;
+                        transform: translateX(-50%);
                         display: grid;
                         grid-template-columns: repeat(2, minmax(0, 1fr));
                         gap: 18px;
