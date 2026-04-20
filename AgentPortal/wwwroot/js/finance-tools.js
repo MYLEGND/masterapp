@@ -650,11 +650,50 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wf-output-col{
             display:flex;
             flex-direction:column;
-            gap:14px;
-            align-items:flex-end;
+            gap:12px;
+            align-items:stretch;
+            min-width:0;
+        }
+        .wf-main-grid{
+            display:grid;
+            grid-template-columns:minmax(0, 1.08fr) minmax(420px, .92fr);
+            gap:44px;
+            align-items:start;
+            width:100%;
+        }
+        .wf-input-col{
+            min-width:0;
+        }
+        .wf-toggle-row{
+            display:flex;
+            gap:18px;
+            align-items:center;
+            justify-content:center;
+            min-height:42px;
+            margin:0 0 4px;
+            flex-wrap:wrap;
+        }
+        .wf-toggle-label{
+            display:inline-flex;
+            align-items:center;
+            gap:7px;
+            font-weight:800;
+            font-size:.88rem;
+            line-height:1;
+            margin:0;
+            white-space:nowrap;
+        }
+        .wf-toggle-label input[type="checkbox"]{
+            width:16px !important;
+            height:16px !important;
+            flex:0 0 16px;
+            margin:0 !important;
+            padding:0 !important;
+            border-radius:3px !important;
         }
         .wf-summary-box{
             width: min(420px, 100%);
+            align-self:center;
             background: rgba(15,23,42,.92);
             border:1.5px solid #d1a034;
             border-radius:14px;
@@ -708,8 +747,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         .wf-title-stack{flex:1;}
         .wf-actions{
             display:flex;
-            align-items:center;
-            gap:16px;
+            align-items:stretch;
+            gap:10px;
             flex-wrap:nowrap;
             justify-content:flex-end;
             flex-shrink:0;
@@ -717,13 +756,23 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             position:relative;
             z-index:7;
         }
-        .wf-actions > button{flex:0 0 auto;margin:0; border-radius:12px !important;}
+        .wf-actions > button{
+            flex:0 0 auto;
+            margin:0;
+            border-radius:12px !important;
+            height:42px;
+            display:inline-flex;
+            align-items:center;
+            justify-content:center;
+            line-height:1;
+        }
         .wf-actions .clear-btn{
             display:inline-flex;
             align-items:center;
             justify-content:center;
-            height:36px;
-            padding:6px 14px;
+            height:42px;
+            min-width:88px;
+            padding:0 16px;
             border-radius:12px !important;
             font-weight:700;
             font-size:.82rem;
@@ -761,7 +810,8 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             font-weight: 900;
             letter-spacing: .4px;
             border-radius: 12px;
-            padding: 10px 22px;
+            height: 42px;
+            padding: 0 22px;
             cursor: pointer;
             font-family: Inter, sans-serif;
             font-size: .92rem;
@@ -887,6 +937,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             column-gap:14px;
             row-gap:12px;
         }
+        @media (max-width: 980px){
+            .wf-main-grid{grid-template-columns:1fr;gap:28px;}
+            .wf-actions{justify-content:flex-start;}
+            .wf-output-col{min-width:0;}
+        }
     </style>
 
     <div id="wbTipLayer"></div>
@@ -898,9 +953,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
       </div>
       <div id="wfActions" class="wf-actions"></div>
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:50px;">
+    <div class="wf-main-grid">
         <!-- Inputs Column -->
-        <div style="flex:1; min-width:400px;">
+        <div class="wf-input-col">
             <div class="wf-input-grid">
                 <div class="wf-row row-primary">
                     <div>
@@ -1022,13 +1077,13 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         </div>
 
         <!-- Outputs + Chart -->
-        <div style="flex:1; min-width:420px;" class="wf-output-col">
-            <div style="display:flex;gap:12px;align-items:center;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap;">
-                <label style="display:flex;align-items:center;gap:6px;font-weight:800;color:#22c55e;font-size:.9rem;">
-                    <input id="wf_toggleWealth" type="checkbox" checked style="width:16px;height:16px;"> Projected Wealth
+        <div class="wf-output-col">
+            <div class="wf-toggle-row">
+                <label class="wf-toggle-label" style="color:#22c55e;">
+                    <input id="wf_toggleWealth" type="checkbox" checked> Projected Wealth
                 </label>
-                <label style="display:flex;align-items:center;gap:6px;font-weight:800;color:#f87171;font-size:.9rem;">
-                    <input id="wf_toggleSpend" type="checkbox" style="width:16px;height:16px;"> Cumulative Spending
+                <label class="wf-toggle-label" style="color:#f87171;">
+                    <input id="wf_toggleSpend" type="checkbox"> Cumulative Spending
                 </label>
             </div>
             <div class="wf-chart-wrap">
