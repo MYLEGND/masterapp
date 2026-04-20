@@ -4,7 +4,7 @@
     bool isBusinessClient = User?.Claims?.Any(c => c.Type == "RecordType" && c.Value == "BusinessClient") == true;
     bool isAgent = User?.IsInRole("Agent") == true || User?.IsInRole("Admin") == true;
     bool showBookings = isAgent || isBusinessClient;
-    var homeClientHubFlash = TempData.Peek("Created")?.ToString();
+    var homeClientHubFlash = TempData["Created"]?.ToString();
 }
 
 <div class="home-container">

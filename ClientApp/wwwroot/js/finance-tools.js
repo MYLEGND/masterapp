@@ -2167,29 +2167,39 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elBuildCalendarWeeks = () => {
             const ctx = elMonthContext();
             const weeks = [];
-            let start = 1;
 
-            while (start <= ctx.days) {
-                const startDate = new Date(ctx.year, ctx.month, start);
-                const calendarOffset = (startDate.getDay() - EL_WEEK_START_DAY + 7) % 7;
-                const end = Math.min(ctx.days, start + (6 - calendarOffset));
-                const weekNumber = weeks.length + 1;
+            // Anchor to the Sunday on or before the 1st — every week is exactly 7 days
+            const firstOfMonth = new Date(ctx.year, ctx.month, 1);
+            const startOffset = (firstOfMonth.getDay() - EL_WEEK_START_DAY + 7) % 7;
+            const cursor = new Date(ctx.year, ctx.month, 1 - startOffset);
+            const lastOfMonth = new Date(ctx.year, ctx.month, ctx.days);
+
+            let weekNumber = 1;
+            while (cursor <= lastOfMonth) {
+                const weekStart = new Date(cursor);
+                const weekEnd = new Date(cursor);
+                weekEnd.setDate(weekEnd.getDate() + 6);
+
+                const isCurrent = ctx.now >= weekStart && ctx.now <= weekEnd;
+
+                const fmt = (d) => d.toLocaleString('default', { month: 'short', day: 'numeric' });
+                const rangeLabel = weekStart.getMonth() === weekEnd.getMonth()
+                    ? `${weekStart.toLocaleString('default', { month: 'short' })} ${weekStart.getDate()}–${weekEnd.getDate()}`
+                    : `${fmt(weekStart)} – ${fmt(weekEnd)}`;
 
                 weeks.push({
-                    id: `${ctx.year}-${String(ctx.month + 1).padStart(2, '0')}-${String(start).padStart(2, '0')}`,
+                    id: `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`,
                     label: `Week ${weekNumber}`,
-                    start,
-                    end,
+                    startDate: new Date(weekStart),
+                    endDate: new Date(weekEnd),
                     year: ctx.year,
                     month: ctx.month,
-                    rangeLabel: `${ctx.monthLabel} ${start}${end === start ? '' : `-${end}`}`,
-                    isCurrent: ctx.now.getFullYear() === ctx.year
-                        && ctx.now.getMonth() === ctx.month
-                        && ctx.now.getDate() >= start
-                        && ctx.now.getDate() <= end
+                    rangeLabel,
+                    isCurrent
                 });
 
-                start = end + 1;
+                cursor.setDate(cursor.getDate() + 7);
+                weekNumber++;
             }
 
             return weeks;
@@ -2217,30 +2227,39 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const { year: y, month: m, days } = elMonthContext();
             const frequency = elGetBillFrequency(index);
-            const inRange = (day) => !week || (day >= week.start && day <= week.end);
-            const occurrences = [];
+            const occurrences = []; // Array of Date objects
+
+            const rangeStart = week ? week.startDate : new Date(y, m, 1);
+            const rangeEnd   = week ? week.endDate   : new Date(y, m, days);
 
             if (frequency === 'monthly') {
-                const day = Math.min(dueDate.getDate(), days);
-                return inRange(day) ? [day] : [];
+                const dayNum = Math.min(dueDate.getDate(), days);
+                const d = new Date(y, m, dayNum);
+                if (d >= rangeStart && d <= rangeEnd) occurrences.push(d);
+                return occurrences;
             }
 
             if (frequency === 'weekly') {
                 const targetWeekday = dueDate.getDay();
-                for (let day = 1; day <= days; day++) {
-                    if (new Date(y, m, day).getDay() === targetWeekday && inRange(day)) {
-                        occurrences.push(day);
-                    }
+                const cursor = new Date(rangeStart);
+                const daysUntil = (targetWeekday - cursor.getDay() + 7) % 7;
+                cursor.setDate(cursor.getDate() + daysUntil);
+                while (cursor <= rangeEnd) {
+                    occurrences.push(new Date(cursor));
+                    cursor.setDate(cursor.getDate() + 7);
                 }
                 return occurrences;
             }
 
-            for (let day = 1; day <= days; day++) {
-                const currentDate = new Date(y, m, day);
-                const diffDays = Math.round((currentDate - dueDate) / 86400000);
-                if (diffDays % 14 === 0 && inRange(day)) {
-                    occurrences.push(day);
-                }
+            // Bi-weekly: jump directly to the first occurrence >= rangeStart
+            const msPerDay = 86400000;
+            const diffToStart = Math.round((rangeStart - dueDate) / msPerDay);
+            const mod = ((diffToStart % 14) + 14) % 14;
+            const cursor = new Date(rangeStart);
+            cursor.setDate(cursor.getDate() + (mod === 0 ? 0 : 14 - mod));
+            while (cursor <= rangeEnd) {
+                occurrences.push(new Date(cursor));
+                cursor.setDate(cursor.getDate() + 14);
             }
             return occurrences;
         };
@@ -2269,7 +2288,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         document.body.appendChild(weekPanel);
 
         const renderWeekPanel = () => {
-            const { monthLabel, monthYearLabel } = elMonthContext();
+            const { monthYearLabel } = elMonthContext();
             const weeks = elBuildCalendarWeeks();
             weekPanel.innerHTML = '';
 
@@ -2334,19 +2353,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const nameEl = elById(`CatName${idx}`);
                     const frequency = elGetBillFrequency(idx);
                     const occurrences = elGetBillOccurrenceDays(idx, week);
-                    occurrences.forEach(day => {
+                    occurrences.forEach(date => {
                         const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
                         if (amt <= 0) return;
                         weekTotal += amt;
                         bills.push({
                             name: nameEl?.value?.trim() || '(Unnamed)',
                             amount: amt,
-                            day,
+                            date,
+                            day: date.getDate(),
                             frequency
                         });
                     });
                 });
-                bills.sort((a, b) => a.day - b.day);
+                bills.sort((a, b) => a.date - b.date);
                 const billCount = bills.length;
                 const isActive   = elSameCalendarWeek(elActiveWeek, week);
                 const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
@@ -2400,7 +2420,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                         const bDue = document.createElement('span');
                         bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
-                        bDue.textContent = `${monthLabel} ${bill.day}`;
+                        bDue.textContent = bill.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
                         const bAmt = document.createElement('span');
                         bAmt.style.cssText = 'min-width:80px;text-align:right;font-size:0.8rem;color:#38BDF8;font-weight:700;';
