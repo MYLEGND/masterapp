@@ -454,11 +454,11 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     // ------------------- Tools -------------------
-    const tools = [
-        { id: "WealthForecast", name: "Wealth Forecast" },
-        { id: "SavingsAccelerator", name: "Savings Accelerator" },
-        { id: "ExpenseLens", name: "Expense Lens" },
-        { id: "NetWorth", name: "Net Worth Tracker" },
+  const tools = [
+    { id: "WealthForecast", name: "Wealth Forecast" },
+    { id: "ExpenseLens", name: "Expense Lens" },
+    { id: "SavingsAccelerator", name: "Savings Accelerator" },
+    { id: "NetWorth", name: "Net Worth Tracker" },
         { id: "CashFlow", name: "Cash Flow Map" },
         { id: "DebtClarity", name: "Debt Clarity" },
         { id: "FinancialBuffer", name: "Financial Buffer" },
