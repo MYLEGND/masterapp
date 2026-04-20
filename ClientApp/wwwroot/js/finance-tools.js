@@ -2250,15 +2250,23 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const weekPanel = document.createElement('div');
         weekPanel.className = 'expense-lens-week-panel';
-        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:16px 18px;width:min(440px, calc(100vw - 32px));max-width:calc(100vw - 32px);max-height:min(560px, calc(100vh - 40px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:16px 18px;width:520px;max-width:calc(100vw - 48px);max-height:min(560px, calc(100vh - 40px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);box-sizing:border-box;';
         document.body.appendChild(weekPanel);
 
         const positionWeekPanel = () => {
-            weekPanel.style.top = '50%';
-            weekPanel.style.left = '50%';
-            weekPanel.style.transform = 'translate(-50%,-50%)';
-            weekPanel.style.width = 'min(440px, calc(100vw - 32px))';
-            weekPanel.style.maxHeight = 'min(560px, calc(100vh - 40px))';
+            const horizontalPad = window.innerWidth < 560 ? 24 : 48;
+            const panelWidth = Math.max(300, Math.min(520, window.innerWidth - horizontalPad));
+            weekPanel.style.setProperty('position', 'fixed', 'important');
+            weekPanel.style.setProperty('top', '50%', 'important');
+            weekPanel.style.setProperty('left', '50%', 'important');
+            weekPanel.style.setProperty('right', 'auto', 'important');
+            weekPanel.style.setProperty('bottom', 'auto', 'important');
+            weekPanel.style.setProperty('transform', 'translate(-50%,-50%)', 'important');
+            weekPanel.style.setProperty('width', `${panelWidth}px`, 'important');
+            weekPanel.style.setProperty('min-width', '0', 'important');
+            weekPanel.style.setProperty('max-width', `${panelWidth}px`, 'important');
+            weekPanel.style.setProperty('max-height', 'min(560px, calc(100vh - 40px))', 'important');
+            weekPanel.style.setProperty('box-sizing', 'border-box', 'important');
         };
 
         const hideOtherWeekPanels = () => {
@@ -2450,9 +2458,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
         (elActionMeta || addBtn.parentElement).appendChild(weeklyBtn);
-        if (elMarginWrap) {
-            elMarginWrap.appendChild(weekPanel);
-        }
 
         // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
         const weeklyBtnTop = document.createElement('button');
