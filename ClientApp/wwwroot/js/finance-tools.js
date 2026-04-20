@@ -1074,7 +1074,7 @@ if (t.id === "SavingsAccelerator") {
         <div style="flex:1;min-width:200px;max-width:380px;">
             <div class="${prefix}-label">Savings Allocation</div>
             <div style="position:relative;">
-                <input id="${pid('Net')}" type="text" class="form-control" readonly
+                <input id="${pid('Allocation')}" type="text" class="form-control" readonly
                        placeholder="Sync from Expense Lens…"
                        style="border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.06);font-weight:800;font-size:1.1rem;color:#d4a820;padding-right:30px;cursor:default;"/>
                 <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;">$</span>
@@ -1107,9 +1107,7 @@ if (t.id === "SavingsAccelerator") {
 </div>`;
 
     const container = hostElement.querySelector('.networth-tool');
-    const saNetInput = document.getElementById(pid('Net'));
-    const saEssInput = document.getElementById(pid('Ess'));
-    const saOut = document.getElementById(pid('Out'));
+    const saAllocationInput = document.getElementById(pid('Allocation'));
     const saTips = document.getElementById(pid('Tips'));
     const allocationContainer = document.getElementById(pid('AllocContainer'));
     const addBtn = document.getElementById(pid('AddCat'));
@@ -1178,7 +1176,13 @@ if (t.id === "SavingsAccelerator") {
         });
     });
 
-    const parseSavingsMoney = (value) => +(String(value || '').replace(/,/g, '')) || 0;
+    const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
+
+    const formatSavingsMoneyText = (value) => {
+        const rounded = Math.round(Number(value) || 0);
+        const sign = rounded < 0 ? '-' : '';
+        return `${sign}$${Math.abs(rounded).toLocaleString()}`;
+    };
 
     const normalizeSavingsBillFrequency = (value) => {
         const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
@@ -1227,19 +1231,20 @@ if (t.id === "SavingsAccelerator") {
         }, 0);
     };
 
-    const applyExpenseLensToSavingsAccelerator = async () => {
-        const state = await loadPersistedState(linkedELStateId);
+    const applyExpenseLensToSavingsAccelerator = async (event) => {
+        const state = event?.detail || await loadPersistedState(linkedELStateId);
         const income = parseSavingsMoney(state?.income);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
+        const hasCategoryData = Array.isArray(state?.categories)
+            && state.categories.some(category => parseSavingsMoney(category?.amount || category?.occurrenceAmount));
+        const hasSourceData = !!state
+            && (String(state?.income ?? '').trim() !== '' || monthlyExpenses !== 0 || hasCategoryData);
 
-        if (income > 0) saNetInput.value = formatNumber(income);
-        if (monthlyExpenses > 0) saEssInput.value = formatNumber(monthlyExpenses);
+        saAllocationInput.value = hasSourceData ? formatNumber(income - monthlyExpenses) : '';
         refreshSurplus();
     };
 
     const saveAllocationState = () => {
-        const net = saNetInput.value || '';
-        const ess = saEssInput.value || '';
         const allocations = [];
         allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             allocations.push({
@@ -1247,7 +1252,7 @@ if (t.id === "SavingsAccelerator") {
                 percent: row.querySelector('.sa-alloc-percent').value || ''
             });
         });
-        savePersistedState(saStateId, { net, ess, allocations });
+        savePersistedState(saStateId, { allocations });
     };
 
     const loadAllocationState = async () => {
@@ -1256,8 +1261,6 @@ if (t.id === "SavingsAccelerator") {
         let created = 0;
 
         const state = await loadPersistedState(saStateId);
-        saNetInput.value = state.net || '';
-        saEssInput.value = state.ess || '';
 
         (state.allocations || []).forEach(a => {
             createAllocationRow(++categoryCount, a.name, a.percent);
@@ -1334,10 +1337,8 @@ if (t.id === "SavingsAccelerator") {
     };
 
     const refreshSurplus = () => {
-        const net = +saNetInput.value.replace(/,/g, '') || 0;
-        const ess = +saEssInput.value.replace(/,/g, '') || 0;
-        const surplus = net - ess;
-        saOut.textContent = `$${surplus.toLocaleString()}`;
+        const hasAllocationValue = String(saAllocationInput.value || '').trim() !== '';
+        const surplus = parseSavingsMoney(saAllocationInput.value);
 
         let usedPct = 0;
         let totalAllocatedAmt = 0;
@@ -1354,35 +1355,28 @@ if (t.id === "SavingsAccelerator") {
             totalAllocatedAmt += amt;
 
             pctInput.value = pct;
-            amtInput.value = amt.toLocaleString();
+            amtInput.value = Math.round(amt).toLocaleString();
         });
 
         const remaining = surplus - totalAllocatedAmt;
 
         saPctTotal.textContent = usedPct.toFixed(1) + '%';
-        saRemaining.textContent = `$${remaining.toLocaleString()}`;
+        saRemaining.textContent = formatSavingsMoneyText(remaining);
 
-        saTips.textContent = surplus <= 0
-            ? '⚠️ Your expenses match or exceed your net cash flow. Adjust your budget or increase income.'
+        saTips.textContent = !hasAllocationValue
+            ? 'Complete Expense Lens first so Savings Accelerator can pull the remaining balance automatically.'
+            : surplus <= 0
+            ? '⚠️ Expense Lens shows no remaining balance to allocate. Adjust income or bills there first.'
             : '✅ Good surplus! Use surplus funds strategically for savings and financial goals.';
 
         // ==========================================================
         // ✅ COLOR CODING — INPUTS + OUTPUTS + ROWS (FULL COVERAGE)
         // ==========================================================
 
-        // Inputs + suffix spans
-        if (net > 0) markWithSuffix(markIncome, saNetInput);
-        else if (net < 0) markWithSuffix(markExpense, saNetInput);
-        else markWithSuffix(markNeutral, saNetInput);
-
-        if (ess > 0) markWithSuffix(markExpense, saEssInput);
-        else if (ess < 0) markWithSuffix(markIncome, saEssInput);
-        else markWithSuffix(markNeutral, saEssInput);
-
-        // Outputs
-        if (surplus > 0) markIncome(saOut);
-        else if (surplus < 0) markExpense(saOut);
-        else markNeutral(saOut);
+        // Source field + outputs
+        if (surplus > 0) markWithSuffix(markIncome, saAllocationInput);
+        else if (surplus < 0) markWithSuffix(markExpense, saAllocationInput);
+        else markWithSuffix(markNeutral, saAllocationInput);
 
         if (usedPct >= 100) markExpense(saPctTotal); else markGold(saPctTotal);
         markGold(saRemaining);
@@ -1400,10 +1394,6 @@ if (t.id === "SavingsAccelerator") {
         saveAllocationState();
     };
 
-    saNetInput.oninput = saEssInput.oninput = refreshSurplus;
-    saNetInput.onblur = () => saNetInput.value = formatNumber(saNetInput.value);
-    saEssInput.onblur = () => saEssInput.value = formatNumber(saEssInput.value);
-
     addBtn.onclick = () => { createAllocationRow(++categoryCount); refreshSurplus(); };
     delBtn.onclick = () => {
         const last = allocationContainer.lastElementChild;
@@ -1411,11 +1401,9 @@ if (t.id === "SavingsAccelerator") {
     };
 
     addClearButton(container, () => {
-        saNetInput.value = saEssInput.value = '';
         allocationContainer.innerHTML = '';
         categoryCount = 0;
         for (let i = 0; i < 3; i++) createAllocationRow(++categoryCount);
-        saOut.textContent = '$0';
         saPctTotal.textContent = '0%';
         saRemaining.textContent = '$0';
         saTips.textContent = 'Direct extra cash strategically across savings, debt reduction, and key priorities.';
@@ -1569,21 +1557,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             <div id="${elId('Categories')}" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
 
-            <div class="d-flex gap-2 mt-3" style="gap:12px; flex-wrap:wrap;">
+            <div id="${elId('MarginWrap')}" class="d-flex gap-2 mt-3" style="margin-top:18px; gap:12px; align-items:center; flex-wrap:wrap;">
                 <button id="${elId('AddCat')}"
                         class="btn btn-outline-gold"
                         style="font-weight:600;">
                     + Add Category
                 </button>
-            </div>
-
-            <div id="${elId('MarginWrap')}" style="margin-top:18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                <div id="${elId('Margin')}"
-                     style="display:inline-flex;align-items:center;height:38px;padding:0 16px;
-                            border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
-                            font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
-                            transition:background .2s,color .2s,border-color .2s;">
-                    Remaining Balance: $0
+                <div id="${elId('ActionMeta')}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-left:auto;">
+                    <div id="${elId('Margin')}"
+                         style="display:inline-flex;align-items:center;height:38px;padding:0 16px;
+                                border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
+                                font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
+                                transition:background .2s,color .2s,border-color .2s;">
+                        Remaining Balance: $0
+                    </div>
                 </div>
             </div>
 
@@ -1599,6 +1586,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elTips = elById("Tips");
         const elMargin = elById("Margin");
         const elMarginWrap = elById("MarginWrap");
+        const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
        
 
@@ -2430,8 +2418,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
-        weeklyBtn.className = 'btn btn-sm';
-        weeklyBtn.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;';
+        weeklyBtn.className = 'btn';
+        weeklyBtn.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
         weeklyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanel.style.display !== 'none';
@@ -2441,7 +2429,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
-        addBtn.parentElement.appendChild(weeklyBtn);
+        (elActionMeta || addBtn.parentElement).appendChild(weeklyBtn);
         if (elMarginWrap) {
             elMarginWrap.appendChild(weekPanel);
         }
