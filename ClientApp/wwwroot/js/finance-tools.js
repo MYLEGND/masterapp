@@ -1071,32 +1071,19 @@ if (t.id === "SavingsAccelerator") {
     <h3 style="color:#a68023;font-weight:900;letter-spacing:0.5px;font-size:2rem;">${saTitle}</h3>
     <p style="font-style:italic;color:#b9c5d8;margin-bottom:20px;">${savingsSubtitle}</p>
     <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;">
-            <div class="${prefix}-label">
-                ${isBusinessSA ? "Business Net Cash Flow" : "Net Cash Flow"}
-                <span class="${prefix}-i" tabindex="0" data-tip="<b>Examples:</b> 3,800 • 5,200 (monthly take-home / net income)">i</span>
-            </div>
+        <div style="flex:1;min-width:200px;max-width:380px;">
+            <div class="${prefix}-label">Savings Allocation</div>
             <div style="position:relative;">
-                <input id="${pid('Net')}" type="text" class="form-control" placeholder="e.g., 2,000"
-                       style="border:1px solid #d6c48a;box-shadow:inset 0 0 6px rgba(166,128,35,0.15);font-weight:700;font-size:1.1rem;color:#1E3A8A;padding-right:30px;"/>
-                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;">$</span>
+                <input id="${pid('Net')}" type="text" class="form-control" readonly
+                       placeholder="Sync from Expense Lens…"
+                       style="border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.06);font-weight:800;font-size:1.1rem;color:#d4a820;padding-right:30px;cursor:default;"/>
+                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;">$</span>
             </div>
-        </div>
-        <div style="flex:1;min-width:200px;">
-            <div class="${prefix}-label">
-                ${isBusinessSA ? "Business Essential Expenses" : "Essential Expenses"}
-                <span class="${prefix}-i" tabindex="0" data-tip="<b>Examples:</b> 2,100 • 3,000 (rent, utilities, food, transport, insurance)">i</span>
-            </div>
-            <div style="position:relative;">
-                <input id="${pid('Ess')}" type="text" class="form-control" placeholder="e.g., 1,500"
-                       style="border:1px solid #d6c48a;box-shadow:inset 0 0 6px rgba(166,128,35,0.15);font-weight:700;font-size:1.1rem;color:#1E3A8A;padding-right:30px;"/>
-                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;">$</span>
+            <div style="font-size:0.72rem;color:#94A3B8;margin-top:5px;font-style:italic;">
+                Auto-synced · ${isBusinessSA ? "Business " : ""}Expense Lens remaining balance
             </div>
         </div>
     </div>
-    <h5 style="margin-top:10px;font-weight:700;color:#fff;">
-        Surplus: <span id="${pid('Out')}" style="color:#a68023;font-weight:900;">$0</span>
-    </h5>
     <div class="mt-4">
         <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Cash Flow Allocation</h5>
         <div class="d-flex align-items-center mb-3" style="gap:8px;">
