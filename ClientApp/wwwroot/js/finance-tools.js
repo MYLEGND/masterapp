@@ -2249,8 +2249,30 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const weekPanel = document.createElement('div');
-        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:22px 28px;width:600px;max-width:95vw;max-height:82vh;overflow-y:auto;box-shadow:0 16px 60px rgba(30,58,138,0.55);';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:0;left:0;transform:none;z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:14px 16px;width:min(340px, calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:min(420px, calc(100vh - 24px));overflow-y:auto;overflow-x:hidden;box-shadow:0 16px 44px rgba(30,58,138,0.42);';
         document.body.appendChild(weekPanel);
+
+        const positionWeekPanel = (triggerEl) => {
+            if (!triggerEl) return;
+            const rect = triggerEl.getBoundingClientRect();
+            const panelWidth = Math.min(340, Math.max(280, window.innerWidth - 24));
+            const gap = 10;
+            const left = Math.min(
+                window.innerWidth - panelWidth - 12,
+                Math.max(12, rect.right - panelWidth)
+            );
+            const estimatedHeight = Math.min(420, Math.max(240, window.innerHeight - 24));
+            const roomBelow = window.innerHeight - rect.bottom;
+            const showAbove = roomBelow < estimatedHeight && rect.top > roomBelow;
+            const top = showAbove
+                ? Math.max(12, rect.top - estimatedHeight - gap)
+                : Math.min(window.innerHeight - estimatedHeight - 12, rect.bottom + gap);
+
+            weekPanel.style.width = `${panelWidth}px`;
+            weekPanel.style.maxWidth = `${Math.max(260, window.innerWidth - 24)}px`;
+            weekPanel.style.left = `${left}px`;
+            weekPanel.style.top = `${top}px`;
+        };
 
         const renderWeekPanel = () => {
             const { monthYearLabel } = elMonthContext();
@@ -2259,14 +2281,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             // Header with close button
             const header = document.createElement('div');
-            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(56,189,248,0.25);';
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(56,189,248,0.25);';
             const titleWrap = document.createElement('div');
             titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
             const title = document.createElement('span');
-            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.95rem;letter-spacing:0.05em;';
+            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.86rem;letter-spacing:0.05em;';
             title.textContent = 'WEEKLY BILL TRACKER';
             const subtitle = document.createElement('span');
-            subtitle.style.cssText = 'color:#94A3B8;font-size:0.72rem;font-weight:700;';
+            subtitle.style.cssText = 'color:#94A3B8;font-size:0.68rem;font-weight:700;';
             subtitle.textContent = `Calendar weeks for ${monthYearLabel}`;
             const closeX = document.createElement('span');
             closeX.textContent = '✕';
@@ -2294,7 +2316,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             // Show All row
             const allRow = document.createElement('div');
-            allRow.style.cssText = `cursor:pointer;padding:9px 12px;border-radius:8px;font-weight:700;font-size:0.83rem;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
+            allRow.style.cssText = `cursor:pointer;padding:8px 10px;border-radius:8px;font-weight:700;font-size:0.79rem;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
 
             const allRowLeft = document.createElement('span');
             allRowLeft.style.cssText = 'font-weight:700;font-size:0.82rem;';
@@ -2341,17 +2363,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 // Summary row
                 const summaryRow = document.createElement('div');
-                summaryRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;${isActive ? 'background:#1E3A8A;' : 'background:rgba(255,255,255,0.04);'}`;
+                summaryRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 10px;cursor:pointer;gap:10px;${isActive ? 'background:#1E3A8A;' : 'background:rgba(255,255,255,0.04);'}`;
 
                 const wLabel = document.createElement('span');
-                wLabel.style.cssText = `font-weight:700;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
+                wLabel.style.cssText = `font-weight:700;font-size:0.78rem;color:${isActive ? '#fff' : '#E0F2FE'};flex:1;min-width:0;`;
                 wLabel.textContent = `${week.label}  (${week.rangeLabel})`;
 
                 const rightGroup = document.createElement('div');
-                rightGroup.style.cssText = 'display:flex;align-items:center;gap:10px;';
+                rightGroup.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
 
                 const amtSpan = document.createElement('span');
-                amtSpan.style.cssText = `font-weight:800;font-size:0.85rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};`;
+                amtSpan.style.cssText = `font-weight:800;font-size:0.78rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};white-space:nowrap;`;
                 amtSpan.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
                 rightGroup.appendChild(amtSpan);
 
@@ -2371,24 +2393,24 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 if (billCount > 0) {
                     // Column header
                     const colHeader = document.createElement('div');
-                    colHeader.style.cssText = 'display:flex;padding:5px 12px 4px 20px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                    colHeader.style.cssText = 'display:flex;padding:5px 10px 4px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
                     colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:60px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:80px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
                     detailWrap.appendChild(colHeader);
 
                     bills.forEach((bill, i) => {
                         const billRow = document.createElement('div');
-                        billRow.style.cssText = `display:flex;align-items:center;padding:7px 12px 7px 20px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                        billRow.style.cssText = `display:flex;align-items:center;padding:7px 10px 7px 12px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
 
                         const bName = document.createElement('span');
-                        bName.style.cssText = 'flex:1;font-size:0.8rem;color:#CBD5E1;font-weight:600;';
+                        bName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
                         bName.textContent = bill.frequency === 'monthly' ? bill.name : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
 
                         const bDue = document.createElement('span');
-                        bDue.style.cssText = 'min-width:60px;text-align:center;font-size:0.8rem;color:#94A3B8;font-weight:500;';
+                        bDue.style.cssText = 'min-width:52px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
                         bDue.textContent = bill.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
                         const bAmt = document.createElement('span');
-                        bAmt.style.cssText = 'min-width:80px;text-align:right;font-size:0.8rem;color:#38BDF8;font-weight:700;';
+                        bAmt.style.cssText = 'min-width:72px;text-align:right;font-size:0.76rem;color:#38BDF8;font-weight:700;';
                         bAmt.textContent = `$${bill.amount.toLocaleString()}`;
 
                         billRow.appendChild(bName);
@@ -2428,6 +2450,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const isOpen = weekPanel.style.display !== 'none';
             if (isOpen) { weekPanel.style.display = 'none'; return; }
             renderWeekPanel();
+            positionWeekPanel(weeklyBtn);
             weekPanel.style.display = 'block';
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
@@ -2449,6 +2472,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const isOpen = weekPanel.style.display !== 'none';
             if (isOpen) { weekPanel.style.display = 'none'; return; }
             renderWeekPanel();
+            positionWeekPanel(weeklyBtnTop);
             weekPanel.style.display = 'block';
         });
         // Wrap the income input row in a flex container so the button sits cleanly to the right.
