@@ -129,6 +129,55 @@ document.addEventListener("DOMContentLoaded", async function () {
         return popout.querySelector(".finance-dual-popout__body");
     };
 
+    const fitSingleLineControlText = (control, options = {}) => {
+        if (!control) return;
+        const minSize = options.minSize || 10;
+        const maxSize = options.maxSize || 14;
+        const reserve = options.reserve || 8;
+        const update = () => {
+            if (!control.isConnected) return;
+            const styles = window.getComputedStyle(control);
+            const baseSize = Number.parseFloat(control.dataset.fitBaseFontSize || styles.fontSize || `${maxSize}`) || maxSize;
+            control.dataset.fitBaseFontSize = String(baseSize);
+            const text = control.tagName === "SELECT"
+                ? (control.options[control.selectedIndex]?.textContent || control.value || "")
+                : (control.value || control.placeholder || "");
+            const measurer = fitSingleLineControlText._measurer || (() => {
+                const span = document.createElement("span");
+                span.style.position = "fixed";
+                span.style.left = "-9999px";
+                span.style.top = "-9999px";
+                span.style.whiteSpace = "pre";
+                span.style.pointerEvents = "none";
+                document.body.appendChild(span);
+                fitSingleLineControlText._measurer = span;
+                return span;
+            })();
+            measurer.style.fontFamily = styles.fontFamily;
+            measurer.style.fontWeight = styles.fontWeight;
+            measurer.style.fontStyle = styles.fontStyle;
+            measurer.style.letterSpacing = styles.letterSpacing;
+            measurer.style.fontSize = `${baseSize}px`;
+            measurer.textContent = text || " ";
+            const horizontalPadding =
+                (Number.parseFloat(styles.paddingLeft) || 0) +
+                (Number.parseFloat(styles.paddingRight) || 0) +
+                reserve;
+            const available = Math.max(24, control.clientWidth - horizontalPadding);
+            const measured = Math.max(1, measurer.getBoundingClientRect().width);
+            const nextSize = Math.max(minSize, Math.min(maxSize, baseSize * Math.min(1, available / measured)));
+            control.style.fontSize = `${nextSize.toFixed(2)}px`;
+        };
+
+        control.addEventListener("input", update);
+        control.addEventListener("change", update);
+        if (window.ResizeObserver) {
+            const observer = new ResizeObserver(update);
+            observer.observe(control);
+        }
+        requestAnimationFrame(update);
+    };
+
     function getStateKeys(key) {
         if (!key) return [];
         if (key === selectedToolStateId || key === "ActionTracker" || key.startsWith("toolState-")) {
@@ -1329,19 +1378,21 @@ if (t.id === "SavingsAccelerator") {
         const row = document.createElement('div');
         row.className = 'sa-alloc-row d-flex align-items-center mb-2 gap-2';
         row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
-        row.style.flexWrap = isDualPanel ? 'wrap' : 'nowrap';
-        row.style.alignItems = isDualPanel ? 'stretch' : 'center';
+        row.style.flexWrap = 'nowrap';
+        row.style.alignItems = 'center';
+        row.style.minWidth = '0';
 
         const name = document.createElement('input');
         name.className = 'form-control sa-alloc-name';
-        name.style.flex = isDualPanel ? '1 1 100%' : '2';
-        if (isDualPanel) name.style.minWidth = '100%';
+        name.style.flex = isDualPanel ? '1 1 220px' : '2';
+        name.style.minWidth = isDualPanel ? '96px' : '';
+        name.style.boxSizing = 'border-box';
         name.placeholder = `Category ${index}`;
         name.value = preName;
         name.addEventListener('input', saveAllocationState);
 
         const amtWrap = document.createElement('div');
-        amtWrap.style.cssText = `flex:${isDualPanel ? '1 1 160px' : '1'};position:relative;`;
+        amtWrap.style.cssText = `flex:${isDualPanel ? '0 1 112px' : '1'};min-width:${isDualPanel ? '92px' : '0'};position:relative;`;
 
         const amt = document.createElement('input');
         amt.className = 'form-control sa-alloc-amount';
@@ -1359,7 +1410,7 @@ if (t.id === "SavingsAccelerator") {
         amtWrap.appendChild(dollar);
 
         const pctWrap = document.createElement('div');
-        pctWrap.style.cssText = `flex:${isDualPanel ? '1 1 120px' : '1'};position:relative;`;
+        pctWrap.style.cssText = `flex:${isDualPanel ? '0 1 82px' : '1'};min-width:${isDualPanel ? '66px' : '0'};position:relative;`;
 
         const pct = document.createElement('input');
         pct.className = 'form-control sa-alloc-percent';
@@ -1378,7 +1429,7 @@ if (t.id === "SavingsAccelerator") {
 
         const del = document.createElement('button');
         del.textContent = '✕';
-        del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;';
+        del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;flex:0 0 16px;padding:0;';
         del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
 
         row.append(name, amtWrap, pctWrap, del);
@@ -1387,6 +1438,11 @@ if (t.id === "SavingsAccelerator") {
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
         markWithSuffix(markNeutral, amt);
+        if (isDualPanel) {
+            fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
+            fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 22 });
+            fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 22 });
+        }
     };
 
     const refreshSurplus = () => {
@@ -1855,7 +1911,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.style.border = "1.5px solid rgba(166,128,35,.24)";
             div.style.columnGap = isDualPanel ? "7px" : "12px";
             div.style.rowGap = "8px";
-            div.style.flexWrap = isDualPanel ? "wrap" : "nowrap";
+            div.style.flexWrap = "nowrap";
+            div.style.minWidth = "0";
+            div.style.overflow = isDualPanel ? "hidden" : "";
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
@@ -1867,16 +1925,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             nameInput.style.setProperty("border-radius", "10px", "important");
             nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             nameInput.style.color = "#1E3A8A";
-            nameInput.style.flex = isDualPanel ? "1 1 100%" : "1 1 220px";
-            nameInput.style.minWidth = isDualPanel ? "100%" : "";
+            nameInput.style.flex = isDualPanel ? "1 1 240px" : "1 1 220px";
+            nameInput.style.minWidth = isDualPanel ? "112px" : "";
+            nameInput.style.boxSizing = "border-box";
             nameInput.value = preName;
             nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Due date field
             const dueWrapper = document.createElement("div");
             dueWrapper.style.position = "relative";
-            dueWrapper.style.flex = isDualPanel ? "1 1 132px" : "1 1 140px";
-            dueWrapper.style.minWidth = isDualPanel ? "124px" : "130px";
+            dueWrapper.style.flex = isDualPanel ? "0 1 118px" : "1 1 140px";
+            dueWrapper.style.minWidth = isDualPanel ? "104px" : "130px";
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
@@ -1903,8 +1962,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             frequencySelect.style.setProperty("color", "#1E3A8A", "important");
             frequencySelect.style.setProperty("font-weight", "700", "important");
-            frequencySelect.style.flex = isDualPanel ? "1 1 132px" : "0 1 132px";
-            frequencySelect.style.minWidth = "124px";
+            frequencySelect.style.flex = isDualPanel ? "0 1 104px" : "0 1 132px";
+            frequencySelect.style.minWidth = isDualPanel ? "92px" : "124px";
+            frequencySelect.style.boxSizing = "border-box";
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -1916,8 +1976,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
-            amountWrapper.style.flex = isDualPanel ? "1 1 140px" : "1 1 150px";
-            amountWrapper.style.minWidth = isDualPanel ? "132px" : "140px";
+            amountWrapper.style.flex = isDualPanel ? "0 1 110px" : "1 1 150px";
+            amountWrapper.style.minWidth = isDualPanel ? "88px" : "140px";
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
@@ -1947,8 +2007,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
-            percentSpan.style.minWidth = isDualPanel ? "66px" : "80px";
-            percentSpan.style.flex = isDualPanel ? "0 0 66px" : "0 0 90px";
+            percentSpan.style.minWidth = isDualPanel ? "38px" : "80px";
+            percentSpan.style.flex = isDualPanel ? "0 0 42px" : "0 0 90px";
             percentSpan.style.textAlign = "right";
             percentSpan.style.fontWeight = "700";
             percentSpan.style.color = "#1E3A8A";
@@ -1960,6 +2020,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             deleteBtn.style.color = "#1E3A8A";
             deleteBtn.style.fontWeight = "900";
             deleteBtn.style.cursor = "pointer";
+            deleteBtn.style.flex = isDualPanel ? "0 0 16px" : "";
+            deleteBtn.style.padding = isDualPanel ? "0" : "";
             deleteBtn.addEventListener("click", () => {
                 categoriesContainer.removeChild(div);
                 refreshExpenseLensViews();
@@ -1976,7 +2038,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const dragHandle = document.createElement("span");
             dragHandle.textContent = "⠿";
             dragHandle.title = "Drag to reorder";
-            dragHandle.style.cssText = "cursor:grab;color:#1E3A8A;font-size:1.2rem;padding:0 4px 0 0;user-select:none;flex-shrink:0;opacity:0.5;";
+            dragHandle.style.cssText = `cursor:grab;color:#1E3A8A;font-size:${isDualPanel ? "1rem" : "1.2rem"};padding:0 4px 0 0;user-select:none;flex:0 0 ${isDualPanel ? "12px" : "auto"};opacity:0.5;`;
             dragHandle.addEventListener("mousedown", () => { div.draggable = true; });
             dragHandle.addEventListener("mouseup",   () => { div.draggable = false; });
 
@@ -2020,6 +2082,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
             categoriesContainer.appendChild(div);
+
+            if (isDualPanel) {
+                fitSingleLineControlText(nameInput, { minSize: 10, maxSize: 14 });
+                fitSingleLineControlText(dueInput, { minSize: 10, maxSize: 13 });
+                fitSingleLineControlText(frequencySelect, { minSize: 10, maxSize: 13, reserve: 18 });
+                fitSingleLineControlText(amountInput, { minSize: 10, maxSize: 14, reserve: 24 });
+            }
 
             if (preAmount) refreshExpenseLens();
         };
