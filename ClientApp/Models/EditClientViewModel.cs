@@ -5,6 +5,23 @@ using System.Text.RegularExpressions;
 
 namespace ClientApp.Models
 {
+    public class HouseholdChildViewModel
+    {
+        public Guid? Id { get; set; }
+
+        public string? FirstName { get; set; }
+
+        public string? LastName { get; set; }
+
+        [DataType(DataType.Date)]
+        public DateTime? DOB { get; set; }
+
+        [EmailAddress(ErrorMessage = "Enter a valid email address.")]
+        public string? Email { get; set; }
+
+        public string? Phone { get; set; }
+    }
+
     public class EditClientViewModel : IValidatableObject
     {
         [Required]
@@ -36,6 +53,8 @@ namespace ClientApp.Models
         [EmailAddress(ErrorMessage = "Enter a valid email address.")]
         public string? SignificantOtherEmail { get; set; }
         public string? SignificantOtherPhone { get; set; }
+
+        public List<HouseholdChildViewModel> Children { get; set; } = new();
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
@@ -69,6 +88,27 @@ namespace ClientApp.Models
                 if (SignificantOtherDOB == null)
                     yield return new ValidationResult("Significant other date of birth is required for this marital status.",
                         new[] { nameof(SignificantOtherDOB) });
+            }
+
+            for (var i = 0; i < Children.Count; i++)
+            {
+                var child = Children[i];
+                var hasAnyChildData =
+                    !string.IsNullOrWhiteSpace(child.FirstName) ||
+                    !string.IsNullOrWhiteSpace(child.LastName) ||
+                    child.DOB.HasValue ||
+                    !string.IsNullOrWhiteSpace(child.Email) ||
+                    !string.IsNullOrWhiteSpace(child.Phone);
+
+                if (!hasAnyChildData)
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(child.FirstName))
+                {
+                    yield return new ValidationResult(
+                        "Child first name is required when adding a child.",
+                        new[] { $"Children[{i}].FirstName" });
+                }
             }
         }
     }

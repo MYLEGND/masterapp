@@ -68,6 +68,72 @@ namespace AgentPortal.Controllers;
         private static string Norm(string? v) => (v ?? "").Trim();
         private const string AgentTenantDomain = "@mylegnd.com";
 
+        private static bool HasChildData(HouseholdChildViewModel? child)
+        {
+            if (child == null) return false;
+
+            return !string.IsNullOrWhiteSpace(child.FirstName)
+                || !string.IsNullOrWhiteSpace(child.LastName)
+                || child.DOB.HasValue
+                || !string.IsNullOrWhiteSpace(child.Email)
+                || !string.IsNullOrWhiteSpace(child.Phone);
+        }
+
+        private async Task<List<HouseholdChildViewModel>> LoadChildrenAsync(string? clientUserId)
+        {
+            var clientUserIdNorm = NormLower(clientUserId);
+            if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+                return new List<HouseholdChildViewModel>();
+
+            return await _db.HouseholdMembers
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .OrderBy(x => x.CreatedUtc)
+                .ThenBy(x => x.FirstName)
+                .ThenBy(x => x.LastName)
+                .Select(x => new HouseholdChildViewModel
+                {
+                    Id = x.Id,
+                    FirstName = x.FirstName,
+                    LastName = x.LastName,
+                    DOB = x.DOB,
+                    Email = x.Email,
+                    Phone = x.Phone
+                })
+                .ToListAsync();
+        }
+
+        private async Task SaveChildrenAsync(string clientUserId, IEnumerable<HouseholdChildViewModel>? children)
+        {
+            var clientUserIdNorm = NormLower(clientUserId);
+            var existing = await _db.HouseholdMembers
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .ToListAsync();
+
+            if (existing.Count > 0)
+                _db.HouseholdMembers.RemoveRange(existing);
+
+            var now = DateTime.UtcNow;
+            var newChildren = (children ?? Enumerable.Empty<HouseholdChildViewModel>())
+                .Where(HasChildData)
+                .Select(child => new HouseholdMember
+                {
+                    ClientUserId = clientUserIdNorm,
+                    RelationshipType = "Child",
+                    FirstName = (child.FirstName ?? "").Trim(),
+                    LastName = (child.LastName ?? "").Trim(),
+                    DOB = child.DOB?.Date,
+                    Email = (child.Email ?? "").Trim(),
+                    Phone = (child.Phone ?? "").Trim(),
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                })
+                .ToList();
+
+            if (newChildren.Count > 0)
+                _db.HouseholdMembers.AddRange(newChildren);
+        }
+
         private static bool IsAgentTenantEmail(string? email)
             => !string.IsNullOrWhiteSpace(email)
                && email.Trim().EndsWith(AgentTenantDomain, StringComparison.OrdinalIgnoreCase);
@@ -2822,9 +2888,12 @@ await _provisioning.SendClientWelcomeEmailAsync(
             return NotFound();
 
         var so = await _db.HouseholdMembers.AsNoTracking()
-            .FirstOrDefaultAsync(x =>
+            .Where(x =>
                 x.ClientUserId == clientUserIdNorm &&
-                x.RelationshipType == "SignificantOther");
+                (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync();
 var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
 meta.DocChecklist ??= new ClientCrmDocChecklist();
 meta.OpportunityPlanning ??= new ClientCrmOpportunityPlanningChecklist();
@@ -2859,7 +2928,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             SignificantOtherLastName = so?.LastName,
             SignificantOtherDOB = so?.DOB,
             SignificantOtherEmail = so?.Email,
-            SignificantOtherPhone = so?.Phone
+            SignificantOtherPhone = so?.Phone,
+            Children = await LoadChildrenAsync(clientUserIdNorm)
         };
 
         var agentProfile = await _db.AgentProfiles
@@ -3089,10 +3159,15 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 return View(model);
             }
 
-            var so = await _db.HouseholdMembers
-                .FirstOrDefaultAsync(x =>
+            var spouseRows = await _db.HouseholdMembers
+                .Where(x =>
                     x.ClientUserId == clientUserIdNorm &&
-                    x.RelationshipType == "SignificantOther");
+                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .ToListAsync();
+
+            var so = spouseRows.FirstOrDefault();
 
             if (so == null)
             {
@@ -3104,7 +3179,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 };
                 _db.HouseholdMembers.Add(so);
             }
+            else if (spouseRows.Count > 1)
+            {
+                _db.HouseholdMembers.RemoveRange(spouseRows.Skip(1));
+            }
 
+            so.RelationshipType = "SignificantOther";
             so.FirstName = (model.SignificantOtherFirstName ?? "").Trim();
             so.LastName = (model.SignificantOtherLastName ?? "").Trim();
             so.DOB = model.SignificantOtherDOB;
@@ -3127,14 +3207,17 @@ meta.Activities ??= new List<ClientCrmActivity>();
             profile.SignificantOtherEmail = null;
             profile.SignificantOtherPhone = null;
 
-            var so = await _db.HouseholdMembers
-                .FirstOrDefaultAsync(x =>
+            var spouseRows = await _db.HouseholdMembers
+                .Where(x =>
                     x.ClientUserId == clientUserIdNorm &&
-                    x.RelationshipType == "SignificantOther");
+                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                .ToListAsync();
 
-            if (so != null)
-                _db.HouseholdMembers.Remove(so);
+            if (spouseRows.Count > 0)
+                _db.HouseholdMembers.RemoveRange(spouseRows);
         }
+
+        await SaveChildrenAsync(clientUserIdNorm, model.Children);
 
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
 

@@ -10,6 +10,7 @@
         ? "Switch between Lead, Client, and Business Client here. Existing portal access stays active after save."
         : "You can save this record as Lead, Client, or Business Client here. Choosing Client or Business Client will enable portal access on save.";
     var hasPortalAccess = Model?.HasPortalAccess == true;
+    var childCount = Model?.Children?.Count ?? 0;
 
     ViewBag.ClientUserId = Model?.ClientUserId;
     ViewBag.ClientDisplayName = $"{Model?.FirstName} {Model?.LastName}".Trim();
@@ -328,6 +329,39 @@
         flex-wrap: wrap;
         margin-top: 16px;
     }
+
+    .child-list{
+        display:grid;
+        gap: 12px;
+    }
+
+    .child-card{
+        border: 1px solid rgba(166,128,35,.28);
+        background: rgba(11,21,41,.58);
+        border-radius: 18px;
+        padding: 14px;
+        display:grid;
+        gap: 12px;
+    }
+
+    .child-card-top{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .child-title{
+        font-weight: 950;
+        color: #f8fafc;
+    }
+
+    .btn-small{
+        min-height: 38px;
+        border-radius: 999px;
+        padding: 8px 12px;
+    }
 </style>
 
 <div class="page-wrap">
@@ -482,6 +516,56 @@
                     </div>
                 </div>
 
+                <div class="subcard" style="margin-top:16px;">
+                    <div class="subcard-top">
+                        <div>
+                            <div class="section-title">Children</div>
+                            <div class="note">Add children or dependents after the profile is created. These save to the same household record the client manages.</div>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-small" id="addChildBtn">Add Child</button>
+                    </div>
+
+                    <div class="child-list" id="childrenList" data-next-index="@childCount">
+                        @for (var i = 0; i < childCount; i++)
+                        {
+                            <div class="child-card" data-child-row>
+                                <div class="child-card-top">
+                                    <div class="child-title">Child</div>
+                                    <button type="button" class="btn btn-outline btn-small" data-remove-child>Remove</button>
+                                </div>
+                                <input asp-for="Children[i].Id" type="hidden" data-field="Id" />
+                                <div class="grid">
+                                    <div>
+                                        <label asp-for="Children[i].FirstName" class="label">First Name</label>
+                                        <input asp-for="Children[i].FirstName" class="input" autocomplete="off" data-field="FirstName" />
+                                        <span asp-validation-for="Children[i].FirstName" class="text-danger validation" data-valmsg-field="FirstName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].LastName" class="label">Last Name</label>
+                                        <input asp-for="Children[i].LastName" class="input" autocomplete="off" data-field="LastName" />
+                                        <span asp-validation-for="Children[i].LastName" class="text-danger validation" data-valmsg-field="LastName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].DOB" class="label">Date of Birth</label>
+                                        <input asp-for="Children[i].DOB" type="date" class="input" data-field="DOB" />
+                                        <span asp-validation-for="Children[i].DOB" class="text-danger validation" data-valmsg-field="DOB"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Phone" class="label">Phone</label>
+                                        <input asp-for="Children[i].Phone" class="input" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                        <span asp-validation-for="Children[i].Phone" class="text-danger validation" data-valmsg-field="Phone"></span>
+                                    </div>
+                                    <div class="full">
+                                        <label asp-for="Children[i].Email" class="label">Email</label>
+                                        <input asp-for="Children[i].Email" class="input" autocomplete="email" inputmode="email" data-field="Email" />
+                                        <span asp-validation-for="Children[i].Email" class="text-danger validation" data-valmsg-field="Email"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
                 <div class="gold-rule"></div>
 
                 <div class="actions">
@@ -504,6 +588,9 @@
             const soFirst = document.getElementById('SignificantOtherFirstName');
             const soLast  = document.getElementById('SignificantOtherLastName');
             const soDob   = document.getElementById('SignificantOtherDOB');
+            const childrenList = document.getElementById('childrenList');
+            const addChildBtn = document.getElementById('addChildBtn');
+            const form = childrenList?.closest('form');
 
             function needsSO(v) {
                 if (!v) return false;
@@ -520,18 +607,87 @@
                 if (soFirst) soFirst.required = required;
                 if (soLast)  soLast.required  = required;
                 if (soDob)   soDob.required   = required;
-
-                if (!required) {
-                    if (soFirst) soFirst.value = '';
-                    if (soLast)  soLast.value  = '';
-                    if (soDob)   soDob.value   = '';
-                }
             }
+
+            function childTemplate(index) {
+                return `
+                    <div class="child-card" data-child-row>
+                        <div class="child-card-top">
+                            <div class="child-title">Child</div>
+                            <button type="button" class="btn btn-outline btn-small" data-remove-child>Remove</button>
+                        </div>
+                        <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                        <div class="grid">
+                            <div>
+                                <label class="label" for="Children_${index}__FirstName">First Name</label>
+                                <input class="input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__LastName">Last Name</label>
+                                <input class="input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__DOB">Date of Birth</label>
+                                <input class="input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Phone">Phone</label>
+                                <input class="input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span>
+                            </div>
+                            <div class="full">
+                                <label class="label" for="Children_${index}__Email">Email</label>
+                                <input class="input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function reindexChildren() {
+                if (!childrenList) return;
+                childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-field]').forEach((input) => {
+                        const field = input.getAttribute('data-field');
+                        input.name = `Children[${index}].${field}`;
+                        input.id = `Children_${index}__${field}`;
+                    });
+                    row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                        const field = span.getAttribute('data-valmsg-field');
+                        span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                    });
+                    row.querySelectorAll('label[for]').forEach((label) => {
+                        const field = label.getAttribute('for')?.split('__').pop() || '';
+                        const target = row.querySelector(`[data-field="${field}"]`);
+                        if (target) label.setAttribute('for', target.id);
+                    });
+                });
+                childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+            }
+
+            addChildBtn?.addEventListener('click', () => {
+                if (!childrenList) return;
+                const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                reindexChildren();
+            });
+
+            childrenList?.addEventListener('click', (event) => {
+                const remove = event.target.closest('[data-remove-child]');
+                if (!remove) return;
+                remove.closest('[data-child-row]')?.remove();
+                reindexChildren();
+            });
 
             if (status) {
                 status.addEventListener('change', applySO);
                 applySO();
             }
+            form?.addEventListener('submit', reindexChildren);
+            reindexChildren();
         })();
     </script>
 }

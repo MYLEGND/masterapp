@@ -41,6 +41,72 @@ namespace ClientApp.Controllers
                 || maritalStatus.Equals("Domestic Partnership", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static bool HasChildData(HouseholdChildViewModel? child)
+        {
+            if (child == null) return false;
+
+            return !string.IsNullOrWhiteSpace(child.FirstName)
+                || !string.IsNullOrWhiteSpace(child.LastName)
+                || child.DOB.HasValue
+                || !string.IsNullOrWhiteSpace(child.Email)
+                || !string.IsNullOrWhiteSpace(child.Phone);
+        }
+
+        private async Task<List<HouseholdChildViewModel>> LoadChildrenAsync(string? clientUserId)
+        {
+            var clientUserIdNorm = Norm(clientUserId);
+            if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+                return new List<HouseholdChildViewModel>();
+
+            return await _db.HouseholdMembers
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .OrderBy(x => x.CreatedUtc)
+                .ThenBy(x => x.FirstName)
+                .ThenBy(x => x.LastName)
+                .Select(x => new HouseholdChildViewModel
+                {
+                    Id = x.Id,
+                    FirstName = x.FirstName,
+                    LastName = x.LastName,
+                    DOB = x.DOB,
+                    Email = x.Email,
+                    Phone = x.Phone
+                })
+                .ToListAsync();
+        }
+
+        private async Task SaveChildrenAsync(string clientUserId, IEnumerable<HouseholdChildViewModel>? children)
+        {
+            var clientUserIdNorm = Norm(clientUserId);
+            var existing = await _db.HouseholdMembers
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .ToListAsync();
+
+            if (existing.Count > 0)
+                _db.HouseholdMembers.RemoveRange(existing);
+
+            var now = DateTime.UtcNow;
+            var newChildren = (children ?? Enumerable.Empty<HouseholdChildViewModel>())
+                .Where(HasChildData)
+                .Select(child => new HouseholdMember
+                {
+                    ClientUserId = clientUserIdNorm,
+                    RelationshipType = "Child",
+                    FirstName = (child.FirstName ?? "").Trim(),
+                    LastName = (child.LastName ?? "").Trim(),
+                    DOB = child.DOB?.Date,
+                    Email = string.IsNullOrWhiteSpace(child.Email) ? "" : child.Email.Trim().ToLowerInvariant(),
+                    Phone = (child.Phone ?? "").Trim(),
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                })
+                .ToList();
+
+            if (newChildren.Count > 0)
+                _db.HouseholdMembers.AddRange(newChildren);
+        }
+
         [HttpGet("/profile/edit")]
         public async Task<IActionResult> Edit()
         {
@@ -51,9 +117,12 @@ namespace ClientApp.Controllers
 
             var so = await _db.HouseholdMembers
                 .AsNoTracking()
-                .FirstOrDefaultAsync(x =>
+                .Where(x =>
                     x.ClientUserId == profile.ClientUserId &&
-                    x.RelationshipType == "SignificantOther");
+                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync();
 
             var vm = new EditClientViewModel
             {
@@ -69,7 +138,8 @@ namespace ClientApp.Controllers
                 SignificantOtherLastName  = so?.LastName ?? profile.SignificantOtherLastName,
                 SignificantOtherDOB       = so?.DOB ?? profile.SignificantOtherDOB,
                 SignificantOtherEmail     = so?.Email ?? profile.SignificantOtherEmail,
-                SignificantOtherPhone     = so?.Phone ?? profile.SignificantOtherPhone
+                SignificantOtherPhone     = so?.Phone ?? profile.SignificantOtherPhone,
+                Children = await LoadChildrenAsync(profile.ClientUserId)
             };
 
             return View(vm);
@@ -129,10 +199,15 @@ namespace ClientApp.Controllers
                 if (!ModelState.IsValid)
                     return View(model);
 
-                var so = await _db.HouseholdMembers
-                    .FirstOrDefaultAsync(x =>
+                var spouseRows = await _db.HouseholdMembers
+                    .Where(x =>
                         x.ClientUserId == context.ClientUserId &&
-                        x.RelationshipType == "SignificantOther");
+                        (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .ThenByDescending(x => x.CreatedUtc)
+                    .ToListAsync();
+
+                var so = spouseRows.FirstOrDefault();
 
                 if (so == null)
                 {
@@ -145,7 +220,12 @@ namespace ClientApp.Controllers
 
                     _db.HouseholdMembers.Add(so);
                 }
+                else if (spouseRows.Count > 1)
+                {
+                    _db.HouseholdMembers.RemoveRange(spouseRows.Skip(1));
+                }
 
+                so.RelationshipType = "SignificantOther";
                 so.FirstName = (model.SignificantOtherFirstName ?? "").Trim();
                 so.LastName = (model.SignificantOtherLastName ?? "").Trim();
                 so.DOB = model.SignificantOtherDOB;
@@ -172,14 +252,17 @@ namespace ClientApp.Controllers
                 profile.SignificantOtherEmail = null;
                 profile.SignificantOtherPhone = null;
 
-                var so = await _db.HouseholdMembers
-                    .FirstOrDefaultAsync(x =>
+                var spouseRows = await _db.HouseholdMembers
+                    .Where(x =>
                         x.ClientUserId == context.ClientUserId &&
-                        x.RelationshipType == "SignificantOther");
+                        (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                    .ToListAsync();
 
-                if (so != null)
-                    _db.HouseholdMembers.Remove(so);
+                if (spouseRows.Count > 0)
+                    _db.HouseholdMembers.RemoveRange(spouseRows);
             }
+
+            await SaveChildrenAsync(context.ClientUserId, model.Children);
 
             await _db.SaveChangesAsync();
 

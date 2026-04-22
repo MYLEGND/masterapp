@@ -1,6 +1,8 @@
 @model ClientApp.Models.EditClientViewModel
 @{
     ViewData["Title"] = "Edit Profile";
+    var childCount = Model?.Children?.Count ?? 0;
+    var dobText = Model?.DOB.HasValue == true ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—";
 }
 
 <style>
@@ -172,6 +174,66 @@
         flex-wrap:wrap;
         margin-top:0.5rem;
     }
+    .family-section{
+        border:1px solid rgba(166,128,35,.38);
+        border-radius:14px;
+        padding:1rem;
+        background:rgba(15,29,56,.62);
+        display:grid;
+        gap:1rem;
+    }
+    .family-section[hidden]{
+        display:none;
+    }
+    .family-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:1rem;
+        flex-wrap:wrap;
+    }
+    .section-title{
+        color:#f2d891;
+        font-weight:900;
+        margin:0;
+    }
+    .child-list{
+        display:grid;
+        gap:.9rem;
+    }
+    .child-card{
+        border:1px solid rgba(166,128,35,.30);
+        border-radius:12px;
+        padding:.9rem;
+        background:rgba(11,21,41,.52);
+        display:grid;
+        gap:.8rem;
+    }
+    .child-card-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:.75rem;
+        flex-wrap:wrap;
+    }
+    .child-title{
+        font-weight:900;
+        color:#f8fafc;
+    }
+    .small-action{
+        border:1px solid rgba(166,128,35,.62);
+        border-radius:999px;
+        min-height:38px;
+        padding:0 .9rem;
+        background:rgba(166,128,35,.14);
+        color:#f2d891;
+        font-weight:900;
+        cursor:pointer;
+    }
+    .small-action:hover{
+        background:rgba(166,128,35,.24);
+        color:#fff;
+    }
 </style>
 
 <div class="profile-shell">
@@ -249,8 +311,94 @@
                     </div>
                     <div>
                         <label class="label">Date of birth</label>
-                        <input class="input" value="@((Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—"))" readonly />
+                        <input class="input" value="@dobText" readonly />
                         <p class="legend-help mb-0">Contact support to correct your DOB.</p>
+                    </div>
+                </div>
+
+                <div class="family-section" id="significantOtherSection" hidden>
+                    <div class="family-top">
+                        <div>
+                            <h3 class="section-title">Spouse / Significant Other</h3>
+                            <p class="legend-help mb-0">Required when marital status is Married or Domestic Partnership.</p>
+                        </div>
+                    </div>
+                    <div class="two-col">
+                        <div>
+                            <label asp-for="SignificantOtherFirstName" class="label">First name</label>
+                            <input asp-for="SignificantOtherFirstName" class="input" autocomplete="given-name" />
+                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherLastName" class="label">Last name</label>
+                            <input asp-for="SignificantOtherLastName" class="input" autocomplete="family-name" />
+                            <span asp-validation-for="SignificantOtherLastName" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherDOB" class="label">Date of birth</label>
+                            <input asp-for="SignificantOtherDOB" type="date" class="input" />
+                            <span asp-validation-for="SignificantOtherDOB" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherPhone" class="label">Phone</label>
+                            <input asp-for="SignificantOtherPhone" class="input" autocomplete="tel" inputmode="tel" />
+                            <span asp-validation-for="SignificantOtherPhone" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherEmail" class="label">Email</label>
+                            <input asp-for="SignificantOtherEmail" class="input" autocomplete="email" inputmode="email" />
+                            <span asp-validation-for="SignificantOtherEmail" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="family-section">
+                    <div class="family-top">
+                        <div>
+                            <h3 class="section-title">Children</h3>
+                            <p class="legend-help mb-0">Add children or dependents after the profile is created. These are visible to you and your agent.</p>
+                        </div>
+                        <button type="button" class="small-action" id="addChildBtn">Add Child</button>
+                    </div>
+
+                    <div class="child-list" id="childrenList" data-next-index="@childCount">
+                        @for (var i = 0; i < childCount; i++)
+                        {
+                            <div class="child-card" data-child-row>
+                                <div class="child-card-top">
+                                    <div class="child-title">Child</div>
+                                    <button type="button" class="small-action" data-remove-child>Remove</button>
+                                </div>
+                                <input asp-for="Children[i].Id" type="hidden" data-field="Id" />
+                                <div class="two-col">
+                                    <div>
+                                        <label asp-for="Children[i].FirstName" class="label">First name</label>
+                                        <input asp-for="Children[i].FirstName" class="input" autocomplete="off" data-field="FirstName" />
+                                        <span asp-validation-for="Children[i].FirstName" class="text-danger" data-valmsg-field="FirstName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].LastName" class="label">Last name</label>
+                                        <input asp-for="Children[i].LastName" class="input" autocomplete="off" data-field="LastName" />
+                                        <span asp-validation-for="Children[i].LastName" class="text-danger" data-valmsg-field="LastName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].DOB" class="label">Date of birth</label>
+                                        <input asp-for="Children[i].DOB" type="date" class="input" data-field="DOB" />
+                                        <span asp-validation-for="Children[i].DOB" class="text-danger" data-valmsg-field="DOB"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Phone" class="label">Phone</label>
+                                        <input asp-for="Children[i].Phone" class="input" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                        <span asp-validation-for="Children[i].Phone" class="text-danger" data-valmsg-field="Phone"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Email" class="label">Email</label>
+                                        <input asp-for="Children[i].Email" class="input" autocomplete="email" inputmode="email" data-field="Email" />
+                                        <span asp-validation-for="Children[i].Email" class="text-danger" data-valmsg-field="Email"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -265,4 +413,106 @@
 
 @section Scripts{
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        (() => {
+            const maritalStatus = document.getElementById('MaritalStatus');
+            const soSection = document.getElementById('significantOtherSection');
+            const soFirst = document.getElementById('SignificantOtherFirstName');
+            const soLast = document.getElementById('SignificantOtherLastName');
+            const soDob = document.getElementById('SignificantOtherDOB');
+            const childrenList = document.getElementById('childrenList');
+            const addChildBtn = document.getElementById('addChildBtn');
+            const form = childrenList?.closest('form');
+
+            function needsSignificantOther(value) {
+                const normalized = (value || '').trim().toLowerCase();
+                return normalized === 'married' || normalized === 'domestic partnership';
+            }
+
+            function applySignificantOtherState() {
+                const required = needsSignificantOther(maritalStatus?.value);
+                if (soSection) soSection.hidden = !required;
+                if (soFirst) soFirst.required = required;
+                if (soLast) soLast.required = required;
+                if (soDob) soDob.required = required;
+            }
+
+            function childTemplate(index) {
+                return `
+                    <div class="child-card" data-child-row>
+                        <div class="child-card-top">
+                            <div class="child-title">Child</div>
+                            <button type="button" class="small-action" data-remove-child>Remove</button>
+                        </div>
+                        <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                        <div class="two-col">
+                            <div>
+                                <label class="label" for="Children_${index}__FirstName">First name</label>
+                                <input class="input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__LastName">Last name</label>
+                                <input class="input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__DOB">Date of birth</label>
+                                <input class="input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Phone">Phone</label>
+                                <input class="input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Email">Email</label>
+                                <input class="input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function reindexChildren() {
+                if (!childrenList) return;
+                childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-field]').forEach((input) => {
+                        const field = input.getAttribute('data-field');
+                        input.name = `Children[${index}].${field}`;
+                        input.id = `Children_${index}__${field}`;
+                    });
+                    row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                        const field = span.getAttribute('data-valmsg-field');
+                        span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                    });
+                    row.querySelectorAll('label[for]').forEach((label) => {
+                        const target = row.querySelector(`[data-field="${label.getAttribute('for')?.split('__').pop() || ''}"]`);
+                        if (target) label.setAttribute('for', target.id);
+                    });
+                });
+                childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+            }
+
+            addChildBtn?.addEventListener('click', () => {
+                if (!childrenList) return;
+                const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                reindexChildren();
+            });
+
+            childrenList?.addEventListener('click', (event) => {
+                const remove = event.target.closest('[data-remove-child]');
+                if (!remove) return;
+                remove.closest('[data-child-row]')?.remove();
+                reindexChildren();
+            });
+
+            maritalStatus?.addEventListener('change', applySignificantOtherState);
+            form?.addEventListener('submit', reindexChildren);
+            applySignificantOtherState();
+            reindexChildren();
+        })();
+    </script>
 }

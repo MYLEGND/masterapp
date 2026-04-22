@@ -11,6 +11,14 @@
     var badge = viewMode == "agent" ? "Agent View" : "My Profile";
 
     var so = ViewBag.SignificantOther as HouseholdMember;
+    var children = (ViewBag.Children as IEnumerable<HouseholdMember>)?
+        .Where(x =>
+            !string.IsNullOrWhiteSpace(x.FirstName) ||
+            !string.IsNullOrWhiteSpace(x.LastName) ||
+            x.DOB.HasValue ||
+            !string.IsNullOrWhiteSpace(x.Email) ||
+            !string.IsNullOrWhiteSpace(x.Phone))
+        .ToList() ?? new List<HouseholdMember>();
 
     // Fallback: if SO wasn’t loaded from HouseholdMembers,
     // but ClientProfile has SignificantOther fields populated, build a display object
@@ -160,6 +168,22 @@
         border-radius:12px;
         padding:0.85rem 1rem;
         font-weight:750;
+    }
+    .legend-profile-member-list{
+        display:grid;
+        gap:12px;
+        margin-top:12px;
+    }
+    .legend-profile-member-card{
+        border:1px solid rgba(166,128,35,.28);
+        border-radius:12px;
+        padding:12px;
+        background:rgba(11,21,41,.56);
+    }
+    .legend-profile-member-name{
+        color:#f8fafc;
+        font-weight:950;
+        margin-bottom:10px;
     }
     .legend-actions .legend-btn.legend-btn-outline{
         border:1.6px solid var(--gold);
@@ -322,6 +346,41 @@
                 <div class="legend-divider"></div>
                 <div class="legend-warn legend-profile-warn">
                     Significant Other is required for this marital status, but no household member is on file for this client.
+                </div>
+            }
+
+            @if (children.Count > 0)
+            {
+                <div class="legend-divider"></div>
+
+                <div class="legend-subcard legend-profile-section-card">
+                    <div class="legend-profile-section-head">
+                        <div class="legend-section-title mb-0">Children</div>
+                        <span class="legend-badge legend-profile-mini-badge">@children.Count on file</span>
+                    </div>
+
+                    <div class="legend-profile-member-list">
+                        @foreach (var child in children)
+                        {
+                            <div class="legend-profile-member-card">
+                                <div class="legend-profile-member-name">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div>
+                                <div class="legend-row legend-profile-grid">
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Date of Birth</div>
+                                        <div class="legend-val">@((child.DOB.HasValue) ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                                    </div>
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Email</div>
+                                        <div class="legend-val">@DashIfBlank(child.Email)</div>
+                                    </div>
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Phone</div>
+                                        <div class="legend-val">@DashIfBlank(child.Phone)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
 
