@@ -1104,6 +1104,7 @@ async function incrementCallLead(row){
   row.dataset.sAttemptsyear = String(year);
   row.dataset.sAttemptslife = String(life);
   hydrateRow(row);
+  updateCallMetrics();
   syncAttemptSummary(row);
   if (liveSync) liveSync.sendCall(clientId, life);
   renderAll();
