@@ -241,6 +241,14 @@
         box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
     }
 
+    .subcard.family-compact{
+        border-color: rgba(166,128,35,.42);
+        border-radius: 14px;
+        padding: 12px;
+        background: linear-gradient(180deg, rgba(15,27,48,.9), rgba(8,18,36,.86));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+
     .input::placeholder{
         color:#9eb0ca;
     }
@@ -259,12 +267,44 @@
         margin-bottom: 10px;
     }
 
+    .family-compact .subcard-top{
+        align-items:flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
     .section-title{
         font-weight: 950;
         letter-spacing: .25px;
         color: #f2d891;
         margin: 0;
         font-size: 1.05rem;
+    }
+
+    .family-compact .section-title{
+        font-size: 1rem;
+        line-height: 1.2;
+    }
+
+    .family-compact .note{
+        font-size: .82rem;
+        line-height: 1.35;
+        margin-top: 3px;
+        color: rgba(212,221,233,.78);
+    }
+
+    .family-compact .grid{
+        gap: 10px;
+    }
+
+    .family-compact .label{
+        margin-bottom: 4px;
+        font-size: .9rem;
+    }
+
+    .family-compact .input{
+        border-radius: 11px;
+        padding: .68rem .8rem;
     }
 
     .pill{
@@ -332,16 +372,16 @@
 
     .child-list{
         display:grid;
-        gap: 12px;
+        gap: 8px;
     }
 
     .child-card{
-        border: 1px solid rgba(166,128,35,.28);
-        background: rgba(11,21,41,.58);
-        border-radius: 18px;
-        padding: 14px;
+        border: 1px solid rgba(166,128,35,.34);
+        background: rgba(8,18,36,.64);
+        border-radius: 12px;
+        padding: 10px;
         display:grid;
-        gap: 12px;
+        gap: 8px;
     }
 
     .child-card-top{
@@ -355,12 +395,14 @@
     .child-title{
         font-weight: 950;
         color: #f8fafc;
+        font-size: .92rem;
     }
 
     .btn-small{
-        min-height: 38px;
+        min-height: 34px;
         border-radius: 999px;
-        padding: 8px 12px;
+        padding: 7px 10px;
+        font-size: .82rem;
     }
 </style>
 
@@ -474,11 +516,11 @@
                 </div>
 
                 <!-- Significant Other (conditional) -->
-                <div id="soCard" class="subcard" style="display:none; margin-top:16px;">
+                <div id="soCard" class="subcard family-compact" style="display:none; margin-top:12px;">
                     <div class="subcard-top">
                         <div>
                             <div class="section-title">Significant Other</div>
-                            <div class="note">Required for Married / Domestic Partnership. Stored under this client household.</div>
+                            <div class="note">Required for Married / Domestic Partnership.</div>
                         </div>
                         <span class="pill">Required for this status</span>
                     </div>
@@ -516,11 +558,11 @@
                     </div>
                 </div>
 
-                <div class="subcard" style="margin-top:16px;">
+                <div class="subcard family-compact" style="margin-top:12px;">
                     <div class="subcard-top">
                         <div>
                             <div class="section-title">Children</div>
-                            <div class="note">Add children or dependents after the profile is created. These save to the same household record the client manages.</div>
+                            <div class="note">Shared household record.</div>
                         </div>
                         <button type="button" class="btn btn-outline btn-small" id="addChildBtn">Add Child</button>
                     </div>

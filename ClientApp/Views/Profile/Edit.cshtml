@@ -175,12 +175,13 @@
         margin-top:0.5rem;
     }
     .family-section{
-        border:1px solid rgba(166,128,35,.38);
-        border-radius:14px;
-        padding:1rem;
-        background:rgba(15,29,56,.62);
+        border:1px solid rgba(166,128,35,.42);
+        border-radius:12px;
+        padding:.75rem;
+        background:linear-gradient(180deg, rgba(15,29,56,.82), rgba(11,21,41,.78));
         display:grid;
-        gap:1rem;
+        gap:.7rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
     }
     .family-section[hidden]{
         display:none;
@@ -188,46 +189,68 @@
     .family-top{
         display:flex;
         justify-content:space-between;
-        align-items:center;
-        gap:1rem;
+        align-items:flex-start;
+        gap:.7rem;
         flex-wrap:wrap;
     }
     .section-title{
         color:#f2d891;
         font-weight:900;
         margin:0;
+        font-size:1rem;
+        line-height:1.2;
+    }
+    .family-section .legend-help{
+        font-size:.82rem;
+        line-height:1.35;
+        margin-top:.18rem;
+        color:rgba(226,232,240,.78);
+    }
+    .family-section .two-col{
+        gap:.65rem;
+        grid-template-columns:repeat(auto-fit, minmax(190px,1fr));
+    }
+    .family-section .label{
+        margin-bottom:.22rem;
+        font-size:.9rem;
+    }
+    .family-section .input{
+        border-radius:9px;
+        padding:.68rem .8rem;
     }
     .child-list{
         display:grid;
-        gap:.9rem;
+        gap:.55rem;
     }
     .child-card{
-        border:1px solid rgba(166,128,35,.30);
-        border-radius:12px;
-        padding:.9rem;
-        background:rgba(11,21,41,.52);
+        border:1px solid rgba(166,128,35,.34);
+        border-radius:10px;
+        padding:.65rem;
+        background:rgba(8,18,36,.64);
         display:grid;
-        gap:.8rem;
+        gap:.6rem;
     }
     .child-card-top{
         display:flex;
         justify-content:space-between;
         align-items:center;
-        gap:.75rem;
+        gap:.5rem;
         flex-wrap:wrap;
     }
     .child-title{
         font-weight:900;
         color:#f8fafc;
+        font-size:.92rem;
     }
     .small-action{
         border:1px solid rgba(166,128,35,.62);
         border-radius:999px;
-        min-height:38px;
-        padding:0 .9rem;
+        min-height:32px;
+        padding:0 .72rem;
         background:rgba(166,128,35,.14);
         color:#f2d891;
         font-weight:900;
+        font-size:.82rem;
         cursor:pointer;
     }
     .small-action:hover{
@@ -320,7 +343,7 @@
                     <div class="family-top">
                         <div>
                             <h3 class="section-title">Spouse / Significant Other</h3>
-                            <p class="legend-help mb-0">Required when marital status is Married or Domestic Partnership.</p>
+                            <p class="legend-help mb-0">Required for Married / Domestic Partnership.</p>
                         </div>
                     </div>
                     <div class="two-col">
@@ -356,7 +379,7 @@
                     <div class="family-top">
                         <div>
                             <h3 class="section-title">Children</h3>
-                            <p class="legend-help mb-0">Add children or dependents after the profile is created. These are visible to you and your agent.</p>
+                            <p class="legend-help mb-0">Shared with your agent.</p>
                         </div>
                         <button type="button" class="small-action" id="addChildBtn">Add Child</button>
                     </div>

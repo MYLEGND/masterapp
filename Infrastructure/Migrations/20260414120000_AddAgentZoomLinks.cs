@@ -1,10 +1,14 @@
 using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260414120000_AddAgentZoomLinks")]
     public partial class AddAgentZoomLinks : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
