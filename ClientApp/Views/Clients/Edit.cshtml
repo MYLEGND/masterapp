@@ -28,34 +28,63 @@
         overflow:hidden;
     }
     .profile-card .card-header{
-        background: var(--navy-2);
-        border-bottom:1px solid rgba(166,128,35,.38);
-        padding:.9rem 1.2rem;
+        position:relative;
+        background:
+            linear-gradient(180deg, rgba(15,29,56,.96), rgba(8,18,36,.98));
+        border-bottom:1px solid rgba(166,128,35,.42);
+        padding:.95rem 1.2rem;
         display:flex;
         justify-content:space-between;
         align-items:center;
-        gap:1rem;
+        gap:.95rem;
         flex-wrap:wrap;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .profile-card .card-header::before{
+        content:"";
+        position:absolute;
+        top:0;
+        left:0;
+        right:0;
+        height:3px;
+        background:linear-gradient(90deg, #8f6b14, #c79931, #f2d891, #c79931);
+    }
+    .profile-header-copy{
+        display:grid;
+        gap:.22rem;
+        min-width:0;
     }
     .profile-card h2{
         margin:0;
-        font-weight:900;
-        letter-spacing:.4px;
-        color: #c79931;
+        font-size:1.28rem;
+        line-height:1.1;
+        font-weight:950;
+        letter-spacing:.2px;
+        color:#f8fafc;
     }
-    .badge{
-        background: rgba(166,128,35,.16);
-        border:1px solid rgba(166,128,35,.52);
+    .profile-badge{
+        width:max-content;
+        background:rgba(166,128,35,.12);
+        border:1px solid rgba(242,216,145,.40);
         border-radius:999px;
-        padding:0.25rem 0.75rem;
-        font-weight:800;
-        color:#f6e6b4;
-        font-size:.78rem;
+        padding:.18rem .64rem;
+        font-weight:900;
+        color:#f2d891;
+        font-size:.72rem;
+        letter-spacing:.08em;
+        text-transform:uppercase;
     }
     .legend-help{
         color:#cbd5e1;
         font-size:.86rem;
         margin:0.15rem 0 0;
+    }
+    .profile-header-copy .legend-help{
+        color:rgba(203,213,225,.84);
+        font-size:.83rem;
+        line-height:1.35;
+        margin:0;
+        font-weight:650;
     }
     .profile-card .card-body{
         padding:1.15rem 1.2rem 1.25rem;
@@ -124,6 +153,12 @@
         color:#f8fafc;
         border-color: rgba(166,128,35,.62);
         box-shadow:0 10px 22px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.10);
+    }
+    .card-header .legend-btn.secondary{
+        min-height:40px;
+        padding:.58rem .95rem;
+        border-radius:9px;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
     }
     .legend-btn-small{
         padding:.55rem .95rem;
@@ -238,15 +273,23 @@
         background:rgba(166,128,35,.24);
         color:#fff;
     }
+    @@media (max-width:640px){
+        .profile-card .card-header{
+            align-items:stretch;
+        }
+        .card-header .legend-btn.secondary{
+            width:100%;
+        }
+    }
 </style>
 
 <div class="profile-shell">
     <div class="profile-card">
         <div class="card-header">
-            <div>
-                <div class="badge">My Profile</div>
-                <h2>Update account</h2>
-                <p class="legend-help mb-0">Keep your contact info current; DOB is read-only and shown to your agent.</p>
+            <div class="profile-header-copy">
+                <div class="profile-badge">Client Profile</div>
+                <h2>Edit profile</h2>
+                <p class="legend-help mb-0">Update contact and household details shared with your agent.</p>
             </div>
             <a class="legend-btn secondary" href="/profile">Back to profile</a>
         </div>
