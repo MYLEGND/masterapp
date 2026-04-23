@@ -260,7 +260,9 @@
 
     function normalizeEstateStatus(status) {
         const value = String(status || "").trim();
-        const estateStatus = ESTATE_PLAN_STATUSES.find(([key]) => key.toLowerCase() === value.toLowerCase());
+        const estateStatus = ESTATE_PLAN_STATUSES.find(([key, label]) =>
+            key.toLowerCase() === value.toLowerCase() || label.toLowerCase() === value.toLowerCase()
+        );
         if (estateStatus) return estateStatus[0];
 
         const legacyStatus = normalizeStatus(value);
@@ -631,12 +633,12 @@
     function renderShell(options = {}) {
         const advisorEnabled = !!options.advisorModeEnabled;
         return `
-            <section class="llbs-tool" aria-label="Legend Living Balance Sheet">
+            <section class="llbs-tool" aria-label="Financial Health Snapshot">
                 <div class="llbs-shell">
                     <header class="llbs-hero">
                         <div>
                             <div class="llbs-kicker">Legend Standard Diagnostic</div>
-                            <h2 class="llbs-title">Legend Living Balance Sheet</h2>
+                            <h2 class="llbs-title">Financial Health Snapshot</h2>
                             <p class="llbs-subtitle">One live view for protection, assets, liabilities, net worth, taxes, and lifestyle cash flow.</p>
                         </div>
                         <div class="llbs-status">

@@ -922,7 +922,7 @@
     100% { box-shadow: 0 0 0 13px rgba(243, 216, 139, 0), 0 14px 32px rgba(0, 0, 0, .26); }
 }
 
-/* Original Living Balance Sheet color architecture, elevated for Legend. */
+/* Original Financial Health Snapshot color architecture, elevated for Legend. */
 .llbs-protection {
     border-color: rgba(243, 216, 139, .7);
     background: linear-gradient(180deg, #d4ad16, #b88900);
