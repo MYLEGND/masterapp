@@ -792,8 +792,8 @@
                                         ${mode === "editable" ? editable(path, label) : readonly(path)}
                                         ${path === "cashFlow.debtsAndTaxCosts" ? `
                                             <div class="llbs-label">
-                                                <small>Debt obligations</small>
-                                                ${editable("cashFlow.debtObligations", "Debt obligations")}
+                                                <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
+                                                ${readonly("cashFlow.debtObligations")}
                                             </div>` : ""}
                                     </article>
                                 `).join("")}
@@ -924,6 +924,16 @@
         if (options?.clientProfileId) {
             state.clientId = options.clientProfileId;
         }
+
+        // Seed debt obligations from Expense Lens persisted state (monthly × 12)
+        try {
+            const elState = await (persistence?.loadState?.("ExpenseLens") || {});
+            const elMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
+            if (elMonthly > 0) {
+                setPath(state, "cashFlow.debtObligations", Math.round(elMonthly * 12));
+                state = calculate(state);
+            }
+        } catch (_) {}
         let saveTimer = null;
         let savedLabelTimer = null;
         let focusPulseTimer = null;
