@@ -73,10 +73,18 @@ public sealed class LegendBalanceSheetTaxProfile
 
 public sealed class LegendBalanceSheetProtection
 {
-    public LegendProtectionItem IfSued { get; set; } = LegendProtectionItem.Exposed();
-    public LegendProtectionItem IfSick { get; set; } = LegendProtectionItem.Exposed();
+    public LegendDualProtectionItem IfSued { get; set; } = new();
+    public LegendDualProtectionItem IfSick { get; set; } = new();
     public LegendProtectionItem WillsTrusts { get; set; } = LegendProtectionItem.Exposed();
-    public LegendProtectionItem IfDie { get; set; } = LegendProtectionItem.Exposed();
+    public LegendDualProtectionItem IfDie { get; set; } = new();
+}
+
+// Dual-person protection item — used for IfSued, IfSick, IfDie
+public sealed class LegendDualProtectionItem
+{
+    public LegendProtectionItem Primary { get; set; } = LegendProtectionItem.Exposed();
+    public LegendProtectionItem Spouse { get; set; } = LegendProtectionItem.Exposed();
+    public string ActivePerson { get; set; } = "primary";
 }
 
 public sealed class LegendProtectionItem

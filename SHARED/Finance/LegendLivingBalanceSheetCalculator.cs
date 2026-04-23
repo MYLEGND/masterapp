@@ -112,12 +112,13 @@ public static class LegendLivingBalanceSheetCalculator
             cashFlow.AnnualSavings -
             cashFlow.DebtsAndTaxCosts;
 
-        var protectionItems = new[]
+        // Summary uses primary person's values for dual items; WillsTrusts is flat/shared
+        var summaryItems = new[]
         {
-            state.Protection.IfSued,
-            state.Protection.IfSick,
+            state.Protection.IfSued.Primary,
+            state.Protection.IfSick.Primary,
             state.Protection.WillsTrusts,
-            state.Protection.IfDie
+            state.Protection.IfDie.Primary
         };
 
         state.Summary.AssetsTotal = assets.Total;
@@ -126,11 +127,11 @@ public static class LegendLivingBalanceSheetCalculator
         state.Summary.Taxes = liabilities.Taxes;
         state.Summary.DebtsAndTaxCosts = cashFlow.DebtsAndTaxCosts;
         state.Summary.LifestyleRemaining = cashFlow.LifestyleRemaining;
-        state.Summary.ProtectionCoverageTotal = protectionItems.Sum(x => NonNegative(x.CoverageAmount));
-        state.Summary.ProtectionGapTotal = protectionItems.Sum(x => NonNegative(x.GapAmount));
-        state.Summary.ProtectedCount = protectionItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Protected));
-        state.Summary.PartialCount = protectionItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Partial));
-        state.Summary.ExposedCount = protectionItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Exposed));
+        state.Summary.ProtectionCoverageTotal = summaryItems.Sum(x => NonNegative(x.CoverageAmount));
+        state.Summary.ProtectionGapTotal = summaryItems.Sum(x => NonNegative(x.GapAmount));
+        state.Summary.ProtectedCount = summaryItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Protected));
+        state.Summary.PartialCount = summaryItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Partial));
+        state.Summary.ExposedCount = summaryItems.Count(x => IsStatus(x.Status, LegendProtectionStatuses.Exposed));
         state.UpdatedUtc = DateTime.UtcNow;
 
         return state;
@@ -138,17 +139,29 @@ public static class LegendLivingBalanceSheetCalculator
 
     private static void NormalizeProtection(LegendBalanceSheetProtection protection)
     {
-        protection.IfSued ??= LegendProtectionItem.Exposed();
-        protection.IfSick ??= LegendProtectionItem.Exposed();
+        protection.IfSued ??= new LegendDualProtectionItem();
+        protection.IfSick ??= new LegendDualProtectionItem();
         protection.WillsTrusts ??= LegendProtectionItem.Exposed();
-        protection.IfDie ??= LegendProtectionItem.Exposed();
+        protection.IfDie ??= new LegendDualProtectionItem();
 
-        foreach (var item in new[] { protection.IfSued, protection.IfSick, protection.WillsTrusts, protection.IfDie })
+        foreach (var dual in new[] { protection.IfSued, protection.IfSick, protection.IfDie })
         {
-            item.Status = NormalizeStatus(item.Status);
-            item.CoverageAmount = NonNegative(item.CoverageAmount);
-            item.GapAmount = NonNegative(item.GapAmount);
+            dual.Primary ??= LegendProtectionItem.Exposed();
+            dual.Spouse ??= LegendProtectionItem.Exposed();
+            dual.ActivePerson = string.Equals((dual.ActivePerson ?? "").Trim(), "spouse", StringComparison.OrdinalIgnoreCase)
+                ? "spouse" : "primary";
+            NormalizeItem(dual.Primary);
+            NormalizeItem(dual.Spouse);
         }
+
+        NormalizeItem(protection.WillsTrusts);
+    }
+
+    private static void NormalizeItem(LegendProtectionItem item)
+    {
+        item.Status = NormalizeStatus(item.Status);
+        item.CoverageAmount = NonNegative(item.CoverageAmount);
+        item.GapAmount = NonNegative(item.GapAmount);
     }
 
     private static string NormalizeStatus(string? status)

@@ -791,9 +791,15 @@
                                         </div>
                                         ${mode === "editable" ? editable(path, label) : readonly(path)}
                                         ${path === "cashFlow.debtsAndTaxCosts" ? `
-                                            <div class="llbs-label">
-                                                <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
-                                                ${readonly("cashFlow.debtObligations")}
+                                            <div class="llbs-two-up">
+                                                <div class="llbs-label">
+                                                    <small>Tax burden</small>
+                                                    ${readonly("liabilities.taxes")}
+                                                </div>
+                                                <div class="llbs-label">
+                                                    <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
+                                                    ${readonly("cashFlow.debtObligations")}
+                                                </div>
                                             </div>` : ""}
                                     </article>
                                 `).join("")}
