@@ -395,8 +395,9 @@
         const exposedCount = protectionItems.filter(x => x.status === "Exposed").length;
         const debtPressureRatio = s.cashFlow.earnings > 0
             ? Math.min(1, s.cashFlow.debtObligations / s.cashFlow.earnings)
-            : 0;
-        const cashFlowLeakage = s.cashFlow.insuranceCosts + s.cashFlow.debtObligations + Math.max(0, -s.cashFlow.lifestyleRemaining);
+            : (s.cashFlow.debtObligations > 0 ? 1 : 0);
+        // Leakage = all cost outflows (insurance + debt + taxes); avoid double-counting via negative lifestyleRemaining
+        const cashFlowLeakage = s.cashFlow.insuranceCosts + s.cashFlow.debtsAndTaxCosts;
         const netWorth = s.assets.total - s.liabilities.total;
         const position = resolvePositionStatus({
             netWorth,
