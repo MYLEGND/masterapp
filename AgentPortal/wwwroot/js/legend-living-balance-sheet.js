@@ -1049,7 +1049,7 @@
                 const cardPath = personToggle.dataset.cardPath;
                 const person = personToggle.dataset.person;
                 setPath(state, `${cardPath}.activePerson`, person);
-                const card = personToggle.closest("[data-active-person]");
+                const card = personToggle.closest("article[data-active-person]");
                 if (card) {
                     card.dataset.activePerson = person;
                     card.querySelectorAll("[data-llbs-person-toggle]").forEach(btn => {
