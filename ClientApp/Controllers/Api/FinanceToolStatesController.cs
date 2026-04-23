@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.ClientExperience;
+using Shared.Finance;
 using System.Text.Json;
 
 namespace ClientApp.Controllers.Api;
@@ -15,6 +16,7 @@ namespace ClientApp.Controllers.Api;
 public class FinanceToolStatesController : ControllerBase
 {
     private const string ProtectionSnapshotToolId = "ProtectionSnapshot";
+    private const string LegendLivingBalanceSheetToolId = LegendLivingBalanceSheetConstants.ToolId;
     private static readonly HashSet<string> BusinessOnlyToolIds = new(StringComparer.OrdinalIgnoreCase)
     {
         "BusinessExpenseLens",
@@ -105,6 +107,17 @@ public class FinanceToolStatesController : ControllerBase
         }
     }
 
+    private static string NormalizeFinanceJsonState(string toolId, string? jsonState, Guid clientProfileId)
+    {
+        if (string.Equals(toolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
+            return NormalizeProtectionSnapshotJson(jsonState);
+
+        if (string.Equals(toolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
+            return LegendLivingBalanceSheetCalculator.NormalizeJson(jsonState, clientProfileId);
+
+        return string.IsNullOrWhiteSpace(jsonState) ? "{}" : jsonState;
+    }
+
     [HttpGet("load")]
     public async Task<IActionResult> Load(Guid clientProfileId, string? clientUserId, string toolId)
     {
@@ -134,20 +147,24 @@ public class FinanceToolStatesController : ControllerBase
                 x.ClientProfileId == context.ClientProfileId &&
                 x.ToolId == normalizedToolId);
 
+        var jsonState = row?.JsonState ?? "{}";
+        if (row != null)
+            jsonState = NormalizeFinanceJsonState(normalizedToolId, row.JsonState, context.ClientProfileId);
+        else if (string.Equals(normalizedToolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
+            jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson("{}", context.ClientProfileId);
+
         return Ok(new
         {
             found = row != null,
-            jsonState = row != null && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase)
-                ? NormalizeProtectionSnapshotJson(row.JsonState)
-                : row?.JsonState ?? "{}",
+            jsonState,
             clientProfileId = context.ClientProfileId
         });
     }
 
-        [HttpPost("save")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Save([FromBody] SaveFinanceStateRequest request)
-        {
+    [HttpPost("save")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Save([FromBody] SaveFinanceStateRequest request)
+    {
         if (request == null)
             return BadRequest();
 
@@ -174,9 +191,7 @@ public class FinanceToolStatesController : ControllerBase
         if (context.IsAgentView && string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase))
             return Forbid();
 
-        var normalizedJsonState = string.Equals(normalizedToolId, ProtectionSnapshotToolId, StringComparison.OrdinalIgnoreCase)
-            ? NormalizeProtectionSnapshotJson(request.JsonState)
-            : (string.IsNullOrWhiteSpace(request.JsonState) ? "{}" : request.JsonState);
+        var normalizedJsonState = NormalizeFinanceJsonState(normalizedToolId, request.JsonState, context.ClientProfileId);
 
         var row = await _db.FinanceToolStates
             .FirstOrDefaultAsync(x =>
@@ -206,10 +221,10 @@ public class FinanceToolStatesController : ControllerBase
         return Ok(new { ok = true });
     }
 
-        [HttpDelete("clear")]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Clear(Guid clientProfileId, string? clientUserId, string toolId)
-        {
+    [HttpDelete("clear")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Clear(Guid clientProfileId, string? clientUserId, string toolId)
+    {
         var context = await GetEffectiveClientContextAsync();
         if (context == null)
             return Forbid();

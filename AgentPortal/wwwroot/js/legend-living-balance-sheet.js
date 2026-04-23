@@ -1,0 +1,943 @@
+(function () {
+    const TOOL_ID = "LegendLivingBalanceSheet";
+    const STATUS = ["Exposed", "Partial", "Protected"];
+    const FILING_STATUSES = ["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household", "Business Owner"];
+
+    const ASSET_FIELDS = [
+        ["assets.personalProperty", "Personal Property"],
+        ["assets.savings", "Savings"],
+        ["assets.investments", "Investments"],
+        ["assets.retirement", "Retirement"],
+        ["assets.realEstate", "Real Estate"],
+        ["assets.business", "Business"]
+    ];
+
+    const LIABILITY_FIELDS = [
+        ["liabilities.shortTerm", "Short Term"],
+        ["liabilities.taxes", "Taxes", "From tax profile"],
+        ["liabilities.mortgages", "Mortgages"],
+        ["liabilities.businessDebt", "Business Debt"]
+    ];
+
+    const PROTECTION_FIELDS = [
+        ["protection.ifSued", "If You Are Sued"],
+        ["protection.ifSick", "If You Get Sick"],
+        ["protection.willsTrusts", "Wills & Trusts"],
+        ["protection.ifDie", "If You Die"]
+    ];
+
+    const CASH_FIELDS = [
+        ["cashFlow.earnings", "Earnings", "editable"],
+        ["cashFlow.insuranceCosts", "Insurance Costs", "editable"],
+        ["cashFlow.annualSavings", "Annual Savings", "editable"],
+        ["cashFlow.debtsAndTaxCosts", "Debts & Tax Costs", "computed"],
+        ["cashFlow.lifestyleRemaining", "What's Left for Lifestyle", "computed"]
+    ];
+
+    const ACTIONS = [
+        {
+            key: "protect-income",
+            label: "Protect Income",
+            detail: "Review the protection plan",
+            section: ".llbs-protection",
+            routeOption: "protectionRoute"
+        },
+        {
+            key: "debt-pressure",
+            label: "Eliminate Debt Pressure",
+            detail: "Open Debt Clarity",
+            toolId: "DebtClarity",
+            section: ".llbs-gaps-panel"
+        },
+        {
+            key: "optimize-taxes",
+            label: "Optimize Taxes",
+            detail: "Review the tax burden",
+            section: "#llbsTaxProfile"
+        },
+        {
+            key: "asset-growth",
+            label: "Build Asset Growth Plan",
+            detail: "Open Wealth Forecast",
+            toolId: "WealthForecast",
+            section: ".llbs-card-section[data-tone='assets']"
+        }
+    ];
+
+    const ADVISOR_SCRIPTS = {
+        overview: {
+            title: "Open the Meeting",
+            talk: "Use the balance sheet as the map: protection first, then assets, liabilities, net worth, and cash flow.",
+            question: "Before we adjust anything, what part of this picture feels most important to clean up first?",
+            objection: "If they say they are not ready, anchor on clarity: the goal today is not a purchase, it is finding the pressure points."
+        },
+        protection: {
+            title: "Protection Conversation",
+            talk: "This is where we test whether the plan survives a lawsuit, sickness, estate event, or premature death.",
+            question: "If something happened tomorrow, what would this actually look like for your family or business?",
+            objection: "If they say they already have coverage, ask when it was last stress-tested against income, debt, and dependents."
+        },
+        assets: {
+            title: "Assets Conversation",
+            talk: "Assets only matter if they are working with purpose: liquidity, growth, income, protection, or legacy.",
+            question: "Walk me through how these assets are currently working for you.",
+            objection: "If they say they are comfortable, ask which assets are strategic and which are simply sitting there."
+        },
+        liabilities: {
+            title: "Liabilities Conversation",
+            talk: "Liabilities reveal pressure, drag, and risk transfer opportunities.",
+            question: "Which of these feels like the biggest pressure point right now?",
+            objection: "If they say the payment is manageable, bring it back to opportunity cost and cash flow control."
+        },
+        networth: {
+            title: "Net Worth Conversation",
+            talk: "Net worth is not the finish line. It is the scoreboard that tells us whether structure is helping or hurting.",
+            question: "When you see this number, does it match how secure you feel?",
+            objection: "If they focus only on the number, redirect to quality: liquidity, protection gaps, taxes, and debt pressure."
+        },
+        cashflow: {
+            title: "Cash Flow Conversation",
+            talk: "Cash flow tells us how much freedom the structure is actually creating.",
+            question: "After obligations, savings, taxes, and insurance, does this leave the lifestyle margin you want?",
+            objection: "If they feel squeezed, separate fixed obligations from choices and identify what can be redesigned."
+        },
+        tax: {
+            title: "Tax Conversation",
+            talk: "Taxes are not just a bill. They are a recurring drag that should be planned around intentionally.",
+            question: "Do you know what your tax burden is doing to your annual cash flow?",
+            objection: "If they say their CPA handles it, position this as coordination between cash flow, assets, and tax planning."
+        }
+    };
+
+    const defaultState = () => ({
+        clientId: null,
+        version: 1,
+        assets: {
+            personalProperty: 0,
+            savings: 0,
+            investments: 0,
+            retirement: 0,
+            realEstate: 0,
+            business: 0,
+            total: 0
+        },
+        liabilities: {
+            shortTerm: 0,
+            taxes: 0,
+            mortgages: 0,
+            businessDebt: 0,
+            total: 0
+        },
+        cashFlow: {
+            earnings: 0,
+            insuranceCosts: 0,
+            annualSavings: 0,
+            debtObligations: 0,
+            debtsAndTaxCosts: 0,
+            lifestyleRemaining: 0
+        },
+        taxProfile: {
+            filingStatus: "Single",
+            federalTaxRate: 0,
+            stateTaxRate: 0,
+            ficaRate: 0,
+            useCustomTaxOverride: false,
+            manualTaxAmount: 0,
+            effectiveTaxRate: 0,
+            calculatedTaxAmount: 0
+        },
+        protection: {
+            ifSued: protectionDefault(),
+            ifSick: protectionDefault(),
+            willsTrusts: protectionDefault(),
+            ifDie: protectionDefault()
+        },
+        summary: {}
+    });
+
+    function protectionDefault() {
+        return { status: "Exposed", coverageAmount: 0, gapAmount: 0 };
+    }
+
+    function isPlainObject(value) {
+        return !!value && typeof value === "object" && !Array.isArray(value);
+    }
+
+    function mergeDeep(base, patch) {
+        const output = Array.isArray(base) ? [...base] : { ...base };
+        if (!isPlainObject(patch)) return output;
+        Object.keys(patch).forEach((key) => {
+            const current = output[key];
+            const incoming = patch[key];
+            output[key] = isPlainObject(current) && isPlainObject(incoming)
+                ? mergeDeep(current, incoming)
+                : incoming;
+        });
+        return output;
+    }
+
+    function getPath(obj, path) {
+        return path.split(".").reduce((acc, part) => acc && acc[part], obj);
+    }
+
+    function setPath(obj, path, value) {
+        const parts = path.split(".");
+        const last = parts.pop();
+        const target = parts.reduce((acc, part) => {
+            acc[part] = acc[part] && typeof acc[part] === "object" ? acc[part] : {};
+            return acc[part];
+        }, obj);
+        target[last] = value;
+    }
+
+    function parseNumber(value) {
+        if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+        const normalized = String(value ?? "").replace(/[$,%\s,]/g, "");
+        const parsed = Number.parseFloat(normalized);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function nonNegative(value) {
+        return Math.max(0, parseNumber(value));
+    }
+
+    function normalizeRate(value) {
+        let rate = parseNumber(value);
+        if (rate < 0) rate = 0;
+        if (rate > 1) rate = rate / 100;
+        return Math.min(1, rate);
+    }
+
+    function formatCurrency(value) {
+        const amount = Number(value || 0);
+        const sign = amount < 0 ? "-" : "";
+        return `${sign}$${Math.abs(amount).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+    }
+
+    function formatPercent(value) {
+        return `${(normalizeRate(value) * 100).toLocaleString(undefined, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2
+        })}%`;
+    }
+
+    function inputValueForKind(value, kind) {
+        if (kind === "percent") return String(Math.round(normalizeRate(value) * 10000) / 100);
+        return String(Number(value || 0));
+    }
+
+    function displayForKind(value, kind) {
+        return kind === "percent" ? formatPercent(value) : formatCurrency(value);
+    }
+
+    function normalizeStatus(status) {
+        const value = String(status || "").trim();
+        return STATUS.find(x => x.toLowerCase() === value.toLowerCase()) || "Exposed";
+    }
+
+    function resolvePositionStatus({ netWorth, protectionGap, lifestyleRemaining, debtPressureRatio, exposedCount }) {
+        if (netWorth <= 0 || lifestyleRemaining < 0 || protectionGap > 0 || debtPressureRatio >= 0.35 || exposedCount > 0) {
+            return {
+                status: "Exposed",
+                summary: "Your structure is showing pressure. The next move is to close gaps before chasing more growth."
+            };
+        }
+
+        if (netWorth >= 250000 && lifestyleRemaining > 0 && debtPressureRatio <= 0.2 && protectionGap === 0) {
+            return {
+                status: "Strong",
+                summary: "Your structure is carrying strength. The next move is optimization, tax control, and growth efficiency."
+            };
+        }
+
+        return {
+            status: "Stable",
+            summary: "Your structure is workable, but there are still areas that can be tightened for more control."
+        };
+    }
+
+    function calculate(state) {
+        const s = mergeDeep(defaultState(), state || {});
+        s.version = s.version > 0 ? s.version : 1;
+
+        ASSET_FIELDS.forEach(([path]) => setPath(s, path, nonNegative(getPath(s, path))));
+        s.assets.total = ASSET_FIELDS.reduce((sum, [path]) => sum + nonNegative(getPath(s, path)), 0);
+
+        s.cashFlow.earnings = nonNegative(s.cashFlow.earnings);
+        s.cashFlow.insuranceCosts = nonNegative(s.cashFlow.insuranceCosts);
+        s.cashFlow.annualSavings = nonNegative(s.cashFlow.annualSavings);
+        s.cashFlow.debtObligations = nonNegative(s.cashFlow.debtObligations);
+
+        s.taxProfile.filingStatus = FILING_STATUSES.includes(s.taxProfile.filingStatus)
+            ? s.taxProfile.filingStatus
+            : "Single";
+        s.taxProfile.federalTaxRate = normalizeRate(s.taxProfile.federalTaxRate);
+        s.taxProfile.stateTaxRate = normalizeRate(s.taxProfile.stateTaxRate);
+        s.taxProfile.ficaRate = normalizeRate(s.taxProfile.ficaRate);
+        s.taxProfile.manualTaxAmount = nonNegative(s.taxProfile.manualTaxAmount);
+        s.taxProfile.effectiveTaxRate = s.taxProfile.useCustomTaxOverride
+            ? 0
+            : Math.min(1, s.taxProfile.federalTaxRate + s.taxProfile.stateTaxRate + s.taxProfile.ficaRate);
+        s.taxProfile.calculatedTaxAmount = s.taxProfile.useCustomTaxOverride
+            ? s.taxProfile.manualTaxAmount
+            : Math.round(s.cashFlow.earnings * s.taxProfile.effectiveTaxRate);
+
+        s.liabilities.shortTerm = nonNegative(s.liabilities.shortTerm);
+        s.liabilities.taxes = nonNegative(s.taxProfile.calculatedTaxAmount);
+        s.liabilities.mortgages = nonNegative(s.liabilities.mortgages);
+        s.liabilities.businessDebt = nonNegative(s.liabilities.businessDebt);
+        s.liabilities.total = s.liabilities.shortTerm + s.liabilities.taxes + s.liabilities.mortgages + s.liabilities.businessDebt;
+
+        s.cashFlow.debtsAndTaxCosts = s.cashFlow.debtObligations + s.liabilities.taxes;
+        s.cashFlow.lifestyleRemaining = s.cashFlow.earnings - s.cashFlow.insuranceCosts - s.cashFlow.annualSavings - s.cashFlow.debtsAndTaxCosts;
+
+        PROTECTION_FIELDS.forEach(([path]) => {
+            const item = getPath(s, path) || protectionDefault();
+            item.status = normalizeStatus(item.status);
+            item.coverageAmount = nonNegative(item.coverageAmount);
+            item.gapAmount = nonNegative(item.gapAmount);
+            setPath(s, path, item);
+        });
+
+        const protectionItems = PROTECTION_FIELDS.map(([path]) => getPath(s, path));
+        const protectionCoverageTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.coverageAmount), 0);
+        const protectionGapTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.gapAmount), 0);
+        const protectedCount = protectionItems.filter(x => x.status === "Protected").length;
+        const partialCount = protectionItems.filter(x => x.status === "Partial").length;
+        const exposedCount = protectionItems.filter(x => x.status === "Exposed").length;
+        const debtPressureRatio = s.cashFlow.earnings > 0
+            ? Math.min(1, s.cashFlow.debtObligations / s.cashFlow.earnings)
+            : 0;
+        const cashFlowLeakage = s.cashFlow.insuranceCosts + s.cashFlow.debtObligations + Math.max(0, -s.cashFlow.lifestyleRemaining);
+        const netWorth = s.assets.total - s.liabilities.total;
+        const position = resolvePositionStatus({
+            netWorth,
+            protectionGap: protectionGapTotal,
+            lifestyleRemaining: s.cashFlow.lifestyleRemaining,
+            debtPressureRatio,
+            exposedCount
+        });
+        const taxBurdenStatement = s.taxProfile.useCustomTaxOverride
+            ? `Your tax burden is set by custom override at ${formatCurrency(s.liabilities.taxes)} annually.`
+            : `Your estimated tax burden is ${formatPercent(s.taxProfile.effectiveTaxRate)} (${formatCurrency(s.liabilities.taxes)} annually).`;
+        s.summary = {
+            assetsTotal: s.assets.total,
+            liabilitiesTotal: s.liabilities.total,
+            netWorth,
+            taxes: s.liabilities.taxes,
+            taxDrag: s.liabilities.taxes,
+            debtsAndTaxCosts: s.cashFlow.debtsAndTaxCosts,
+            lifestyleRemaining: s.cashFlow.lifestyleRemaining,
+            protectionCoverageTotal,
+            protectionGapTotal,
+            protectedCount,
+            partialCount,
+            exposedCount,
+            cashFlowLeakage,
+            debtPressureRatio,
+            positionStatus: position.status,
+            positionSummary: position.summary,
+            positionStatement: `You are currently operating at a Net Worth of ${formatCurrency(netWorth)}. Based on your current structure, you are ${position.status}.`,
+            taxBurdenStatement
+        };
+
+        return s;
+    }
+
+    function editable(path, label, kind = "currency", note = "") {
+        const safePath = path.replace(/"/g, "&quot;");
+        const aria = `Edit ${label}`.replace(/"/g, "&quot;");
+        return `
+            <span class="llbs-edit-wrap">
+                <button type="button" class="llbs-edit-value" data-llbs-edit data-path="${safePath}" data-kind="${kind}" aria-label="${aria}">$0</button>
+                <input hidden class="llbs-edit-input" data-llbs-input data-path="${safePath}" data-kind="${kind}" inputmode="decimal" aria-label="${aria}" />
+            </span>
+            ${note ? `<small>${note}</small>` : ""}
+        `;
+    }
+
+    function readonly(path, kind = "currency") {
+        return `<span class="llbs-readonly-value" data-llbs-output="${path}" data-llbs-kind="${kind}">$0</span>`;
+    }
+
+    function row(label, valueHtml, note = "", total = false) {
+        return `
+            <div class="llbs-row ${total ? "llbs-total-row" : ""}">
+                <div class="llbs-label">
+                    <strong>${label}</strong>
+                    ${note ? `<small>${note}</small>` : ""}
+                </div>
+                ${valueHtml}
+            </div>
+        `;
+    }
+
+    function renderProtectionCard(path, title) {
+        return `
+            <article class="llbs-protection-card">
+                <div class="llbs-protection-card-title">${title}</div>
+                <select class="llbs-status-select" data-llbs-status="${path}.status" aria-label="${title} status">
+                    ${STATUS.map(status => `<option value="${status}">${status}</option>`).join("")}
+                </select>
+                <div class="llbs-two-up">
+                    <div class="llbs-label">
+                        <small>Coverage</small>
+                        ${editable(`${path}.coverageAmount`, `${title} coverage`)}
+                    </div>
+                    <div class="llbs-label">
+                        <small>Gap</small>
+                        ${editable(`${path}.gapAmount`, `${title} gap`)}
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderTaxPanel() {
+        return `
+            <section class="llbs-tax-panel" id="llbsTaxProfile" aria-label="Tax profile" data-llbs-script-key="tax">
+                <div class="llbs-section-head">
+                    <h3 class="llbs-section-title">Tax Profile</h3>
+                    <span class="llbs-section-note">Phase 1: profile rates or custom override</span>
+                </div>
+                <div class="llbs-tax-grid">
+                    <div class="llbs-tax-field">
+                        <label for="llbsFilingStatus">Filing Status</label>
+                        <select id="llbsFilingStatus" class="llbs-tax-select" data-llbs-select="taxProfile.filingStatus">
+                            ${FILING_STATUSES.map(status => `<option value="${status}">${status}</option>`).join("")}
+                        </select>
+                    </div>
+                    <div class="llbs-tax-field">
+                        <label>Federal Rate</label>
+                        ${editable("taxProfile.federalTaxRate", "Federal tax rate", "percent")}
+                    </div>
+                    <div class="llbs-tax-field">
+                        <label>State Rate</label>
+                        ${editable("taxProfile.stateTaxRate", "State tax rate", "percent")}
+                    </div>
+                    <div class="llbs-tax-field">
+                        <label>FICA Rate</label>
+                        ${editable("taxProfile.ficaRate", "FICA tax rate", "percent")}
+                    </div>
+                    <label class="llbs-toggle">
+                        <input type="checkbox" data-llbs-checkbox="taxProfile.useCustomTaxOverride" />
+                        <span>Override Taxes</span>
+                    </label>
+                    <div class="llbs-tax-field llbs-tax-manual">
+                        <label>Manual Tax Amount</label>
+                        ${editable("taxProfile.manualTaxAmount", "Manual tax amount")}
+                    </div>
+                    <div class="llbs-tax-field">
+                        <label>Effective Rate</label>
+                        ${readonly("taxProfile.effectiveTaxRate")}
+                    </div>
+                    <div class="llbs-tax-field">
+                        <label>Calculated Taxes</label>
+                        ${readonly("taxProfile.calculatedTaxAmount")}
+                    </div>
+                </div>
+                <div class="llbs-tax-burden">
+                    <span data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderGapsPanel() {
+        return `
+            <section class="llbs-section llbs-gaps-panel" aria-label="Legend gaps analysis" data-llbs-script-key="overview">
+                <div class="llbs-section-head">
+                    <h3 class="llbs-section-title">Legend Gaps Analysis</h3>
+                    <span class="llbs-section-note">Where money, risk, and pressure are leaking</span>
+                </div>
+                <div class="llbs-gap-grid">
+                    <article class="llbs-gap-card">
+                        <span>Protection Gap</span>
+                        ${readonly("summary.protectionGapTotal")}
+                    </article>
+                    <article class="llbs-gap-card">
+                        <span>Tax Drag</span>
+                        ${readonly("summary.taxDrag")}
+                        <small>Annual estimated burden</small>
+                    </article>
+                    <article class="llbs-gap-card">
+                        <span>Cash Flow Leakage</span>
+                        ${readonly("summary.cashFlowLeakage")}
+                    </article>
+                    <article class="llbs-gap-card">
+                        <span>Debt Pressure Ratio</span>
+                        ${readonly("summary.debtPressureRatio", "percent")}
+                    </article>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderActionStrip(options = {}) {
+        return `
+            <section class="llbs-action-strip" aria-label="Recommended next actions">
+                <div class="llbs-action-copy">
+                    <div class="llbs-section-title">Based on your current position</div>
+                    <p>Choose the next strategy path while the numbers are fresh.</p>
+                </div>
+                <div class="llbs-action-buttons">
+                    ${ACTIONS.map(action => {
+                        const route = action.routeOption ? (options[action.routeOption] || "") : "";
+                        return `
+                            <button type="button"
+                                    class="llbs-action-btn"
+                                    data-llbs-action="${action.key}"
+                                    data-tool-id="${action.toolId || ""}"
+                                    data-section="${action.section || ""}"
+                                    data-route="${route}">
+                                <span>${action.label}</span>
+                                <small>${action.detail}</small>
+                            </button>
+                        `;
+                    }).join("")}
+                </div>
+            </section>
+        `;
+    }
+
+    function renderAdvisorPanel() {
+        return `
+            <section class="llbs-advisor-panel" data-llbs-advisor-panel hidden>
+                <div class="llbs-section-head">
+                    <h3 class="llbs-section-title">Advisor Mode</h3>
+                    <span class="llbs-section-note">Live conversation guide</span>
+                </div>
+                <div class="llbs-advisor-grid">
+                    <article>
+                        <span>Talking Point</span>
+                        <p data-llbs-advisor-talk>${ADVISOR_SCRIPTS.overview.talk}</p>
+                    </article>
+                    <article>
+                        <span>Suggested Question</span>
+                        <p data-llbs-advisor-question>${ADVISOR_SCRIPTS.overview.question}</p>
+                    </article>
+                    <article>
+                        <span>Objection Pre-Handle</span>
+                        <p data-llbs-advisor-objection>${ADVISOR_SCRIPTS.overview.objection}</p>
+                    </article>
+                </div>
+                <div class="llbs-live-script">
+                    <strong data-llbs-advisor-title>${ADVISOR_SCRIPTS.overview.title}</strong>
+                    <span>Click Protection, Assets, Liabilities, Net Worth, Cash Flow, or Tax Profile to load the right conversation script.</span>
+                </div>
+            </section>
+        `;
+    }
+
+    function renderShell(options = {}) {
+        const advisorEnabled = !!options.advisorModeEnabled;
+        return `
+            <section class="llbs-tool" aria-label="Legend Living Balance Sheet">
+                <div class="llbs-shell">
+                    <header class="llbs-hero">
+                        <div>
+                            <div class="llbs-kicker">Legend Standard Diagnostic</div>
+                            <h2 class="llbs-title">Legend Living Balance Sheet</h2>
+                            <p class="llbs-subtitle">One live view for protection, assets, liabilities, net worth, taxes, and lifestyle cash flow.</p>
+                        </div>
+                        <div class="llbs-status">
+                            <span class="llbs-save-state" data-llbs-save-state>Ready</span>
+                            <button type="button" class="llbs-clear" data-llbs-reset>Reset Tool</button>
+                        </div>
+                    </header>
+                    ${advisorEnabled ? `
+                        <div class="llbs-advisor-toggle" role="group" aria-label="View mode">
+                            <button type="button" class="is-active" data-llbs-view="client">Client View</button>
+                            <button type="button" data-llbs-view="advisor">Advisor View</button>
+                        </div>
+                        ${renderAdvisorPanel()}
+                    ` : ""}
+                    <div class="llbs-body">
+                        <section class="llbs-section llbs-protection" data-llbs-script-key="protection">
+                            <div class="llbs-section-head">
+                                <h3 class="llbs-section-title">Protection</h3>
+                                <span class="llbs-section-note" data-llbs-output="summary.protectionGapTotal">$0</span>
+                            </div>
+                            <div class="llbs-protection-grid">
+                                ${PROTECTION_FIELDS.map(([path, label]) => renderProtectionCard(path, label)).join("")}
+                            </div>
+                        </section>
+
+                        <div class="llbs-main-grid">
+                            <section class="llbs-section llbs-card-section" data-tone="assets" data-llbs-script-key="assets">
+                                <div class="llbs-section-head">
+                                    <h3 class="llbs-section-title">Assets</h3>
+                                    <span class="llbs-section-note">What you own</span>
+                                </div>
+                                <div class="llbs-rows">
+                                    ${ASSET_FIELDS.map(([path, label]) => row(label, editable(path, label))).join("")}
+                                    ${row("Total", readonly("assets.total"), "", true)}
+                                </div>
+                            </section>
+
+                            <section class="llbs-section llbs-card-section" data-tone="liabilities" data-llbs-script-key="liabilities">
+                                <div class="llbs-section-head">
+                                    <h3 class="llbs-section-title">Liabilities</h3>
+                                    <span class="llbs-section-note">What you owe</span>
+                                </div>
+                                <div class="llbs-rows">
+                                    ${LIABILITY_FIELDS.map(([path, label, note]) => {
+                                        const value = path === "liabilities.taxes" ? readonly(path) : editable(path, label);
+                                        return row(label, value, note || "");
+                                    }).join("")}
+                                    ${row("Total", readonly("liabilities.total"), "", true)}
+                                </div>
+                            </section>
+                        </div>
+
+                        <section class="llbs-net-worth" data-llbs-script-key="networth">
+                            <div class="llbs-net-kicker">Net Worth</div>
+                            <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
+                            <div class="llbs-net-interpretation">
+                                <span class="llbs-position-pill" data-llbs-position>Exposed</span>
+                                <p data-llbs-text="summary.positionStatement">You are currently operating at a Net Worth of $0. Based on your current structure, you are Exposed.</p>
+                                <small data-llbs-text="summary.positionSummary">Your structure is showing pressure. The next move is to close gaps before chasing more growth.</small>
+                            </div>
+                            <div class="llbs-net-meta">
+                                <span>Assets <strong data-llbs-output="summary.assetsTotal">$0</strong></span>
+                                <span>Liabilities <strong data-llbs-output="summary.liabilitiesTotal">$0</strong></span>
+                                <span>Protection gap <strong data-llbs-output="summary.protectionGapTotal">$0</strong></span>
+                            </div>
+                        </section>
+
+                        ${renderGapsPanel()}
+
+                        <section class="llbs-section llbs-card-section" data-tone="cash" data-llbs-script-key="cashflow">
+                            <div class="llbs-section-head">
+                                <h3 class="llbs-section-title">Cash Flow</h3>
+                                <span class="llbs-section-note">Annual view</span>
+                            </div>
+                            <div class="llbs-cash-grid">
+                                ${CASH_FIELDS.map(([path, label, mode]) => `
+                                    <article class="llbs-cash-card ${mode === "computed" ? "is-result" : ""} ${path === "cashFlow.debtsAndTaxCosts" ? "is-cost" : ""}">
+                                        <div class="llbs-label">
+                                            <strong>${label}</strong>
+                                            ${path === "cashFlow.debtsAndTaxCosts" ? "<small>Debt obligations + tax burden</small>" : ""}
+                                        </div>
+                                        ${mode === "editable" ? editable(path, label) : readonly(path)}
+                                        ${path === "cashFlow.debtsAndTaxCosts" ? `
+                                            <div class="llbs-label">
+                                                <small>Debt obligations</small>
+                                                ${editable("cashFlow.debtObligations", "Debt obligations")}
+                                            </div>` : ""}
+                                    </article>
+                                `).join("")}
+                            </div>
+                        </section>
+
+                        ${renderTaxPanel()}
+                        ${renderActionStrip(options)}
+                        <div class="llbs-save-error" data-llbs-error hidden></div>
+                    </div>
+                </div>
+            </section>
+        `;
+    }
+
+    function refresh(root, state) {
+        root.querySelectorAll("[data-llbs-output]").forEach((el) => {
+            const path = el.getAttribute("data-llbs-output");
+            const value = getPath(state, path);
+            const kind = el.getAttribute("data-llbs-kind") || "";
+            const isRate = kind === "percent" || (path && (path.toLowerCase().includes("rate") || path.toLowerCase().includes("ratio")));
+            el.textContent = isRate ? formatPercent(value) : formatCurrency(value);
+            el.classList.toggle("is-negative", Number(value || 0) < 0);
+        });
+
+        root.querySelectorAll("[data-llbs-text]").forEach((el) => {
+            const value = getPath(state, el.getAttribute("data-llbs-text"));
+            el.textContent = typeof value === "string" ? value : "";
+        });
+
+        const positionEl = root.querySelector("[data-llbs-position]");
+        if (positionEl) {
+            const status = state.summary.positionStatus || "Exposed";
+            positionEl.textContent = status;
+            positionEl.dataset.status = status;
+        }
+
+        root.querySelectorAll("[data-llbs-edit]").forEach((button) => {
+            const path = button.getAttribute("data-path");
+            const kind = button.getAttribute("data-kind") || "currency";
+            button.textContent = displayForKind(getPath(state, path), kind);
+        });
+
+        root.querySelectorAll("[data-llbs-input]").forEach((input) => {
+            if (document.activeElement === input) return;
+            const path = input.getAttribute("data-path");
+            const kind = input.getAttribute("data-kind") || "currency";
+            input.value = inputValueForKind(getPath(state, path), kind);
+        });
+
+        root.querySelectorAll("[data-llbs-status]").forEach((select) => {
+            const path = select.getAttribute("data-llbs-status");
+            const value = normalizeStatus(getPath(state, path));
+            select.value = value;
+            select.dataset.status = value;
+        });
+
+        root.querySelectorAll("[data-llbs-select]").forEach((select) => {
+            const value = getPath(state, select.getAttribute("data-llbs-select"));
+            select.value = value || "Single";
+        });
+
+        root.querySelectorAll("[data-llbs-checkbox]").forEach((checkbox) => {
+            checkbox.checked = !!getPath(state, checkbox.getAttribute("data-llbs-checkbox"));
+        });
+
+        const manualTaxDisabled = !state.taxProfile.useCustomTaxOverride;
+        root.querySelector(".llbs-tax-manual")?.classList.toggle("is-disabled", manualTaxDisabled);
+        root.querySelectorAll('[data-path="taxProfile.manualTaxAmount"]').forEach((control) => {
+            control.disabled = manualTaxDisabled;
+        });
+    }
+
+    async function render(options) {
+        const host = options?.host;
+        const persistence = options?.persistence || window.LegendFinancePersistence;
+        if (!host) return;
+
+        host.innerHTML = renderShell(options);
+        const root = host.querySelector(".llbs-tool");
+        const saveStateEl = root.querySelector("[data-llbs-save-state]");
+        const errorEl = root.querySelector("[data-llbs-error]");
+        let loadedState = {};
+        try {
+            loadedState = await (persistence?.loadState?.(TOOL_ID) || {});
+        } catch (_) {
+            loadedState = {};
+        }
+        const shouldSeedDefault = !loadedState || Object.keys(loadedState).length === 0;
+        let state = calculate(mergeDeep(defaultState(), loadedState));
+        if (options?.clientProfileId) {
+            state.clientId = options.clientProfileId;
+        }
+        let saveTimer = null;
+        let savedLabelTimer = null;
+        let focusPulseTimer = null;
+
+        function setStatus(text) {
+            if (saveStateEl) saveStateEl.textContent = text;
+        }
+
+        function showError(message) {
+            if (!errorEl) return;
+            errorEl.hidden = !message;
+            errorEl.textContent = message || "";
+        }
+
+        function persistNow() {
+            try {
+                state = calculate(state);
+                persistence?.saveState?.(TOOL_ID, state);
+                setStatus("Saving...");
+                window.clearTimeout(savedLabelTimer);
+                savedLabelTimer = window.setTimeout(() => setStatus("Saved"), 650);
+                showError("");
+            } catch (err) {
+                setStatus("Needs attention");
+                showError("Unable to save this update yet. Your values remain visible on this page.");
+            }
+        }
+
+        function scheduleSave() {
+            window.clearTimeout(saveTimer);
+            saveTimer = window.setTimeout(persistNow, 450);
+        }
+
+        function updateValue(path, value, kind) {
+            const normalized = kind === "percent" ? normalizeRate(value / 100) : parseNumber(value);
+            setPath(state, path, normalized);
+            state = calculate(state);
+            refresh(root, state);
+            scheduleSave();
+        }
+
+        function beginEdit(button) {
+            const input = button.parentElement?.querySelector("[data-llbs-input]");
+            if (!input) return;
+            button.hidden = true;
+            input.hidden = false;
+            input.focus();
+            input.select();
+        }
+
+        function commitInput(input) {
+            const button = input.parentElement?.querySelector("[data-llbs-edit]");
+            const path = input.getAttribute("data-path");
+            const kind = input.getAttribute("data-kind") || "currency";
+            updateValue(path, parseNumber(input.value), kind);
+            input.hidden = true;
+            if (button) button.hidden = false;
+        }
+
+        function focusSection(selector) {
+            const section = selector ? root.querySelector(selector) : null;
+            if (!section) return false;
+            window.clearTimeout(focusPulseTimer);
+            root.querySelectorAll(".llbs-focus-pulse").forEach(el => el.classList.remove("llbs-focus-pulse"));
+            section.classList.add("llbs-focus-pulse");
+            section.scrollIntoView({ behavior: "smooth", block: "center" });
+            focusPulseTimer = window.setTimeout(() => section.classList.remove("llbs-focus-pulse"), 1800);
+            return true;
+        }
+
+        function setAdvisorView(mode) {
+            const isAdvisor = mode === "advisor";
+            root.dataset.advisorMode = isAdvisor ? "advisor" : "client";
+            root.querySelector("[data-llbs-advisor-panel]")?.toggleAttribute("hidden", !isAdvisor);
+            root.querySelectorAll("[data-llbs-view]").forEach((button) => {
+                const active = button.getAttribute("data-llbs-view") === (isAdvisor ? "advisor" : "client");
+                button.classList.toggle("is-active", active);
+                button.setAttribute("aria-pressed", active ? "true" : "false");
+            });
+        }
+
+        function setAdvisorScript(key) {
+            const script = ADVISOR_SCRIPTS[key] || ADVISOR_SCRIPTS.overview;
+            const titleEl = root.querySelector("[data-llbs-advisor-title]");
+            const talkEl = root.querySelector("[data-llbs-advisor-talk]");
+            const questionEl = root.querySelector("[data-llbs-advisor-question]");
+            const objectionEl = root.querySelector("[data-llbs-advisor-objection]");
+            if (titleEl) titleEl.textContent = script.title;
+            if (talkEl) talkEl.textContent = script.talk;
+            if (questionEl) questionEl.textContent = script.question;
+            if (objectionEl) objectionEl.textContent = script.objection;
+        }
+
+        function runAction(button) {
+            persistNow();
+
+            const route = button.dataset.route || "";
+            if (route) {
+                window.location.href = route;
+                return;
+            }
+
+            const toolId = button.dataset.toolId || "";
+            const dropdown = document.getElementById("budgetDropdown");
+            if (toolId && dropdown && Array.from(dropdown.options).some(option => option.value === toolId)) {
+                dropdown.value = toolId;
+                dropdown.dispatchEvent(new Event("change", { bubbles: true }));
+                return;
+            }
+
+            focusSection(button.dataset.section || "");
+        }
+
+        if (options?.advisorModeEnabled) {
+            setAdvisorView("client");
+        }
+
+        root.addEventListener("click", (event) => {
+            const editButton = event.target.closest("[data-llbs-edit]");
+            if (editButton) {
+                beginEdit(editButton);
+                return;
+            }
+
+            const actionButton = event.target.closest("[data-llbs-action]");
+            if (actionButton) {
+                runAction(actionButton);
+                return;
+            }
+
+            const viewButton = event.target.closest("[data-llbs-view]");
+            if (viewButton) {
+                setAdvisorView(viewButton.getAttribute("data-llbs-view"));
+                return;
+            }
+
+            if (event.target.closest("[data-llbs-reset]")) {
+                state = calculate(defaultState());
+                refresh(root, state);
+                persistNow();
+                return;
+            }
+
+            const scriptSource = event.target.closest("[data-llbs-script-key]");
+            const clickedInteractive = event.target.closest("button,input,select,textarea,a,label");
+            if (!clickedInteractive && scriptSource && root.dataset.advisorMode === "advisor") {
+                setAdvisorScript(scriptSource.getAttribute("data-llbs-script-key"));
+            }
+        });
+
+        root.addEventListener("input", (event) => {
+            const input = event.target.closest("[data-llbs-input]");
+            if (!input) return;
+            const path = input.getAttribute("data-path");
+            const kind = input.getAttribute("data-kind") || "currency";
+            const normalized = kind === "percent"
+                ? normalizeRate(parseNumber(input.value) / 100)
+                : parseNumber(input.value);
+            setPath(state, path, normalized);
+            state = calculate(state);
+            refresh(root, state);
+            scheduleSave();
+        });
+
+        root.addEventListener("blur", (event) => {
+            const input = event.target.closest("[data-llbs-input]");
+            if (input) commitInput(input);
+        }, true);
+
+        root.addEventListener("keydown", (event) => {
+            const input = event.target.closest("[data-llbs-input]");
+            if (!input) return;
+            if (event.key === "Enter") {
+                event.preventDefault();
+                commitInput(input);
+            }
+            if (event.key === "Escape") {
+                event.preventDefault();
+                input.hidden = true;
+                const button = input.parentElement?.querySelector("[data-llbs-edit]");
+                if (button) button.hidden = false;
+                refresh(root, state);
+            }
+        });
+
+        root.addEventListener("change", (event) => {
+            const statusSelect = event.target.closest("[data-llbs-status]");
+            if (statusSelect) {
+                setPath(state, statusSelect.getAttribute("data-llbs-status"), normalizeStatus(statusSelect.value));
+                state = calculate(state);
+                refresh(root, state);
+                scheduleSave();
+                return;
+            }
+
+            const select = event.target.closest("[data-llbs-select]");
+            if (select) {
+                setPath(state, select.getAttribute("data-llbs-select"), select.value);
+                state = calculate(state);
+                refresh(root, state);
+                scheduleSave();
+                return;
+            }
+
+            const checkbox = event.target.closest("[data-llbs-checkbox]");
+            if (checkbox) {
+                setPath(state, checkbox.getAttribute("data-llbs-checkbox"), checkbox.checked);
+                state = calculate(state);
+                refresh(root, state);
+                scheduleSave();
+            }
+        });
+
+        refresh(root, state);
+        if (shouldSeedDefault) persistNow();
+        else setStatus("Loaded");
+    }
+
+    window.LegendLivingBalanceSheetTool = {
+        toolId: TOOL_ID,
+        render,
+        calculate
+    };
+})();

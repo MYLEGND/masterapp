@@ -550,6 +550,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // ------------------- Tools -------------------
     const tools = [
+        { id: "LegendLivingBalanceSheet", name: "Legend Living Balance Sheet" },
         { id: "WealthForecast", name: "Wealth Forecast" },
         { id: "ExpenseLens", name: "Expense Lens" },
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
@@ -636,6 +637,28 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         }
 
         if (!t) return;
+
+        if (t.id === "LegendLivingBalanceSheet") {
+            const tool = window.LegendLivingBalanceSheetTool;
+            if (!tool?.render) {
+                embedContainer.innerHTML = `
+<div class="networth-tool" style="max-width:1100px;margin:0 auto;padding:32px;border-radius:18px;background:#0d1b34;color:#f8fafc;border:1px solid rgba(166,128,35,.35);">
+    <h3 style="margin:0 0 8px;">Legend Living Balance Sheet</h3>
+    <p style="margin:0;color:rgba(248,250,252,.72);">This tool could not load. Please refresh and try again.</p>
+</div>`;
+                return;
+            }
+
+            await tool.render({
+                host: embedContainer,
+                persistence: window.LegendFinancePersistence,
+                clientProfileId,
+                clientUserId,
+                isBusinessClient,
+                advisorModeEnabled: true
+            });
+            return;
+        }
 
         // shared WF plan state
         let wfActiveClientId = null;
@@ -9140,7 +9163,7 @@ if (t.id === "DebtAssetPulse") {
         dropdown.value = normalizedSavedToolId;
         dropdown.dispatchEvent(new Event("change"));
     } else {
-        dropdown.value = "WealthForecast";
+        dropdown.value = "LegendLivingBalanceSheet";
         dropdown.dispatchEvent(new Event("change"));
     }
 

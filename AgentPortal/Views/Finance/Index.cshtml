@@ -10,6 +10,8 @@
     ViewData["Title"] = "Finance";
 }
 
+<link rel="stylesheet" href="~/css/legend-living-balance-sheet.css" asp-append-version="true" />
+
 <div id="financeRoot"
      data-client-profile-id="@ViewBag.ClientProfileId"
      data-client-user-id="@clientUserId"
@@ -81,6 +83,7 @@
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>
 <script src="~/js/dp-engine.js" asp-append-version="true"></script>
+<script src="~/js/legend-living-balance-sheet.js" asp-append-version="true"></script>
 <script src="~/js/finance-tools.js" asp-append-version="true"></script>
 <script>
 // Ensure LegendFinancePersistence is set before finance-profile.js runs

@@ -7,6 +7,7 @@ using System.Security.Claims;
 using AgentPortal.Models;
 using AgentPortal.Services;
 using System.Text.Json.Nodes;
+using Shared.Finance;
 
 namespace AgentPortal.Controllers.API
 {
@@ -15,6 +16,8 @@ namespace AgentPortal.Controllers.API
     [Route("api/finance-state")]
     public class FinanceToolStatesController : ControllerBase
     {
+        private const string LegendLivingBalanceSheetToolId = LegendLivingBalanceSheetConstants.ToolId;
+
         private static readonly HashSet<string> BusinessOnlyToolIds = new(StringComparer.OrdinalIgnoreCase)
         {
             "BusinessExpenseLens",
@@ -131,6 +134,14 @@ namespace AgentPortal.Controllers.API
             return string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
         }
 
+        private static string NormalizeFinanceJsonState(string toolId, string? jsonState, Guid? clientProfileId = null)
+        {
+            if (string.Equals(toolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
+                return LegendLivingBalanceSheetCalculator.NormalizeJson(jsonState, clientProfileId);
+
+            return string.IsNullOrWhiteSpace(jsonState) ? "{}" : jsonState;
+        }
+
         public class SaveFinanceStateRequest
         {
             public Guid ClientProfileId { get; set; }
@@ -194,10 +205,14 @@ namespace AgentPortal.Controllers.API
                         x.AgentUserId == agentUserId &&
                         x.ToolId == normalizedToolId);
 
+                var agentJsonState = agentRow?.JsonState ?? "{}";
+                if (string.Equals(normalizedToolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
+                    agentJsonState = LegendLivingBalanceSheetCalculator.NormalizeJson(agentJsonState);
+
                 return Ok(new
                 {
                     found = agentRow != null,
-                    jsonState = agentRow?.JsonState ?? "{}",
+                    jsonState = agentJsonState,
                     clientProfileId = Guid.Empty
                 });
             }
@@ -215,10 +230,14 @@ namespace AgentPortal.Controllers.API
                     x.ClientProfileId == resolvedClientProfileId.Value &&
                     x.ToolId == normalizedToolId);
 
+            var jsonState = row?.JsonState ?? "{}";
+            if (string.Equals(normalizedToolId, LegendLivingBalanceSheetToolId, StringComparison.OrdinalIgnoreCase))
+                jsonState = LegendLivingBalanceSheetCalculator.NormalizeJson(jsonState, resolvedClientProfileId.Value);
+
             return Ok(new
             {
                 found = row != null,
-                jsonState = row?.JsonState ?? "{}",
+                jsonState,
                 clientProfileId = resolvedClientProfileId.Value
             });
         }
@@ -271,7 +290,7 @@ namespace AgentPortal.Controllers.API
                     {
                         AgentUserId = agentUserId,
                         ToolId = normalizedToolId,
-                        JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState,
+                        JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState),
                         CreatedUtc = DateTime.UtcNow,
                         UpdatedUtc = DateTime.UtcNow
                     };
@@ -280,7 +299,7 @@ namespace AgentPortal.Controllers.API
                 }
                 else
                 {
-                    agentRow.JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState;
+                    agentRow.JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState);
                     agentRow.UpdatedUtc = DateTime.UtcNow;
                 }
 
@@ -306,7 +325,7 @@ namespace AgentPortal.Controllers.API
                 {
                     ClientProfileId = resolvedClientProfileId.Value,
                     ToolId = normalizedToolId,
-                    JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState,
+                    JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, resolvedClientProfileId.Value),
                     CreatedUtc = DateTime.UtcNow,
                     UpdatedUtc = DateTime.UtcNow
                 };
@@ -315,7 +334,7 @@ namespace AgentPortal.Controllers.API
             }
             else
             {
-                row.JsonState = string.IsNullOrWhiteSpace(req.JsonState) ? "{}" : req.JsonState;
+                row.JsonState = NormalizeFinanceJsonState(normalizedToolId, req.JsonState, resolvedClientProfileId.Value);
                 row.UpdatedUtc = DateTime.UtcNow;
             }
 
