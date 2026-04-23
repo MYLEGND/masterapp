@@ -1,6 +1,17 @@
 (function () {
     const TOOL_ID = "LegendLivingBalanceSheet";
     const STATUS = ["Exposed", "Partial", "Protected"];
+    const WILLS_TRUSTS_PATH = "protection.willsTrusts";
+    const ESTATE_PLAN_STATUSES = [
+        ["NotSetUp", "Not Set Up"],
+        ["BasicWill", "Basic Will"],
+        ["FullEstatePlan", "Full Estate Plan"]
+    ];
+    const ESTATE_RISK_BY_STATUS = Object.freeze({
+        NotSetUp: "High",
+        BasicWill: "Moderate",
+        FullEstatePlan: "Low"
+    });
     const FILING_STATUSES = ["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household", "Business Owner"];
 
     const ASSET_FIELDS = [
@@ -22,9 +33,11 @@
     const PROTECTION_FIELDS = [
         ["protection.ifSued", "If You Are Sued"],
         ["protection.ifSick", "If You Get Sick"],
-        ["protection.willsTrusts", "Wills & Trusts"],
+        [WILLS_TRUSTS_PATH, "Wills & Trusts"],
         ["protection.ifDie", "If You Die"]
     ];
+
+    const FINANCIAL_PROTECTION_FIELDS = PROTECTION_FIELDS.filter(([path]) => path !== WILLS_TRUSTS_PATH);
 
     const CASH_FIELDS = [
         ["cashFlow.earnings", "Earnings", "editable"],
@@ -76,6 +89,12 @@
             talk: "This is where we test whether the plan survives a lawsuit, sickness, estate event, or premature death.",
             question: "If something happened tomorrow, what would this actually look like for your family or business?",
             objection: "If they say they already have coverage, ask when it was last stress-tested against income, debt, and dependents."
+        },
+        willsTrusts: {
+            title: "Wills & Trusts Conversation",
+            talk: "This isn’t about coverage — this is about whether your assets are actually controlled and passed the way you intend.",
+            question: "Do you currently have anything in place that legally directs where everything goes?",
+            objection: "Most people assume things will automatically go to family, but without a plan, the state decides."
         },
         assets: {
             title: "Assets Conversation",
@@ -149,7 +168,7 @@
         protection: {
             ifSued: protectionDefault(),
             ifSick: protectionDefault(),
-            willsTrusts: protectionDefault(),
+            willsTrusts: estatePlanningDefault(),
             ifDie: protectionDefault()
         },
         summary: {}
@@ -157,6 +176,10 @@
 
     function protectionDefault() {
         return { status: "Exposed", coverageAmount: 0, gapAmount: 0 };
+    }
+
+    function estatePlanningDefault() {
+        return { status: "NotSetUp", riskLevel: "High" };
     }
 
     function isPlainObject(value) {
@@ -235,6 +258,21 @@
         return STATUS.find(x => x.toLowerCase() === value.toLowerCase()) || "Exposed";
     }
 
+    function normalizeEstateStatus(status) {
+        const value = String(status || "").trim();
+        const estateStatus = ESTATE_PLAN_STATUSES.find(([key]) => key.toLowerCase() === value.toLowerCase());
+        if (estateStatus) return estateStatus[0];
+
+        const legacyStatus = normalizeStatus(value);
+        if (legacyStatus === "Protected") return "FullEstatePlan";
+        if (legacyStatus === "Partial") return "BasicWill";
+        return "NotSetUp";
+    }
+
+    function riskLevelForEstateStatus(status) {
+        return ESTATE_RISK_BY_STATUS[normalizeEstateStatus(status)] || "High";
+    }
+
     function resolvePositionStatus({ netWorth, protectionGap, lifestyleRemaining, debtPressureRatio, exposedCount }) {
         if (netWorth <= 0 || lifestyleRemaining < 0 || protectionGap > 0 || debtPressureRatio >= 0.35 || exposedCount > 0) {
             return {
@@ -291,7 +329,7 @@
         s.cashFlow.debtsAndTaxCosts = s.cashFlow.debtObligations + s.liabilities.taxes;
         s.cashFlow.lifestyleRemaining = s.cashFlow.earnings - s.cashFlow.insuranceCosts - s.cashFlow.annualSavings - s.cashFlow.debtsAndTaxCosts;
 
-        PROTECTION_FIELDS.forEach(([path]) => {
+        FINANCIAL_PROTECTION_FIELDS.forEach(([path]) => {
             const item = getPath(s, path) || protectionDefault();
             item.status = normalizeStatus(item.status);
             item.coverageAmount = nonNegative(item.coverageAmount);
@@ -299,7 +337,14 @@
             setPath(s, path, item);
         });
 
-        const protectionItems = PROTECTION_FIELDS.map(([path]) => getPath(s, path));
+        const estatePlanning = { ...estatePlanningDefault(), ...(getPath(s, WILLS_TRUSTS_PATH) || {}) };
+        estatePlanning.status = normalizeEstateStatus(estatePlanning.status);
+        estatePlanning.riskLevel = riskLevelForEstateStatus(estatePlanning.status);
+        delete estatePlanning.coverageAmount;
+        delete estatePlanning.gapAmount;
+        setPath(s, WILLS_TRUSTS_PATH, estatePlanning);
+
+        const protectionItems = FINANCIAL_PROTECTION_FIELDS.map(([path]) => getPath(s, path));
         const protectionCoverageTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.coverageAmount), 0);
         const protectionGapTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.gapAmount), 0);
         const protectedCount = protectionItems.filter(x => x.status === "Protected").length;
@@ -330,6 +375,8 @@
             lifestyleRemaining: s.cashFlow.lifestyleRemaining,
             protectionCoverageTotal,
             protectionGapTotal,
+            estatePlanningStatus: estatePlanning.status,
+            estatePlanningRiskLevel: estatePlanning.riskLevel,
             protectedCount,
             partialCount,
             exposedCount,
@@ -373,6 +420,10 @@
     }
 
     function renderProtectionCard(path, title) {
+        if (path === WILLS_TRUSTS_PATH) {
+            return renderWillsTrustsCard(path, title);
+        }
+
         return `
             <article class="llbs-protection-card">
                 <div class="llbs-protection-card-title">${title}</div>
@@ -387,6 +438,30 @@
                     <div class="llbs-label">
                         <small>Gap</small>
                         ${editable(`${path}.gapAmount`, `${title} gap`)}
+                    </div>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderEstateStatusOptions() {
+        return ESTATE_PLAN_STATUSES.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    }
+
+    function renderWillsTrustsCard(path, title) {
+        return `
+            <article class="llbs-protection-card llbs-estate-card" data-llbs-script-key="willsTrusts">
+                <div>
+                    <div class="llbs-protection-card-title">${title}</div>
+                    <small class="llbs-estate-subtext">Controls how your assets are distributed and protected.</small>
+                </div>
+                <select class="llbs-status-select llbs-estate-status-select" data-llbs-estate-status="${path}.status" aria-label="${title} status">
+                    ${renderEstateStatusOptions()}
+                </select>
+                <div class="llbs-estate-risk-row">
+                    <div class="llbs-label">
+                        <small>Risk Level</small>
+                        <span class="llbs-risk-pill" data-llbs-estate-risk data-path="${path}.riskLevel" data-risk="High">High</span>
                     </div>
                 </div>
             </article>
@@ -710,6 +785,20 @@
             select.dataset.status = value;
         });
 
+        root.querySelectorAll("[data-llbs-estate-status]").forEach((select) => {
+            const path = select.getAttribute("data-llbs-estate-status");
+            const value = normalizeEstateStatus(getPath(state, path));
+            select.value = value;
+            select.dataset.status = value;
+        });
+
+        root.querySelectorAll("[data-llbs-estate-risk]").forEach((badge) => {
+            const path = badge.getAttribute("data-path");
+            const value = riskLevelForEstateStatus(getPath(state, "protection.willsTrusts.status"));
+            badge.textContent = getPath(state, path) || value;
+            badge.dataset.risk = badge.textContent;
+        });
+
         root.querySelectorAll("[data-llbs-select]").forEach((select) => {
             const value = getPath(state, select.getAttribute("data-llbs-select"));
             select.value = value || "Single";
@@ -952,6 +1041,18 @@
         });
 
         root.addEventListener("change", (event) => {
+            const estateStatusSelect = event.target.closest("[data-llbs-estate-status]");
+            if (estateStatusSelect) {
+                const path = estateStatusSelect.getAttribute("data-llbs-estate-status");
+                const status = normalizeEstateStatus(estateStatusSelect.value);
+                setPath(state, path, status);
+                setPath(state, path.replace(/\.status$/, ".riskLevel"), riskLevelForEstateStatus(status));
+                state = calculate(state);
+                refresh(root, state);
+                scheduleSave();
+                return;
+            }
+
             const statusSelect = event.target.closest("[data-llbs-status]");
             if (statusSelect) {
                 setPath(state, statusSelect.getAttribute("data-llbs-status"), normalizeStatus(statusSelect.value));
