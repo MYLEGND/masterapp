@@ -1,7 +1,10 @@
 <div id="financeRoot"
      data-client-profile-id="@ViewBag.ClientProfileId"
      data-client-user-id="@ViewBag.ClientUserId"
-     data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"></div>
+     data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"
+     data-client-first-name="@(ViewBag.ClientFirstName ?? "")"
+     data-spouse-first-name="@(ViewBag.SpouseFirstName ?? "")"
+     data-has-spouse="@(((bool?)ViewBag.HasSpouse == true).ToString().ToLowerInvariant())"></div>
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
 </form>

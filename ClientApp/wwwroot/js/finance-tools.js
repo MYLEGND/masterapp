@@ -60,6 +60,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
     const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
+    const clientFirstName = financeRoot?.dataset.clientFirstName?.trim() || "";
+    const spouseFirstName = financeRoot?.dataset.spouseFirstName?.trim() || "";
+    const hasSpouseAttr = financeRoot?.dataset.hasSpouse;
+    const hasSpouse = hasSpouseAttr === "true" ? true : hasSpouseAttr === "false" ? false : undefined;
     const workspaceScope =
         clientUserId ||
         clientProfileId ||
@@ -603,7 +607,10 @@ function markWithSuffix(markFn, el) {
                 clientProfileId,
                 clientUserId,
                 isBusinessClient,
-                protectionRoute: "/ProtectionSnapshot"
+                protectionRoute: "/ProtectionSnapshot",
+                clientFirstName,
+                spouseFirstName,
+                hasSpouse
             });
             return;
         }

@@ -15,6 +15,13 @@ namespace ClientApp.Controllers
             _clientContext = clientContext;
         }
 
+        private static bool IsMarriedOrPartnered(string? maritalStatus)
+        {
+            var s = (maritalStatus ?? "").Trim();
+            return s.Equals("Married", StringComparison.OrdinalIgnoreCase)
+                || s.Equals("Domestic Partnership", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool IsBusinessClient(string? crmNotes)
         {
             if (string.IsNullOrWhiteSpace(crmNotes))
@@ -49,6 +56,9 @@ namespace ClientApp.Controllers
             ViewBag.ClientProfileId = context.ClientProfileId;
             ViewBag.ClientUserId = context.ClientUserId;
             ViewBag.IsBusinessClient = IsBusinessClient(context.Profile.CrmNotes);
+            ViewBag.ClientFirstName = (context.Profile.FirstName ?? "").Trim();
+            ViewBag.SpouseFirstName = (context.Profile.SignificantOtherFirstName ?? "").Trim();
+            ViewBag.HasSpouse = IsMarriedOrPartnered(context.Profile.MaritalStatus);
             return View();
         }
 
@@ -64,6 +74,9 @@ namespace ClientApp.Controllers
             ViewBag.ClientProfileId = clientProfileId;
             ViewBag.ClientUserId = context.ClientUserId;
             ViewBag.IsBusinessClient = IsBusinessClient(context.Profile.CrmNotes);
+            ViewBag.ClientFirstName = (context.Profile.FirstName ?? "").Trim();
+            ViewBag.SpouseFirstName = (context.Profile.SignificantOtherFirstName ?? "").Trim();
+            ViewBag.HasSpouse = IsMarriedOrPartnered(context.Profile.MaritalStatus);
             return View("Index");
         }
     }

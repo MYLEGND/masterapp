@@ -60,6 +60,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
     const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
+    const clientFirstName = financeRoot?.dataset.clientFirstName?.trim() || "";
+    const spouseFirstName = financeRoot?.dataset.spouseFirstName?.trim() || "";
+    const hasSpouseAttr = financeRoot?.dataset.hasSpouse;
+    const hasSpouse = hasSpouseAttr === "true" ? true : hasSpouseAttr === "false" ? false : undefined;
     const workspaceScope =
         clientUserId ||
         clientProfileId ||
@@ -655,7 +659,10 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 clientProfileId,
                 clientUserId,
                 isBusinessClient,
-                advisorModeEnabled: true
+                advisorModeEnabled: true,
+                clientFirstName,
+                spouseFirstName,
+                hasSpouse
             });
             return;
         }

@@ -462,10 +462,14 @@
         `;
     }
 
-    function renderProtectionCard(path, title) {
+    function renderProtectionCard(path, title, cardOpts = {}) {
         if (path === WILLS_TRUSTS_PATH) {
             return renderWillsTrustsCard(path, title);
         }
+
+        const primaryLabel = cardOpts.primaryLabel || "You";
+        const spouseLabel = cardOpts.spouseLabel || "Spouse";
+        const hideSpouseToggle = cardOpts.hideSpouseToggle === true;
 
         const personFields = (person) => `
             <div data-llbs-person-fields="${person}">
@@ -485,15 +489,19 @@
             </div>
         `;
 
+        const toggle = hideSpouseToggle ? "" : `
+            <div class="llbs-person-toggle" role="group" aria-label="Select person">
+                <button type="button" class="llbs-person-btn is-active" data-llbs-person-toggle data-card-path="${path}" data-person="primary" aria-pressed="true">${primaryLabel}</button>
+                <button type="button" class="llbs-person-btn" data-llbs-person-toggle data-card-path="${path}" data-person="spouse" aria-pressed="false">${spouseLabel}</button>
+            </div>
+        `;
+
         return `
             <article class="llbs-protection-card" data-active-person="primary" data-card-path="${path}">
                 <div class="llbs-protection-card-title">${title}</div>
-                <div class="llbs-person-toggle" role="group" aria-label="Select person">
-                    <button type="button" class="llbs-person-btn is-active" data-llbs-person-toggle data-card-path="${path}" data-person="primary" aria-pressed="true">You</button>
-                    <button type="button" class="llbs-person-btn" data-llbs-person-toggle data-card-path="${path}" data-person="spouse" aria-pressed="false">Spouse</button>
-                </div>
+                ${toggle}
                 ${personFields("primary")}
-                ${personFields("spouse")}
+                ${hideSpouseToggle ? "" : personFields("spouse")}
             </article>
         `;
     }
@@ -712,7 +720,16 @@
                                 <span class="llbs-section-note" data-llbs-output="summary.protectionGapTotal">$0</span>
                             </div>
                             <div class="llbs-protection-grid">
-                                ${PROTECTION_FIELDS.map(([path, label]) => renderProtectionCard(path, label)).join("")}
+                                ${(() => {
+                                    const clientFirst = (options.clientFirstName || "").trim();
+                                    const spouseFirst = (options.spouseFirstName || "").trim();
+                                    const cardOpts = {
+                                        primaryLabel: clientFirst || "You",
+                                        spouseLabel: spouseFirst || "Spouse",
+                                        hideSpouseToggle: options.hasSpouse === false
+                                    };
+                                    return PROTECTION_FIELDS.map(([path, label]) => renderProtectionCard(path, label, cardOpts)).join("");
+                                })()}
                             </div>
                         </section>
 
@@ -868,7 +885,7 @@
             checkbox.checked = !!getPath(state, checkbox.getAttribute("data-llbs-checkbox"));
         });
 
-        root.querySelectorAll("[data-card-path]").forEach(card => {
+        root.querySelectorAll("article[data-card-path]").forEach(card => {
             const basePath = card.dataset.cardPath;
             if (!basePath) return;
             const activePerson = getPath(state, `${basePath}.activePerson`) || "primary";
@@ -1049,7 +1066,7 @@
                 const cardPath = personToggle.dataset.cardPath;
                 const person = personToggle.dataset.person;
                 setPath(state, `${cardPath}.activePerson`, person);
-                const card = personToggle.closest("[data-active-person]");
+                const card = personToggle.closest("article[data-active-person]");
                 if (card) {
                     card.dataset.activePerson = person;
                     card.querySelectorAll("[data-llbs-person-toggle]").forEach(btn => {
