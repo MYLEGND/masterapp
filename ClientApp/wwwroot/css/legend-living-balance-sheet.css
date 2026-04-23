@@ -474,6 +474,13 @@
     display: none;
 }
 
+.llbs-el-source {
+    opacity: .55;
+    font-size: .68rem;
+    font-style: italic;
+    color: #f3d88b;
+}
+
 .llbs-edit-value,
 .llbs-readonly-value {
     display: inline-flex;

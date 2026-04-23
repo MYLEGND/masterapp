@@ -792,8 +792,8 @@
                                         ${mode === "editable" ? editable(path, label) : readonly(path)}
                                         ${path === "cashFlow.debtsAndTaxCosts" ? `
                                             <div class="llbs-label">
-                                                <small>Debt obligations</small>
-                                                ${editable("cashFlow.debtObligations", "Debt obligations")}
+                                                <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
+                                                ${readonly("cashFlow.debtObligations")}
                                             </div>` : ""}
                                     </article>
                                 `).join("")}
@@ -924,6 +924,16 @@
         if (options?.clientProfileId) {
             state.clientId = options.clientProfileId;
         }
+
+        // Seed debt obligations from Expense Lens persisted state (monthly × 12)
+        try {
+            const elState = await (persistence?.loadState?.("ExpenseLens") || {});
+            const elMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
+            if (elMonthly > 0) {
+                setPath(state, "cashFlow.debtObligations", Math.round(elMonthly * 12));
+                state = calculate(state);
+            }
+        } catch (_) {}
         let saveTimer = null;
         let savedLabelTimer = null;
         let focusPulseTimer = null;
@@ -1190,6 +1200,16 @@
         refresh(root, state);
         if (shouldSeedDefault) persistNow();
         else setStatus("Loaded");
+
+        window.addEventListener("ExpenseLens:updated", (event) => {
+            const elMonthly = parseNumber((event.detail || {}).monthlyExpenseTotal ?? 0);
+            const annual = Math.round(elMonthly * 12);
+            if (annual === nonNegative(getPath(state, "cashFlow.debtObligations"))) return;
+            setPath(state, "cashFlow.debtObligations", annual);
+            state = calculate(state);
+            refresh(root, state);
+            scheduleSave();
+        });
     }
 
     window.LegendLivingBalanceSheetTool = {
