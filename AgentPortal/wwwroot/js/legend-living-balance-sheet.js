@@ -46,6 +46,11 @@
         ["cashFlow.debtsAndTaxCosts", "Debts & Tax Costs", "computed"],
         ["cashFlow.lifestyleRemaining", "What's Left for Lifestyle", "computed"]
     ];
+    const CASH_OUTFLOW_PATHS = new Set([
+        "cashFlow.insuranceCosts",
+        "cashFlow.debtObligations",
+        "cashFlow.debtsAndTaxCosts"
+    ]);
 
     const ACTIONS = [
         {
@@ -251,6 +256,18 @@
 
     function displayForKind(value, kind) {
         return kind === "percent" ? formatPercent(value) : formatCurrency(value);
+    }
+
+    function isCashOutflowPath(path) {
+        return CASH_OUTFLOW_PATHS.has(path);
+    }
+
+    function displayForPath(path, value, kind = "") {
+        if (isCashOutflowPath(path)) {
+            const amount = nonNegative(value);
+            return amount > 0 ? formatCurrency(-amount) : formatCurrency(0);
+        }
+        return displayForKind(value, kind);
     }
 
     function normalizeStatus(status) {
@@ -746,8 +763,10 @@
             const value = getPath(state, path);
             const kind = el.getAttribute("data-llbs-kind") || "";
             const isRate = kind === "percent" || (path && (path.toLowerCase().includes("rate") || path.toLowerCase().includes("ratio")));
-            el.textContent = isRate ? formatPercent(value) : formatCurrency(value);
-            el.classList.toggle("is-negative", Number(value || 0) < 0);
+            const isCashOutflow = isCashOutflowPath(path);
+            el.textContent = isRate ? formatPercent(value) : displayForPath(path, value, kind);
+            el.classList.toggle("is-cash-outflow", isCashOutflow);
+            el.classList.toggle("is-negative", isCashOutflow ? nonNegative(value) > 0 : Number(value || 0) < 0);
         });
 
         root.querySelectorAll("[data-llbs-text]").forEach((el) => {
@@ -770,7 +789,11 @@
         root.querySelectorAll("[data-llbs-edit]").forEach((button) => {
             const path = button.getAttribute("data-path");
             const kind = button.getAttribute("data-kind") || "currency";
-            button.textContent = displayForKind(getPath(state, path), kind);
+            const value = getPath(state, path);
+            const isCashOutflow = isCashOutflowPath(path);
+            button.textContent = displayForPath(path, value, kind);
+            button.classList.toggle("is-cash-outflow", isCashOutflow);
+            button.classList.toggle("is-negative", isCashOutflow && nonNegative(value) > 0);
         });
 
         root.querySelectorAll("[data-llbs-input]").forEach((input) => {
