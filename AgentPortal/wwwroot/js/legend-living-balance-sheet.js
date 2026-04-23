@@ -868,7 +868,7 @@
             checkbox.checked = !!getPath(state, checkbox.getAttribute("data-llbs-checkbox"));
         });
 
-        root.querySelectorAll("[data-card-path]").forEach(card => {
+        root.querySelectorAll("article[data-card-path]").forEach(card => {
             const basePath = card.dataset.cardPath;
             if (!basePath) return;
             const activePerson = getPath(state, `${basePath}.activePerson`) || "primary";
