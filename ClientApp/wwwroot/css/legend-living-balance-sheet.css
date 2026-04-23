@@ -562,7 +562,7 @@
 }
 
 .llbs-net-value {
-    color: #fff7dd;
+    color: #ffffff;
     font-size: clamp(2rem, 4vw, 3.25rem);
     line-height: .98;
     font-weight: 950;
@@ -571,7 +571,10 @@
     text-shadow: 0 3px 22px rgba(199, 153, 49, .16);
 }
 
-.llbs-net-value.is-negative,
+.llbs-net-value.is-negative {
+    color: #ff4d5e;
+}
+
 .llbs-edit-value.is-negative,
 .llbs-readonly-value.is-negative {
     color: #ff9aa2;

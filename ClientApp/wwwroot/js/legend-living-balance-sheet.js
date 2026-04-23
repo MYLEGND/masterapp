@@ -790,7 +790,6 @@
                                             <strong>${label}</strong>
                                             ${path === "cashFlow.debtsAndTaxCosts" ? "<small>Debt obligations + tax burden</small>" : ""}
                                         </div>
-                                        ${mode === "editable" ? editable(path, label) : readonly(path)}
                                         ${path === "cashFlow.debtsAndTaxCosts" ? `
                                             <div class="llbs-two-up">
                                                 <div class="llbs-label">
@@ -801,7 +800,7 @@
                                                     <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
                                                     ${readonly("cashFlow.debtObligations")}
                                                 </div>
-                                            </div>` : ""}
+                                            </div>` : mode === "editable" ? editable(path, label) : readonly(path)}
                                     </article>
                                 `).join("")}
                             </div>
