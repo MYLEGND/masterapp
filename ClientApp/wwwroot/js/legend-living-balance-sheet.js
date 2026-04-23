@@ -180,7 +180,11 @@
     });
 
     function protectionDefault() {
-        return { status: "Exposed", coverageAmount: 0, gapAmount: 0 };
+        return {
+            primary: { status: "Exposed", coverageAmount: 0, gapAmount: 0 },
+            spouse: { status: "Exposed", coverageAmount: 0, gapAmount: 0 },
+            activePerson: "primary"
+        };
     }
 
     function estatePlanningDefault() {
@@ -349,10 +353,27 @@
         s.cashFlow.lifestyleRemaining = s.cashFlow.earnings - s.cashFlow.insuranceCosts - s.cashFlow.annualSavings - s.cashFlow.debtsAndTaxCosts;
 
         FINANCIAL_PROTECTION_FIELDS.forEach(([path]) => {
-            const item = getPath(s, path) || protectionDefault();
-            item.status = normalizeStatus(item.status);
-            item.coverageAmount = nonNegative(item.coverageAmount);
-            item.gapAmount = nonNegative(item.gapAmount);
+            const raw = getPath(s, path);
+            let item = raw || protectionDefault();
+
+            // Migrate old flat format: { status, coverageAmount, gapAmount }
+            if (item.primary === undefined && item.status !== undefined) {
+                item = {
+                    primary: { status: item.status || "Exposed", coverageAmount: item.coverageAmount || 0, gapAmount: item.gapAmount || 0 },
+                    spouse: { status: "Exposed", coverageAmount: 0, gapAmount: 0 },
+                    activePerson: "primary"
+                };
+            }
+            if (!item.primary) item.primary = { status: "Exposed", coverageAmount: 0, gapAmount: 0 };
+            if (!item.spouse) item.spouse = { status: "Exposed", coverageAmount: 0, gapAmount: 0 };
+            if (!item.activePerson) item.activePerson = "primary";
+
+            ["primary", "spouse"].forEach(person => {
+                item[person].status = normalizeStatus(item[person].status);
+                item[person].coverageAmount = nonNegative(item[person].coverageAmount);
+                item[person].gapAmount = nonNegative(item[person].gapAmount);
+            });
+
             setPath(s, path, item);
         });
 
@@ -363,7 +384,10 @@
         delete estatePlanning.gapAmount;
         setPath(s, WILLS_TRUSTS_PATH, estatePlanning);
 
-        const protectionItems = FINANCIAL_PROTECTION_FIELDS.map(([path]) => getPath(s, path));
+        const protectionItems = FINANCIAL_PROTECTION_FIELDS.map(([path]) => {
+            const item = getPath(s, path);
+            return item.primary || item;
+        });
         const protectionCoverageTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.coverageAmount), 0);
         const protectionGapTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.gapAmount), 0);
         const protectedCount = protectionItems.filter(x => x.status === "Protected").length;
@@ -443,22 +467,33 @@
             return renderWillsTrustsCard(path, title);
         }
 
-        return `
-            <article class="llbs-protection-card">
-                <div class="llbs-protection-card-title">${title}</div>
-                <select class="llbs-status-select" data-llbs-status="${path}.status" aria-label="${title} status">
+        const personFields = (person) => `
+            <div data-llbs-person-fields="${person}">
+                <select class="llbs-status-select" data-llbs-status="${path}.${person}.status" aria-label="${title} ${person} status">
                     ${STATUS.map(status => `<option value="${status}">${status}</option>`).join("")}
                 </select>
                 <div class="llbs-two-up">
                     <div class="llbs-label">
                         <small>Coverage</small>
-                        ${editable(`${path}.coverageAmount`, `${title} coverage`)}
+                        ${editable(`${path}.${person}.coverageAmount`, `${title} ${person} coverage`)}
                     </div>
                     <div class="llbs-label">
                         <small>Gap</small>
-                        ${editable(`${path}.gapAmount`, `${title} gap`)}
+                        ${editable(`${path}.${person}.gapAmount`, `${title} ${person} gap`)}
                     </div>
                 </div>
+            </div>
+        `;
+
+        return `
+            <article class="llbs-protection-card" data-active-person="primary" data-card-path="${path}">
+                <div class="llbs-protection-card-title">${title}</div>
+                <div class="llbs-person-toggle" role="group" aria-label="Select person">
+                    <button type="button" class="llbs-person-btn is-active" data-llbs-person-toggle data-card-path="${path}" data-person="primary" aria-pressed="true">You</button>
+                    <button type="button" class="llbs-person-btn" data-llbs-person-toggle data-card-path="${path}" data-person="spouse" aria-pressed="false">Spouse</button>
+                </div>
+                ${personFields("primary")}
+                ${personFields("spouse")}
             </article>
         `;
     }
@@ -833,6 +868,18 @@
             checkbox.checked = !!getPath(state, checkbox.getAttribute("data-llbs-checkbox"));
         });
 
+        root.querySelectorAll("[data-card-path]").forEach(card => {
+            const basePath = card.dataset.cardPath;
+            if (!basePath) return;
+            const activePerson = getPath(state, `${basePath}.activePerson`) || "primary";
+            card.dataset.activePerson = activePerson;
+            card.querySelectorAll("[data-llbs-person-toggle]").forEach(btn => {
+                const isActive = btn.dataset.person === activePerson;
+                btn.classList.toggle("is-active", isActive);
+                btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+            });
+        });
+
         const manualTaxDisabled = !state.taxProfile.useCustomTaxOverride;
         root.querySelector(".llbs-tax-manual")?.classList.toggle("is-disabled", manualTaxDisabled);
         root.querySelectorAll('[data-path="taxProfile.manualTaxAmount"]').forEach((control) => {
@@ -994,6 +1041,24 @@
             const editButton = event.target.closest("[data-llbs-edit]");
             if (editButton) {
                 beginEdit(editButton);
+                return;
+            }
+
+            const personToggle = event.target.closest("[data-llbs-person-toggle]");
+            if (personToggle) {
+                const cardPath = personToggle.dataset.cardPath;
+                const person = personToggle.dataset.person;
+                setPath(state, `${cardPath}.activePerson`, person);
+                const card = personToggle.closest("[data-active-person]");
+                if (card) {
+                    card.dataset.activePerson = person;
+                    card.querySelectorAll("[data-llbs-person-toggle]").forEach(btn => {
+                        const isActive = btn.dataset.person === person;
+                        btn.classList.toggle("is-active", isActive);
+                        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+                    });
+                }
+                scheduleSave();
                 return;
             }
 

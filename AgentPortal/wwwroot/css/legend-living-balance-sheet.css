@@ -433,6 +433,47 @@
     min-width: 0;
 }
 
+/* Person toggle — You / Spouse */
+.llbs-person-toggle {
+    display: flex;
+    gap: 0;
+    padding: 2px;
+    width: fit-content;
+    background: rgba(6, 11, 22, .55);
+    border: 1px solid rgba(243, 216, 139, .18);
+    border-radius: 6px;
+}
+
+.llbs-person-btn {
+    padding: 2px 9px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: rgba(248, 250, 252, .42);
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+}
+
+.llbs-person-btn.is-active {
+    background: rgba(199, 153, 49, .28);
+    color: #f3d88b;
+}
+
+.llbs-person-btn:hover:not(.is-active) {
+    color: rgba(248, 250, 252, .72);
+}
+
+/* Hide inactive person's fields — CSS-driven, no layout shift */
+[data-active-person="primary"] [data-llbs-person-fields="spouse"],
+[data-active-person="spouse"] [data-llbs-person-fields="primary"] {
+    display: none;
+}
+
 .llbs-edit-value,
 .llbs-readonly-value {
     display: inline-flex;
