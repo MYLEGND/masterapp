@@ -396,48 +396,72 @@
     function renderTaxPanel() {
         return `
             <section class="llbs-tax-panel" id="llbsTaxProfile" aria-label="Tax profile" data-llbs-script-key="tax">
-                <div class="llbs-section-head">
-                    <h3 class="llbs-section-title">Tax Profile</h3>
-                    <span class="llbs-section-note">Phase 1: profile rates or custom override</span>
+                <div class="llbs-tax-summary">
+                    <div class="llbs-tax-copy">
+                        <h3 class="llbs-section-title">Tax Profile</h3>
+                        <span data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
+                    </div>
+                    <div class="llbs-tax-summary-metrics">
+                        <span>
+                            <small>Filing</small>
+                            <strong data-llbs-text="taxProfile.filingStatus">Single</strong>
+                        </span>
+                        <span>
+                            <small>Effective</small>
+                            <strong data-llbs-output="taxProfile.effectiveTaxRate" data-llbs-kind="percent">0%</strong>
+                        </span>
+                        <span>
+                            <small>Taxes</small>
+                            <strong data-llbs-output="taxProfile.calculatedTaxAmount">$0</strong>
+                        </span>
+                        <span>
+                            <small>Override</small>
+                            <strong data-llbs-tax-override>Off</strong>
+                        </span>
+                    </div>
+                    <button type="button"
+                            class="llbs-tax-toggle"
+                            data-llbs-tax-toggle
+                            aria-controls="llbsTaxProfileBody"
+                            aria-expanded="false">Edit Tax Profile</button>
                 </div>
-                <div class="llbs-tax-grid">
-                    <div class="llbs-tax-field">
-                        <label for="llbsFilingStatus">Filing Status</label>
-                        <select id="llbsFilingStatus" class="llbs-tax-select" data-llbs-select="taxProfile.filingStatus">
-                            ${FILING_STATUSES.map(status => `<option value="${status}">${status}</option>`).join("")}
-                        </select>
+                <div class="llbs-tax-body" id="llbsTaxProfileBody" hidden>
+                    <div class="llbs-tax-grid">
+                        <div class="llbs-tax-field">
+                            <label for="llbsFilingStatus">Filing Status</label>
+                            <select id="llbsFilingStatus" class="llbs-tax-select" data-llbs-select="taxProfile.filingStatus">
+                                ${FILING_STATUSES.map(status => `<option value="${status}">${status}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="llbs-tax-field">
+                            <label>Federal Rate</label>
+                            ${editable("taxProfile.federalTaxRate", "Federal tax rate", "percent")}
+                        </div>
+                        <div class="llbs-tax-field">
+                            <label>State Rate</label>
+                            ${editable("taxProfile.stateTaxRate", "State tax rate", "percent")}
+                        </div>
+                        <div class="llbs-tax-field">
+                            <label>FICA Rate</label>
+                            ${editable("taxProfile.ficaRate", "FICA tax rate", "percent")}
+                        </div>
+                        <label class="llbs-toggle">
+                            <input type="checkbox" data-llbs-checkbox="taxProfile.useCustomTaxOverride" />
+                            <span>Override Taxes</span>
+                        </label>
+                        <div class="llbs-tax-field llbs-tax-manual">
+                            <label>Manual Tax Amount</label>
+                            ${editable("taxProfile.manualTaxAmount", "Manual tax amount")}
+                        </div>
+                        <div class="llbs-tax-field">
+                            <label>Effective Rate</label>
+                            ${readonly("taxProfile.effectiveTaxRate")}
+                        </div>
+                        <div class="llbs-tax-field">
+                            <label>Calculated Taxes</label>
+                            ${readonly("taxProfile.calculatedTaxAmount")}
+                        </div>
                     </div>
-                    <div class="llbs-tax-field">
-                        <label>Federal Rate</label>
-                        ${editable("taxProfile.federalTaxRate", "Federal tax rate", "percent")}
-                    </div>
-                    <div class="llbs-tax-field">
-                        <label>State Rate</label>
-                        ${editable("taxProfile.stateTaxRate", "State tax rate", "percent")}
-                    </div>
-                    <div class="llbs-tax-field">
-                        <label>FICA Rate</label>
-                        ${editable("taxProfile.ficaRate", "FICA tax rate", "percent")}
-                    </div>
-                    <label class="llbs-toggle">
-                        <input type="checkbox" data-llbs-checkbox="taxProfile.useCustomTaxOverride" />
-                        <span>Override Taxes</span>
-                    </label>
-                    <div class="llbs-tax-field llbs-tax-manual">
-                        <label>Manual Tax Amount</label>
-                        ${editable("taxProfile.manualTaxAmount", "Manual tax amount")}
-                    </div>
-                    <div class="llbs-tax-field">
-                        <label>Effective Rate</label>
-                        ${readonly("taxProfile.effectiveTaxRate")}
-                    </div>
-                    <div class="llbs-tax-field">
-                        <label>Calculated Taxes</label>
-                        ${readonly("taxProfile.calculatedTaxAmount")}
-                    </div>
-                </div>
-                <div class="llbs-tax-burden">
-                    <span data-llbs-text="summary.taxBurdenStatement">Your estimated tax burden is 0% ($0 annually).</span>
                 </div>
             </section>
         `;
@@ -661,6 +685,11 @@
             positionEl.dataset.status = status;
         }
 
+        const taxOverrideEl = root.querySelector("[data-llbs-tax-override]");
+        if (taxOverrideEl) {
+            taxOverrideEl.textContent = state.taxProfile.useCustomTaxOverride ? "On" : "Off";
+        }
+
         root.querySelectorAll("[data-llbs-edit]").forEach((button) => {
             const path = button.getAttribute("data-path");
             const kind = button.getAttribute("data-kind") || "currency";
@@ -827,7 +856,20 @@
                 return;
             }
 
+            if (button.dataset.section === "#llbsTaxProfile") {
+                setTaxProfileExpanded(true);
+            }
+
             focusSection(button.dataset.section || "");
+        }
+
+        function setTaxProfileExpanded(expanded) {
+            const body = root.querySelector("#llbsTaxProfileBody");
+            const toggle = root.querySelector("[data-llbs-tax-toggle]");
+            if (!body || !toggle) return;
+            body.hidden = !expanded;
+            toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+            toggle.textContent = expanded ? "Hide Tax Profile" : "Edit Tax Profile";
         }
 
         if (options?.advisorModeEnabled) {
@@ -850,6 +892,13 @@
             const viewButton = event.target.closest("[data-llbs-view]");
             if (viewButton) {
                 setAdvisorView(viewButton.getAttribute("data-llbs-view"));
+                return;
+            }
+
+            const taxToggle = event.target.closest("[data-llbs-tax-toggle]");
+            if (taxToggle) {
+                const body = root.querySelector("#llbsTaxProfileBody");
+                setTaxProfileExpanded(!!body?.hidden);
                 return;
             }
 
