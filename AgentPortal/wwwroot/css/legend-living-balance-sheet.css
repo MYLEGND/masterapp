@@ -662,7 +662,7 @@
 }
 
 .llbs-gap-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .llbs-gap-card {
@@ -1211,6 +1211,122 @@
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, .14),
         0 0 0 1px rgba(255, 159, 168, .16);
+}
+
+/* ── Health Score card ──────────────────────────────────────────────────────── */
+.llbs-health-score-card {
+    background:
+        radial-gradient(180px 90px at 50% 0%, rgba(199, 153, 49, .18), transparent 70%),
+        linear-gradient(180deg, rgba(20, 41, 77, .86), rgba(9, 18, 35, .96));
+}
+
+.llbs-score-value {
+    color: #f3d88b;
+    font-size: 1.5rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.llbs-score-value[data-grade="strong"] { color: #35b779; }
+.llbs-score-value[data-grade="stable"] { color: #f3d88b; }
+.llbs-score-value[data-grade="exposed"] { color: #e15a64; }
+
+/* ── Section completion dot ─────────────────────────────────────────────────── */
+.llbs-section-head.is-complete .llbs-section-title::after,
+#llbsTaxProfile .llbs-tax-summary.is-complete .llbs-section-title::after {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #35b779;
+    margin-left: 7px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px rgba(53, 183, 121, .6);
+}
+
+/* ── Lifestyle note ──────────────────────────────────────────────────────────── */
+.llbs-lifestyle-note {
+    display: block;
+    font-size: .68rem;
+    font-weight: 800;
+    line-height: 1.2;
+    min-height: .68rem;
+}
+
+.llbs-lifestyle-note[data-tone="good"] { color: #a7f3c0; }
+.llbs-lifestyle-note[data-tone="bad"] { color: #ffb4ba; }
+
+/* ── Coverage % bar ──────────────────────────────────────────────────────────── */
+.llbs-coverage-bar-wrap {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .28);
+    overflow: hidden;
+    margin-top: 2px;
+}
+
+.llbs-coverage-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: rgba(53, 183, 121, .7);
+    transition: width .25s ease;
+}
+
+.llbs-coverage-bar[data-status="Protected"] { background: #35b779; }
+.llbs-coverage-bar[data-status="Partial"] { background: #c79931; }
+.llbs-coverage-bar[data-status="Exposed"] { background: #e15a64; }
+
+/* ── Net worth session delta ─────────────────────────────────────────────────── */
+.llbs-net-delta {
+    font-size: .7rem;
+    font-weight: 850;
+    margin-top: 2px;
+}
+
+.llbs-net-delta[data-tone="up"] { color: #146c43; }
+.llbs-net-delta[data-tone="down"] { color: #c0222e; }
+
+/* ── Print button ────────────────────────────────────────────────────────────── */
+.llbs-print-btn {
+    min-height: 32px;
+    border: 1px solid rgba(243, 216, 139, .38);
+    border-radius: 8px;
+    padding: 6px 11px;
+    color: #fff7dd;
+    background: linear-gradient(180deg, rgba(199, 153, 49, .1), rgba(124, 88, 18, .06));
+    font-size: .76rem;
+    font-weight: 950;
+    cursor: pointer;
+}
+
+.llbs-print-btn:hover,
+.llbs-print-btn:focus-visible {
+    outline: none;
+    border-color: var(--llbs-gold-3);
+    box-shadow: 0 0 0 3px rgba(199, 153, 49, .18);
+}
+
+/* ── Print styles ────────────────────────────────────────────────────────────── */
+@media print {
+    body * { visibility: hidden; }
+    .llbs-tool, .llbs-tool * { visibility: visible; }
+    .llbs-tool { position: fixed; inset: 0; margin: 0; padding: 12px; width: 100%; color: #000 !important; }
+    .llbs-shell { border: none; box-shadow: none; background: #fff !important; }
+    .llbs-hero { background: none !important; color: #000 !important; border-bottom: 1px solid #ccc; }
+    .llbs-kicker, .llbs-title, .llbs-subtitle { color: #000 !important; text-shadow: none !important; }
+    .llbs-print-btn, .llbs-clear, [data-llbs-reset], [data-llbs-print] { display: none !important; }
+    .llbs-advisor-panel, .llbs-advisor-toggle { display: none !important; }
+    .llbs-section, .llbs-net-worth, .llbs-tax-panel, .llbs-gaps-panel {
+        border: 1px solid #ccc !important;
+        background: #fff !important;
+        box-shadow: none !important;
+        page-break-inside: avoid;
+    }
+    .llbs-section-title, .llbs-section-note { color: #000 !important; text-shadow: none !important; }
+    .llbs-edit-value, .llbs-readonly-value { border: 1px solid #ccc !important; background: #f9f9f9 !important; color: #000 !important; }
+    .llbs-tax-body[hidden] { display: none !important; }
 }
 
 @media (max-width: 1080px) {

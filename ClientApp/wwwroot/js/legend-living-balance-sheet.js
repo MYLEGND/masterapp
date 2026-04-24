@@ -41,7 +41,7 @@
 
     const CASH_FIELDS = [
         ["cashFlow.earnings", "Earnings", "editable"],
-        ["cashFlow.insuranceCosts", "Insurance Costs", "editable"],
+        ["cashFlow.insuranceCosts", "Insurance Costs", "readonly"],
         ["cashFlow.annualSavings", "Annual Savings", "editable"],
         ["cashFlow.debtsAndTaxCosts", "Debts & Tax Costs", "computed"],
         ["cashFlow.lifestyleRemaining", "What's Left for Lifestyle", "computed"]
@@ -384,15 +384,17 @@
         delete estatePlanning.gapAmount;
         setPath(s, WILLS_TRUSTS_PATH, estatePlanning);
 
-        const protectionItems = FINANCIAL_PROTECTION_FIELDS.map(([path]) => {
+        const protectionPairs = FINANCIAL_PROTECTION_FIELDS.map(([path]) => {
             const item = getPath(s, path);
-            return item.primary || item;
+            return { primary: item.primary || item, spouse: item.spouse || null };
         });
-        const protectionCoverageTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.coverageAmount), 0);
-        const protectionGapTotal = protectionItems.reduce((sum, x) => sum + nonNegative(x.gapAmount), 0);
-        const protectedCount = protectionItems.filter(x => x.status === "Protected").length;
-        const partialCount = protectionItems.filter(x => x.status === "Partial").length;
-        const exposedCount = protectionItems.filter(x => x.status === "Exposed").length;
+        const protectionCoverageTotal = protectionPairs.reduce((sum, { primary, spouse }) =>
+            sum + nonNegative(primary.coverageAmount) + (spouse ? nonNegative(spouse.coverageAmount) : 0), 0);
+        const protectionGapTotal = protectionPairs.reduce((sum, { primary, spouse }) =>
+            sum + nonNegative(primary.gapAmount) + (spouse ? nonNegative(spouse.gapAmount) : 0), 0);
+        const protectedCount = protectionPairs.filter(({ primary }) => primary.status === "Protected").length;
+        const partialCount = protectionPairs.filter(({ primary }) => primary.status === "Partial").length;
+        const exposedCount = protectionPairs.filter(({ primary }) => primary.status === "Exposed").length;
         const debtPressureRatio = s.cashFlow.earnings > 0
             ? Math.min(1, s.cashFlow.debtObligations / s.cashFlow.earnings)
             : (s.cashFlow.debtObligations > 0 ? 1 : 0);
@@ -409,6 +411,23 @@
         const taxBurdenStatement = s.taxProfile.useCustomTaxOverride
             ? `Your tax burden is set by custom override at ${formatCurrency(s.liabilities.taxes)} annually.`
             : `Your estimated tax burden is ${formatPercent(s.taxProfile.effectiveTaxRate)} (${formatCurrency(s.liabilities.taxes)} annually).`;
+        const totalProtectionFields = FINANCIAL_PROTECTION_FIELDS.length;
+        const netWorthScore = netWorth <= 0 ? 0 : Math.min(20, Math.floor(netWorth / 25000) * 2);
+        const protectionScore = exposedCount === 0 && partialCount === 0 ? 25
+            : exposedCount === 0 ? 15
+            : Math.round((protectedCount / totalProtectionFields) * 10);
+        const debtScore = Math.round(Math.max(0, 1 - debtPressureRatio / 0.35) * 20);
+        const lifestyleScore = s.cashFlow.lifestyleRemaining > 0 ? 15 : 0;
+        const savingsScore = s.cashFlow.annualSavings > 0 ? 10 : 0;
+        const estateScore = estatePlanning.status === "FullEstatePlan" ? 10 : estatePlanning.status === "BasicWill" ? 5 : 0;
+        const healthScore = Math.min(100, netWorthScore + protectionScore + debtScore + lifestyleScore + savingsScore + estateScore);
+        const sectionCompletion = {
+            protection: protectedCount + partialCount > 0 || protectionCoverageTotal > 0,
+            assets: s.assets.total > 0,
+            liabilities: s.liabilities.shortTerm > 0 || s.liabilities.mortgages > 0 || s.liabilities.businessDebt > 0,
+            cash: s.cashFlow.earnings > 0,
+            tax: s.taxProfile.federalTaxRate > 0 || s.taxProfile.useCustomTaxOverride
+        };
         s.summary = {
             assetsTotal: s.assets.total,
             liabilitiesTotal: s.liabilities.total,
@@ -429,7 +448,9 @@
             positionStatus: position.status,
             positionSummary: position.summary,
             positionStatement: `You are currently operating at a Net Worth of ${formatCurrency(netWorth)}. Based on your current structure, you are ${position.status}.`,
-            taxBurdenStatement
+            taxBurdenStatement,
+            healthScore,
+            sectionCompletion
         };
 
         return s;
@@ -486,6 +507,9 @@
                         <small>Gap</small>
                         ${editable(`${path}.${person}.gapAmount`, `${title} ${person} gap`)}
                     </div>
+                </div>
+                <div class="llbs-coverage-bar-wrap">
+                    <div class="llbs-coverage-bar" data-llbs-coverage-bar="${path}" data-person="${person}"></div>
                 </div>
             </div>
         `;
@@ -630,6 +654,11 @@
                         <span>Debt Pressure Ratio</span>
                         ${readonly("summary.debtPressureRatio", "percent")}
                     </article>
+                    <article class="llbs-gap-card llbs-health-score-card">
+                        <span>Health Score</span>
+                        <span class="llbs-score-value" data-llbs-score>0</span>
+                        <small>out of 100</small>
+                    </article>
                 </div>
             </section>
         `;
@@ -704,6 +733,7 @@
                         </div>
                         <div class="llbs-status">
                             <span class="llbs-save-state" data-llbs-save-state>Ready</span>
+                            <button type="button" class="llbs-print-btn" data-llbs-print>Print</button>
                             <button type="button" class="llbs-clear" data-llbs-reset>Reset Tool</button>
                         </div>
                     </header>
@@ -768,6 +798,7 @@
                                 <span class="llbs-position-pill" data-llbs-position>Exposed</span>
                                 <p data-llbs-text="summary.positionStatement">You are currently operating at a Net Worth of $0. Based on your current structure, you are Exposed.</p>
                                 <small data-llbs-text="summary.positionSummary">Your structure is showing pressure. The next move is to close gaps before chasing more growth.</small>
+                                <span class="llbs-net-delta" data-llbs-net-delta hidden></span>
                             </div>
                             <div class="llbs-net-meta">
                                 <span>Assets <strong data-llbs-output="summary.assetsTotal">$0</strong></span>
@@ -805,6 +836,7 @@
                                                     ${readonly("cashFlow.debtObligations")}
                                                 </div>
                                             </div>` : mode === "editable" ? editable(path, label) : readonly(path)}
+                                        ${path === "cashFlow.lifestyleRemaining" ? `<span class="llbs-lifestyle-note" data-llbs-lifestyle-note></span>` : ""}
                                     </article>
                                 `).join("")}
                             </div>
@@ -911,6 +943,52 @@
         root.querySelectorAll('[data-path="taxProfile.manualTaxAmount"]').forEach((control) => {
             control.disabled = manualTaxDisabled;
         });
+
+        // Section completion dots
+        const completion = state.summary?.sectionCompletion || {};
+        [
+            [".llbs-protection .llbs-section-head", completion.protection],
+            [".llbs-card-section[data-tone='assets'] .llbs-section-head", completion.assets],
+            [".llbs-card-section[data-tone='liabilities'] .llbs-section-head", completion.liabilities],
+            [".llbs-card-section[data-tone='cash'] .llbs-section-head", completion.cash],
+            ["#llbsTaxProfile .llbs-tax-summary", completion.tax]
+        ].forEach(([selector, complete]) => {
+            const el = root.querySelector(selector);
+            if (el) el.classList.toggle("is-complete", !!complete);
+        });
+
+        // Lifestyle contextual note
+        const lifestyleNoteEl = root.querySelector("[data-llbs-lifestyle-note]");
+        if (lifestyleNoteEl) {
+            const lr = state.cashFlow.lifestyleRemaining;
+            lifestyleNoteEl.textContent = lr > 0
+                ? "Margin available for lifestyle spending"
+                : lr < 0 ? "Obligations exceed income" : "";
+            lifestyleNoteEl.dataset.tone = lr > 0 ? "good" : lr < 0 ? "bad" : "";
+        }
+
+        // Coverage % bars
+        root.querySelectorAll("[data-llbs-coverage-bar]").forEach(bar => {
+            const path = bar.getAttribute("data-llbs-coverage-bar");
+            const person = bar.getAttribute("data-person") || "primary";
+            const item = getPath(state, path);
+            if (!item) return;
+            const personData = item[person] || item.primary || item;
+            const coverage = nonNegative(personData.coverageAmount);
+            const gap = nonNegative(personData.gapAmount);
+            const total = coverage + gap;
+            const pct = total > 0 ? Math.round((coverage / total) * 100) : 0;
+            bar.style.width = `${pct}%`;
+            bar.dataset.status = personData.status || "Exposed";
+        });
+
+        // Health score badge
+        const scoreEl = root.querySelector("[data-llbs-score]");
+        if (scoreEl) {
+            const score = state.summary?.healthScore ?? 0;
+            scoreEl.textContent = score;
+            scoreEl.dataset.grade = score >= 75 ? "strong" : score >= 45 ? "stable" : "exposed";
+        }
     }
 
     async function render(options) {
@@ -947,9 +1025,23 @@
             if (debtMonthly > 0) setPath(state, "cashFlow.debtObligations", Math.round(debtMonthly * 12));
             if (insMonthly > 0 || debtMonthly > 0) state = calculate(state);
         } catch (_) {}
+        const sessionStartNetWorth = state.summary.netWorth;
         let saveTimer = null;
         let savedLabelTimer = null;
         let focusPulseTimer = null;
+
+        function refreshAndDelta() {
+            refresh(root, state);
+            const deltaEl = root.querySelector("[data-llbs-net-delta]");
+            if (deltaEl) {
+                const delta = (state.summary?.netWorth ?? 0) - sessionStartNetWorth;
+                deltaEl.hidden = delta === 0;
+                if (delta !== 0) {
+                    deltaEl.textContent = `${delta > 0 ? "+" : ""}${formatCurrency(delta)} vs. session start`;
+                    deltaEl.dataset.tone = delta > 0 ? "up" : "down";
+                }
+            }
+        }
 
         function setStatus(text) {
             if (saveStateEl) saveStateEl.textContent = text;
@@ -984,8 +1076,13 @@
             const normalized = kind === "percent" ? normalizeRate(value / 100) : parseNumber(value);
             setPath(state, path, normalized);
             state = calculate(state);
-            refresh(root, state);
+            refreshAndDelta();
             scheduleSave();
+            if (path === "cashFlow.annualSavings") {
+                window.dispatchEvent(new CustomEvent("LegendLivingBalanceSheet:savingsUpdated", {
+                    detail: { annualSavings: state.cashFlow.annualSavings }
+                }));
+            }
         }
 
         function beginEdit(button) {
@@ -1121,9 +1218,15 @@
                 return;
             }
 
+            if (event.target.closest("[data-llbs-print]")) {
+                window.print();
+                return;
+            }
+
             if (event.target.closest("[data-llbs-reset]")) {
+                if (!window.confirm("Reset the Financial Health Snapshot? All entered values will be cleared.")) return;
                 state = calculate(defaultState());
-                refresh(root, state);
+                refreshAndDelta();
                 persistNow();
                 return;
             }
@@ -1145,7 +1248,7 @@
                 : parseNumber(input.value);
             setPath(state, path, normalized);
             state = calculate(state);
-            refresh(root, state);
+            refreshAndDelta();
             scheduleSave();
         });
 
@@ -1166,7 +1269,7 @@
                 input.hidden = true;
                 const button = input.parentElement?.querySelector("[data-llbs-edit]");
                 if (button) button.hidden = false;
-                refresh(root, state);
+                refreshAndDelta();
             }
         });
 
@@ -1178,7 +1281,7 @@
                 setPath(state, path, status);
                 setPath(state, path.replace(/\.status$/, ".riskLevel"), riskLevelForEstateStatus(status));
                 state = calculate(state);
-                refresh(root, state);
+                refreshAndDelta();
                 scheduleSave();
                 return;
             }
@@ -1187,7 +1290,7 @@
             if (statusSelect) {
                 setPath(state, statusSelect.getAttribute("data-llbs-status"), normalizeStatus(statusSelect.value));
                 state = calculate(state);
-                refresh(root, state);
+                refreshAndDelta();
                 scheduleSave();
                 return;
             }
@@ -1196,7 +1299,7 @@
             if (select) {
                 setPath(state, select.getAttribute("data-llbs-select"), select.value);
                 state = calculate(state);
-                refresh(root, state);
+                refreshAndDelta();
                 scheduleSave();
                 return;
             }
@@ -1205,12 +1308,12 @@
             if (checkbox) {
                 setPath(state, checkbox.getAttribute("data-llbs-checkbox"), checkbox.checked);
                 state = calculate(state);
-                refresh(root, state);
+                refreshAndDelta();
                 scheduleSave();
             }
         });
 
-        refresh(root, state);
+        refreshAndDelta();
         if (shouldSeedDefault) persistNow();
         else setStatus("Loaded");
 
@@ -1228,7 +1331,17 @@
             setPath(state, "cashFlow.insuranceCosts", insAnnual);
             setPath(state, "cashFlow.debtObligations", debtAnnual);
             state = calculate(state);
-            refresh(root, state);
+            refreshAndDelta();
+            scheduleSave();
+        });
+
+        window.addEventListener("SavingsAccelerator:updated", (event) => {
+            const detail = event.detail || {};
+            const savings = parseNumber(detail.annualSavings ?? 0);
+            if (savings === nonNegative(getPath(state, "cashFlow.annualSavings"))) return;
+            setPath(state, "cashFlow.annualSavings", savings);
+            state = calculate(state);
+            refreshAndDelta();
             scheduleSave();
         });
     }
