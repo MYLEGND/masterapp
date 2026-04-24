@@ -1219,7 +1219,19 @@
             }
 
             if (event.target.closest("[data-llbs-print]")) {
-                window.print();
+                const printWin = window.open("", "_blank");
+                const cssLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
+                    .map(l => `<link rel="stylesheet" href="${l.href}">`)
+                    .join("\n");
+                printWin.document.write(
+                    `<!DOCTYPE html><html><head><meta charset="UTF-8">${cssLinks}</head>` +
+                    `<body style="margin:0;padding:0;background:#060b16">${root.outerHTML}</body></html>`
+                );
+                printWin.document.close();
+                printWin.addEventListener("load", () => {
+                    printWin.print();
+                    printWin.close();
+                });
                 return;
             }
 

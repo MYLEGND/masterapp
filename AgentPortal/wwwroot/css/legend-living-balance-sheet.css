@@ -1308,29 +1308,15 @@
     box-shadow: 0 0 0 3px rgba(199, 153, 49, .18);
 }
 
-/* ── Print styles ────────────────────────────────────────────────────────────── */
+/* ── Print styles (applied in the dedicated print window opened by JS) ────────── */
 @media print {
-    /* Hide everything on the page except the tool */
-    body * { visibility: hidden; }
-
-    /* Reveal only the tool and all its children */
-    .llbs-tool,
-    .llbs-tool * { visibility: visible; }
-
-    /* Force exact color reproduction — preserve the dark navy/gold theme */
     .llbs-tool {
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
-        position: absolute;
-        top: 0;
-        left: 0;
         width: 100%;
-        max-width: 100%;
         margin: 0;
-        overflow: visible;
     }
 
-    /* Hide interactive-only chrome */
     .llbs-print-btn,
     .llbs-clear,
     .llbs-save-state,
@@ -1340,7 +1326,6 @@
     [data-llbs-tax-toggle],
     .llbs-tax-body { display: none !important; }
 
-    /* Prevent sections from splitting across pages */
     .llbs-section,
     .llbs-net-worth,
     .llbs-tax-panel,
