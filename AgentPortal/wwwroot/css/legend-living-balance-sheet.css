@@ -1310,23 +1310,32 @@
 
 /* ── Print styles ────────────────────────────────────────────────────────────── */
 @media print {
-    body * { visibility: hidden; }
-    .llbs-tool, .llbs-tool * { visibility: visible; }
-    .llbs-tool { position: fixed; inset: 0; margin: 0; padding: 12px; width: 100%; color: #000 !important; }
-    .llbs-shell { border: none; box-shadow: none; background: #fff !important; }
-    .llbs-hero { background: none !important; color: #000 !important; border-bottom: 1px solid #ccc; }
-    .llbs-kicker, .llbs-title, .llbs-subtitle { color: #000 !important; text-shadow: none !important; }
-    .llbs-print-btn, .llbs-clear, [data-llbs-reset], [data-llbs-print] { display: none !important; }
-    .llbs-advisor-panel, .llbs-advisor-toggle { display: none !important; }
-    .llbs-section, .llbs-net-worth, .llbs-tax-panel, .llbs-gaps-panel {
-        border: 1px solid #ccc !important;
-        background: #fff !important;
-        box-shadow: none !important;
-        page-break-inside: avoid;
+    /* Force exact color reproduction — preserve the dark theme */
+    .llbs-tool {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        color-adjust: exact;
+        position: fixed;
+        inset: 0;
+        margin: 0;
+        width: 100%;
     }
-    .llbs-section-title, .llbs-section-note { color: #000 !important; text-shadow: none !important; }
-    .llbs-edit-value, .llbs-readonly-value { border: 1px solid #ccc !important; background: #f9f9f9 !important; color: #000 !important; }
-    .llbs-tax-body[hidden] { display: none !important; }
+
+    /* Hide interactive-only chrome */
+    .llbs-print-btn,
+    .llbs-clear,
+    .llbs-save-state,
+    .llbs-advisor-toggle,
+    .llbs-advisor-panel,
+    .llbs-save-error,
+    [data-llbs-tax-toggle],
+    .llbs-tax-body { display: none !important; }
+
+    /* Prevent sections from splitting across pages */
+    .llbs-section,
+    .llbs-net-worth,
+    .llbs-tax-panel,
+    .llbs-gaps-panel { page-break-inside: avoid; }
 }
 
 @media (max-width: 1080px) {
