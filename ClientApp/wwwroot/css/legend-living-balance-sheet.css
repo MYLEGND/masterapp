@@ -1322,11 +1322,12 @@
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
         color-adjust: exact;
-        position: fixed;
-        inset: 0;
-        margin: 0;
+        position: absolute;
+        top: 0;
+        left: 0;
         width: 100%;
         max-width: 100%;
+        margin: 0;
         overflow: visible;
     }
 
