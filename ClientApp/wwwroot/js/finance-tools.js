@@ -2097,15 +2097,25 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             deleteBtn.textContent = "✕";
             deleteBtn.style.border = "none";
             deleteBtn.style.background = "transparent";
-            deleteBtn.style.color = "#1E3A8A";
             deleteBtn.style.fontWeight = "900";
-            deleteBtn.style.cursor = "pointer";
             deleteBtn.style.flex = isDualPanel ? "0 0 16px" : "";
             deleteBtn.style.padding = isDualPanel ? "0" : "";
-            deleteBtn.addEventListener("click", () => {
-                categoriesContainer.removeChild(div);
-                refreshExpenseLensViews();
-            });
+            const isInsuranceRow = isTemplate && preName.toLowerCase().includes("insurance");
+            if (isInsuranceRow) {
+                deleteBtn.style.opacity = "0.2";
+                deleteBtn.style.cursor = "not-allowed";
+                deleteBtn.style.color = "#94a3b8";
+                deleteBtn.setAttribute("disabled", "true");
+                deleteBtn.setAttribute("aria-disabled", "true");
+                deleteBtn.title = "Insurance rows cannot be removed";
+            } else {
+                deleteBtn.style.color = "#1E3A8A";
+                deleteBtn.style.cursor = "pointer";
+                deleteBtn.addEventListener("click", () => {
+                    categoriesContainer.removeChild(div);
+                    refreshExpenseLensViews();
+                });
+            }
 
             // Format numbers with commas on blur
             amountInput.addEventListener("blur", () => {

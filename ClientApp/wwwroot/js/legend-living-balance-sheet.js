@@ -790,7 +790,11 @@
                                             <strong>${label}</strong>
                                             ${path === "cashFlow.debtsAndTaxCosts" ? "<small>Debt obligations + tax burden</small>" : ""}
                                         </div>
-                                        ${path === "cashFlow.debtsAndTaxCosts" ? `
+                                        ${path === "cashFlow.insuranceCosts" ? `
+                                            <div class="llbs-label">
+                                                <small>Annual insurance <span class="llbs-el-source">· Expense Lens</span></small>
+                                                ${readonly("cashFlow.insuranceCosts")}
+                                            </div>` : path === "cashFlow.debtsAndTaxCosts" ? `
                                             <div class="llbs-two-up">
                                                 <div class="llbs-label">
                                                     <small>Tax burden</small>
@@ -930,14 +934,18 @@
             state.clientId = options.clientProfileId;
         }
 
-        // Seed debt obligations from Expense Lens persisted state (monthly × 12)
+        // Seed insurance costs + debt obligations from Expense Lens persisted state
         try {
             const elState = await (persistence?.loadState?.("ExpenseLens") || {});
-            const elMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
-            if (elMonthly > 0) {
-                setPath(state, "cashFlow.debtObligations", Math.round(elMonthly * 12));
-                state = calculate(state);
-            }
+            const FREQ_MULT = { monthly: 1, weekly: 4.33, biweekly: 2.17 };
+            const categories = (elState || {}).categories || [];
+            const insMonthly = categories
+                .filter(c => (c.name || "").toLowerCase().includes("insurance"))
+                .reduce((sum, c) => sum + parseNumber(c.amount || 0) * (FREQ_MULT[c.frequency] || 1), 0);
+            if (insMonthly > 0) setPath(state, "cashFlow.insuranceCosts", Math.round(insMonthly * 12));
+            const debtMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
+            if (debtMonthly > 0) setPath(state, "cashFlow.debtObligations", Math.round(debtMonthly * 12));
+            if (insMonthly > 0 || debtMonthly > 0) state = calculate(state);
         } catch (_) {}
         let saveTimer = null;
         let savedLabelTimer = null;
@@ -1207,10 +1215,18 @@
         else setStatus("Loaded");
 
         window.addEventListener("ExpenseLens:updated", (event) => {
-            const elMonthly = parseNumber((event.detail || {}).monthlyExpenseTotal ?? 0);
-            const annual = Math.round(elMonthly * 12);
-            if (annual === nonNegative(getPath(state, "cashFlow.debtObligations"))) return;
-            setPath(state, "cashFlow.debtObligations", annual);
+            const detail = event.detail || {};
+            const expenses = detail.expenses || [];
+            const insMonthly = expenses
+                .filter(e => (e.name || "").toLowerCase().includes("insurance"))
+                .reduce((sum, e) => sum + parseNumber(e.amount || 0), 0);
+            const insAnnual = Math.round(insMonthly * 12);
+            const debtAnnual = Math.round(parseNumber(detail.monthlyExpenseTotal ?? 0) * 12);
+            const prevIns = nonNegative(getPath(state, "cashFlow.insuranceCosts"));
+            const prevDebt = nonNegative(getPath(state, "cashFlow.debtObligations"));
+            if (insAnnual === prevIns && debtAnnual === prevDebt) return;
+            setPath(state, "cashFlow.insuranceCosts", insAnnual);
+            setPath(state, "cashFlow.debtObligations", debtAnnual);
             state = calculate(state);
             refresh(root, state);
             scheduleSave();
