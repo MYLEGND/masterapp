@@ -807,7 +807,6 @@
                         </section>
 
                         ${renderTaxPanel()}
-                        ${renderActionStrip(options)}
                         <div class="llbs-save-error" data-llbs-error hidden></div>
                     </div>
                 </div>
