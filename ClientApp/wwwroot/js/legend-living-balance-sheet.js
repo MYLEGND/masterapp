@@ -956,10 +956,8 @@
         const lifestyleNoteEl = root.querySelector("[data-llbs-lifestyle-note]");
         if (lifestyleNoteEl) {
             const lr = state.cashFlow.lifestyleRemaining;
-            lifestyleNoteEl.textContent = lr > 0
-                ? "Margin available for lifestyle spending"
-                : lr < 0 ? "Obligations exceed income" : "";
-            lifestyleNoteEl.dataset.tone = lr > 0 ? "good" : lr < 0 ? "bad" : "";
+            lifestyleNoteEl.textContent = lr < 0 ? "Obligations exceed income" : "";
+            lifestyleNoteEl.dataset.tone = lr < 0 ? "bad" : "";
         }
 
         // Coverage % bars
