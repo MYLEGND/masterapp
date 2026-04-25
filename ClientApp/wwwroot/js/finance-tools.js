@@ -2868,6 +2868,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
 
             incomeFlexWrap.parentElement.insertBefore(splitRow, incomeFlexWrap.nextSibling);
+
+            // Total Income is now computed from split fields — lock it
+            elIncome.readOnly = true;
+            elIncome.style.background = 'rgba(0,0,0,0.04)';
+            elIncome.style.cursor = 'default';
+            elIncome.style.color = '#64748B';
         }
 
         await loadExpenseLensState();
