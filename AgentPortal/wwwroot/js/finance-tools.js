@@ -652,7 +652,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 clientProfileId,
                 clientUserId,
                 isBusinessClient,
-                advisorModeEnabled: true,
                 clientFirstName,
                 spouseFirstName,
                 hasSpouse
