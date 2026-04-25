@@ -215,17 +215,16 @@
 
 .llbs-protection-card {
     display: grid;
-    gap: 5px;
-    padding: 7px;
+    gap: 4px;
+    padding: 5px 6px;
     background:
         radial-gradient(180px 90px at 10% 0%, rgba(243, 216, 139, .13), transparent 72%),
         linear-gradient(180deg, #111f3a, #0b1529);
 }
 
 .llbs-protection-card-title {
-    min-height: 28px;
     color: #fff7dd;
-    font-size: .82rem;
+    font-size: .76rem;
     font-weight: 950;
     line-height: 1.15;
 }
@@ -233,13 +232,13 @@
 .llbs-status-select,
 .llbs-tax-select {
     width: 100%;
-    min-height: 27px;
+    min-height: 24px;
     border: 1px solid rgba(243, 216, 139, .28);
     border-radius: 7px;
     background: #0b1324;
     color: var(--llbs-text);
-    padding: 2px 8px;
-    font-size: .76rem;
+    padding: 1px 6px;
+    font-size: .72rem;
     font-weight: 900;
 }
 
@@ -262,14 +261,14 @@
 }
 
 .llbs-estate-card {
-    grid-template-rows: minmax(36px, auto) 31px 1fr;
+    grid-template-rows: auto auto 1fr;
 }
 
 .llbs-estate-subtext {
     display: block;
-    margin-top: 2px;
-    color: rgba(255, 248, 220, .82);
-    font-size: .64rem;
+    margin-top: 1px;
+    color: rgba(255, 248, 220, .7);
+    font-size: .58rem;
     font-weight: 800;
     line-height: 1.15;
 }
@@ -295,7 +294,7 @@
 .llbs-estate-risk-row {
     display: grid;
     align-items: end;
-    min-height: 38px;
+    min-height: 28px;
 }
 
 .llbs-risk-pill {
@@ -303,11 +302,11 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: 31px;
+    min-height: 24px;
     border: 1px solid rgba(255, 248, 220, .38);
     border-radius: 8px;
-    padding: 4px 8px;
-    font-size: .78rem;
+    padding: 2px 6px;
+    font-size: .72rem;
     font-weight: 950;
     line-height: 1;
     text-transform: uppercase;
@@ -432,6 +431,16 @@
     min-width: 0;
 }
 
+.llbs-protection-card .llbs-edit-value,
+.llbs-protection-card .llbs-readonly-value {
+    min-height: 24px;
+    font-size: .78rem;
+}
+
+.llbs-protection-card .llbs-label small {
+    font-size: .58rem;
+}
+
 /* Person toggle — You / Spouse */
 .llbs-person-toggle {
     display: flex;
@@ -444,12 +453,12 @@
 }
 
 .llbs-person-btn {
-    padding: 2px 9px;
+    padding: 1px 7px;
     border: none;
     border-radius: 4px;
     background: transparent;
     color: rgba(248, 250, 252, .42);
-    font-size: .7rem;
+    font-size: .64rem;
     font-weight: 700;
     letter-spacing: .02em;
     line-height: 1.5;
