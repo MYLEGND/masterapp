@@ -642,9 +642,8 @@
                         ${readonly("summary.protectionGapTotal")}
                     </article>
                     <article class="llbs-gap-card">
-                        <span>Tax Drag</span>
+                        <span>Estimated Annual Taxes</span>
                         ${readonly("summary.taxDrag")}
-                        <small>Annual estimated burden</small>
                     </article>
                     <article class="llbs-gap-card">
                         <span>Cash Flow Leakage</span>

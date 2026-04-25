@@ -559,10 +559,11 @@
     grid-column: 1;
     grid-row: 1;
     color: var(--llbs-gold-2);
-    font-size: .62rem;
+    font-size: .88rem;
     font-weight: 950;
     letter-spacing: .16em;
     text-transform: uppercase;
+    text-align: center;
 }
 
 .llbs-net-value {
@@ -572,6 +573,7 @@
     font-size: clamp(1.6rem, 3vw, 2.6rem);
     line-height: 1;
     font-weight: 950;
+    text-align: center;
     letter-spacing: -.02em;
     font-variant-numeric: tabular-nums;
     text-shadow: 0 3px 22px rgba(199, 153, 49, .16);
