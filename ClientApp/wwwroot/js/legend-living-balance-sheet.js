@@ -795,8 +795,6 @@
                             <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
                         </section>
 
-                        ${renderGapsPanel()}
-
                         <section class="llbs-section llbs-card-section" data-tone="cash" data-llbs-script-key="cashflow">
                             <div class="llbs-section-head">
                                 <h3 class="llbs-section-title">Cash Flow</h3>
@@ -826,6 +824,7 @@
                         </section>
 
                         ${renderTaxPanel()}
+                        ${renderGapsPanel()}
                         <div class="llbs-save-error" data-llbs-error hidden></div>
                     </div>
                 </div>
