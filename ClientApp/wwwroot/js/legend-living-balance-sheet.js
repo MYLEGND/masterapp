@@ -815,34 +815,37 @@
                                 <span class="llbs-section-note">Annual view</span>
                             </div>
                             <div class="llbs-cash-grid">
-                                ${CASH_FIELDS.map(([path, label, mode]) => `
-                                    <article class="llbs-cash-card ${mode === "computed" ? "is-result" : ""} ${path === "cashFlow.debtsAndTaxCosts" ? "is-cost" : ""}">
-                                        <div class="llbs-label">
-                                            <strong>${label}</strong>
-                                            ${path === "cashFlow.debtsAndTaxCosts" ? "<small>Debt obligations + tax burden</small>" : ""}
-                                        </div>
-                                        ${path === "cashFlow.earnings" ? `
-                                            <div class="llbs-label">
-                                                <small>Annual income <span class="llbs-el-source">· Expense Lens</span></small>
-                                                ${readonly("cashFlow.earnings")}
-                                            </div>` : path === "cashFlow.insuranceCosts" ? `
-                                            <div class="llbs-label">
-                                                <small>Annual insurance <span class="llbs-el-source">· Expense Lens</span></small>
-                                                ${readonly("cashFlow.insuranceCosts")}
-                                            </div>` : path === "cashFlow.debtsAndTaxCosts" ? `
+                                ${CASH_FIELDS.map(([path, label, mode]) => {
+                                    const elBadge = (path === "cashFlow.earnings" || path === "cashFlow.insuranceCosts")
+                                        ? `<span class="llbs-el-source">· EL</span>` : "";
+                                    let valueHtml;
+                                    if (path === "cashFlow.debtsAndTaxCosts") {
+                                        valueHtml = `
                                             <div class="llbs-two-up">
-                                                <div class="llbs-label">
+                                                <div class="llbs-cash-sub">
                                                     <small>Tax burden</small>
                                                     ${readonly("liabilities.taxes")}
                                                 </div>
-                                                <div class="llbs-label">
-                                                    <small>Debt obligations <span class="llbs-el-source">· Expense Lens</span></small>
+                                                <div class="llbs-cash-sub">
+                                                    <small>Debt obligations <span class="llbs-el-source">· EL</span></small>
                                                     ${readonly("cashFlow.debtObligations")}
                                                 </div>
-                                            </div>` : mode === "editable" ? editable(path, label) : readonly(path)}
+                                            </div>`;
+                                    } else if (mode === "editable") {
+                                        valueHtml = editable(path, label);
+                                    } else {
+                                        valueHtml = readonly(path);
+                                    }
+                                    return `
+                                    <article class="llbs-cash-card ${mode === "computed" ? "is-result" : ""} ${path === "cashFlow.debtsAndTaxCosts" ? "is-cost" : ""}">
+                                        <div class="llbs-cash-card-header">
+                                            <strong>${label}</strong>
+                                            ${elBadge}
+                                        </div>
+                                        ${valueHtml}
                                         ${path === "cashFlow.lifestyleRemaining" ? `<span class="llbs-lifestyle-note" data-llbs-lifestyle-note></span>` : ""}
-                                    </article>
-                                `).join("")}
+                                    </article>`;
+                                }).join("")}
                             </div>
                         </section>
 

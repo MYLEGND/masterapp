@@ -1213,6 +1213,33 @@
         0 0 0 1px rgba(255, 159, 168, .16);
 }
 
+/* ── Cash card header & sub-row layout ─────────────────────────────────────── */
+.llbs-cash-card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+}
+
+.llbs-cash-card-header strong {
+    color: #dcffeb;
+    font-size: .78rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.llbs-cash-sub {
+    display: grid;
+    gap: 2px;
+}
+
+.llbs-cash-sub small {
+    color: rgba(244, 255, 247, .7);
+    font-size: .64rem;
+    font-weight: 750;
+}
+
 /* ── Health Score card ──────────────────────────────────────────────────────── */
 .llbs-health-score-card {
     background:
