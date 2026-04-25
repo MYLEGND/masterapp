@@ -793,15 +793,6 @@
                         <section class="llbs-net-worth" data-llbs-script-key="networth">
                             <div class="llbs-net-kicker">Net Worth</div>
                             <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
-                            <div class="llbs-net-interpretation">
-                                <span class="llbs-position-pill" data-llbs-position>Exposed</span>
-                                <span class="llbs-net-delta" data-llbs-net-delta hidden></span>
-                            </div>
-                            <div class="llbs-net-meta">
-                                <span>Assets <strong data-llbs-output="summary.assetsTotal">$0</strong></span>
-                                <span>Liabilities <strong data-llbs-output="summary.liabilitiesTotal">$0</strong></span>
-                                <span>Protection gap <strong data-llbs-output="summary.protectionGapTotal">$0</strong></span>
-                            </div>
                         </section>
 
                         ${renderGapsPanel()}

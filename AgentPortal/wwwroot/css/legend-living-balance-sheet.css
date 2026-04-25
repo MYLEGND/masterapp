@@ -551,22 +551,19 @@
 }
 
 .llbs-net-worth {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-items: start;
-    gap: 1px 18px;
+    justify-content: center;
+    gap: 4px;
     border-color: rgba(243, 216, 139, .42);
-    padding: 10px 14px;
+    padding: 12px 14px;
     background:
         radial-gradient(500px 140px at 50% 0%, rgba(243, 216, 139, .18), transparent 68%),
         linear-gradient(180deg, #111f3a, #070d18);
 }
 
 .llbs-net-kicker {
-    grid-column: 1;
-    grid-row: 1;
     color: var(--llbs-gold-2);
     font-size: .88rem;
     font-weight: 950;
@@ -576,8 +573,6 @@
 }
 
 .llbs-net-value {
-    grid-column: 1;
-    grid-row: 2;
     color: #ffffff;
     font-size: clamp(1.6rem, 3vw, 2.6rem);
     line-height: 1;
