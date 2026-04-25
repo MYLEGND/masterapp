@@ -1877,7 +1877,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 let categoriesCreated = 0;
 
                 if (state) {
-                    elIncome.value = state.income || '';
+                    if (elPrimaryIncome && state.primaryIncome) {
+                        elPrimaryIncome.value = state.primaryIncome;
+                        if (elSpouseIncome && state.spouseIncome) elSpouseIncome.value = state.spouseIncome;
+                        // Recompute total from split values; ignore stored income to avoid drift
+                        const pri = parseFloat((state.primaryIncome || '').replace(/,/g, '')) || 0;
+                        const spo = parseFloat((state.spouseIncome || '').replace(/,/g, '')) || 0;
+                        const total = pri + spo;
+                        elIncome.value = total > 0 ? total.toLocaleString() : '';
+                    } else {
+                        elIncome.value = state.income || '';
+                    }
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
@@ -2786,7 +2796,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:160px;';
                 const lbl = document.createElement('label');
                 lbl.htmlFor = inputId;
-                lbl.style.cssText = 'font-size:0.72rem;font-weight:800;color:#1E3A8A;letter-spacing:0.04em;text-transform:uppercase;';
+                lbl.style.cssText = 'font-size:0.72rem;font-weight:800;color:#c79931;letter-spacing:0.04em;text-transform:uppercase;';
                 lbl.textContent = labelText;
                 const inputWrap = document.createElement('div');
                 inputWrap.style.cssText = 'position:relative;';
@@ -2810,7 +2820,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 return { wrap, inp, pct };
             };
 
-            const primaryLabel = (clientFirstName || 'Client') + ' Income';
+            const makePossessive = (name) => name ? name + (name.endsWith('s') ? "' Income" : "'s Income") : 'Client Income';
+            const primaryLabel = makePossessive(clientFirstName);
             const { wrap: primaryWrap, inp: priInp, pct: priPct } = makeSplitField(elId('PrimaryIncome'), primaryLabel);
             elPrimaryIncome = priInp;
             splitRow.appendChild(primaryWrap);
@@ -2818,7 +2829,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             let spoInp = null;
             let spoPct = null;
             if (hasSpouse) {
-                const spouseLabel = (spouseFirstName || 'Spouse') + ' Income';
+                const spouseLabel = makePossessive(spouseFirstName || 'Spouse');
                 const { wrap: spouseWrap, inp, pct } = makeSplitField(elId('SpouseIncome'), spouseLabel);
                 elSpouseIncome = inp;
                 spoInp = inp;
