@@ -300,20 +300,20 @@
         if (netWorth <= 0 || lifestyleRemaining < 0 || protectionGap > 0 || debtPressureRatio >= 0.35 || exposedCount > 0) {
             return {
                 status: "Exposed",
-                summary: "Your structure is showing pressure. The next move is to close gaps before chasing more growth."
+                summary: "Gaps are open. Close protection and debt pressure before chasing growth."
             };
         }
 
         if (netWorth >= 250000 && lifestyleRemaining > 0 && debtPressureRatio <= 0.2 && protectionGap === 0) {
             return {
                 status: "Strong",
-                summary: "Your structure is carrying strength. The next move is optimization, tax control, and growth efficiency."
+                summary: "Strong foundation. Focus on tax efficiency and compounding growth."
             };
         }
 
         return {
             status: "Stable",
-            summary: "Your structure is workable, but there are still areas that can be tightened for more control."
+            summary: "Workable structure — tighten remaining gaps for full control."
         };
     }
 
@@ -795,8 +795,7 @@
                             <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
                             <div class="llbs-net-interpretation">
                                 <span class="llbs-position-pill" data-llbs-position>Exposed</span>
-                                <p data-llbs-text="summary.positionStatement">You are currently operating at a Net Worth of $0. Based on your current structure, you are Exposed.</p>
-                                <small data-llbs-text="summary.positionSummary">Your structure is showing pressure. The next move is to close gaps before chasing more growth.</small>
+                                <small data-llbs-text="summary.positionSummary">Gaps are open. Close protection and debt pressure before chasing growth.</small>
                                 <span class="llbs-net-delta" data-llbs-net-delta hidden></span>
                             </div>
                             <div class="llbs-net-meta">
