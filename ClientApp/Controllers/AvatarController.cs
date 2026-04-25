@@ -25,8 +25,27 @@ namespace ClientApp.Controllers
             var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
             if (!string.IsNullOrWhiteSpace(configured))
             {
-                Directory.CreateDirectory(configured);
-                return configured;
+                var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
+                try
+                {
+                    var root = Path.GetFullPath(expanded);
+                    Directory.CreateDirectory(root);
+                    return root;
+                }
+                catch { }
+            }
+
+            // Azure App Service exposes HOME as a persistent writable root that survives redeployment.
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                try
+                {
+                    var appServiceRoot = Path.GetFullPath(Path.Combine(home.Trim(), "avatars"));
+                    Directory.CreateDirectory(appServiceRoot);
+                    return appServiceRoot;
+                }
+                catch { }
             }
 
             var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "avatars");

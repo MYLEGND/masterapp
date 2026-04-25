@@ -40,7 +40,7 @@
     const FINANCIAL_PROTECTION_FIELDS = PROTECTION_FIELDS.filter(([path]) => path !== WILLS_TRUSTS_PATH);
 
     const CASH_FIELDS = [
-        ["cashFlow.earnings", "Earnings", "editable"],
+        ["cashFlow.earnings", "Earnings", "readonly"],
         ["cashFlow.insuranceCosts", "Insurance Costs", "readonly"],
         ["cashFlow.annualSavings", "Annual Savings", "editable"],
         ["cashFlow.debtsAndTaxCosts", "Debts & Tax Costs", "computed"],
@@ -821,7 +821,11 @@
                                             <strong>${label}</strong>
                                             ${path === "cashFlow.debtsAndTaxCosts" ? "<small>Debt obligations + tax burden</small>" : ""}
                                         </div>
-                                        ${path === "cashFlow.insuranceCosts" ? `
+                                        ${path === "cashFlow.earnings" ? `
+                                            <div class="llbs-label">
+                                                <small>Annual income <span class="llbs-el-source">· Expense Lens</span></small>
+                                                ${readonly("cashFlow.earnings")}
+                                            </div>` : path === "cashFlow.insuranceCosts" ? `
                                             <div class="llbs-label">
                                                 <small>Annual insurance <span class="llbs-el-source">· Expense Lens</span></small>
                                                 ${readonly("cashFlow.insuranceCosts")}
@@ -1023,7 +1027,9 @@
             if (insMonthly > 0) setPath(state, "cashFlow.insuranceCosts", Math.round(insMonthly * 12));
             const debtMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
             if (debtMonthly > 0) setPath(state, "cashFlow.debtObligations", Math.round(debtMonthly * 12));
-            if (insMonthly > 0 || debtMonthly > 0) state = calculate(state);
+            const elIncome = parseNumber((elState || {}).income ?? 0);
+            if (elIncome > 0) setPath(state, "cashFlow.earnings", Math.round(elIncome * 12));
+            if (insMonthly > 0 || debtMonthly > 0 || elIncome > 0) state = calculate(state);
         } catch (_) {}
         const sessionStartNetWorth = state.summary.netWorth;
         let saveTimer = null;
@@ -1337,11 +1343,14 @@
                 .reduce((sum, e) => sum + parseNumber(e.amount || 0), 0);
             const insAnnual = Math.round(insMonthly * 12);
             const debtAnnual = Math.round(parseNumber(detail.monthlyExpenseTotal ?? 0) * 12);
+            const earningsAnnual = Math.round(parseNumber(detail.income ?? 0) * 12);
             const prevIns = nonNegative(getPath(state, "cashFlow.insuranceCosts"));
             const prevDebt = nonNegative(getPath(state, "cashFlow.debtObligations"));
-            if (insAnnual === prevIns && debtAnnual === prevDebt) return;
+            const prevEarnings = nonNegative(getPath(state, "cashFlow.earnings"));
+            if (insAnnual === prevIns && debtAnnual === prevDebt && earningsAnnual === prevEarnings) return;
             setPath(state, "cashFlow.insuranceCosts", insAnnual);
             setPath(state, "cashFlow.debtObligations", debtAnnual);
+            setPath(state, "cashFlow.earnings", earningsAnnual);
             state = calculate(state);
             refreshAndDelta();
             scheduleSave();

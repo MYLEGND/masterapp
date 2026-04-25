@@ -102,8 +102,11 @@ document.addEventListener("DOMContentLoaded", async function () {
         setDualToolMode(false);
         embedContainer.innerHTML = "";
         embedContainer.classList.remove("finance-main--dual");
-        if (dropdown) dropdown.value = "";
-        saveSelectedToolId("");
+        if (dropdown) {
+            dropdown.value = "LegendLivingBalanceSheet";
+            saveSelectedToolId("LegendLivingBalanceSheet");
+            dropdown.dispatchEvent(new Event("change"));
+        }
     };
     const createDualToolPopout = (title, subtitle) => {
         removeDualToolPopout();
@@ -401,15 +404,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         scopeKey,
         usesServerState: canUseServerState
     };
-
-    async function loadSelectedToolId() {
-        if (!canUseServerState) {
-            return storageGet("selected-tool") || "";
-        }
-
-        const state = await loadPersistedState(selectedToolStateId);
-        return typeof state?.selectedToolId === "string" ? state.selectedToolId : "";
-    }
 
     function saveSelectedToolId(toolId) {
         if (!canUseServerState) {
@@ -1853,6 +1847,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const saveExpenseLensState = (extraState = {}) => {
             try {
                 const income = elIncome.value || '';
+                const primaryIncome = elPrimaryIncome?.value || '';
+                const spouseIncome = elSpouseIncome?.value || '';
                 const categories = [];
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                     const index = row.id.replace(elId('CatRow'), '');
@@ -1868,7 +1864,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const isPinned = row.dataset.isPinned === 'true';
                     categories.push({ index, name, amount, due, frequency, isTemplate, isPinned });
                 });
-                const state = { income, categories, ...extraState };
+                const state = { income, primaryIncome, spouseIncome, categories, ...extraState };
                 savePersistedState(expenseLensToolStateId, state);
             } catch (e) { console.error(e); }
         };
@@ -2775,6 +2771,93 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         elRemainingBadge.textContent = 'Remaining: $0';
         incomeFlexWrap.appendChild(elRemainingBadge);
         incomeFlexWrap.appendChild(weeklyBtnTop);
+
+        // ── Split income row (personal lens only) ────────────────────────────
+        let elPrimaryIncome = null;
+        let elSpouseIncome = null;
+
+        if (!isBusinessExpenseLens) {
+            const splitRow = document.createElement('div');
+            splitRow.id = elId('SplitIncomeRow');
+            splitRow.style.cssText = 'display:flex;align-items:flex-end;gap:12px;margin-bottom:10px;flex-wrap:wrap;';
+
+            const makeSplitField = (inputId, labelText) => {
+                const wrap = document.createElement('div');
+                wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:160px;';
+                const lbl = document.createElement('label');
+                lbl.htmlFor = inputId;
+                lbl.style.cssText = 'font-size:0.72rem;font-weight:800;color:#1E3A8A;letter-spacing:0.04em;text-transform:uppercase;';
+                lbl.textContent = labelText;
+                const inputWrap = document.createElement('div');
+                inputWrap.style.cssText = 'position:relative;';
+                const inp = document.createElement('input');
+                inp.type = 'text';
+                inp.id = inputId;
+                inp.placeholder = '0';
+                inp.style.cssText = 'border:1px solid #d6c48a;border-radius:6px;padding:5px 28px 5px 8px;font-weight:700;font-size:0.875rem;color:#1E3A8A;width:100%;height:36px;box-sizing:border-box;';
+                const dollar = document.createElement('span');
+                dollar.textContent = '$';
+                dollar.style.cssText = 'position:absolute;right:8px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;pointer-events:none;';
+                const pct = document.createElement('span');
+                pct.id = inputId + 'Pct';
+                pct.style.cssText = 'font-size:0.72rem;font-weight:800;color:#64748B;margin-top:2px;display:block;';
+                pct.textContent = '0%';
+                inputWrap.appendChild(inp);
+                inputWrap.appendChild(dollar);
+                wrap.appendChild(lbl);
+                wrap.appendChild(inputWrap);
+                wrap.appendChild(pct);
+                return { wrap, inp, pct };
+            };
+
+            const primaryLabel = (clientFirstName || 'Client') + ' Income';
+            const { wrap: primaryWrap, inp: priInp, pct: priPct } = makeSplitField(elId('PrimaryIncome'), primaryLabel);
+            elPrimaryIncome = priInp;
+            splitRow.appendChild(primaryWrap);
+
+            let spoInp = null;
+            let spoPct = null;
+            if (hasSpouse) {
+                const spouseLabel = (spouseFirstName || 'Spouse') + ' Income';
+                const { wrap: spouseWrap, inp, pct } = makeSplitField(elId('SpouseIncome'), spouseLabel);
+                elSpouseIncome = inp;
+                spoInp = inp;
+                spoPct = pct;
+                splitRow.appendChild(spouseWrap);
+            }
+
+            const updateSplitIncome = () => {
+                const pri = parseFloat((priInp.value || '').replace(/,/g, '')) || 0;
+                const spo = spoInp ? (parseFloat((spoInp.value || '').replace(/,/g, '')) || 0) : 0;
+                const total = pri + spo;
+                elIncome.value = total > 0 ? total.toLocaleString() : '';
+                if (total > 0) {
+                    priPct.textContent = ((pri / total) * 100).toFixed(1) + '%';
+                    if (spoPct) spoPct.textContent = ((spo / total) * 100).toFixed(1) + '%';
+                } else {
+                    priPct.textContent = '0%';
+                    if (spoPct) spoPct.textContent = '0%';
+                }
+                refreshExpenseLens();
+            };
+
+            priInp.addEventListener('input', updateSplitIncome);
+            priInp.addEventListener('blur', () => {
+                const v = parseFloat((priInp.value || '').replace(/,/g, '')) || 0;
+                priInp.value = v > 0 ? v.toLocaleString() : '';
+                updateSplitIncome();
+            });
+            if (spoInp) {
+                spoInp.addEventListener('input', updateSplitIncome);
+                spoInp.addEventListener('blur', () => {
+                    const v = parseFloat((spoInp.value || '').replace(/,/g, '')) || 0;
+                    spoInp.value = v > 0 ? v.toLocaleString() : '';
+                    updateSplitIncome();
+                });
+            }
+
+            incomeFlexWrap.parentElement.insertBefore(splitRow, incomeFlexWrap.nextSibling);
+        }
 
         await loadExpenseLensState();
 
@@ -4875,17 +4958,9 @@ if (t.id === "DebtAssetPulse") {
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
-    const savedToolId = await loadSelectedToolId();
-    const normalizedSavedToolId = isBusinessClient && (savedToolId === "BusinessExpenseLens" || savedToolId === "BusinessSavingsAccelerator")
-        ? (savedToolId === "BusinessSavingsAccelerator" ? "SavingsAccelerator" : "ExpenseLens")
-        : savedToolId;
-    if (normalizedSavedToolId && tools.some(tool => tool.id === normalizedSavedToolId)) {
-        dropdown.value = normalizedSavedToolId;
-        dropdown.dispatchEvent(new Event("change"));
-    } else {
-        // Default to the Legend standard diagnostic on first load.
-        dropdown.value = "LegendLivingBalanceSheet";
-        dropdown.dispatchEvent(new Event("change"));
-    }
+    // Financial Health Snapshot is always the entry point — every load, refresh, and login.
+    dropdown.value = "LegendLivingBalanceSheet";
+    saveSelectedToolId("LegendLivingBalanceSheet");
+    dropdown.dispatchEvent(new Event("change"));
 
 }); // ✅ closes document.addEventListener("DOMContentLoaded", ...)

@@ -84,7 +84,6 @@ document.addEventListener("DOMContentLoaded", async function () {
     const selectedToolStateId = "__workspace__";
     const disableLocalForWF = false; // Wealth Forecast also saves through FinanceToolStates when a client context exists.
     const disableLocalForDP = true; // Phase 2C: Distribution Planner server-only
-    const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
     const canUseServerState = true;
@@ -116,8 +115,11 @@ document.addEventListener("DOMContentLoaded", async function () {
         setDualToolMode(false);
         embedContainer.innerHTML = "";
         embedContainer.classList.remove("finance-main--dual");
-        if (dropdown) dropdown.value = "";
-        saveSelectedToolId("");
+        if (dropdown) {
+            dropdown.value = "LegendLivingBalanceSheet";
+            saveSelectedToolId("LegendLivingBalanceSheet");
+            dropdown.dispatchEvent(new Event("change"));
+        }
     };
     const createDualToolPopout = (title, subtitle) => {
         removeDualToolPopout();
@@ -426,15 +428,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         scopeKey,
         usesServerState: canUseServerState
     };
-
-    async function loadSelectedToolId() {
-        if (!canUseServerState) {
-            return storageGet("selected-tool") || "";
-        }
-
-        const state = await loadPersistedState(selectedToolStateId);
-        return typeof state?.selectedToolId === "string" ? state.selectedToolId : "";
-    }
 
     function saveSelectedToolId(toolId) {
         if (!canUseServerState) {
@@ -9172,16 +9165,9 @@ if (t.id === "DebtAssetPulse") {
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
-    const savedToolId = await loadSelectedToolId();
-    const normalizedSavedToolId = isBusinessClient && (savedToolId === "BusinessExpenseLens" || savedToolId === "BusinessSavingsAccelerator")
-        ? (savedToolId === "BusinessSavingsAccelerator" ? "SavingsAccelerator" : "ExpenseLens")
-        : savedToolId;
-    if (normalizedSavedToolId && tools.some(tool => tool.id === normalizedSavedToolId)) {
-        dropdown.value = normalizedSavedToolId;
-        dropdown.dispatchEvent(new Event("change"));
-    } else {
-        dropdown.value = "LegendLivingBalanceSheet";
-        dropdown.dispatchEvent(new Event("change"));
-    }
+    // Financial Health Snapshot is always the entry point — every load, refresh, and login.
+    dropdown.value = "LegendLivingBalanceSheet";
+    saveSelectedToolId("LegendLivingBalanceSheet");
+    dropdown.dispatchEvent(new Event("change"));
 
 }); // ✅ closes document.addEventListener("DOMContentLoaded", ...)
