@@ -819,19 +819,7 @@
                                     const elBadge = (path === "cashFlow.earnings" || path === "cashFlow.insuranceCosts")
                                         ? `<span class="llbs-el-source">· EL</span>` : "";
                                     let valueHtml;
-                                    if (path === "cashFlow.debtsAndTaxCosts") {
-                                        valueHtml = `
-                                            <div class="llbs-two-up">
-                                                <div class="llbs-cash-sub">
-                                                    <small>Tax burden</small>
-                                                    ${readonly("liabilities.taxes")}
-                                                </div>
-                                                <div class="llbs-cash-sub">
-                                                    <small>Debt obligations <span class="llbs-el-source">· EL</span></small>
-                                                    ${readonly("cashFlow.debtObligations")}
-                                                </div>
-                                            </div>`;
-                                    } else if (mode === "editable") {
+                                    if (mode === "editable") {
                                         valueHtml = editable(path, label);
                                     } else {
                                         valueHtml = readonly(path);

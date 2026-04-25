@@ -706,11 +706,6 @@
     background: rgba(9, 18, 35, .93);
 }
 
-.llbs-cash-card .llbs-label strong {
-    color: #dcffeb;
-    font-size: .78rem;
-}
-
 .llbs-cash-card.is-result {
     background:
         radial-gradient(180px 70px at 8% 0%, rgba(53, 183, 121, .16), transparent 70%),
@@ -1188,8 +1183,7 @@
         linear-gradient(180deg, #078114, #066b10);
 }
 
-.llbs-cash-card .llbs-label strong,
-.llbs-cash-card .llbs-label small,
+.llbs-cash-card-header strong,
 .llbs-cash-card .llbs-edit-wrap + small {
     color: #f4fff7;
 }
@@ -1229,16 +1223,6 @@
     line-height: 1.2;
 }
 
-.llbs-cash-sub {
-    display: grid;
-    gap: 2px;
-}
-
-.llbs-cash-sub small {
-    color: rgba(244, 255, 247, .7);
-    font-size: .64rem;
-    font-weight: 750;
-}
 
 /* ── Health Score card ──────────────────────────────────────────────────────── */
 .llbs-health-score-card {
