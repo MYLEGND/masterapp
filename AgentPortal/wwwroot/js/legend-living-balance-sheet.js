@@ -795,7 +795,6 @@
                             <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
                             <div class="llbs-net-interpretation">
                                 <span class="llbs-position-pill" data-llbs-position>Exposed</span>
-                                <small data-llbs-text="summary.positionSummary">Gaps are open. Close protection and debt pressure before chasing growth.</small>
                                 <span class="llbs-net-delta" data-llbs-net-delta hidden></span>
                             </div>
                             <div class="llbs-net-meta">
