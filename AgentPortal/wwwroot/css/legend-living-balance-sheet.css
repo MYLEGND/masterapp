@@ -445,23 +445,23 @@
 .llbs-person-toggle {
     display: flex;
     gap: 0;
-    padding: 2px;
+    padding: 1.5px;
     width: fit-content;
     background: rgba(6, 11, 22, .55);
     border: 1px solid rgba(243, 216, 139, .18);
-    border-radius: 6px;
+    border-radius: 5px;
 }
 
 .llbs-person-btn {
-    padding: 1px 7px;
+    padding: 0 5px;
     border: none;
-    border-radius: 4px;
+    border-radius: 3px;
     background: transparent;
     color: rgba(248, 250, 252, .42);
     font-size: .64rem;
     font-weight: 700;
     letter-spacing: .02em;
-    line-height: 1.5;
+    line-height: 1.3;
     cursor: pointer;
     transition: background .12s, color .12s;
     white-space: nowrap;
@@ -989,14 +989,14 @@
 /* Original Financial Health Snapshot color architecture, elevated for Legend. */
 .llbs-protection {
     border-color: rgba(243, 216, 139, .7);
-    background: linear-gradient(180deg, #d4ad16, #b88900);
+    background: linear-gradient(180deg, #c39f14, #a97e00);
 }
 
 .llbs-protection .llbs-section-head {
     color: #fff8dc;
     background:
         linear-gradient(180deg, rgba(255, 244, 190, .18), rgba(92, 65, 0, .12)),
-        linear-gradient(90deg, #b78a00, #d1a70d 52%, #b78a00);
+        linear-gradient(90deg, #a87f00, #c09a0c 52%, #a87f00);
     border-bottom-color: rgba(255, 249, 220, .28);
 }
 
@@ -1013,7 +1013,7 @@
 .llbs-protection-card {
     background:
         radial-gradient(220px 90px at 12% 0%, rgba(255, 248, 220, .2), transparent 72%),
-        linear-gradient(180deg, #d3aa0b 0%, #c69a02 48%, #b48600 100%);
+        linear-gradient(180deg, #c29c0a 0%, #b68e02 48%, #a67b00 100%);
 }
 
 .llbs-protection-card-title,
