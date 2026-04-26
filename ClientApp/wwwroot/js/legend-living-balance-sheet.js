@@ -1001,7 +1001,7 @@
                 .filter(c => (c.name || "").toLowerCase().includes("insurance"))
                 .reduce((sum, c) => sum + parseNumber(c.amount || 0) * (FREQ_MULT[c.frequency] || 1), 0);
             if (insMonthly > 0) setPath(state, "cashFlow.insuranceCosts", Math.round(insMonthly * 12));
-            const debtMonthly = parseNumber((elState || {}).monthlyExpenseTotal ?? 0);
+            const debtMonthly = Math.max(0, parseNumber((elState || {}).monthlyExpenseTotal ?? 0) - insMonthly);
             if (debtMonthly > 0) setPath(state, "cashFlow.debtObligations", Math.round(debtMonthly * 12));
             const elIncome = parseNumber((elState || {}).income ?? 0);
             if (elIncome > 0) setPath(state, "cashFlow.earnings", Math.round(elIncome * 12));
@@ -1318,7 +1318,7 @@
                 .filter(e => (e.name || "").toLowerCase().includes("insurance"))
                 .reduce((sum, e) => sum + parseNumber(e.amount || 0), 0);
             const insAnnual = Math.round(insMonthly * 12);
-            const debtAnnual = Math.round(parseNumber(detail.monthlyExpenseTotal ?? 0) * 12);
+            const debtAnnual = Math.round(Math.max(0, parseNumber(detail.monthlyExpenseTotal ?? 0) - insMonthly) * 12);
             const earningsAnnual = Math.round(parseNumber(detail.income ?? 0) * 12);
             const prevIns = nonNegative(getPath(state, "cashFlow.insuranceCosts"));
             const prevDebt = nonNegative(getPath(state, "cashFlow.debtObligations"));
