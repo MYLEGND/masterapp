@@ -7627,9 +7627,9 @@ if (t.id === "CashFlow") {
                           data-tip="<b>Examples:</b> 5,000 • 7,200 (total monthly take-home or reliable monthly income)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="cfIncome" type="text" class="form-control"
-                           placeholder="e.g., 5,000"
-                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="cfIncome" type="text" class="form-control" readonly
+                           placeholder="Sync from Expense Lens…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -7640,9 +7640,9 @@ if (t.id === "CashFlow") {
                           data-tip="<b>Examples:</b> 2,500 • 3,900 (fixed bills + minimum payments + essentials)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="cfBills" type="text" class="form-control"
-                           placeholder="e.g., 2,500"
-                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="cfBills" type="text" class="form-control" readonly
+                           placeholder="Sync from Expense Lens…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -7743,16 +7743,13 @@ if (t.id === "CashFlow") {
     });
 
     addClearButton(container, () => {
-        cfIncome.value = cfBills.value = '';
         cfResult.textContent = '$0';
         cfSavingsPotential.textContent = '$0';
         cfInvestPct.textContent = '0%';
         cfTips.textContent = 'Enter your monthly income and bills to get personalized tips.';
         clearToolState('CashFlow');
         hideTip();
-
-        // ✅ repaint-safe colors
-        requestAnimationFrame(() => applyCashFlowColors(0, 0, 0, 0, 0));
+        applyExpenseLensToCashFlow();
     });
 
     function formatDollar(val) {
@@ -7815,8 +7812,17 @@ if (t.id === "CashFlow") {
 
     cfIncome.oninput = cfBills.oninput = calcCashFlow;
 
-    // ✅ paint-safe initial compute + color (fixes “need refresh”)
-    calcCashFlow();
+    const applyExpenseLensToCashFlow = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
+        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        cfIncome.value = elIncome > 0 ? elIncome.toLocaleString() : '';
+        cfBills.value = elExpenses > 0 ? elExpenses.toLocaleString() : '';
+        calcCashFlow();
+    };
+
+    await applyExpenseLensToCashFlow();
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToCashFlow);
 }
 
 /* -------------------------------
@@ -7926,9 +7932,9 @@ if (t.id === "DebtClarity") {
                           data-tip="<b>Examples:</b> 60,000 • 80,000 (gross annual income)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="dcIncome" type="text" class="form-control"
-                           placeholder="e.g., 80,000"
-                           style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="dcIncome" type="text" class="form-control" readonly
+                           placeholder="Sync from Expense Lens…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -8055,15 +8061,13 @@ if (t.id === "DebtClarity") {
     };
 
     addClearButton(container, () => {
-        dcDebt.value = dcIncome.value = '';
+        dcDebt.value = '';
         dcResult.textContent = '0%';
         dcStatus.textContent = '—';
         dcTips.textContent = 'Enter your liabilities and income to receive guidance.';
         clearToolState('DebtClarity');
         hideTip();
-
-        // ✅ repaint-safe colors
-        requestAnimationFrame(() => applyDebtClarityColors(0));
+        applyExpenseLensToDebtClarity();
     });
 
     function calcDebtClarity() {
@@ -8106,13 +8110,21 @@ if (t.id === "DebtClarity") {
         applyDebtClarityColors(dtiNum);
     }
 
-    dcDebt.oninput = dcIncome.oninput = calcDebtClarity;
+    dcDebt.oninput = calcDebtClarity;
 
-    // ✅ paint-safe initial compute + color (fixes “need refresh”)
+    const applyExpenseLensToDebtClarity = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
+        dcIncome.value = elIncome > 0 ? (elIncome * 12).toLocaleString() : '';
+        calcDebtClarity();
+    };
+
     calcDebtClarity();
     applyProfileToDebtClarity();
-    window.addEventListener("FinanceProfile:updated", applyProfileToDebtClarity);
-    window.addEventListener("FinanceProfile:ready", applyProfileToDebtClarity);
+    window.addEventListener(“FinanceProfile:updated”, applyProfileToDebtClarity);
+    window.addEventListener(“FinanceProfile:ready”, applyProfileToDebtClarity);
+    await applyExpenseLensToDebtClarity();
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtClarity);
 }
 
 
