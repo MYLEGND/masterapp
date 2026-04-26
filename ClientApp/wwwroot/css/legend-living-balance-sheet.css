@@ -700,6 +700,54 @@
     font-size: .93rem;
 }
 
+.llbs-gap-card-negative .llbs-readonly-value {
+    border-color: rgba(225, 90, 100, .48);
+    background:
+        linear-gradient(180deg, rgba(180, 35, 42, .22), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffb7bf;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="safe"] {
+    border-color: rgba(53, 183, 121, .52);
+    background:
+        linear-gradient(180deg, rgba(18, 112, 71, .26), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #8ff0bf;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="healthy"] {
+    border-color: rgba(129, 227, 175, .5);
+    background:
+        linear-gradient(180deg, rgba(34, 122, 73, .22), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #c8ffd8;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="watch"] {
+    border-color: rgba(243, 216, 139, .5);
+    background:
+        linear-gradient(180deg, rgba(153, 107, 13, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffe59f;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="high"] {
+    border-color: rgba(242, 159, 103, .54);
+    background:
+        linear-gradient(180deg, rgba(168, 87, 30, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffbf8b;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="critical"] {
+    border-color: rgba(225, 90, 100, .52);
+    background:
+        linear-gradient(180deg, rgba(180, 35, 42, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffb7bf;
+}
+
 .llbs-cash-grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
 }

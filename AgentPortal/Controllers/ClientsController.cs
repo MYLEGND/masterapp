@@ -27,6 +27,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Text;
+using DateTimeOffset = System.DateTimeOffset;
 
 namespace AgentPortal.Controllers;
 
@@ -1496,19 +1497,19 @@ namespace AgentPortal.Controllers;
         return linked ? profile : null;
     }
 
-    private static bool IsToday(DateTime? value)
-        => value.HasValue && value.Value.Date == DateTime.UtcNow.Date;
+    private static bool IsToday(long? ticks)
+        => ticks.HasValue && new System.DateTime(ticks.Value).Date == System.DateTime.UtcNow.Date;
 
-    private static bool IsOverdue(DateTime? value)
-        => value.HasValue && value.Value.Date < DateTime.UtcNow.Date;
+    private static bool IsOverdue(long? ticks)
+        => ticks.HasValue && new System.DateTime(ticks.Value).Date < System.DateTime.UtcNow.Date;
 
     private static bool MatchesQueue(ClientListItemViewModel item, string queueKey)
         => queueKey switch
         {
             "callsnow" => (item.CrmPriority == "High" || item.CrmPriority == "Urgent")
-                && (IsToday(item.CrmNextDate) || IsOverdue(item.CrmNextDate)),
-            "today" => IsToday(item.CrmNextDate),
-            "overdue" => IsOverdue(item.CrmNextDate),
+                && (IsToday(item.CrmNextDate?.Ticks) || IsOverdue(item.CrmNextDate?.Ticks)),
+            "today" => IsToday(item.CrmNextDate?.Ticks),
+            "overdue" => IsOverdue(item.CrmNextDate?.Ticks),
             "meetings" => string.Equals(item.PipelineStage, "MeetingScheduled", StringComparison.OrdinalIgnoreCase),
             "waitingclient" => string.Equals(item.WaitingOn, "WaitingOnClient", StringComparison.OrdinalIgnoreCase),
             "waitingcarrier" => string.Equals(item.WaitingOn, "WaitingOnCarrier", StringComparison.OrdinalIgnoreCase),
@@ -1788,7 +1789,7 @@ namespace AgentPortal.Controllers;
         var meta = QueueMeta(queueKey);
         var items = (await GetOwnedClientListItemsAsync(agentOid))
             .Where(x => MatchesQueue(x, queueKey))
-            .OrderBy(x => x.CrmNextDate ?? DateTime.MaxValue)
+            .OrderBy(x => x.CrmNextDate?.Ticks ?? long.MaxValue)
             .ThenBy(x => x.LastName)
             .ThenBy(x => x.FirstName)
             .ToList();

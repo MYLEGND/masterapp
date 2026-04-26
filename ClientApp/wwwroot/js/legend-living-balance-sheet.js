@@ -317,6 +317,15 @@
         };
     }
 
+    function resolveDebtPressureBand(value) {
+        const ratio = normalizeRate(value);
+        if (ratio <= 0.2) return "safe";
+        if (ratio <= 0.28) return "healthy";
+        if (ratio <= 0.35) return "watch";
+        if (ratio <= 0.5) return "high";
+        return "critical";
+    }
+
     function calculate(state) {
         const s = mergeDeep(defaultState(), state || {});
         s.version = s.version > 0 ? s.version : 1;
@@ -637,15 +646,15 @@
                     <span class="llbs-section-note">Where money, risk, and pressure are leaking</span>
                 </div>
                 <div class="llbs-gap-grid">
-                    <article class="llbs-gap-card">
+                    <article class="llbs-gap-card llbs-gap-card-negative">
                         <span>Protection Gap</span>
                         ${readonly("summary.protectionGapTotal")}
                     </article>
-                    <article class="llbs-gap-card">
+                    <article class="llbs-gap-card llbs-gap-card-negative">
                         <span>Estimated Annual Taxes</span>
                         ${readonly("summary.taxDrag")}
                     </article>
-                    <article class="llbs-gap-card">
+                    <article class="llbs-gap-card llbs-gap-card-negative">
                         <span>Cash Flow Leakage</span>
                         ${readonly("summary.cashFlowLeakage")}
                     </article>
@@ -842,6 +851,11 @@
             el.textContent = isRate ? formatPercent(value) : displayForPath(path, value, kind);
             el.classList.toggle("is-cash-outflow", isCashOutflow);
             el.classList.toggle("is-negative", isCashOutflow ? nonNegative(value) > 0 : Number(value || 0) < 0);
+            if (path === "summary.debtPressureRatio") {
+                el.dataset.pressureBand = resolveDebtPressureBand(value);
+            } else {
+                delete el.dataset.pressureBand;
+            }
         });
 
         root.querySelectorAll("[data-llbs-text]").forEach((el) => {
