@@ -220,19 +220,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
 /* Dropdown wrapper */
 .finance-select-wrap{
+    position: relative;
+    width: 100%;
     max-width: 560px;
+}
+
+.finance-select-wrap::after{
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 18px;
+    width: 11px;
+    height: 11px;
+    border-right: 2px solid #f5f7fb;
+    border-bottom: 2px solid #f5f7fb;
+    transform: translateY(-62%) rotate(45deg);
+    pointer-events: none;
+    opacity: .92;
 }
 
 /* Dropdown styling — crisp gold border, sharp focus */
 .finance-select{
+    width: 100%;
     border: 2px solid var(--gold) !important; /* ✅ HARD GOLD */
     border-radius: 14px !important;
-    padding: 12px 14px !important;
+    padding: 12px 44px !important;
     font-weight: 900 !important;
     color: #1a1a1a !important;
     background: #ffffff !important;
     box-shadow: 0 10px 28px rgba(0,0,0,0.06) !important;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: none !important;
+    text-align: center;
+    text-align-last: center;
+    cursor: pointer;
     transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+
+.finance-select option{
+    text-align: center;
 }
 
 /* Finance Data drawer */
