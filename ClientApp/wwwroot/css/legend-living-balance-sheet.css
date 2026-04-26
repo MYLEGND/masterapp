@@ -1029,6 +1029,30 @@
     color: #fff8dc;
 }
 
+.llbs-protection-card .llbs-person-toggle {
+    background: rgba(0, 0, 0, .2);
+    border-color: rgba(255, 248, 220, .2);
+    border-radius: 4px;
+    padding: 1px;
+}
+
+.llbs-protection-card .llbs-person-btn {
+    border-radius: 3px;
+    color: rgba(255, 248, 220, .45);
+    font-size: .6rem;
+    padding: 0 4px;
+    line-height: 1.25;
+}
+
+.llbs-protection-card .llbs-person-btn.is-active {
+    background: rgba(255, 248, 220, .18);
+    color: #fff8dc;
+}
+
+.llbs-protection-card .llbs-person-btn:hover:not(.is-active) {
+    color: rgba(255, 248, 220, .75);
+}
+
 .llbs-card-section[data-tone="assets"] {
     border-color: rgba(92, 120, 229, .62);
     background: linear-gradient(180deg, #3041a0, #243282);
