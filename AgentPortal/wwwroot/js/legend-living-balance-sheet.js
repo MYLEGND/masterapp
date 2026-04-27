@@ -1462,7 +1462,7 @@
             if (field === "apr" || field === "annualContributionIncrease" || field === "inflationRate") {
                 return inputValueForKind(labState[field], "percent");
             }
-            return formatNumberValue(labState[field], field === "years" ? 2 : 2);
+            return inputValueForKind(labState[field], "number");
         }
 
         function syncCompoundLabForm() {
@@ -1867,13 +1867,6 @@
                 return;
             }
 
-            const taxToggle = event.target.closest("[data-llbs-tax-toggle]");
-            if (taxToggle) {
-                const body = root.querySelector("#llbsTaxProfileBody");
-                setTaxProfileExpanded(!!body?.hidden);
-                return;
-            }
-
             if (event.target.closest("[data-llbs-compound-open]")) {
                 setCompoundLabOpen(true);
                 return;
@@ -1897,6 +1890,13 @@
                 syncCompoundLabForm();
                 refreshCompoundLab();
                 scheduleSave();
+                return;
+            }
+
+            const taxToggle = event.target.closest("[data-llbs-tax-toggle]");
+            if (taxToggle) {
+                const body = root.querySelector("#llbsTaxProfileBody");
+                setTaxProfileExpanded(!!body?.hidden);
                 return;
             }
 
