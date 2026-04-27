@@ -568,9 +568,22 @@ function markWithSuffix(markFn, el) {
     if (sib && sib.tagName === 'SPAN') markFn(sib);
 }
 
+    const isDropdownTypeaheadKey = (event) =>
+        /^[a-z]$/i.test(event.key) &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey;
+
+    dropdown?.addEventListener("keydown", function (event) {
+        if (isDropdownTypeaheadKey(event)) {
+            event.preventDefault();
+        }
+    });
+
 
     // ------------------- Tool Renderer -------------------
     dropdown.addEventListener("change", async function () {
+        this.blur();
         const t = tools.find(x => x.id === this.value);
         saveSelectedToolId(this.value || "");
 

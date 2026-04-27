@@ -603,11 +603,24 @@ function markWithSuffix(markFn, el) {
 // Safe toast helper for contexts where global toast may not be present
 const toast = typeof window.toast === "function" ? window.toast : (msg => console.log(msg || ""));
 
+    const isDropdownTypeaheadKey = (event) =>
+        /^[a-z]$/i.test(event.key) &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey;
+
+    dropdown?.addEventListener("keydown", function (event) {
+        if (isDropdownTypeaheadKey(event)) {
+            event.preventDefault();
+        }
+    });
+
 
     // ------------------- Tool Renderer -------------------
     const wfSearchHost = document.getElementById("wfClientSearchHost");
 
     dropdown.addEventListener("change", async function () {
+        this.blur();
         const t = tools.find(x => x.id === this.value);
         saveSelectedToolId(this.value || "");
 
