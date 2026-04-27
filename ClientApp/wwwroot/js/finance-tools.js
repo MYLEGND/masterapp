@@ -3069,8 +3069,8 @@ if (t.id === "NetWorth") {
                           data-tip="<b>Examples:</b> cash, investments, retirement accounts, property value (total value)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="assets" type="text" class="form-control" placeholder="e.g., 150,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="assets" type="text" class="form-control" readonly placeholder="Sync from Financial Health Snapshot…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -3081,8 +3081,8 @@ if (t.id === "NetWorth") {
                           data-tip="<b>Examples:</b> credit cards, loans, mortgage balance, any debts owed (total)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="liabs" type="text" class="form-control" placeholder="e.g., 50,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="liabs" type="text" class="form-control" readonly placeholder="Sync from Financial Health Snapshot…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -3205,18 +3205,13 @@ if (t.id === "NetWorth") {
     });
 
     addClearButton(container, () => {
-        assets.value = liabs.value = '';
         aVal.textContent = lVal.textContent = nVal.textContent = '$0';
         nwRatio.textContent = liabRatio.textContent = '0%';
         wealthStatus.textContent = '—';
         nwTips.textContent = 'Enter your assets and liabilities to get personalized insights.';
         clearToolState('NetWorth');
         hideTip();
-
-        // ✅ repaint-safe color reset
-        requestAnimationFrame(() => {
-            applyNetWorthColors(0, 0, 0, 0, 0);
-        });
+        applyLLBSToNetWorth();
     });
 
     function formatDollar(val) {
@@ -3291,8 +3286,17 @@ if (t.id === "NetWorth") {
 
     assets.oninput = liabs.oninput = calc;
 
-    // ✅ paint-safe initial color apply (fixes “all gold until refresh”)
-    calc(); // computes + paints + colors based on saved state
+    const applyLLBSToNetWorth = async (event) => {
+        const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
+        const llbsAssets = +(String(src.assetsTotal ?? 0).replace(/[,$\s]/g, '')) || 0;
+        const llbsLiabs = +(String(src.liabilitiesTotal ?? 0).replace(/[,$\s]/g, '')) || 0;
+        assets.value = llbsAssets > 0 ? llbsAssets.toLocaleString() : '';
+        liabs.value = llbsLiabs > 0 ? llbsLiabs.toLocaleString() : '';
+        calc();
+    };
+
+    await applyLLBSToNetWorth();
+    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToNetWorth);
 }
 
 /* -------------------------------
@@ -3683,9 +3687,9 @@ if (t.id === "DebtClarity") {
                           data-tip="<b>Examples:</b> 40,000 • 75,000 (total debts owed: loans, cards, etc.)">i</span>
                 </div>
                 <div style="position:relative;">
-                    <input id="dcDebt" type="text" class="form-control"
-                           placeholder="e.g., 40,000"
-                           style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
+                    <input id="dcDebt" type="text" class="form-control" readonly
+                           placeholder="Sync from Financial Health Snapshot…"
+                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
                     <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
                 </div>
             </div>
@@ -3812,12 +3816,12 @@ if (t.id === "DebtClarity") {
     };
 
     addClearButton(container, () => {
-        dcDebt.value = '';
         dcResult.textContent = '0%';
         dcStatus.textContent = '—';
         dcTips.textContent = 'Enter your liabilities and income to receive guidance.';
         clearToolState('DebtClarity');
         hideTip();
+        applyLLBSToDebtClarity();
         applyExpenseLensToDebtClarity();
     });
 
@@ -3854,6 +3858,13 @@ if (t.id === "DebtClarity") {
 
     dcDebt.oninput = calcDebtClarity;
 
+    const applyLLBSToDebtClarity = async (event) => {
+        const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
+        const llbsLiabs = +(String(src.liabilitiesTotal ?? 0).replace(/[,$\s]/g, '')) || 0;
+        dcDebt.value = llbsLiabs > 0 ? llbsLiabs.toLocaleString() : '';
+        calcDebtClarity();
+    };
+
     const applyExpenseLensToDebtClarity = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
         const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
@@ -3861,7 +3872,9 @@ if (t.id === "DebtClarity") {
         calcDebtClarity();
     };
 
+    await applyLLBSToDebtClarity();
     await applyExpenseLensToDebtClarity();
+    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToDebtClarity);
     window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtClarity);
 }
 
@@ -4483,8 +4496,8 @@ if (t.id === "FreedomIndex") {
             <span class="fi-i" tabindex="0"
                   data-tip="<b>What to enter:</b> Assets minus liabilities today. <b>Example:</b> 150,000">i</span>
         </div>
-        <input id="fiNet" type="text" class="form-control mb-2" placeholder="e.g., 150,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="fiNet" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
+               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
 
         <div class="fi-label">
             Annual Expenses
@@ -4639,13 +4652,14 @@ if (t.id === "FreedomIndex") {
     };
 
     addClearButton(container, () => {
-        fiNet.value = fiPassive.value = '';
+        fiPassive.value = '';
         fiOut.textContent = '0';
         fiNetOut.textContent = fiExpOut.textContent = fiPassiveOut.textContent = '$0';
         fiMonths.textContent = '0';
         fiAdvice.textContent = 'Enter your values to see recommendations.';
         clearPersistedState('FreedomIndex');
         hideTip();
+        applyLLBSToFreedomIndex();
         applyExpenseLensToFreedomIndex();
     });
 
@@ -4678,13 +4692,20 @@ if (t.id === "FreedomIndex") {
         saveFI();
     };
 
-    [fiNet, fiPassive].forEach(input => {
+    [fiPassive].forEach(input => {
         input.addEventListener('input', updateFreedom);
         input.addEventListener('blur', () => {
             input.value = parseNumber(input.value).toLocaleString();
             updateFreedom();
         });
     });
+
+    const applyLLBSToFreedomIndex = async (event) => {
+        const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
+        const llbsNet = +(String(src.netWorth ?? 0).replace(/[,$\s]/g, '')) || 0;
+        fiNet.value = llbsNet !== 0 ? llbsNet.toLocaleString() : '';
+        updateFreedom();
+    };
 
     const applyExpenseLensToFreedomIndex = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
@@ -4693,7 +4714,9 @@ if (t.id === "FreedomIndex") {
         updateFreedom();
     };
 
+    await applyLLBSToFreedomIndex();
     await applyExpenseLensToFreedomIndex();
+    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToFreedomIndex);
     window.addEventListener('ExpenseLens:updated', applyExpenseLensToFreedomIndex);
 }
 
@@ -4789,16 +4812,16 @@ if (t.id === "DebtAssetPulse") {
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Examples:</b> 100,000 • 250,000 (cash, investments, retirement, property, etc.)">i</span>
         </div>
-        <input id="dapA" type="text" class="form-control mb-2" placeholder="e.g., 100,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="dapA" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
+               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
 
         <div class="dap-label">
             Total Liabilities
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Examples:</b> 50,000 • 180,000 (credit cards, loans, mortgage balance, etc.)">i</span>
         </div>
-        <input id="dapL" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="dapL" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
+               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
 
         <div class="dap-label">
             Monthly Income
@@ -4951,13 +4974,13 @@ if (t.id === "DebtAssetPulse") {
     };
 
     addClearButton(container, () => {
-        dapA.value = dapL.value = '';
         dapOut.textContent = '0';
         dapAssets.textContent = dapLiabilities.textContent =
         dapNetWorth.textContent = dapMonthlyIncome.textContent = '$0';
         dapAdvice.textContent = 'Enter values to get guidance on your financial health.';
         clearPersistedState('DebtAssetPulse');
         hideTip();
+        applyLLBSToDebtAssetPulse();
         applyExpenseLensToDebtAssetPulse();
     });
 

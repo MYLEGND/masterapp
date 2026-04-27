@@ -1037,6 +1037,13 @@
                     deltaEl.dataset.tone = delta > 0 ? "up" : "down";
                 }
             }
+            window.dispatchEvent(new CustomEvent("LegendLivingBalanceSheet:updated", {
+                detail: {
+                    assetsTotal: state.summary?.assetsTotal ?? 0,
+                    liabilitiesTotal: state.summary?.liabilitiesTotal ?? 0,
+                    netWorth: state.summary?.netWorth ?? 0
+                }
+            }));
         }
 
         function setStatus(text) {
