@@ -1054,7 +1054,10 @@
         linear-gradient(180deg, #684811 0%, #8a6417 44%, #b58523 100%);
     box-shadow:
         0 14px 30px rgba(0, 0, 0, .24),
-        inset 0 1px 0 rgba(255, 244, 190, .24);
+        0 0 0 1px rgba(243, 216, 139, .12),
+        0 0 20px rgba(199, 153, 49, .10),
+        inset 0 1px 0 rgba(255, 244, 190, .24),
+        inset 0 -14px 28px rgba(60, 35, 0, .12);
 }
 
 .llbs-protection .llbs-section-head {
@@ -1079,6 +1082,9 @@
     background:
     radial-gradient(220px 90px at 12% 0%, rgba(255, 248, 220, .16), transparent 72%),
     linear-gradient(180deg, #916919 0%, #775512 48%, #563d10 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 248, 220, .14),
+        inset 0 -10px 18px rgba(40, 24, 0, .10);
 }
 
 .llbs-protection-card-title,
@@ -1120,7 +1126,12 @@
 
 .llbs-card-section[data-tone="assets"] {
     border-color: rgba(92, 120, 229, .62);
-    background: linear-gradient(180deg, #3041a0, #243282);
+    background: linear-gradient(180deg, #31449f, #243384);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, .18),
+        0 0 18px rgba(92, 120, 229, .10),
+        inset 0 1px 0 rgba(220, 232, 255, .10),
+        inset 0 -12px 24px rgba(7, 27, 99, .12);
 }
 
 .llbs-card-section[data-tone="assets"] .llbs-section-head {
@@ -1174,6 +1185,11 @@
     background:
         linear-gradient(180deg, rgba(255, 230, 232, .08), rgba(255, 230, 232, 0) 20%),
         linear-gradient(180deg, #84272e, #61181d);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, .18),
+        0 0 16px rgba(184, 78, 86, .08),
+        inset 0 1px 0 rgba(255, 235, 237, .10),
+        inset 0 -12px 24px rgba(51, 8, 12, .12);
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-section-head {
@@ -1223,12 +1239,14 @@
 }
 
 .llbs-net-worth {
+    position: relative;
     border-color: rgba(221, 186, 104, .42);
     background:
         radial-gradient(360px 120px at 50% 0%, rgba(255, 240, 201, .34), transparent 72%),
         linear-gradient(180deg, #ffffff 0%, #fbfbfd 58%, #f4f6fa 100%);
     box-shadow:
         0 18px 38px rgba(0, 0, 0, .16),
+        0 0 22px rgba(221, 186, 104, .08),
         inset 0 1px 0 rgba(255, 255, 255, .86);
 }
 
@@ -1244,10 +1262,10 @@
 }
 
 .llbs-net-value {
-    font-size: clamp(1.85rem, 3.4vw, 3.05rem);
+    font-size: clamp(1.95rem, 3.7vw, 3.25rem);
     font-weight: 995;
     letter-spacing: -.04em;
-    text-shadow: 0 6px 22px rgba(17, 24, 39, .10);
+    text-shadow: 0 8px 24px rgba(17, 24, 39, .12);
 }
 
 .llbs-net-interpretation small,
@@ -1268,6 +1286,11 @@
 .llbs-card-section[data-tone="cash"] {
     border-color: rgba(58, 150, 99, .46);
     background: linear-gradient(180deg, #1d7a50, #165d3d);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, .18),
+        0 0 18px rgba(67, 171, 115, .10),
+        inset 0 1px 0 rgba(232, 255, 242, .10),
+        inset 0 -12px 24px rgba(7, 54, 34, .12);
 }
 
 .llbs-card-section[data-tone="cash"] .llbs-section-head {
@@ -1286,13 +1309,13 @@
 .llbs-cash-card.is-cost {
     background:
     radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .1), transparent 70%),
-    linear-gradient(180deg, #228158, #176344);
+        linear-gradient(180deg, #279062, #1a6d49);
 }
 
 .llbs-cash-card:nth-child(even) {
     background:
     radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .09), transparent 70%),
-    linear-gradient(180deg, #1d774f, #155b3d);
+        linear-gradient(180deg, #23855b, #186343);
 }
 
 .llbs-cash-card-header strong,
