@@ -5016,13 +5016,14 @@ if (t.id === "DebtAssetPulse") {
         saveDAP();
     };
 
-    [dapA, dapL].forEach(input => {
-        input.addEventListener('input', updateDAP);
-        input.addEventListener('blur', () => {
-            input.value = formatWithCommas(parseNumber(input.value));
-            updateDAP();
-        });
-    });
+    const applyLLBSToDebtAssetPulse = async (event) => {
+        const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
+        const llbsAssets = +(String(src.assetsTotal ?? 0).replace(/[,$\s]/g, '')) || 0;
+        const llbsLiabs = +(String(src.liabilitiesTotal ?? 0).replace(/[,$\s]/g, '')) || 0;
+        dapA.value = llbsAssets > 0 ? llbsAssets.toLocaleString() : '';
+        dapL.value = llbsLiabs > 0 ? llbsLiabs.toLocaleString() : '';
+        updateDAP();
+    };
 
     const applyExpenseLensToDebtAssetPulse = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
@@ -5031,7 +5032,9 @@ if (t.id === "DebtAssetPulse") {
         updateDAP();
     };
 
+    await applyLLBSToDebtAssetPulse();
     await applyExpenseLensToDebtAssetPulse();
+    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToDebtAssetPulse);
     window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtAssetPulse);
     } // ✅ closes if (t.id === "DebtAssetPulse")
 
