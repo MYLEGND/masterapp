@@ -1049,15 +1049,19 @@
 .llbs-protection {
     border-color: rgba(199, 153, 49, .72);
     background:
-        radial-gradient(420px 160px at 12% 0%, rgba(243, 216, 139, .18), transparent 70%),
-        linear-gradient(180deg, #8b650f 0%, #6f4f12 48%, #4c3610 100%);
+        linear-gradient(180deg, rgba(255, 248, 220, .16), rgba(255, 248, 220, 0) 22%),
+        radial-gradient(420px 160px at 12% 0%, rgba(243, 216, 139, .24), transparent 70%),
+        linear-gradient(180deg, #684811 0%, #8a6417 44%, #b58523 100%);
+    box-shadow:
+        0 14px 30px rgba(0, 0, 0, .24),
+        inset 0 1px 0 rgba(255, 244, 190, .24);
 }
 
 .llbs-protection .llbs-section-head {
     color: #fff8dc;
     background:
-        linear-gradient(180deg, rgba(255, 244, 190, .12), rgba(92, 65, 0, .14)),
-        linear-gradient(90deg, #5f4512, #7c5812 52%, #5f4512);
+        linear-gradient(180deg, rgba(255, 244, 190, .2), rgba(92, 65, 0, .06)),
+        linear-gradient(90deg, #6e4f14, #9a731d 52%, #6e4f14);
     border-bottom-color: rgba(243, 216, 139, .22);
 }
 
@@ -1073,8 +1077,8 @@
 
 .llbs-protection-card {
     background:
-        radial-gradient(220px 90px at 12% 0%, rgba(255, 248, 220, .12), transparent 72%),
-        linear-gradient(180deg, #7c5812 0%, #694b11 48%, #4f3810 100%);
+    radial-gradient(220px 90px at 12% 0%, rgba(255, 248, 220, .16), transparent 72%),
+    linear-gradient(180deg, #916919 0%, #775512 48%, #563d10 100%);
 }
 
 .llbs-protection-card-title,
@@ -1166,31 +1170,33 @@
 }
 
 .llbs-card-section[data-tone="liabilities"] {
-    border-color: rgba(255, 126, 134, .6);
-    background: linear-gradient(180deg, #b20f16, #8f080d);
+    border-color: rgba(184, 78, 86, .54);
+    background:
+        linear-gradient(180deg, rgba(255, 230, 232, .08), rgba(255, 230, 232, 0) 20%),
+        linear-gradient(180deg, #84272e, #61181d);
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-section-head {
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(0, 0, 0, .16)),
-        linear-gradient(90deg, #7d0509, #ad0d14 52%, #7d0509);
-    border-bottom-color: rgba(255, 255, 255, .2);
+        linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(0, 0, 0, .16)),
+        linear-gradient(90deg, #5b151a, #84272e 52%, #5b151a);
+    border-bottom-color: rgba(255, 255, 255, .14);
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-rows {
-    background: rgba(255, 255, 255, .16);
+    background: rgba(255, 255, 255, .12);
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-row {
     background:
-        linear-gradient(90deg, rgba(255, 255, 255, .055), transparent),
-        #ad0d14;
+        linear-gradient(90deg, rgba(255, 255, 255, .04), transparent),
+        #7a2329;
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-row:nth-child(even) {
     background:
-        linear-gradient(90deg, rgba(255, 255, 255, .045), transparent),
-        #9f090f;
+        linear-gradient(90deg, rgba(255, 255, 255, .035), transparent),
+        #6d1d23;
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-label strong,
@@ -1201,8 +1207,8 @@
 
 .llbs-card-section[data-tone="liabilities"] .llbs-total-row {
     background:
-        linear-gradient(90deg, rgba(255, 255, 255, .13), rgba(255, 255, 255, .04)),
-        #85070c !important;
+    linear-gradient(90deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)),
+    #56141a !important;
 }
 
 .llbs-card-section[data-tone="liabilities"] .llbs-total-row .llbs-label strong {
@@ -1211,16 +1217,18 @@
 
 .llbs-card-section[data-tone="liabilities"] .llbs-edit-value,
 .llbs-card-section[data-tone="liabilities"] .llbs-readonly-value {
-    border-color: rgba(255, 232, 234, .36);
-    background: rgba(74, 0, 4, .3);
+    border-color: rgba(255, 232, 234, .28);
+    background: rgba(45, 8, 11, .34);
     color: #ffffff;
 }
 
 .llbs-net-worth {
-    border-color: rgba(214, 218, 226, .92);
-    background: linear-gradient(180deg, #ffffff 0%, #f7f8fb 100%);
+    border-color: rgba(221, 186, 104, .42);
+    background:
+        radial-gradient(360px 120px at 50% 0%, rgba(255, 240, 201, .34), transparent 72%),
+        linear-gradient(180deg, #ffffff 0%, #fbfbfd 58%, #f4f6fa 100%);
     box-shadow:
-        0 12px 28px rgba(0, 0, 0, .22),
+        0 18px 38px rgba(0, 0, 0, .16),
         inset 0 1px 0 rgba(255, 255, 255, .86);
 }
 
@@ -1235,47 +1243,56 @@
     text-shadow: none;
 }
 
+.llbs-net-value {
+    font-size: clamp(1.85rem, 3.4vw, 3.05rem);
+    font-weight: 995;
+    letter-spacing: -.04em;
+    text-shadow: 0 6px 22px rgba(17, 24, 39, .10);
+}
+
 .llbs-net-interpretation small,
 .llbs-net-meta {
     color: #5b6475;
 }
 
 .llbs-net-value.is-negative {
-    color: #c0222e;
+    color: #8f2f37;
+    text-shadow: 0 6px 22px rgba(143, 47, 55, .14);
 }
 
 .llbs-net-value.is-positive {
-    color: #0d8f4b;
+    color: #1e7a50;
+    text-shadow: 0 6px 22px rgba(30, 122, 80, .12);
 }
 
 .llbs-card-section[data-tone="cash"] {
-    border-color: rgba(64, 204, 108, .58);
-    background: linear-gradient(180deg, #0b7f16, #07640f);
+    border-color: rgba(58, 150, 99, .46);
+    background: linear-gradient(180deg, #1d7a50, #165d3d);
 }
 
 .llbs-card-section[data-tone="cash"] .llbs-section-head {
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, .075), rgba(0, 0, 0, .14)),
-        linear-gradient(90deg, #045f0c, #0a8617 52%, #045f0c);
-    border-bottom-color: rgba(255, 255, 255, .18);
+        linear-gradient(180deg, rgba(255, 255, 255, .08), rgba(0, 0, 0, .12)),
+        linear-gradient(90deg, #145538, #23805a 52%, #145538);
+    border-bottom-color: rgba(255, 255, 255, .14);
 }
 
 .llbs-cash-grid {
-    background: rgba(255, 255, 255, .18);
+    background: rgba(255, 255, 255, .14);
 }
 
 .llbs-cash-card,
 .llbs-cash-card.is-result,
 .llbs-cash-card.is-cost {
     background:
-        radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .11), transparent 70%),
-        linear-gradient(180deg, #0a8917, #067011);
+    radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .1), transparent 70%),
+    linear-gradient(180deg, #228158, #176344);
 }
 
 .llbs-cash-card:nth-child(even) {
     background:
-        radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .1), transparent 70%),
-        linear-gradient(180deg, #078114, #066b10);
+    radial-gradient(170px 70px at 8% 0%, rgba(255, 255, 255, .09), transparent 70%),
+    linear-gradient(180deg, #1d774f, #155b3d);
 }
 
 .llbs-cash-card-header strong,
@@ -1285,8 +1302,8 @@
 
 .llbs-cash-card .llbs-edit-value,
 .llbs-cash-card .llbs-readonly-value {
-    border-color: rgba(226, 255, 235, .35);
-    background: rgba(0, 63, 9, .3);
+    border-color: rgba(226, 255, 235, .3);
+    background: rgba(6, 58, 34, .28);
     color: #ffffff;
     font-size: 1rem;
 }
@@ -1313,7 +1330,7 @@
 }
 
 .llbs-cash-card-header strong {
-    color: #dcffeb;
+    color: #eefdf5;
     font-size: .78rem;
     font-weight: 900;
     line-height: 1.2;
