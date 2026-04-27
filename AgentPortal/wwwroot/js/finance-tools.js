@@ -665,6 +665,37 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         requestToolSelection(DEFAULT_TOOL_ID);
     });
 
+    let activeToolWindowCleanups = [];
+    const clearActiveToolWindowBindings = () => {
+        activeToolWindowCleanups.forEach(dispose => {
+            try { dispose(); } catch (_) { }
+        });
+        activeToolWindowCleanups = [];
+    };
+
+    const createActiveToolContext = (toolId) => {
+        clearActiveToolWindowBindings();
+        if (embedContainer) {
+            embedContainer.dataset.activeToolId = toolId || "";
+        }
+
+        const context = {
+            toolId,
+            isActive: () => (embedContainer?.dataset?.activeToolId || "") === (toolId || ""),
+            onWindow(eventName, handler, options) {
+                const wrapped = (event) => {
+                    if (!context.isActive()) return;
+                    return handler(event);
+                };
+                window.addEventListener(eventName, wrapped, options);
+                activeToolWindowCleanups.push(() => window.removeEventListener(eventName, wrapped, options));
+                return wrapped;
+            }
+        };
+
+        return context;
+    };
+
 
     // ------------------- Tool Renderer -------------------
     const wfSearchHost = document.getElementById("wfClientSearchHost");
@@ -677,6 +708,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         syncToolSelectorState(selectedToolId);
         const t = tools.find(x => x.id === selectedToolId);
         saveSelectedToolId(selectedToolId);
+        const toolContext = createActiveToolContext(selectedToolId);
 
         // clear UI
         embedContainer.innerHTML = '';
