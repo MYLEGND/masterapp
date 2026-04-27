@@ -90,6 +90,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         "FreedomIndex",
         "DebtAssetPulse"
     ]);
+    const rawStateFirstToolIds = new Set([
+        "SavingsAccelerator",
+        "BusinessSavingsAccelerator",
+        "ExpenseLens",
+        "BusinessExpenseLens"
+    ]);
     const removeDualToolPopout = () => {
         document.getElementById("financeDualToolPopout")?.remove();
     };
@@ -191,6 +197,10 @@ document.addEventListener("DOMContentLoaded", async function () {
             return [key];
         }
 
+        if (rawStateFirstToolIds.has(key)) {
+            return [key, `toolState-${key}`];
+        }
+
         if (toolStateIds.has(key)) {
             return [`toolState-${key}`, key];
         }
@@ -276,6 +286,16 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     async function loadPersistedState(key) {
         const keys = getStateKeys(key);
+        const preferLocalState = rawStateFirstToolIds.has(key);
+
+        if (preferLocalState) {
+            for (const candidateKey of keys) {
+                const localState = readLocalPersistedState(candidateKey);
+                if (localState !== null) {
+                    return localState;
+                }
+            }
+        }
 
         // If this browser has a newer unsynced edit queued, trust that immediately
         // so downstream tools stay in sync when switching tools quickly.
@@ -1453,16 +1473,26 @@ if (t.id === "SavingsAccelerator") {
         }, 0);
     };
 
+    const getExpenseLensIncomeTotal = (state) => {
+        const hasSplitIncome =
+            String(state?.primaryIncome ?? '').trim() !== ''
+            || String(state?.spouseIncome ?? '').trim() !== '';
+        if (hasSplitIncome) {
+            return parseSavingsMoney(state?.primaryIncome) + parseSavingsMoney(state?.spouseIncome);
+        }
+        return parseSavingsMoney(state?.income);
+    };
+
     const applyExpenseLensToSavingsAccelerator = async (event) => {
         const state = event?.detail || await loadPersistedState(linkedELStateId);
-        const income = parseSavingsMoney(state?.income);
+        const income = getExpenseLensIncomeTotal(state);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
         const hasSavedRemaining = state && Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining');
         const savingsAllocation = hasSavedRemaining ? parseSavingsMoney(state.monthlyRemaining) : income - monthlyExpenses;
         const hasCategoryData = Array.isArray(state?.categories)
             && state.categories.some(category => parseSavingsMoney(category?.amount || category?.occurrenceAmount));
         const hasSourceData = !!state
-            && (String(state?.income ?? '').trim() !== '' || monthlyExpenses !== 0 || hasCategoryData);
+            && (income !== 0 || monthlyExpenses !== 0 || hasCategoryData);
 
         saAllocationInput.value = hasSourceData ? formatNumber(savingsAllocation) : '';
         refreshSurplus();
@@ -3658,8 +3688,8 @@ if (t.id === "CashFlow") {
 
     const applyExpenseLensToCashFlow = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
-        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        const elIncome = getExpenseLensIncomeTotal(state);
+        const elExpenses = calculateExpenseLensMonthlyTotal(state);
         cfIncome.value = elIncome > 0 ? elIncome.toLocaleString() : '';
         cfBills.value = elExpenses > 0 ? elExpenses.toLocaleString() : '';
         calcCashFlow();
@@ -3937,7 +3967,7 @@ if (t.id === "DebtClarity") {
 
     const applyExpenseLensToDebtClarity = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
+        const elIncome = getExpenseLensIncomeTotal(state);
         dcIncome.value = elIncome > 0 ? (elIncome * 12).toLocaleString() : '';
         calcDebtClarity();
     };
@@ -4163,7 +4193,7 @@ if (t.id === "FinancialBuffer") {
 
     const applyExpenseLensToFinancialBuffer = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        const elExpenses = calculateExpenseLensMonthlyTotal(state);
         fbBillsInput.value = elExpenses > 0 ? elExpenses.toLocaleString() : '';
         updateBuffer();
     };
@@ -4778,7 +4808,7 @@ if (t.id === "FreedomIndex") {
 
     const applyExpenseLensToFreedomIndex = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        const elExpenses = calculateExpenseLensMonthlyTotal(state);
         fiExp.value = elExpenses > 0 ? (elExpenses * 12).toLocaleString() : '';
         updateFreedom();
     };
@@ -5087,7 +5117,7 @@ if (t.id === "DebtAssetPulse") {
 
     const applyExpenseLensToDebtAssetPulse = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
+        const elIncome = getExpenseLensIncomeTotal(state);
         dapIncome.value = elIncome > 0 ? elIncome.toLocaleString() : '';
         updateDAP();
     };
