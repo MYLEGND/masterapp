@@ -1075,7 +1075,7 @@ if (realGrowthRate >= 0) markIncome(realGrowthOut);
 else markExpense(realGrowthOut);
 
 // Tips cell neutral
-markNeutral(savingsTipsOut);
+markGold(savingsTipsOut);
 
                 // Chart update
                 if (chartEl && typeof Chart !== "undefined"){
@@ -3247,32 +3247,25 @@ if (t.id === "NetWorth") {
 
     // ✅ Color engine (paint-safe, no refresh required)
     const applyNetWorthColors = (a, l, net, ratio, liabR) => {
-        // Inputs
-        markIncome(assets);   // assets = positive input
-        markExpense(liabs);   // liabilities = “debt” input
-
         // Outputs
         markIncome(aVal);
         markExpense(lVal);
 
         if (net > 0) markIncome(nVal);
         else if (net < 0) markExpense(nVal);
-        else markNeutral(nVal);
+        else markGold(nVal);
 
         // Ratios
-        // Net Worth / Assets ratio (good if >0)
         if (ratio > 0) markIncome(nwRatio);
         else if (ratio < 0) markExpense(nwRatio);
-        else markNeutral(nwRatio);
+        else markGold(nwRatio);
 
-        // Liabilities / Assets ratio: green <=30, red >=50, gold in between
         if (liabR <= 30) markIncome(liabRatio);
         else if (liabR >= 50) markExpense(liabRatio);
-        else markNeutral(liabRatio);
+        else markGold(liabRatio);
 
-        // Status + tips neutral
-        markNeutral(wealthStatus);
-        markNeutral(nwTips);
+        markGold(wealthStatus);
+        markGold(nwTips);
     };
 
     function calc() {
@@ -3553,27 +3546,22 @@ if (t.id === "CashFlow") {
 
     // ✅ Color engine (paint-safe, no refresh required)
     const applyCashFlowColors = (income, bills, net, savingsPotential, investPct) => {
-        // Inputs
-        markWithSuffix(markIncome,  cfIncome);
-        markWithSuffix(markExpense, cfBills);
-
         // Net cash flow
         if (net > 0) markIncome(cfResult);
         else if (net < 0) markExpense(cfResult);
-        else markNeutral(cfResult);
+        else markGold(cfResult);
 
-        // Savings potential (0 should be neutral, not red)
+        // Savings potential
         if (savingsPotential > 0) markIncome(cfSavingsPotential);
         else if (savingsPotential < 0) markExpense(cfSavingsPotential);
-        else markNeutral(cfSavingsPotential);
+        else markGold(cfSavingsPotential);
 
-        // Suggested allocation %: green if net positive, red if net negative, gold if zero
+        // Suggested allocation %
         if (net > 0) markIncome(cfInvestPct);
         else if (net < 0) markExpense(cfInvestPct);
-        else markNeutral(cfInvestPct);
+        else markGold(cfInvestPct);
 
-        // Tips neutral
-        markNeutral(cfTips);
+        markGold(cfTips);
     };
 
     function calcCashFlow() {
@@ -3824,22 +3812,16 @@ if (t.id === "DebtClarity") {
 
     // ✅ Color engine (paint-safe, no refresh required)
     const applyDebtClarityColors = (dtiNum) => {
-        // Inputs
-        markExpense(dcDebt);
-        markIncome(dcIncome);
-
         // DTI output coloring
         if (dtiNum <= 30) markIncome(dcResult);
         else if (dtiNum >= 50) markExpense(dcResult);
-        else markNeutral(dcResult);
+        else markGold(dcResult);
 
-        // Status matches DTI severity
         if (dtiNum <= 30) markIncome(dcStatus);
         else if (dtiNum >= 50) markExpense(dcStatus);
-        else markNeutral(dcStatus);
+        else markGold(dcStatus);
 
-        // Tips neutral (guidance text)
-        markNeutral(dcTips);
+        markGold(dcTips);
     };
 
     addClearButton(container, () => {
@@ -4081,18 +4063,12 @@ if (t.id === "FinancialBuffer") {
 
     // ✅ Color painter (no refresh needed)
     const applyFinancialBufferColors = (billsNum) => {
-        // Input: bills are an expense
-        markExpense(fbBillsInput);
-
-        // Outputs: goals are targets (neutral by your spec)
+        // Outputs: goals are targets
         markGold(fb1);
         markGold(fb3);
         markGold(fb12);
 
-        // Tips neutral
-        markNeutral(fbTips);
-
-        // If you ever want a subtle warning color when bills=0, keep text logic only (colors stay consistent)
+        markGold(fbTips);
     };
 
     addClearButton(container, () => {
@@ -4387,8 +4363,7 @@ if (t.id === "WealthProjection") {
             markGold(wp12);
         }
 
-        // Tips neutral
-        markNeutral(wpTips);
+        markGold(wpTips);
     };
 
     const updateWealthProjection = () => {
@@ -4651,31 +4626,26 @@ if (t.id === "FreedomIndex") {
 
     // ✅ Color painter (no refresh needed)
     const applyFreedomColors = (netNum, expNum, passiveNum, fiNum, monthsNum) => {
-        if (netNum > 0) markIncome(fiNet); else if (netNum < 0) markExpense(fiNet); else markNeutral(fiNet);
-
-        // Expenses are red (always)
-        markExpense(fiExp);
-
         if (passiveNum > 0) markIncome(fiPassive);
         else if (passiveNum < 0) markExpense(fiPassive);
         else markNeutral(fiPassive);
 
-        if (netNum > 0) markIncome(fiNetOut); else if (netNum < 0) markExpense(fiNetOut); else markNeutral(fiNetOut);
+        if (netNum > 0) markIncome(fiNetOut); else if (netNum < 0) markExpense(fiNetOut); else markGold(fiNetOut);
         markExpense(fiExpOut);
 
         if (passiveNum > 0) markIncome(fiPassiveOut);
         else if (passiveNum < 0) markExpense(fiPassiveOut);
-        else markNeutral(fiPassiveOut);
+        else markGold(fiPassiveOut);
 
         if (fiNum >= 7) markIncome(fiOut);
         else if (fiNum <= 3) markExpense(fiOut);
-        else markNeutral(fiOut);
+        else markGold(fiOut);
 
         if (monthsNum >= 60) markIncome(fiMonths);
         else if (monthsNum <= 12) markExpense(fiMonths);
-        else markNeutral(fiMonths);
+        else markGold(fiMonths);
 
-        markNeutral(fiAdvice);
+        markGold(fiAdvice);
     };
 
     addClearButton(container, () => {
@@ -4970,14 +4940,6 @@ if (t.id === "DebtAssetPulse") {
 
     // ✅ Color painter (no refresh needed)
     const applyDAPColors = (assetsNum, liabilitiesNum, incomeNum, ratioNum) => {
-        // Inputs
-        markIncome(dapA);
-        markExpense(dapL);
-
-        if (incomeNum > 0) markIncome(dapIncome);
-        else if (incomeNum < 0) markExpense(dapIncome);
-        else markNeutral(dapIncome);
-
         // Outputs (money)
         markIncome(dapAssets);
         markExpense(dapLiabilities);
@@ -4985,19 +4947,18 @@ if (t.id === "DebtAssetPulse") {
         const netWorth = assetsNum - liabilitiesNum;
         if (netWorth > 0) markIncome(dapNetWorth);
         else if (netWorth < 0) markExpense(dapNetWorth);
-        else markNeutral(dapNetWorth);
+        else markGold(dapNetWorth);
 
         if (incomeNum > 0) markIncome(dapMonthlyIncome);
         else if (incomeNum < 0) markExpense(dapMonthlyIncome);
-        else markNeutral(dapMonthlyIncome);
+        else markGold(dapMonthlyIncome);
 
         // Ratio output (assets/liabilities)
         if (ratioNum >= 2) markIncome(dapOut);
         else if (ratioNum <= 1) markExpense(dapOut);
-        else markNeutral(dapOut);
+        else markGold(dapOut);
 
-        // Advice neutral
-        markNeutral(dapAdvice);
+        markGold(dapAdvice);
     };
 
     addClearButton(container, () => {
