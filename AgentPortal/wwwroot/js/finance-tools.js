@@ -53,10 +53,12 @@
 
 document.addEventListener("DOMContentLoaded", async function () {
     const dropdown = document.getElementById("budgetDropdown");
+    const financialHealthButton = document.getElementById("btnFinancialHealthSnapshot");
     const embedContainer = document.getElementById("budget-embed");
     const financeShell = document.querySelector(".finance-shell");
     const financeToolsRow = document.querySelector(".finance-tools-row");
     const financeRoot = document.getElementById("financeRoot");
+    const DEFAULT_TOOL_ID = "LegendLivingBalanceSheet";
     const clientProfileId = financeRoot?.dataset.clientProfileId?.trim() || "";
     const clientUserId = financeRoot?.dataset.clientUserId?.trim() || "";
     const isBusinessClient = (financeRoot?.dataset.isBusinessClient || "").toLowerCase() === "true";
@@ -116,9 +118,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         embedContainer.innerHTML = "";
         embedContainer.classList.remove("finance-main--dual");
         if (dropdown) {
-            dropdown.value = "LegendLivingBalanceSheet";
-            saveSelectedToolId("LegendLivingBalanceSheet");
-            dropdown.dispatchEvent(new Event("change"));
+            requestToolSelection(DEFAULT_TOOL_ID);
         }
     };
     const createDualToolPopout = (title, subtitle) => {
@@ -547,7 +547,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // ------------------- Tools -------------------
     const tools = [
-        { id: "LegendLivingBalanceSheet", name: "Financial Health Snapshot" },
+        { id: DEFAULT_TOOL_ID, name: "Financial Health Snapshot" },
         { id: "WealthForecast", name: "Wealth Forecast" },
         { id: "ExpenseLens", name: "Expense Lens" },
         { id: "SavingsAccelerator", name: "Savings Accelerator" },
@@ -559,9 +559,27 @@ document.addEventListener("DOMContentLoaded", async function () {
         { id: "FreedomIndex", name: "Freedom Index" },
         { id: "DebtAssetPulse", name: "Debt vs Asset Pulse" }
     ];
+    const dropdownTools = tools.filter(tool => tool.id !== DEFAULT_TOOL_ID);
+    let requestedToolOverrideId = "";
+
+    function syncToolSelectorState(toolId) {
+        const isDefaultTool = toolId === DEFAULT_TOOL_ID;
+        financialHealthButton?.setAttribute("aria-pressed", isDefaultTool ? "true" : "false");
+        if (!dropdown) return;
+        if (isDefaultTool) {
+            dropdown.selectedIndex = 0;
+        } else if (dropdown.value !== toolId) {
+            dropdown.value = toolId || "";
+        }
+    }
+
+    function requestToolSelection(toolId) {
+        requestedToolOverrideId = toolId || "";
+        dropdown?.dispatchEvent(new Event("change"));
+    }
 
     // Populate dropdown
-    tools.forEach(tool => {
+    dropdownTools.forEach(tool => {
         const option = document.createElement("option");
         option.value = tool.id;
         option.textContent = tool.name;
@@ -615,14 +633,23 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         }
     });
 
+    financialHealthButton?.addEventListener("click", function () {
+        this.blur();
+        requestToolSelection(DEFAULT_TOOL_ID);
+    });
+
 
     // ------------------- Tool Renderer -------------------
     const wfSearchHost = document.getElementById("wfClientSearchHost");
 
     dropdown.addEventListener("change", async function () {
+        const selectedToolId = requestedToolOverrideId || this.value;
+        requestedToolOverrideId = "";
         this.blur();
-        const t = tools.find(x => x.id === this.value);
-        saveSelectedToolId(this.value || "");
+        if (!selectedToolId) return;
+        syncToolSelectorState(selectedToolId);
+        const t = tools.find(x => x.id === selectedToolId);
+        saveSelectedToolId(selectedToolId);
 
         // clear UI
         embedContainer.innerHTML = '';
@@ -648,7 +675,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
         if (!t) return;
 
-        if (t.id === "LegendLivingBalanceSheet") {
+        if (t.id === DEFAULT_TOOL_ID) {
             const tool = window.LegendLivingBalanceSheetTool;
             if (!tool?.render) {
                 embedContainer.innerHTML = `
@@ -9347,8 +9374,6 @@ if (t.id === "DebtAssetPulse") {
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
     // Financial Health Snapshot is always the entry point — every load, refresh, and login.
-    dropdown.value = "LegendLivingBalanceSheet";
-    saveSelectedToolId("LegendLivingBalanceSheet");
-    dropdown.dispatchEvent(new Event("change"));
+    requestToolSelection(DEFAULT_TOOL_ID);
 
 }); // ✅ closes document.addEventListener("DOMContentLoaded", ...)

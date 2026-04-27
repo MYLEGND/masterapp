@@ -23,9 +23,15 @@
         <div class="finance-selector-row mt-3">
             <div class="finance-select-wrap">
                 <select id="budgetDropdown" class="form-select finance-select shadow-sm">
-                    <option value="">-- Select a tool --</option>
+                    <option value="" selected disabled>-- Select a tool --</option>
                 </select>
             </div>
+            <button type="button"
+                    class="btn finance-toolbar-btn finance-default-tool-btn"
+                    id="btnFinancialHealthSnapshot"
+                    aria-pressed="true">
+                Financial Health Snapshot
+            </button>
             <button type="button" class="btn finance-toolbar-btn" id="btnToggleSupportPanels">Goals + Alerts</button>
         </div>
     </div>
@@ -151,7 +157,7 @@ body{
 
 .finance-selector-row{
     display: grid;
-    grid-template-columns: minmax(260px, 320px) minmax(170px, 240px);
+    grid-template-columns: minmax(260px, 320px) minmax(230px, 280px) minmax(170px, 240px);
     justify-content: center;
     gap: .85rem;
     align-items: center;
@@ -175,6 +181,12 @@ body{
 .finance-toolbar-btn:hover{
     transform: translateY(-1px);
     box-shadow: 0 14px 30px rgba(0,0,0,0.09);
+}
+
+.finance-default-tool-btn{
+    width: 100%;
+    padding: 12px 14px !important;
+    white-space: nowrap;
 }
 
 .finance-support-overlay{
