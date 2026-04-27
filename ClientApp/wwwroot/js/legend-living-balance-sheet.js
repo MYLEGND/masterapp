@@ -996,17 +996,30 @@
         const persistence = options?.persistence || window.LegendFinancePersistence;
         if (!host) return;
 
+        if (typeof host.__llbsCleanup === "function") {
+            try { host.__llbsCleanup(); } catch (_) { }
+        }
+        host.__llbsCleanup = null;
+
         host.innerHTML = renderShell(options);
         const root = host.querySelector(".llbs-tool");
         const saveStateEl = root.querySelector("[data-llbs-save-state]");
         const errorEl = root.querySelector("[data-llbs-error]");
         const LINKED_STATE_PATHS = new Set([
-            "cashFlow.insuranceCosts",
-            "cashFlow.debtObligations",
-            "cashFlow.earnings",
             "cashFlow.annualSavings"
         ]);
         const linkedStateLocks = new Set();
+        const windowCleanupFns = [];
+        const bindWindow = (eventName, handler) => {
+            window.addEventListener(eventName, handler);
+            windowCleanupFns.push(() => window.removeEventListener(eventName, handler));
+        };
+        host.__llbsCleanup = () => {
+            windowCleanupFns.forEach(dispose => {
+                try { dispose(); } catch (_) { }
+            });
+            windowCleanupFns.length = 0;
+        };
         let loadedState = {};
         try {
             loadedState = await (persistence?.loadState?.(TOOL_ID) || {});
@@ -1014,17 +1027,21 @@
             loadedState = {};
         }
 
-        function hasOwnPath(obj, path) {
-            return path.split(".").every((part) => {
-                if (!obj || typeof obj !== "object" || !Object.prototype.hasOwnProperty.call(obj, part)) return false;
-                obj = obj[part];
-                return true;
+        if (Array.isArray(loadedState?._linkedStateLocks)) {
+            loadedState._linkedStateLocks.forEach((path) => {
+                if (LINKED_STATE_PATHS.has(path)) linkedStateLocks.add(path);
             });
         }
 
-        LINKED_STATE_PATHS.forEach((path) => {
-            if (hasOwnPath(loadedState, path)) linkedStateLocks.add(path);
-        });
+        function getExpenseLensIncome(source) {
+            const hasSplitIncome =
+                String(source?.primaryIncome ?? "").trim() !== ""
+                || String(source?.spouseIncome ?? "").trim() !== "";
+            if (hasSplitIncome) {
+                return parseNumber(source?.primaryIncome ?? 0) + parseNumber(source?.spouseIncome ?? 0);
+            }
+            return parseNumber(source?.income ?? 0);
+        }
 
         const shouldSeedDefault = !loadedState || Object.keys(loadedState).length === 0;
         let state = calculate(mergeDeep(defaultState(), loadedState));
@@ -1041,18 +1058,21 @@
                 .filter(c => (c.name || "").toLowerCase().includes("insurance"))
                 .reduce((sum, c) => sum + parseNumber(c.amount || 0) * (FREQ_MULT[c.frequency] || 1), 0);
             const debtMonthly = Math.max(0, parseNumber((elState || {}).monthlyExpenseTotal ?? 0) - insMonthly);
-            const elIncome = parseNumber((elState || {}).income ?? 0);
+            const elIncome = getExpenseLensIncome(elState || {});
+            const nextInsAnnual = Math.round(Math.max(0, insMonthly) * 12);
+            const nextDebtAnnual = Math.round(Math.max(0, debtMonthly) * 12);
+            const nextEarningsAnnual = Math.round(Math.max(0, elIncome) * 12);
             let seeded = false;
-            if (insMonthly > 0 && !linkedStateLocks.has("cashFlow.insuranceCosts")) {
-                setPath(state, "cashFlow.insuranceCosts", Math.round(insMonthly * 12));
+            if (nextInsAnnual !== nonNegative(getPath(state, "cashFlow.insuranceCosts"))) {
+                setPath(state, "cashFlow.insuranceCosts", nextInsAnnual);
                 seeded = true;
             }
-            if (debtMonthly > 0 && !linkedStateLocks.has("cashFlow.debtObligations")) {
-                setPath(state, "cashFlow.debtObligations", Math.round(debtMonthly * 12));
+            if (nextDebtAnnual !== nonNegative(getPath(state, "cashFlow.debtObligations"))) {
+                setPath(state, "cashFlow.debtObligations", nextDebtAnnual);
                 seeded = true;
             }
-            if (elIncome > 0 && !linkedStateLocks.has("cashFlow.earnings")) {
-                setPath(state, "cashFlow.earnings", Math.round(elIncome * 12));
+            if (nextEarningsAnnual !== nonNegative(getPath(state, "cashFlow.earnings"))) {
+                setPath(state, "cashFlow.earnings", nextEarningsAnnual);
                 seeded = true;
             }
             if (seeded) state = calculate(state);
@@ -1095,6 +1115,8 @@
         function persistNow() {
             try {
                 state = calculate(state);
+                if (linkedStateLocks.size > 0) state._linkedStateLocks = Array.from(linkedStateLocks);
+                else delete state._linkedStateLocks;
                 persistence?.saveState?.(TOOL_ID, state, { immediate: true });
                 setStatus("Saving...");
                 window.clearTimeout(savedLabelTimer);
@@ -1279,6 +1301,7 @@
                 if (!window.confirm("Reset the Financial Health Snapshot? All entered values will be cleared.")) return;
                 linkedStateLocks.clear();
                 state = calculate(defaultState());
+                delete state._linkedStateLocks;
                 refreshAndDelta();
                 persistNow();
                 return;
@@ -1371,7 +1394,7 @@
         if (shouldSeedDefault) persistNow();
         else setStatus("Loaded");
 
-        window.addEventListener("ExpenseLens:updated", (event) => {
+        bindWindow("ExpenseLens:updated", (event) => {
             const detail = event.detail || {};
             const expenses = detail.expenses || [];
             const insMonthly = expenses
@@ -1379,13 +1402,13 @@
                 .reduce((sum, e) => sum + parseNumber(e.amount || 0), 0);
             const insAnnual = Math.round(insMonthly * 12);
             const debtAnnual = Math.round(Math.max(0, parseNumber(detail.monthlyExpenseTotal ?? 0) - insMonthly) * 12);
-            const earningsAnnual = Math.round(parseNumber(detail.income ?? 0) * 12);
+            const earningsAnnual = Math.round(Math.max(0, getExpenseLensIncome(detail)) * 12);
             const prevIns = nonNegative(getPath(state, "cashFlow.insuranceCosts"));
             const prevDebt = nonNegative(getPath(state, "cashFlow.debtObligations"));
             const prevEarnings = nonNegative(getPath(state, "cashFlow.earnings"));
-            const nextIns = linkedStateLocks.has("cashFlow.insuranceCosts") ? prevIns : insAnnual;
-            const nextDebt = linkedStateLocks.has("cashFlow.debtObligations") ? prevDebt : debtAnnual;
-            const nextEarnings = linkedStateLocks.has("cashFlow.earnings") ? prevEarnings : earningsAnnual;
+            const nextIns = insAnnual;
+            const nextDebt = debtAnnual;
+            const nextEarnings = earningsAnnual;
             if (nextIns === prevIns && nextDebt === prevDebt && nextEarnings === prevEarnings) return;
             setPath(state, "cashFlow.insuranceCosts", nextIns);
             setPath(state, "cashFlow.debtObligations", nextDebt);
@@ -1395,7 +1418,7 @@
             scheduleSave();
         });
 
-        window.addEventListener("SavingsAccelerator:updated", (event) => {
+        bindWindow("SavingsAccelerator:updated", (event) => {
             const detail = event.detail || {};
             const savings = parseNumber(detail.annualSavings ?? 0);
             const prevSavings = nonNegative(getPath(state, "cashFlow.annualSavings"));
