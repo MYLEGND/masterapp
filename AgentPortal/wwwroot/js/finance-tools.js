@@ -8499,18 +8499,20 @@ if (t.id === "WealthProjection") {
         <div class="wp-label">
             Current Net Worth
             <span class="wp-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 50,000 • 120,000 (assets minus liabilities today)">i</span>
+                  data-tip="<b>Auto-synced:</b> Pulls your live net worth from Financial Health Snapshot.">i</span>
         </div>
-        <input id="wpNet" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="wpNet" type="text" class="form-control mb-2" placeholder="Syncs from Financial Health Snapshot..."
+               readonly aria-readonly="true"
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; background:rgba(255,255,255,.94); cursor:default;" />
 
         <div class="wp-label">
             Monthly Surplus
             <span class="wp-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 500 • 2,000 (income minus expenses each month)">i</span>
+                  data-tip="<b>Auto-synced:</b> Pulls the Remaining Balance from the top of Expense Lens.">i</span>
         </div>
-        <input id="wpSurplus" type="text" class="form-control mb-2" placeholder="e.g., 2,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="wpSurplus" type="text" class="form-control mb-2" placeholder="Syncs from Expense Lens Remaining Balance..."
+               readonly aria-readonly="true"
+               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; background:rgba(255,255,255,.94); cursor:default;" />
 
         <div class="wp-label">
             Custom Months
@@ -8600,17 +8602,14 @@ if (t.id === "WealthProjection") {
 
     const formatWithCommas = (val) => val ? (+val).toLocaleString() : '0';
     const parseNumber = (val) => +val.toString().replace(/,/g,'') || 0;
+    const hasLinkedMoneyValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
+    let hasSyncedNetWorth = false;
+    let hasSyncedSurplus = false;
 
     // --- PERSISTENCE ---
     const loadWP = async () => {
         const state = await loadPersistedState('WealthProjection');
-        if(state.wpNet) wpNet.value = state.wpNet;
-        if(state.wpSurplus) wpSurplus.value = state.wpSurplus;
         if(state.wpMonths) wpMonths.value = state.wpMonths;
-        if(state.wpOut) wpOut.textContent = state.wpOut;
-        if(state.wp6) wp6.textContent = state.wp6;
-        if(state.wp12) wp12.textContent = state.wp12;
-        if(state.wpTips) wpTips.textContent = state.wpTips;
     };
     const saveWP = () => {
         savePersistedState('WealthProjection', {
@@ -8624,14 +8623,6 @@ if (t.id === "WealthProjection") {
         });
     };
     await loadWP();
-
-    addClearButton(container, () => {
-        wpNet.value = wpSurplus.value = wpMonths.value = '';
-        wpOut.textContent = wp6.textContent = wp12.textContent = '$0';
-        wpTips.textContent = 'Tip: Regularly increase your monthly surplus to accelerate your wealth growth.';
-        clearPersistedState('WealthProjection');
-        hideTip();
-    });
 
     // ✅ Color painter (no refresh needed)
     const applyWealthProjectionColors = (netNum, surplusNum) => {
@@ -8664,7 +8655,7 @@ if (t.id === "WealthProjection") {
         markGold(wpTips);
     };
 
-    const updateWealthProjection = () => {
+    const updateWealthProjection = ({ skipSave = false } = {}) => {
         let net = parseNumber(wpNet.value);
         let surplus = parseNumber(wpSurplus.value);
         let months = +wpMonths.value || 0;
@@ -8673,35 +8664,55 @@ if (t.id === "WealthProjection") {
         wp6.textContent = `$${formatWithCommas(net + surplus * 6)}`;
         wp12.textContent = `$${formatWithCommas(net + surplus * 12)}`;
 
-        if(net <= 0 && surplus <= 0) wpTips.textContent = '⚠️ Enter your current net worth and surplus to see projections.';
-        else if(surplus <= 0) wpTips.textContent = '⚠️ Your surplus is zero; focus on increasing your savings to grow wealth.';
-        else wpTips.textContent = '✅ Good! Keep adding to your surplus consistently to maximize growth over time.';
+        if (!hasSyncedNetWorth && !hasSyncedSurplus) wpTips.textContent = '⚠️ Complete Financial Health Snapshot and Expense Lens to sync your projection inputs.';
+        else if (!hasSyncedNetWorth) wpTips.textContent = '⚠️ Complete Financial Health Snapshot to sync your current net worth here.';
+        else if (!hasSyncedSurplus) wpTips.textContent = '⚠️ Complete Expense Lens to sync your monthly surplus here.';
+        else if (net <= 0 && surplus <= 0) wpTips.textContent = '⚠️ Your synced net worth and remaining balance are not positive yet; improve the source numbers to grow your projection.';
+        else if (surplus <= 0) wpTips.textContent = '⚠️ Expense Lens shows no positive remaining balance; improve income or reduce bills there first.';
+        else wpTips.textContent = '✅ Good! Keep building your remaining balance in Expense Lens to maximize long-term wealth growth.';
 
-        saveWP();
+        if (!skipSave) {
+            saveWP();
+        }
 
         // ✅ apply colors immediately after compute
         applyWealthProjectionColors(net, surplus);
     };
 
-    [wpNet, wpSurplus, wpMonths].forEach(input => {
-        input.addEventListener('input', updateWealthProjection);
-        input.addEventListener('blur', () => {
-            if(input.id !== 'wpMonths') input.value = parseNumber(input.value).toLocaleString();
-            updateWealthProjection();
-        });
-    });
+    const applyLLBSToWealthProjection = async (event) => {
+        const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
+        const rawNetWorth = src?.netWorth;
+        const netWorth = +(String(rawNetWorth ?? 0).replace(/[,$\s]/g, '')) || 0;
+        hasSyncedNetWorth = hasLinkedMoneyValue(rawNetWorth);
+        wpNet.value = hasSyncedNetWorth ? netWorth.toLocaleString() : '';
+        updateWealthProjection();
+    };
+
+    const applyExpenseLensToWealthProjection = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const rawRemaining = state?.monthlyRemaining;
+        const remaining = +(String(rawRemaining ?? 0).replace(/[,$\s]/g, '')) || 0;
+        hasSyncedSurplus = hasLinkedMoneyValue(rawRemaining);
+        wpSurplus.value = hasSyncedSurplus ? remaining.toLocaleString() : '';
+        updateWealthProjection();
+    };
+
+    wpMonths.addEventListener('input', () => updateWealthProjection());
+    wpMonths.addEventListener('blur', () => updateWealthProjection());
+
+    await applyLLBSToWealthProjection();
+    await applyExpenseLensToWealthProjection();
+    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToWealthProjection);
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToWealthProjection);
 
     // ✅ initial compute + paint (for persisted state)
     updateWealthProjection();
 
     addClearButton(container, () => {
-        wpNet.value = wpSurplus.value = wpMonths.value = '';
-        wpOut.textContent = wp6.textContent = wp12.textContent = '$0';
-        wpTips.textContent = 'Tip: Regularly increase your monthly surplus to accelerate your wealth growth.';
+        wpMonths.value = '';
         clearPersistedState('WealthProjection');
         hideTip();
-
-        requestAnimationFrame(() => applyWealthProjectionColors(0, 0));
+        updateWealthProjection({ skipSave: true });
     });
 }
 
