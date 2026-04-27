@@ -8233,8 +8233,8 @@ if (t.id === "FinancialBuffer") {
                   data-tip="<b>Examples:</b> 2,500 • 3,800 (rent/mortgage, utilities, insurance, minimum debt payments, essentials)">i</span>
         </div>
         <div style="position:relative; margin-bottom:15px;">
-            <input id="fbBills" type="text" class="form-control mb-3" placeholder="e.g., 2,500"
-                   style="font-weight:700; color:#1E3A8A; padding-right:30px;" />
+            <input id="fbBills" type="text" class="form-control mb-3" readonly placeholder="Sync from Expense Lens…"
+                   style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; padding-right:30px; cursor:default;" />
             <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
         </div>
 
@@ -8344,15 +8344,13 @@ if (t.id === "FinancialBuffer") {
     };
 
     addClearButton(container, () => {
-        fbBillsInput.value = '';
         fb1.textContent = '$0';
         fb3.textContent = '$0';
         fb12.textContent = '$0';
         fbTips.textContent = 'Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.';
         clearToolState('FinancialBuffer');
         hideTip();
-
-        requestAnimationFrame(() => applyFinancialBufferColors(0));
+        applyExpenseLensToFinancialBuffer();
     });
 
     const updateBuffer = () => {
@@ -8380,11 +8378,19 @@ if (t.id === "FinancialBuffer") {
 
     fbBillsInput.addEventListener('input', updateBuffer);
 
-    // ✅ initial compute + paint (for persisted state)
+    const applyExpenseLensToFinancialBuffer = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        fbBillsInput.value = elExpenses > 0 ? elExpenses.toLocaleString() : '';
+        updateBuffer();
+    };
+
     updateBuffer();
     applyProfileToFinancialBuffer();
     window.addEventListener("FinanceProfile:updated", applyProfileToFinancialBuffer);
     window.addEventListener("FinanceProfile:ready", applyProfileToFinancialBuffer);
+    await applyExpenseLensToFinancialBuffer();
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToFinancialBuffer);
 }
 
 
@@ -8783,8 +8789,8 @@ if (t.id === "FreedomIndex") {
             <span class="fi-i" tabindex="0"
                   data-tip="<b>What to enter:</b> Your yearly cost of living. <b>Example:</b> 50,000 (≈ 4,167/mo)">i</span>
         </div>
-        <input id="fiExp" type="text" class="form-control mb-2" placeholder="e.g., 50,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="fiExp" type="text" class="form-control mb-2" readonly placeholder="Sync from Expense Lens…"
+               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
 
         <div class="fi-label">
             Passive Income
@@ -8931,15 +8937,14 @@ if (t.id === "FreedomIndex") {
     };
 
     addClearButton(container, () => {
-        fiNet.value = fiExp.value = fiPassive.value = '';
+        fiNet.value = fiPassive.value = '';
         fiOut.textContent = '0';
         fiNetOut.textContent = fiExpOut.textContent = fiPassiveOut.textContent = '$0';
         fiMonths.textContent = '0';
         fiAdvice.textContent = 'Enter your values to see recommendations.';
         clearPersistedState('FreedomIndex');
         hideTip();
-
-        requestAnimationFrame(() => applyFreedomColors(0, 0, 0, 0, 0));
+        applyExpenseLensToFreedomIndex();
     });
 
     const updateFreedom = () => {
@@ -8971,7 +8976,7 @@ if (t.id === "FreedomIndex") {
         saveFI();
     };
 
-    [fiNet, fiExp, fiPassive].forEach(input => {
+    [fiNet, fiPassive].forEach(input => {
         input.addEventListener('input', updateFreedom);
         input.addEventListener('blur', () => {
             input.value = parseNumber(input.value).toLocaleString();
@@ -8979,8 +8984,15 @@ if (t.id === "FreedomIndex") {
         });
     });
 
-    // ✅ initial compute + paint (for persisted state)
-    updateFreedom();
+    const applyExpenseLensToFreedomIndex = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const elExpenses = +(String(state?.monthlyExpenseTotal || '').replace(/[,$\s]/g, '')) || 0;
+        fiExp.value = elExpenses > 0 ? (elExpenses * 12).toLocaleString() : '';
+        updateFreedom();
+    };
+
+    await applyExpenseLensToFreedomIndex();
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToFreedomIndex);
 }
 
 
@@ -9091,8 +9103,8 @@ if (t.id === "DebtAssetPulse") {
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Optional:</b> Monthly income helps estimate how fast you could crush liabilities. <b>Example:</b> 6,000">i</span>
         </div>
-        <input id="dapIncome" type="text" class="form-control mb-3" placeholder="e.g., 6,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="dapIncome" type="text" class="form-control mb-3" readonly placeholder="Sync from Expense Lens…"
+               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
 
         <h5 style="font-weight:700; margin-top:10px;">
             Debt-to-Asset Ratio:
@@ -9237,15 +9249,14 @@ if (t.id === "DebtAssetPulse") {
     };
 
     addClearButton(container, () => {
-        dapA.value = dapL.value = dapIncome.value = '';
+        dapA.value = dapL.value = '';
         dapOut.textContent = '0';
         dapAssets.textContent = dapLiabilities.textContent =
         dapNetWorth.textContent = dapMonthlyIncome.textContent = '$0';
         dapAdvice.textContent = 'Enter values to get guidance on your financial health.';
         clearPersistedState('DebtAssetPulse');
         hideTip();
-
-        requestAnimationFrame(() => applyDAPColors(0, 0, 0, 0));
+        applyExpenseLensToDebtAssetPulse();
     });
 
     const updateDAP = () => {
@@ -9280,7 +9291,7 @@ if (t.id === "DebtAssetPulse") {
         saveDAP();
     };
 
-    [dapA, dapL, dapIncome].forEach(input => {
+    [dapA, dapL].forEach(input => {
         input.addEventListener('input', updateDAP);
         input.addEventListener('blur', () => {
             input.value = formatWithCommas(parseNumber(input.value));
@@ -9288,8 +9299,15 @@ if (t.id === "DebtAssetPulse") {
         });
     });
 
-    // ✅ initial compute + paint (for persisted state)
-    updateDAP();
+    const applyExpenseLensToDebtAssetPulse = async (event) => {
+        const state = event?.detail || await loadPersistedState('ExpenseLens');
+        const elIncome = +(String(state?.income || '').replace(/[,$\s]/g, '')) || 0;
+        dapIncome.value = elIncome > 0 ? elIncome.toLocaleString() : '';
+        updateDAP();
+    };
+
+    await applyExpenseLensToDebtAssetPulse();
+    window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtAssetPulse);
     } // ✅ closes if (t.id === "DebtAssetPulse")
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
