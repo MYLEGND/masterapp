@@ -31,10 +31,10 @@
     ];
 
     const PROTECTION_FIELDS = [
-        ["protection.ifSued", "If You Are Sued"],
         ["protection.ifSick", "If You Get Sick"],
-        [WILLS_TRUSTS_PATH, "Wills & Trusts"],
-        ["protection.ifDie", "If You Die"]
+        ["protection.ifSued", "If You Are Sued"],
+        ["protection.ifDie", "If You Die"],
+        [WILLS_TRUSTS_PATH, "Wills & Trusts"]
     ];
 
     const FINANCIAL_PROTECTION_FIELDS = PROTECTION_FIELDS.filter(([path]) => path !== WILLS_TRUSTS_PATH);
