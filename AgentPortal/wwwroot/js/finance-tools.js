@@ -7192,7 +7192,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
         };
 
-        // ✅ Force style application after DOM paint (this is what kills the “refresh page” issue)
+        // ✅ Force style application after DOM paint (this is what kills the "refresh page" issue)
         requestAnimationFrame(() => {
             applyExpenseLensColors();
             refreshExpenseLens({ sortRows: true });            // ensures Remaining Balance + tip text is current
@@ -7478,7 +7478,7 @@ if (t.id === "NetWorth") {
     const applyNetWorthColors = (a, l, net, ratio, liabR) => {
         // Inputs
         markIncome(assets);   // assets = positive input
-        markExpense(liabs);   // liabilities = “debt” input
+        markExpense(liabs);   // liabilities = "debt" input
 
         // Outputs
         markIncome(aVal);
@@ -7542,7 +7542,7 @@ if (t.id === "NetWorth") {
 
     assets.oninput = liabs.oninput = calc;
 
-    // ✅ paint-safe initial color apply (fixes “all gold until refresh”)
+    // ✅ paint-safe initial color apply (fixes "all gold until refresh")
     calc(); // computes + paints + colors based on saved state
 }
 
@@ -8134,8 +8134,8 @@ if (t.id === "DebtClarity") {
 
     calcDebtClarity();
     applyProfileToDebtClarity();
-    window.addEventListener(“FinanceProfile:updated”, applyProfileToDebtClarity);
-    window.addEventListener(“FinanceProfile:ready”, applyProfileToDebtClarity);
+    window.addEventListener("FinanceProfile:updated", applyProfileToDebtClarity);
+    window.addEventListener("FinanceProfile:ready", applyProfileToDebtClarity);
     await applyExpenseLensToDebtClarity();
     window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtClarity);
 }
@@ -8630,7 +8630,7 @@ if (t.id === "WealthProjection") {
 
         markNeutral(wpMonths);
 
-        // Outputs: projections are “wealth”
+        // Outputs: projections are "wealth"
         if (surplusNum > 0 || netNum > 0) {
             markIncome(wpOut);
             markIncome(wp6);
