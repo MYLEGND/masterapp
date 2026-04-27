@@ -1479,8 +1479,8 @@
             });
         }
 
-        function loadCompoundLabFromSnapshot(resetLab = false) {
-            const baseState = resetLab ? compoundLabDefault() : getCompoundLabState();
+        function loadCompoundLabFromSnapshot() {
+            const baseState = getCompoundLabState();
             const periodsPerYear = compoundPeriodsPerYear(baseState.contributionCadence);
             state.compoundLab = normalizeCompoundLabState({
                 ...baseState,
@@ -1489,6 +1489,10 @@
                     ? (Math.max(0, parseNumber(state.cashFlow?.annualSavings ?? 0)) / periodsPerYear)
                     : 0
             });
+        }
+
+        function resetCompoundLab() {
+            state.compoundLab = normalizeCompoundLabState(compoundLabDefault());
         }
 
         function renderCompoundComparisons(projection, labState) {
@@ -1881,7 +1885,7 @@
             }
 
             if (event.target.closest("[data-llbs-compound-reset]")) {
-                loadCompoundLabFromSnapshot(true);
+                resetCompoundLab();
                 syncCompoundLabForm();
                 refreshCompoundLab();
                 scheduleSave();
@@ -1889,7 +1893,7 @@
             }
 
             if (event.target.closest("[data-llbs-compound-sync-snapshot]")) {
-                loadCompoundLabFromSnapshot(false);
+                loadCompoundLabFromSnapshot();
                 syncCompoundLabForm();
                 refreshCompoundLab();
                 scheduleSave();
@@ -2031,7 +2035,7 @@
         });
 
         if (!hasPersistedCompoundLab) {
-            loadCompoundLabFromSnapshot(true);
+            loadCompoundLabFromSnapshot();
         }
 
         refreshAndDelta();
