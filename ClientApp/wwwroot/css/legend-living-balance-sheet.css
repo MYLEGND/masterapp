@@ -587,6 +587,10 @@
     color: #ff4d5e;
 }
 
+.llbs-net-value.is-positive {
+    color: #6ff3a4;
+}
+
 .llbs-edit-value.is-negative,
 .llbs-readonly-value.is-negative {
     color: #ff9aa2;
@@ -1229,6 +1233,10 @@
 
 .llbs-net-value.is-negative {
     color: #c0222e;
+}
+
+.llbs-net-value.is-positive {
+    color: #0d8f4b;
 }
 
 .llbs-card-section[data-tone="cash"] {

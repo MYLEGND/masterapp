@@ -848,9 +848,15 @@
             const kind = el.getAttribute("data-llbs-kind") || "";
             const isRate = kind === "percent" || (path && (path.toLowerCase().includes("rate") || path.toLowerCase().includes("ratio")));
             const isCashOutflow = isCashOutflowPath(path);
+            const numericValue = Number(value || 0);
             el.textContent = isRate ? formatPercent(value) : displayForPath(path, value, kind);
             el.classList.toggle("is-cash-outflow", isCashOutflow);
-            el.classList.toggle("is-negative", isCashOutflow ? nonNegative(value) > 0 : Number(value || 0) < 0);
+            el.classList.toggle("is-negative", isCashOutflow ? nonNegative(value) > 0 : numericValue < 0);
+            if (path === "summary.netWorth") {
+                el.classList.toggle("is-positive", numericValue > 0);
+            } else {
+                el.classList.remove("is-positive");
+            }
             if (path === "summary.debtPressureRatio") {
                 el.dataset.pressureBand = resolveDebtPressureBand(value);
             } else {
