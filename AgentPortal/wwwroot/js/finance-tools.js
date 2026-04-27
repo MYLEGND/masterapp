@@ -255,6 +255,22 @@ document.addEventListener("DOMContentLoaded", async function () {
     const serverSaveTimers = new Map();
     const serverSaveInFlight = new Set();
 
+    function readLocalPersistedState(key) {
+        const raw = localStorage.getItem(localStateKey(key));
+        if (!raw) return null;
+
+        try {
+            return normalizePersistedState(key, JSON.parse(raw || "{}"));
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function hasPendingServerState(key) {
+        const primaryKey = getPrimaryStateKey(key);
+        return serverSaveQueue.has(primaryKey) || serverSaveInFlight.has(primaryKey);
+    }
+
     // Lazy-load Chart.js when needed (Wealth Forecast graph)
     let chartJsPromise = null;
     async function ensureChartJs() {
@@ -285,6 +301,16 @@ document.addEventListener("DOMContentLoaded", async function () {
             return {};
         }
 
+        // If this browser has a newer unsynced edit queued, trust that immediately
+        // so downstream tools stay in sync when switching tools quickly.
+        for (const candidateKey of keys) {
+            if (!hasPendingServerState(candidateKey)) continue;
+            const localState = readLocalPersistedState(candidateKey);
+            if (localState !== null) {
+                return localState;
+            }
+        }
+
         if (canUseServerState) {
             for (const candidateKey of keys) {
                 try {
@@ -293,7 +319,9 @@ document.addEventListener("DOMContentLoaded", async function () {
                     if (res.ok) {
                         const payload = await res.json();
                         if (payload?.found) {
-                            return normalizePersistedState(candidateKey, JSON.parse(payload?.jsonState || "{}"));
+                            const state = normalizePersistedState(candidateKey, JSON.parse(payload?.jsonState || "{}"));
+                            localStorage.setItem(localStateKey(getPrimaryStateKey(candidateKey)), JSON.stringify(state ?? {}));
+                            return state;
                         }
                     }
                 } catch (_) { }
@@ -302,15 +330,14 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         // Recovery path for old browser-only state: load it once, then push it to the server.
         for (const candidateKey of keys) {
-                const raw = localStorage.getItem(localStateKey(candidateKey));
-                if (raw) {
-                    const state = normalizePersistedState(candidateKey, JSON.parse(raw || "{}"));
-                    if (canUseServerState) {
-                        savePersistedState(candidateKey, state, { skipLocalCache: true, immediate: true });
-                    }
-                    return state;
+            const state = readLocalPersistedState(candidateKey);
+            if (state !== null) {
+                if (canUseServerState) {
+                    savePersistedState(candidateKey, state, { skipLocalCache: true, immediate: true });
                 }
+                return state;
             }
+        }
 
         return normalizePersistedState(key, {});
     }
