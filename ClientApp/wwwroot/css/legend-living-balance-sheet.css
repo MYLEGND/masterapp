@@ -1247,20 +1247,22 @@
 
 .llbs-net-worth {
     position: relative;
-    border-color: rgba(255, 206, 88, .82);
+    overflow: hidden;
+    border-color: rgba(231, 187, 74, .88);
     background:
-        radial-gradient(520px 180px at 50% 0%, rgba(255, 228, 147, .42), transparent 74%),
-        linear-gradient(180deg, #fffdfa 0%, #fff4d8 24%, #f8faff 64%, #eef3f8 100%);
+        linear-gradient(180deg, rgba(255, 255, 255, .82), rgba(255, 255, 255, 0) 18%),
+        linear-gradient(180deg, #fbfcfd 0%, #f1f4f7 52%, #e5eaef 100%);
     box-shadow:
-        0 22px 46px rgba(0, 0, 0, .20),
-        0 0 32px rgba(255, 196, 54, .22),
-        0 0 70px rgba(255, 196, 54, .10),
-        inset 0 1px 0 rgba(255, 255, 255, .92);
+        0 20px 42px rgba(15, 23, 42, .16),
+        0 0 0 1px rgba(231, 187, 74, .26),
+        inset 0 1px 0 rgba(255, 255, 255, .94);
 }
 
 .llbs-net-kicker {
-    color: #9f6700;
-    letter-spacing: .12em;
+    color: #86610d;
+    font-size: .8rem;
+    line-height: 1.2;
+    letter-spacing: .14em;
 }
 
 .llbs-net-value,
@@ -1271,9 +1273,14 @@
 }
 
 .llbs-net-value {
-    font-size: clamp(2.35rem, 4.7vw, 4.4rem);
+    max-width: 100%;
+    font-size: clamp(1.95rem, 3.6vw, 3.15rem);
+    line-height: .98;
     font-weight: 995;
-    letter-spacing: -.05em;
+    letter-spacing: -.04em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-shadow: 0 8px 22px rgba(17, 24, 39, .10);
     text-shadow: 0 10px 28px rgba(17, 24, 39, .16);
 }
 
@@ -1284,12 +1291,12 @@
 
 .llbs-net-value.is-negative {
     color: #b3152c;
-    text-shadow: 0 10px 28px rgba(179, 21, 44, .24);
+    text-shadow: 0 8px 22px rgba(179, 21, 44, .18);
 }
 
 .llbs-net-value.is-positive {
     color: #0f8a52;
-    text-shadow: 0 10px 28px rgba(15, 138, 82, .22);
+    text-shadow: 0 8px 22px rgba(15, 138, 82, .16);
 }
 
 .llbs-card-section[data-tone="cash"] {
