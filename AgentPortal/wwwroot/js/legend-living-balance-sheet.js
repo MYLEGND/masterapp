@@ -951,7 +951,7 @@
                             <p class="llbs-compound-subtitle">Model disciplined saving, flexible contribution cadence, APR, and time so you can clearly show the power of compounding.</p>
                         </div>
                         <div class="llbs-compound-head-actions">
-                            <button type="button" class="llbs-tax-toggle" data-llbs-compound-sync-snapshot>Load Snapshot Savings</button>
+                            <button type="button" class="llbs-tax-toggle" data-llbs-compound-sync-snapshot>Load Snapshot Values</button>
                             <button type="button" class="llbs-clear" data-llbs-compound-reset>Reset Lab</button>
                             <button type="button" class="llbs-compound-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
                         </div>
@@ -1374,6 +1374,8 @@
             loadedState = {};
         }
 
+        const hasPersistedCompoundLab = isPlainObject(loadedState?.compoundLab);
+
         if (Array.isArray(loadedState?._linkedStateLocks)) {
             loadedState._linkedStateLocks.forEach((path) => {
                 if (LINKED_STATE_PATHS.has(path)) linkedStateLocks.add(path);
@@ -1455,6 +1457,18 @@
                 }
                 if (document.activeElement === field) return;
                 field.value = compoundFieldInputValue(key, labState);
+            });
+        }
+
+        function loadCompoundLabFromSnapshot(resetLab = false) {
+            const baseState = resetLab ? compoundLabDefault() : getCompoundLabState();
+            const periodsPerYear = compoundPeriodsPerYear(baseState.contributionCadence);
+            state.compoundLab = normalizeCompoundLabState({
+                ...baseState,
+                startingBalance: Math.max(0, parseNumber(state.summary?.netWorth ?? 0)),
+                contributionAmount: periodsPerYear > 0
+                    ? (Math.max(0, parseNumber(state.cashFlow?.annualSavings ?? 0)) / periodsPerYear)
+                    : 0
             });
         }
 
@@ -1808,7 +1822,7 @@
             }
 
             if (event.target.closest("[data-llbs-compound-reset]")) {
-                state.compoundLab = compoundLabDefault();
+                loadCompoundLabFromSnapshot(true);
                 syncCompoundLabForm();
                 refreshCompoundLab();
                 scheduleSave();
@@ -1816,12 +1830,7 @@
             }
 
             if (event.target.closest("[data-llbs-compound-sync-snapshot]")) {
-                const labState = getCompoundLabState();
-                const periodsPerYear = compoundPeriodsPerYear(labState.contributionCadence);
-                labState.contributionAmount = periodsPerYear > 0
-                    ? (nonNegative(state.cashFlow.annualSavings) / periodsPerYear)
-                    : 0;
-                state.compoundLab = normalizeCompoundLabState(labState);
+                loadCompoundLabFromSnapshot(false);
                 syncCompoundLabForm();
                 refreshCompoundLab();
                 scheduleSave();
@@ -1962,8 +1971,12 @@
             }
         });
 
+        if (!hasPersistedCompoundLab) {
+            loadCompoundLabFromSnapshot(true);
+        }
+
         refreshAndDelta();
-        if (shouldSeedDefault) persistNow();
+        if (shouldSeedDefault || !hasPersistedCompoundLab) persistNow();
         else setStatus("Loaded");
 
         bindWindow("ExpenseLens:updated", (event) => {
