@@ -1504,8 +1504,8 @@ body.llbs-modal-open {
 
 .llbs-compound-modal {
     position: relative;
-    width: min(1120px, calc(100vw - 44px));
-    max-height: calc(100vh - 44px);
+    width: min(1380px, calc(100vw - 28px));
+    max-height: calc(100vh - 28px);
     overflow: auto;
     border: 1.5px solid var(--llbs-line-strong);
     border-radius: 18px;
@@ -1519,12 +1519,18 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 18px;
-    padding: 18px 20px 14px;
+    padding: 20px 22px 16px;
     border-bottom: 1px solid rgba(243, 216, 139, .18);
+    background:
+        linear-gradient(180deg, rgba(7, 13, 25, .96), rgba(7, 13, 25, .88));
+    backdrop-filter: blur(8px);
 }
 
 .llbs-compound-kicker {
@@ -1534,16 +1540,16 @@ body.llbs-modal-open {
 .llbs-compound-title {
     margin: 0 0 5px;
     color: #fff7dd;
-    font-size: 1.3rem;
+    font-size: 1.45rem;
     font-weight: 950;
     letter-spacing: .01em;
 }
 
 .llbs-compound-subtitle {
     margin: 0;
-    max-width: 760px;
+    max-width: 900px;
     color: var(--llbs-soft-text);
-    font-size: .86rem;
+    font-size: .92rem;
     font-weight: 700;
     line-height: 1.45;
 }
@@ -1577,9 +1583,9 @@ body.llbs-modal-open {
 
 .llbs-compound-grid {
     display: grid;
-    grid-template-columns: minmax(320px, 370px) minmax(0, 1fr);
-    gap: 14px;
-    padding: 16px;
+    grid-template-columns: minmax(380px, 430px) minmax(0, 1fr);
+    gap: 18px;
+    padding: 18px;
 }
 
 .llbs-compound-panel {
@@ -1593,17 +1599,21 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-panel-inputs {
-    padding: 14px;
+    position: sticky;
+    top: 96px;
+    align-self: start;
+    padding: 16px;
 }
 
 .llbs-compound-panel-results {
     display: grid;
-    gap: 14px;
-    padding: 14px;
+    gap: 16px;
+    padding: 16px;
 }
 
 .llbs-compound-field-grid {
     display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 11px;
 }
 
@@ -1651,7 +1661,7 @@ body.llbs-modal-open {
     margin-top: 13px;
     display: grid;
     gap: 6px;
-    padding: 12px 13px;
+    padding: 13px 14px;
     border: 1px solid rgba(53, 183, 121, .22);
     border-radius: 12px;
     background: linear-gradient(180deg, rgba(20, 108, 67, .15), rgba(15, 29, 56, .08));
@@ -1672,10 +1682,15 @@ body.llbs-modal-open {
     line-height: 1.45;
 }
 
-.llbs-compound-summary-grid,
+.llbs-compound-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
 .llbs-compound-compare-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
 }
 
@@ -1711,7 +1726,7 @@ body.llbs-modal-open {
 .llbs-compound-card strong,
 .llbs-compound-compare-card strong {
     color: #fff7dd;
-    font-size: 1.28rem;
+    font-size: 1.34rem;
     font-weight: 950;
     line-height: 1.05;
 }
@@ -1858,6 +1873,19 @@ body.llbs-modal-open {
         grid-template-columns: 1fr;
     }
 
+    .llbs-compound-panel-inputs {
+        position: static;
+        top: auto;
+    }
+
+    .llbs-compound-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .llbs-compound-compare-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .llbs-tax-grid {
         grid-template-columns: repeat(4, minmax(0, 1fr));
     }
@@ -1890,8 +1918,13 @@ body.llbs-modal-open {
         grid-template-columns: 1fr;
     }
 
+    .llbs-compound-field-grid {
+        grid-template-columns: 1fr;
+    }
+
     .llbs-compound-head {
         flex-direction: column;
+        position: static;
     }
 
     .llbs-compound-head-actions {

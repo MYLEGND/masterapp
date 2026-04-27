@@ -1554,7 +1554,9 @@
 
             const contributionNoteEl = root.querySelector("[data-llbs-compound-contribution-note]");
             if (contributionNoteEl) {
-                contributionNoteEl.textContent = `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} per year`;
+                contributionNoteEl.textContent = labState.contributionCadence === "yearly"
+                    ? `${formatCurrency(labState.contributionAmount)} annual contribution`
+                    : `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} per year`;
             }
 
             const noteEl = root.querySelector("[data-llbs-compound-note]");
