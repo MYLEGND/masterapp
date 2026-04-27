@@ -784,25 +784,27 @@
                                 </div>
                             </section>
 
-                            <section class="llbs-section llbs-card-section" data-tone="liabilities" data-llbs-script-key="liabilities">
-                                <div class="llbs-section-head">
-                                    <h3 class="llbs-section-title">Liabilities</h3>
-                                    <span class="llbs-section-note">What you owe</span>
-                                </div>
-                                <div class="llbs-rows">
-                                    ${LIABILITY_FIELDS.map(([path, label, note]) => {
-                                        const value = path === "liabilities.taxes" ? readonly(path) : editable(path, label);
-                                        return row(label, value, note || "");
-                                    }).join("")}
-                                    ${row("Total", readonly("liabilities.total"), "", true)}
-                                </div>
-                            </section>
-                        </div>
+                            <div class="llbs-main-stack">
+                                <section class="llbs-section llbs-card-section" data-tone="liabilities" data-llbs-script-key="liabilities">
+                                    <div class="llbs-section-head">
+                                        <h3 class="llbs-section-title">Liabilities</h3>
+                                        <span class="llbs-section-note">What you owe</span>
+                                    </div>
+                                    <div class="llbs-rows">
+                                        ${LIABILITY_FIELDS.map(([path, label, note]) => {
+                                            const value = path === "liabilities.taxes" ? readonly(path) : editable(path, label);
+                                            return row(label, value, note || "");
+                                        }).join("")}
+                                        ${row("Total", readonly("liabilities.total"), "", true)}
+                                    </div>
+                                </section>
 
-                        <section class="llbs-net-worth" data-llbs-script-key="networth">
-                            <div class="llbs-net-kicker">Net Worth</div>
-                            <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
-                        </section>
+                                <section class="llbs-net-worth" data-llbs-script-key="networth">
+                                    <div class="llbs-net-kicker">Net Worth</div>
+                                    <div class="llbs-net-value" data-llbs-output="summary.netWorth">$0</div>
+                                </section>
+                            </div>
+                        </div>
 
                         <section class="llbs-section llbs-card-section" data-tone="cash" data-llbs-script-key="cashflow">
                             <div class="llbs-section-head">
@@ -1003,6 +1005,11 @@
 
         host.innerHTML = renderShell(options);
         const root = host.querySelector(".llbs-tool");
+        const mainGridEl = root.querySelector(".llbs-main-grid");
+        const mainStackEl = root.querySelector(".llbs-main-stack");
+        const assetsSectionEl = root.querySelector('.llbs-card-section[data-tone="assets"]');
+        const liabilitiesSectionEl = root.querySelector('.llbs-card-section[data-tone="liabilities"]');
+        const netWorthSectionEl = root.querySelector('.llbs-net-worth');
         const saveStateEl = root.querySelector("[data-llbs-save-state]");
         const errorEl = root.querySelector("[data-llbs-error]");
         const LINKED_STATE_PATHS = new Set([
@@ -1084,6 +1091,7 @@
 
         function refreshAndDelta() {
             refresh(root, state);
+            syncNetWorthColumnHeight();
             const deltaEl = root.querySelector("[data-llbs-net-delta]");
             if (deltaEl) {
                 const delta = (state.summary?.netWorth ?? 0) - sessionStartNetWorth;
@@ -1100,6 +1108,34 @@
                     netWorth: state.summary?.netWorth ?? 0
                 }
             }));
+        }
+
+        function syncNetWorthColumnHeight() {
+            if (!mainGridEl || !mainStackEl || !assetsSectionEl || !liabilitiesSectionEl || !netWorthSectionEl) return;
+
+            netWorthSectionEl.style.height = "";
+            netWorthSectionEl.style.minHeight = "";
+
+            if (window.matchMedia('(max-width: 1080px)').matches) return;
+
+            const assetsHeight = assetsSectionEl.getBoundingClientRect().height;
+            const liabilitiesHeight = liabilitiesSectionEl.getBoundingClientRect().height;
+            const stackStyles = window.getComputedStyle(mainStackEl);
+            const stackGap = parseFloat(stackStyles.rowGap || stackStyles.gap || '0') || 0;
+            const targetHeight = Math.floor(assetsHeight - liabilitiesHeight - stackGap);
+
+            if (targetHeight > 48) {
+                netWorthSectionEl.style.height = `${targetHeight}px`;
+                netWorthSectionEl.style.minHeight = `${targetHeight}px`;
+            }
+        }
+
+        let netWorthHeightFrame = 0;
+        function scheduleNetWorthColumnHeightSync() {
+            window.cancelAnimationFrame(netWorthHeightFrame);
+            netWorthHeightFrame = window.requestAnimationFrame(() => {
+                syncNetWorthColumnHeight();
+            });
         }
 
         function setStatus(text) {
@@ -1393,6 +1429,9 @@
         refreshAndDelta();
         if (shouldSeedDefault) persistNow();
         else setStatus("Loaded");
+
+        scheduleNetWorthColumnHeightSync();
+        bindWindow("resize", scheduleNetWorthColumnHeightSync);
 
         bindWindow("ExpenseLens:updated", (event) => {
             const detail = event.detail || {};
