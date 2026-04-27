@@ -1079,7 +1079,6 @@
                 <div class="llbs-shell">
                     <header class="llbs-hero">
                         <div>
-                            <div class="llbs-kicker">Legend Standard Diagnostic</div>
                             <h2 class="llbs-title">Financial Health Snapshot</h2>
                             <p class="llbs-subtitle">One live view for protection, assets, liabilities, net worth, taxes, and lifestyle cash flow.</p>
                         </div>
