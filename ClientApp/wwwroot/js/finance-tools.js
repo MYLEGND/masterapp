@@ -206,6 +206,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const serverSaveQueue = new Map();
     const serverSaveTimers = new Map();
     const serverSaveInFlight = new Set();
+    const localStateKey = (key) => scopeKey(key);
 
     function normalizePersistedState(key, value) {
         if (key !== "ActionTracker") return value ?? {};
@@ -275,12 +276,14 @@ document.addEventListener("DOMContentLoaded", async function () {
             }
         }
 
-        if (canUseServerState) return normalizePersistedState(key, {});
-
         for (const candidateKey of keys) {
-            const raw = storageGet(candidateKey);
+            const raw = localStorage.getItem(localStateKey(candidateKey));
             if (raw) {
-                return normalizePersistedState(candidateKey, JSON.parse(raw || "{}"));
+                const state = normalizePersistedState(candidateKey, JSON.parse(raw || "{}"));
+                if (canUseServerState) {
+                    savePersistedState(candidateKey, state, { skipLocalCache: true, immediate: true });
+                }
+                return state;
             }
         }
 
@@ -355,33 +358,30 @@ document.addEventListener("DOMContentLoaded", async function () {
         if (document.visibilityState === "hidden") flushAllServerState(true);
     });
 
-    function savePersistedState(key, state) {
-        const normalizedState = normalizePersistedState(key, state);
-        const jsonState = JSON.stringify(normalizedState ?? {});
+    function savePersistedState(key, state, options = {}) {
         const primaryKey = getPrimaryStateKey(key);
-        if (!canUseServerState) {
-            storageSet(primaryKey, jsonState);
+        const normalizedState = normalizePersistedState(primaryKey, state);
+        const jsonState = JSON.stringify(normalizedState ?? {});
+        if (!options.skipLocalCache) {
+            localStorage.setItem(localStateKey(primaryKey), jsonState);
         }
 
         if (!canUseServerState) return;
 
         serverSaveQueue.set(primaryKey, jsonState);
-        scheduleServerStateFlush(primaryKey);
+        scheduleServerStateFlush(primaryKey, options.immediate ? 0 : 300);
     }
 
     function clearPersistedState(key) {
         const keys = getStateKeys(key);
         keys.forEach(k => {
+            localStorage.removeItem(localStateKey(k));
             serverSaveQueue.delete(k);
             if (serverSaveTimers.has(k)) {
                 clearTimeout(serverSaveTimers.get(k));
                 serverSaveTimers.delete(k);
             }
         });
-
-        if (!canUseServerState) {
-            keys.forEach(storageRemove);
-        }
 
         if (!canUseServerState) return;
 
