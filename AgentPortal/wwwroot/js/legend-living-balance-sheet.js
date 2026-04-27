@@ -958,7 +958,6 @@
                 <section class="llbs-compound-modal" id="llbsCompoundLabModal" role="dialog" aria-modal="true" aria-labelledby="llbsCompoundLabTitle">
                     <div class="llbs-compound-head">
                         <div>
-                            <div class="llbs-kicker llbs-compound-kicker">Agent Growth Lab</div>
                             <h3 class="llbs-compound-title" id="llbsCompoundLabTitle">Compound Interest Designer</h3>
                             <p class="llbs-compound-subtitle">Model disciplined saving, flexible contribution cadence, APR, and time so you can clearly show the power of compounding.</p>
                         </div>
