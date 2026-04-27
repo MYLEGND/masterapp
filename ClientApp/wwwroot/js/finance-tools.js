@@ -444,6 +444,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     // ------------------- Persistence Helpers (UPDATED) -------------------
     function saveToolState(toolId) {
+        if ((embedContainer?.dataset?.activeToolId || "") !== toolId) return;
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
 
@@ -467,6 +468,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     async function loadToolState(toolId) {
         const saved = await loadPersistedState(`toolState-${toolId}`);
+        if ((embedContainer?.dataset?.activeToolId || "") !== toolId) return;
         const container = embedContainer.querySelector('.networth-tool');
         if (!container) return;
 
@@ -1646,7 +1648,7 @@ if (t.id === "SavingsAccelerator") {
 
     await loadAllocationState();
     await applyExpenseLensToSavingsAccelerator();
-    window.addEventListener(linkedELEvent, applyExpenseLensToSavingsAccelerator);
+    toolContext.onWindow(linkedELEvent, applyExpenseLensToSavingsAccelerator);
     refreshSurplus();
 
     }; // end renderSavingsAcceleratorInstance
@@ -3375,7 +3377,7 @@ if (t.id === "NetWorth") {
     };
 
     await applyLLBSToNetWorth();
-    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToNetWorth);
+    toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToNetWorth);
 }
 
 /* -------------------------------
@@ -3664,7 +3666,7 @@ if (t.id === "CashFlow") {
     };
 
     await applyExpenseLensToCashFlow();
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToCashFlow);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToCashFlow);
 }
 
 /* -------------------------------
@@ -3942,8 +3944,8 @@ if (t.id === "DebtClarity") {
 
     await applyLLBSToDebtClarity();
     await applyExpenseLensToDebtClarity();
-    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToDebtClarity);
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtClarity);
+    toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToDebtClarity);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToDebtClarity);
 }
 
 
@@ -4167,7 +4169,7 @@ if (t.id === "FinancialBuffer") {
     };
 
     await applyExpenseLensToFinancialBuffer();
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToFinancialBuffer);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToFinancialBuffer);
 }
 
 
@@ -4463,8 +4465,8 @@ if (t.id === "WealthProjection") {
 
     await applyLLBSToWealthProjection();
     await applyExpenseLensToWealthProjection();
-    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToWealthProjection);
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToWealthProjection);
+    toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToWealthProjection);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToWealthProjection);
 
     // ✅ initial compute + paint (for persisted state)
     updateWealthProjection();
@@ -4783,8 +4785,8 @@ if (t.id === "FreedomIndex") {
 
     await applyLLBSToFreedomIndex();
     await applyExpenseLensToFreedomIndex();
-    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToFreedomIndex);
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToFreedomIndex);
+    toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToFreedomIndex);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToFreedomIndex);
 }
 
 
@@ -5092,8 +5094,8 @@ if (t.id === "DebtAssetPulse") {
 
     await applyLLBSToDebtAssetPulse();
     await applyExpenseLensToDebtAssetPulse();
-    window.addEventListener('LegendLivingBalanceSheet:updated', applyLLBSToDebtAssetPulse);
-    window.addEventListener('ExpenseLens:updated', applyExpenseLensToDebtAssetPulse);
+    toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToDebtAssetPulse);
+    toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToDebtAssetPulse);
     } // ✅ closes if (t.id === "DebtAssetPulse")
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
