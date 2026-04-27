@@ -325,6 +325,18 @@
         return match ? match[1] : fallback;
     }
 
+    function contributionCadenceUnitLabel(cadence) {
+        switch (cadence) {
+            case "daily": return "Day";
+            case "weekly": return "Week";
+            case "biweekly": return "2 Weeks";
+            case "monthly": return "Month";
+            case "quarterly": return "Quarter";
+            case "yearly": return "Year";
+            default: return "Period";
+        }
+    }
+
     function normalizeOptionValue(value, options, fallback) {
         return options.some(([key]) => key === value) ? value : fallback;
     }
@@ -964,8 +976,9 @@
                                     <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" />
                                 </label>
                                 <label class="llbs-compound-field">
-                                    <span>Save Each Period</span>
+                                    <span data-llbs-compound-contribution-label>Save Each Month</span>
                                     <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" />
+                                    <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>$0 per month = $0 per year</small>
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Savings Cadence</span>
@@ -1517,6 +1530,7 @@
             const projection = simulateCompoundProjection(labState);
             const goalYears = estimateCompoundGoalYears(labState);
             const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, labState.contributionCadence, "period");
+            const cadenceUnitLabel = contributionCadenceUnitLabel(labState.contributionCadence);
             const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, labState.compoundingCadence, labState.compoundingCadence);
             const unitProjection = simulateCompoundProjection({
                 ...labState,
@@ -1529,11 +1543,21 @@
                 ? Math.min(projection.futureValue / labState.targetAmount, 1)
                 : 0;
 
+            const contributionLabelEl = root.querySelector("[data-llbs-compound-contribution-label]");
+            if (contributionLabelEl) {
+                contributionLabelEl.textContent = `Save Each ${cadenceUnitLabel}`;
+            }
+
+            const contributionNoteEl = root.querySelector("[data-llbs-compound-contribution-note]");
+            if (contributionNoteEl) {
+                contributionNoteEl.textContent = `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} per year`;
+            }
+
             const noteEl = root.querySelector("[data-llbs-compound-note]");
             if (noteEl) {
                 noteEl.innerHTML = `
                     <strong>${cadenceLabel} discipline + ${compoundingLabel} compounding</strong>
-                    <span>At ${formatPercent(labState.apr)} APR, every ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} becomes ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)}. Calculations assume contributions land at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each period.</span>
+                    <span>${formatCurrency(labState.contributionAmount)} saved ${cadenceLabel.toLowerCase()} means about ${formatCurrency(projection.annualizedContribution)} invested per year. At ${formatPercent(labState.apr)} APR, every ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} becomes ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)}. Calculations assume contributions land at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each period.</span>
                 `;
             }
 

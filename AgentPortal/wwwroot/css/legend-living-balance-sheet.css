@@ -1620,6 +1620,13 @@ body.llbs-modal-open {
     text-transform: uppercase;
 }
 
+.llbs-compound-field-note {
+    color: var(--llbs-soft-text);
+    font-size: .73rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
 .llbs-compound-input,
 .llbs-compound-select {
     width: 100%;
