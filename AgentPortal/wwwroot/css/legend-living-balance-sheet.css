@@ -1274,7 +1274,7 @@
 
 .llbs-net-value {
     max-width: 100%;
-    font-size: clamp(1.95rem, 3.6vw, 3.15rem);
+    font-size: clamp(1.72rem, 3.05vw, 2.72rem);
     line-height: .98;
     font-weight: 995;
     letter-spacing: -.04em;
