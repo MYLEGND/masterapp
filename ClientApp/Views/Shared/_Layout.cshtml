@@ -51,6 +51,10 @@
                             var ctx = ClientContextService.ResolveAsync(User, Context.Request.Cookies).GetAwaiter().GetResult();
                             bool isBusinessClient = false;
                             string managedClientName = "Client";
+                            var currentReturnUrl = $"{Context.Request.Path}{Context.Request.QueryString}";
+                            var stopManagedViewUrl = $"/support/stop-view-as-client?returnUrl={System.Uri.EscapeDataString(currentReturnUrl)}";
+                            var isAgentView = ctx?.IsAgentView == true;
+                            var managedClientProfileId = ctx?.ClientProfileId.ToString() ?? "";
                             if (ctx?.Profile != null)
                             {
                                 isBusinessClient = string.Equals(ResolveRecordType(ctx.Profile), "BusinessClient", StringComparison.OrdinalIgnoreCase);
@@ -66,10 +70,11 @@
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
                     </ul>
-                    @if (ctx?.IsAgentView == true)
+                    @if (isAgentView)
                     {
                         <div class="nav-context-row">
                             <span class="nav-context-pill">Managing <strong>@managedClientName</strong></span>
+                            <a class="nav-context-exit" href="@stopManagedViewUrl">Exit View</a>
                         </div>
                     }
                 </div>
@@ -335,6 +340,73 @@
 
 <script src="~/js/number-format.js" asp-append-version="true"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    (function () {
+        const isAgentView = @(isAgentView ? "true" : "false");
+        const clientProfileId = @Html.Raw(JsonSerializer.Serialize(managedClientProfileId));
+        const stopManagedViewUrl = @Html.Raw(JsonSerializer.Serialize(stopManagedViewUrl));
+        const sessionFlagKey = "legendAgentViewActive";
+        const sessionClientKey = "legendAgentViewClientProfileId";
+        const launchCookieName = "impClientLaunch";
+
+        function safeGet(getter, fallback) {
+            try {
+                return getter();
+            } catch (error) {
+                return fallback;
+            }
+        }
+
+        function safeRun(callback) {
+            try {
+                callback();
+            } catch (error) {
+                /* ignore transient storage/cookie issues */
+            }
+        }
+
+        function readCookie(name) {
+            const prefix = `${name}=`;
+            const cookies = document.cookie ? document.cookie.split(";") : [];
+            for (const rawCookie of cookies) {
+                const cookie = rawCookie.trim();
+                if (cookie.startsWith(prefix)) {
+                    return decodeURIComponent(cookie.substring(prefix.length));
+                }
+            }
+
+            return "";
+        }
+
+        function deleteCookie(name) {
+            document.cookie = `${name}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax`;
+        }
+
+        if (!isAgentView) {
+            safeRun(() => sessionStorage.removeItem(sessionFlagKey));
+            safeRun(() => sessionStorage.removeItem(sessionClientKey));
+            deleteCookie(launchCookieName);
+            return;
+        }
+
+        const sessionArmed = safeGet(() => sessionStorage.getItem(sessionFlagKey) === "1", false);
+        const storedClientProfileId = safeGet(() => sessionStorage.getItem(sessionClientKey) || "", "");
+        const launchClientProfileId = readCookie(launchCookieName);
+        const sessionMatchesClient = sessionArmed && (!storedClientProfileId || storedClientProfileId === clientProfileId);
+        const launchMatchesClient = !!launchClientProfileId && (!clientProfileId || launchClientProfileId === clientProfileId);
+
+        if (!sessionMatchesClient && !launchMatchesClient) {
+            safeRun(() => sessionStorage.removeItem(sessionFlagKey));
+            safeRun(() => sessionStorage.removeItem(sessionClientKey));
+            window.location.replace(stopManagedViewUrl);
+            return;
+        }
+
+        safeRun(() => sessionStorage.setItem(sessionFlagKey, "1"));
+        safeRun(() => sessionStorage.setItem(sessionClientKey, clientProfileId));
+        deleteCookie(launchCookieName);
+    })();
+</script>
 <script>
     (function () {
         const nav = document.querySelector('.navbar');

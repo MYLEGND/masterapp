@@ -11,6 +11,9 @@ namespace ClientApp.Controllers;
 [Authorize]
 public class SupportController : Controller
 {
+    private const string ImpersonationCookieName = "impClientProfileId";
+    private const string SelfClientCookieName = "selfClientProfileId";
+    private const string ImpersonationLaunchCookieName = "impClientLaunch";
     private readonly MasterAppDbContext _db;
 
     public SupportController(MasterAppDbContext db)
@@ -38,25 +41,36 @@ public class SupportController : Controller
 
     // Agent clicks "View Profile" -> send them here:
     // /support/view-as-client/{clientProfileId}
-        private static readonly HashSet<string> AllowedReturnUrls = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "/profile",
-            "/finance",
-            "/protectionsnapshot",
-            "/ProtectionSnapshot",
-            "/BookKeeping",
-            "/BookKeeping/Reports",
-            "/bookkeeping",
-            "/bookkeeping/reports",
-            "/"
-        };
+    private static readonly HashSet<string> AllowedReturnUrls = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/",
+        "/profile",
+        "/finance",
+        "/protectionsnapshot",
+        "/bookkeeping",
+        "/bookkeeping/reports",
+        "/resources",
+        "/training"
+    };
 
-        private static string NormalizeReturnUrl(string? raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return "/profile";
-            if (!raw.StartsWith("/")) raw = "/" + raw;
-            return AllowedReturnUrls.Contains(raw) ? raw : "/profile";
-        }
+    private static string NormalizeReturnUrl(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "/profile";
+
+        raw = raw.Trim();
+        if (!raw.StartsWith("/")) raw = "/" + raw;
+
+        var hashIndex = raw.IndexOf('#');
+        if (hashIndex >= 0)
+            raw = raw[..hashIndex];
+
+        var pathOnly = raw;
+        var queryIndex = pathOnly.IndexOf('?');
+        if (queryIndex >= 0)
+            pathOnly = pathOnly[..queryIndex];
+
+        return AllowedReturnUrls.Contains(pathOnly) ? raw : "/profile";
+    }
 
         [HttpGet("/support/view-as-client/{clientProfileId:guid}")]
         public async Task<IActionResult> ViewAsClient(Guid clientProfileId, string? returnUrl = null)
@@ -97,7 +111,7 @@ public class SupportController : Controller
         {
             // Agent path
             Response.Cookies.Append(
-                "impClientProfileId",
+                ImpersonationCookieName,
                 clientProfileId.ToString(),
                 new CookieOptions
                 {
@@ -106,6 +120,18 @@ public class SupportController : Controller
                     SameSite = SameSiteMode.Lax,
                     IsEssential = true,
                     Expires = DateTimeOffset.UtcNow.AddHours(2)
+                });
+
+            Response.Cookies.Append(
+                ImpersonationLaunchCookieName,
+                clientProfileId.ToString(),
+                new CookieOptions
+                {
+                    HttpOnly = false,
+                    Secure = true,
+                    SameSite = SameSiteMode.Lax,
+                    IsEssential = true,
+                    Expires = DateTimeOffset.UtcNow.AddMinutes(10)
                 });
 
             return Redirect(target);
@@ -128,7 +154,7 @@ public class SupportController : Controller
             return Forbid();
 
         Response.Cookies.Append(
-            "selfClientProfileId",
+            SelfClientCookieName,
             clientProfileId.ToString(),
             new CookieOptions
             {
@@ -139,14 +165,21 @@ public class SupportController : Controller
                 Expires = DateTimeOffset.UtcNow.AddHours(12)
             });
 
+        Response.Cookies.Delete(ImpersonationCookieName);
+        Response.Cookies.Delete(ImpersonationLaunchCookieName);
+
         return Redirect(target);
     }
 
-        [HttpGet("/support/stop-view-as-client")]
-        public IActionResult StopViewAsClient()
-        {
-            Response.Cookies.Delete("impClientProfileId");
-            Response.Cookies.Delete("selfClientProfileId");
-            return Redirect("/");
-        }
+    [HttpGet("/support/stop-view-as-client")]
+    public IActionResult StopViewAsClient(string? returnUrl = null, bool clearSelf = false)
+    {
+        Response.Cookies.Delete(ImpersonationCookieName);
+        Response.Cookies.Delete(ImpersonationLaunchCookieName);
+
+        if (clearSelf)
+            Response.Cookies.Delete(SelfClientCookieName);
+
+        return Redirect(NormalizeReturnUrl(returnUrl));
+    }
 }
