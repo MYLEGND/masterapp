@@ -677,6 +677,16 @@ function paint(el, color, weight = "800") {
   if (!el) return;
   el.style.setProperty("color", color, "important");
   el.style.setProperty("font-weight", weight, "important");
+  const affixGroups = [
+    el.closest?.(".legend-money-input"),
+    el.closest?.(".legend-percent-input")
+  ].filter(Boolean);
+  affixGroups.forEach((group) => {
+    group.querySelectorAll(".legend-money-prefix, .legend-percent-suffix").forEach((node) => {
+      node.style.setProperty("color", color, "important");
+      node.style.setProperty("font-weight", weight, "important");
+    });
+  });
 }
 
 const COLOR_GOLD = "#a68023";
@@ -1707,6 +1717,7 @@ if (t.id === "SavingsAccelerator") {
 </div>`;
 
     const container = hostElement.querySelector('.networth-tool');
+    applyToolBoxStyles(container);
     const saAllocationInput = document.getElementById(pid('Allocation'));
     const saTips = document.getElementById(pid('Tips'));
     const allocationContainer = document.getElementById(pid('AllocContainer'));
