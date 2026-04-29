@@ -389,23 +389,36 @@
 
     function buildCompoundProjectionConfig(rawConfig, overrideYears) {
         const source = normalizeCompoundLabState(rawConfig);
-        const hasPrincipalInput = !isBlankValue(source.startingBalance) || !isBlankValue(source.contributionAmount);
-        const hasCoreSelections = !!source.contributionCadence && !!source.contributionTiming && !!source.compoundingCadence;
-        const hasCoreNumbers = !isBlankValue(source.apr) && !isBlankValue(source.years);
-        if (!hasPrincipalInput || !hasCoreSelections || !hasCoreNumbers) return null;
+        const hasStartingBalance = !isBlankValue(source.startingBalance) && nonNegative(source.startingBalance) > 0;
+        const hasContributionAmount = !isBlankValue(source.contributionAmount) && nonNegative(source.contributionAmount) > 0;
+        const hasPrincipalInput = hasStartingBalance || hasContributionAmount;
+        if (!hasPrincipalInput) return null;
+
+        const derivedContributionCadence = source.contributionCadence || "monthly";
+        const derivedContributionTiming = source.contributionTiming || "end";
+        const derivedCompoundingCadence = source.compoundingCadence || source.contributionCadence || "monthly";
+        const derivedApr = isBlankValue(source.apr) ? 0 : normalizeRate(source.apr);
+        const derivedYears = overrideYears === undefined
+            ? (isBlankValue(source.years) ? 0 : Math.min(100, Math.max(0, parseNumber(source.years))))
+            : Math.max(0, Number(overrideYears || 0));
 
         return {
             startingBalance: nonNegative(source.startingBalance),
-            contributionAmount: nonNegative(source.contributionAmount),
-            contributionCadence: source.contributionCadence,
-            contributionTiming: source.contributionTiming,
-            apr: normalizeRate(source.apr),
-            years: overrideYears === undefined
-                ? Math.min(100, Math.max(0, parseNumber(source.years)))
-                : Math.max(0, Number(overrideYears || 0)),
-            compoundingCadence: source.compoundingCadence,
+            contributionAmount: hasContributionAmount ? nonNegative(source.contributionAmount) : 0,
+            contributionCadence: derivedContributionCadence,
+            contributionTiming: derivedContributionTiming,
+            apr: derivedApr,
+            years: derivedYears,
+            compoundingCadence: derivedCompoundingCadence,
             annualContributionIncrease: isBlankValue(source.annualContributionIncrease) ? 0 : normalizeRate(source.annualContributionIncrease),
-            inflationRate: isBlankValue(source.inflationRate) ? 0 : normalizeRate(source.inflationRate)
+            inflationRate: isBlankValue(source.inflationRate) ? 0 : normalizeRate(source.inflationRate),
+            assumptions: {
+                usedDefaultContributionCadence: !source.contributionCadence,
+                usedDefaultContributionTiming: !source.contributionTiming,
+                usedDefaultCompoundingCadence: !source.compoundingCadence,
+                usedDefaultApr: isBlankValue(source.apr),
+                usedDefaultYears: isBlankValue(source.years)
+            }
         };
     }
 
@@ -1522,17 +1535,19 @@
             if (compoundOverlay.hidden && !force) return;
             const labState = getCompoundLabState();
             const projection = simulateCompoundProjection(labState);
+            const projectionConfig = projection?.config || null;
             const cadenceSelected = !!labState.contributionCadence;
             const hasContributionAmount = !isBlankValue(labState.contributionAmount);
-            const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, labState.contributionCadence, "period");
-            const cadenceUnitLabel = cadenceSelected ? contributionCadenceUnitLabel(labState.contributionCadence) : "Period";
-            const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, labState.compoundingCadence, "selected");
+            const activeCadence = cadenceSelected
+                ? labState.contributionCadence
+                : (projectionConfig?.contributionAmount > 0 ? projectionConfig.contributionCadence : "");
+            const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, activeCadence, "period");
+            const cadenceUnitLabel = activeCadence ? contributionCadenceUnitLabel(activeCadence) : "Period";
+            const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, projectionConfig?.compoundingCadence || labState.compoundingCadence, "Monthly");
             const annualizedContribution = cadenceSelected && hasContributionAmount
                 ? nonNegative(labState.contributionAmount) * compoundPeriodsPerYear(labState.contributionCadence)
                 : null;
-            const effectiveAnnualYield = !isBlankValue(labState.apr) && !!labState.compoundingCadence
-                ? compoundGrowthFactor(labState.apr, labState.compoundingCadence, 1) - 1
-                : null;
+            const effectiveAnnualYield = projection ? projection.effectiveAnnualYield : null;
             const unitProjection = projection ? simulateCompoundProjection({
                 ...labState,
                 startingBalance: 0,
@@ -1604,31 +1619,54 @@
                 return;
             }
 
+            const assumptionNotes = [];
+            if (projectionConfig.assumptions.usedDefaultApr) {
+                assumptionNotes.push("APR is blank, so growth is currently using 0%.");
+            }
+            if (projectionConfig.assumptions.usedDefaultYears) {
+                assumptionNotes.push("Years is blank, so the current horizon is 0 years.");
+            }
+            if (projectionConfig.contributionAmount > 0 && projectionConfig.assumptions.usedDefaultContributionTiming) {
+                assumptionNotes.push("Contribution timing is blank, so deposits are currently treated as end-of-period.");
+            }
+            if (projectionConfig.assumptions.usedDefaultCompoundingCadence) {
+                assumptionNotes.push(`Compounding is blank, so ${compoundingLabel.toLowerCase()} compounding is being used for now.`);
+            }
+
             if (compoundNoteEl) {
                 compoundNoteEl.innerHTML = `
                     <strong>Current Math Basis</strong>
-                    <span>${formatCurrency(nonNegative(labState.contributionAmount))} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(labState.contributionCadence), 0)} deposits per year.</span>
-                    <span>${formatCurrency(nonNegative(labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${formatYearsCompact(labState.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${!isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
-                    <span>Reality check: ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)} at the current settings.</span>
+                    <span>${projectionConfig.contributionAmount > 0 ? `${formatCurrency(projectionConfig.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(projectionConfig.contributionCadence), 0)} deposits per year.` : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</span>
+                    <span>${formatCurrency(nonNegative(labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${!isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
+                    ${assumptionNotes.length > 0 ? `<span>${assumptionNotes.join(" ")}</span>` : ""}
+                    <span>${projectionConfig.contributionAmount > 0 ? `Reality check: ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)} at the current settings.` : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</span>
                 `;
             }
 
             const outputs = {
                 futureValue: formatCurrency(projection.futureValue),
-                projectionNote: "Nominal future value from current inputs.",
+                projectionNote: projectionConfig.assumptions.usedDefaultApr || projectionConfig.assumptions.usedDefaultYears
+                    ? "Live value using the inputs entered so far."
+                    : "Nominal future value from current inputs.",
                 contributionTotal: formatCurrency(projection.contributionTotal),
                 annualizedContribution: !isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0
                     ? `Year 1 pace: ${formatCurrency(projection.annualizedContribution)} per year`
-                    : `${formatCurrency(projection.annualizedContribution)} per year`,
+                    : cadenceSelected
+                        ? `${formatCurrency(projection.annualizedContribution)} per year`
+                        : (hasContributionAmount ? "Choose cadence to annualize savings." : "No recurring savings entered yet."),
                 interestEarned: formatCurrency(projection.interestEarned),
-                effectiveAnnualYield: `${formatPercent(projection.effectiveAnnualYield)} effective annual yield`,
+                effectiveAnnualYield: effectiveAnnualYield === null
+                    ? "APR blank, so current growth is 0%."
+                    : `${formatPercent(projection.effectiveAnnualYield)} effective annual yield`,
                 realValue: formatCurrency(projection.realValue),
                 realValueNote: isBlankValue(labState.inflationRate) || normalizeRate(labState.inflationRate) === 0
                     ? "No inflation adjustment applied."
                     : `Inflation-adjusted at ${formatPercent(labState.inflationRate)}.`,
-                unitGrowth: `${formatCurrency(unitProjection.futureValue)} from each ${formatCurrency(1)} ${cadenceLabel.toLowerCase()} save`,
+                unitGrowth: projectionConfig.contributionAmount > 0
+                    ? `${formatCurrency(unitProjection.futureValue)} from each ${formatCurrency(1)} ${cadenceLabel.toLowerCase()} save`
+                    : "--",
                 totalDeposited: formatCurrency(projection.totalDeposited),
-                yearsHorizon: formatYearsCompact(labState.years)
+                yearsHorizon: projectionConfig.assumptions.usedDefaultYears ? "--" : formatYearsCompact(projectionConfig.years)
             };
 
             Object.entries(outputs).forEach(([key, value]) => {
@@ -1637,11 +1675,21 @@
             });
 
             if (compoundCompareEl) {
-                compoundCompareEl.innerHTML = renderCompoundComparisons(projection, labState);
+                compoundCompareEl.innerHTML = projectionConfig.assumptions.usedDefaultYears
+                    ? ""
+                    : renderCompoundComparisons(projection, labState);
             }
 
             if (compoundMilestonesEl) {
-                compoundMilestonesEl.innerHTML = compoundMilestoneYears(labState.years).map((years) => {
+                if (projectionConfig.assumptions.usedDefaultYears) {
+                    compoundMilestonesEl.innerHTML = `
+                        <tr>
+                            <td colspan="4">Enter years to see growth checkpoints.</td>
+                        </tr>
+                    `;
+                    return;
+                }
+                compoundMilestonesEl.innerHTML = compoundMilestoneYears(projectionConfig.years).map((years) => {
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
