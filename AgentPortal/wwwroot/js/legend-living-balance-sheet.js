@@ -225,16 +225,15 @@
 
     function compoundLabDefault() {
         return {
-            startingBalance: 0,
-            contributionAmount: 100,
-            contributionCadence: "monthly",
-            contributionTiming: "end",
-            apr: 0.08,
-            years: 20,
-            compoundingCadence: "monthly",
-            annualContributionIncrease: 0,
-            inflationRate: 0.03,
-            targetAmount: 250000
+            startingBalance: "",
+            contributionAmount: "",
+            contributionCadence: "",
+            contributionTiming: "",
+            apr: "",
+            years: "",
+            compoundingCadence: "",
+            annualContributionIncrease: "",
+            inflationRate: ""
         };
     }
 
@@ -274,6 +273,10 @@
         const normalized = String(value ?? "").replace(/[$,%\s,]/g, "");
         const parsed = Number.parseFloat(normalized);
         return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function isBlankValue(value) {
+        return value === null || value === undefined || String(value).trim() === "";
     }
 
     function nonNegative(value) {
@@ -337,6 +340,18 @@
         }
     }
 
+    function optionalNonNegative(value) {
+        return isBlankValue(value) ? "" : nonNegative(value);
+    }
+
+    function optionalRate(value) {
+        return isBlankValue(value) ? "" : normalizeRate(value);
+    }
+
+    function optionalYears(value) {
+        return isBlankValue(value) ? "" : Math.min(100, Math.max(0, parseNumber(value)));
+    }
+
     function normalizeOptionValue(value, options, fallback) {
         return options.some(([key]) => key === value) ? value : fallback;
     }
@@ -360,24 +375,44 @@
         const defaults = compoundLabDefault();
         const source = isPlainObject(raw) ? raw : {};
         return {
-            startingBalance: nonNegative(source.startingBalance ?? defaults.startingBalance),
-            contributionAmount: nonNegative(source.contributionAmount ?? defaults.contributionAmount),
+            startingBalance: optionalNonNegative(source.startingBalance ?? defaults.startingBalance),
+            contributionAmount: optionalNonNegative(source.contributionAmount ?? defaults.contributionAmount),
             contributionCadence: normalizeOptionValue(source.contributionCadence, COMPOUND_CONTRIBUTION_CADENCES, defaults.contributionCadence),
             contributionTiming: normalizeOptionValue(source.contributionTiming, COMPOUND_TIMINGS, defaults.contributionTiming),
-            apr: normalizeRate(source.apr ?? defaults.apr),
-            years: Math.min(100, Math.max(0, parseNumber(source.years ?? defaults.years))),
+            apr: optionalRate(source.apr ?? defaults.apr),
+            years: optionalYears(source.years ?? defaults.years),
             compoundingCadence: normalizeOptionValue(source.compoundingCadence, COMPOUNDING_CADENCES, defaults.compoundingCadence),
-            annualContributionIncrease: normalizeRate(source.annualContributionIncrease ?? defaults.annualContributionIncrease),
-            inflationRate: normalizeRate(source.inflationRate ?? defaults.inflationRate),
-            targetAmount: nonNegative(source.targetAmount ?? defaults.targetAmount)
+            annualContributionIncrease: optionalRate(source.annualContributionIncrease ?? defaults.annualContributionIncrease),
+            inflationRate: optionalRate(source.inflationRate ?? defaults.inflationRate)
+        };
+    }
+
+    function buildCompoundProjectionConfig(rawConfig, overrideYears) {
+        const source = normalizeCompoundLabState(rawConfig);
+        const hasPrincipalInput = !isBlankValue(source.startingBalance) || !isBlankValue(source.contributionAmount);
+        const hasCoreSelections = !!source.contributionCadence && !!source.contributionTiming && !!source.compoundingCadence;
+        const hasCoreNumbers = !isBlankValue(source.apr) && !isBlankValue(source.years);
+        if (!hasPrincipalInput || !hasCoreSelections || !hasCoreNumbers) return null;
+
+        return {
+            startingBalance: nonNegative(source.startingBalance),
+            contributionAmount: nonNegative(source.contributionAmount),
+            contributionCadence: source.contributionCadence,
+            contributionTiming: source.contributionTiming,
+            apr: normalizeRate(source.apr),
+            years: overrideYears === undefined
+                ? Math.min(100, Math.max(0, parseNumber(source.years)))
+                : Math.max(0, Number(overrideYears || 0)),
+            compoundingCadence: source.compoundingCadence,
+            annualContributionIncrease: isBlankValue(source.annualContributionIncrease) ? 0 : normalizeRate(source.annualContributionIncrease),
+            inflationRate: isBlankValue(source.inflationRate) ? 0 : normalizeRate(source.inflationRate)
         };
     }
 
     function simulateCompoundProjection(rawConfig, overrideYears) {
-        const config = normalizeCompoundLabState(rawConfig);
-        const years = overrideYears === undefined
-            ? config.years
-            : Math.max(0, Number(overrideYears || 0));
+        const config = buildCompoundProjectionConfig(rawConfig, overrideYears);
+        if (!config) return null;
+        const years = config.years;
         const periodsPerYear = compoundPeriodsPerYear(config.contributionCadence);
         const fullPeriods = Math.floor((years * periodsPerYear) + 1e-9);
         const remainingYears = Math.max(0, years - (fullPeriods / periodsPerYear));
@@ -426,41 +461,6 @@
             annualizedContribution: config.contributionAmount * periodsPerYear,
             effectiveAnnualYield: compoundGrowthFactor(config.apr, config.compoundingCadence, 1) - 1
         };
-    }
-
-    function estimateCompoundGoalYears(rawConfig) {
-        const config = normalizeCompoundLabState(rawConfig);
-        if (config.targetAmount <= 0) return null;
-        if (config.startingBalance >= config.targetAmount) return 0;
-
-        const periodsPerYear = compoundPeriodsPerYear(config.contributionCadence);
-        const periodicFactor = compoundGrowthFactor(config.apr, config.compoundingCadence, 1 / periodsPerYear);
-        if (periodicFactor <= 1 && config.contributionAmount <= 0) return null;
-
-        let balance = config.startingBalance;
-        let currentContribution = config.contributionAmount;
-        const maxPeriods = periodsPerYear * 150;
-
-        for (let period = 0; period < maxPeriods; period += 1) {
-            if (period > 0 && period % periodsPerYear === 0 && config.annualContributionIncrease > 0) {
-                currentContribution *= (1 + config.annualContributionIncrease);
-            }
-
-            if (config.contributionTiming === "beginning" && currentContribution > 0) {
-                balance += currentContribution;
-                if (balance >= config.targetAmount) return period / periodsPerYear;
-            }
-
-            balance *= periodicFactor;
-            if (balance >= config.targetAmount) return (period + 1) / periodsPerYear;
-
-            if (config.contributionTiming === "end" && currentContribution > 0) {
-                balance += currentContribution;
-                if (balance >= config.targetAmount) return (period + 1) / periodsPerYear;
-            }
-        }
-
-        return null;
     }
 
     function compoundMilestoneYears(years) {
@@ -947,8 +947,9 @@
         `;
     }
 
-    function renderOptionList(options) {
-        return options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    function renderOptionList(options, placeholder = "") {
+        const placeholderHtml = placeholder ? `<option value="">${placeholder}</option>` : "";
+        return placeholderHtml + options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     }
 
     function renderCompoundLabModal() {
@@ -962,7 +963,6 @@
                             <p class="llbs-compound-subtitle">Model disciplined saving, flexible contribution cadence, APR, and time so you can clearly show the power of compounding.</p>
                         </div>
                         <div class="llbs-compound-head-actions">
-                            <button type="button" class="llbs-tax-toggle" data-llbs-compound-sync-snapshot>Load Snapshot Values</button>
                             <button type="button" class="llbs-clear" data-llbs-compound-reset>Reset Lab</button>
                             <button type="button" class="llbs-compound-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
                         </div>
@@ -975,20 +975,20 @@
                                     <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" />
                                 </label>
                                 <label class="llbs-compound-field">
-                                    <span data-llbs-compound-contribution-label>Save Each Month</span>
+                                    <span data-llbs-compound-contribution-label>Save Each Period</span>
                                     <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" />
-                                    <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>$0 per month = $0 per year</small>
+                                    <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>Choose a savings cadence to annualize contributions.</small>
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Savings Cadence</span>
                                     <select class="llbs-compound-select" data-llbs-compound-field="contributionCadence">
-                                        ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
+                                        ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES, "Choose cadence")}
                                     </select>
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Contribution Timing</span>
                                     <select class="llbs-compound-select" data-llbs-compound-field="contributionTiming">
-                                        ${renderOptionList(COMPOUND_TIMINGS)}
+                                        ${renderOptionList(COMPOUND_TIMINGS, "Choose timing")}
                                     </select>
                                 </label>
                                 <label class="llbs-compound-field">
@@ -998,7 +998,7 @@
                                 <label class="llbs-compound-field">
                                     <span>Compounding</span>
                                     <select class="llbs-compound-select" data-llbs-compound-field="compoundingCadence">
-                                        ${renderOptionList(COMPOUNDING_CADENCES)}
+                                        ${renderOptionList(COMPOUNDING_CADENCES, "Choose compounding")}
                                     </select>
                                 </label>
                                 <label class="llbs-compound-field">
@@ -1013,10 +1013,6 @@
                                     <span>Inflation %</span>
                                     <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" />
                                 </label>
-                                <label class="llbs-compound-field">
-                                    <span>Target Goal</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="targetAmount" inputmode="decimal" />
-                                </label>
                             </div>
                             <div class="llbs-compound-explainer" data-llbs-compound-note></div>
                         </section>
@@ -1024,37 +1020,37 @@
                             <div class="llbs-compound-summary-grid">
                                 <article class="llbs-compound-card llbs-compound-card-primary">
                                     <span>Projected Value</span>
-                                    <strong data-llbs-compound-output="futureValue">$0</strong>
-                                    <small data-llbs-compound-output="goalProgress">Goal progress: 0%</small>
+                                    <strong data-llbs-compound-output="futureValue">--</strong>
+                                    <small data-llbs-compound-output="projectionNote">Enter inputs to project growth.</small>
                                 </article>
                                 <article class="llbs-compound-card">
                                     <span>New Contributions</span>
-                                    <strong data-llbs-compound-output="contributionTotal">$0</strong>
-                                    <small data-llbs-compound-output="annualizedContribution">$0 per year</small>
+                                    <strong data-llbs-compound-output="contributionTotal">--</strong>
+                                    <small data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</small>
                                 </article>
                                 <article class="llbs-compound-card">
                                     <span>Interest Earned</span>
-                                    <strong data-llbs-compound-output="interestEarned">$0</strong>
-                                    <small data-llbs-compound-output="effectiveAnnualYield">0% effective annual yield</small>
+                                    <strong data-llbs-compound-output="interestEarned">--</strong>
+                                    <small data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</small>
                                 </article>
                                 <article class="llbs-compound-card">
                                     <span>Real Purchasing Power</span>
-                                    <strong data-llbs-compound-output="realValue">$0</strong>
-                                    <small data-llbs-compound-output="goalEta">Goal ETA: --</small>
+                                    <strong data-llbs-compound-output="realValue">--</strong>
+                                    <small data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</small>
                                 </article>
                             </div>
                             <div class="llbs-compound-insight-strip">
                                 <article>
                                     <span>Power Per Habit</span>
-                                    <strong data-llbs-compound-output="unitGrowth">$0</strong>
+                                    <strong data-llbs-compound-output="unitGrowth">--</strong>
                                 </article>
                                 <article>
                                     <span>Total Deposited</span>
-                                    <strong data-llbs-compound-output="totalDeposited">$0</strong>
+                                    <strong data-llbs-compound-output="totalDeposited">--</strong>
                                 </article>
                                 <article>
                                     <span>Runway</span>
-                                    <strong data-llbs-compound-output="yearsHorizon">0 yrs</strong>
+                                    <strong data-llbs-compound-output="yearsHorizon">--</strong>
                                 </article>
                             </div>
                             <div class="llbs-compound-compare-grid" data-llbs-compound-compare></div>
@@ -1392,8 +1388,6 @@
             loadedState = {};
         }
 
-        const hasPersistedCompoundLab = isPlainObject(loadedState?.compoundLab);
-
         if (Array.isArray(loadedState?._linkedStateLocks)) {
             loadedState._linkedStateLocks.forEach((path) => {
                 if (LINKED_STATE_PATHS.has(path)) linkedStateLocks.add(path);
@@ -1465,6 +1459,7 @@
         }
 
         function compoundFieldInputValue(field, labState) {
+            if (isBlankValue(labState[field])) return "";
             if (field === "apr" || field === "annualContributionIncrease" || field === "inflationRate") {
                 return inputValueForKind(labState[field], "percent");
             }
@@ -1482,18 +1477,6 @@
                 }
                 if (document.activeElement === field) return;
                 field.value = compoundFieldInputValue(key, labState);
-            });
-        }
-
-        function loadCompoundLabFromSnapshot() {
-            const baseState = getCompoundLabState();
-            const periodsPerYear = compoundPeriodsPerYear(baseState.contributionCadence);
-            state.compoundLab = normalizeCompoundLabState({
-                ...baseState,
-                startingBalance: Math.max(0, parseNumber(state.summary?.netWorth ?? 0)),
-                contributionAmount: periodsPerYear > 0
-                    ? (Math.max(0, parseNumber(state.cashFlow?.annualSavings ?? 0)) / periodsPerYear)
-                    : 0
             });
         }
 
@@ -1539,56 +1522,110 @@
             if (compoundOverlay.hidden && !force) return;
             const labState = getCompoundLabState();
             const projection = simulateCompoundProjection(labState);
-            const goalYears = estimateCompoundGoalYears(labState);
+            const cadenceSelected = !!labState.contributionCadence;
+            const hasContributionAmount = !isBlankValue(labState.contributionAmount);
             const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, labState.contributionCadence, "period");
-            const cadenceUnitLabel = contributionCadenceUnitLabel(labState.contributionCadence);
-            const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, labState.compoundingCadence, labState.compoundingCadence);
-            const yearOneContributionLabel = labState.annualContributionIncrease > 0
-                ? `Year 1 pace: ${formatCurrency(projection.annualizedContribution)} per year`
-                : `${formatCurrency(projection.annualizedContribution)} per year`;
-            const unitProjection = simulateCompoundProjection({
+            const cadenceUnitLabel = cadenceSelected ? contributionCadenceUnitLabel(labState.contributionCadence) : "Period";
+            const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, labState.compoundingCadence, "selected");
+            const annualizedContribution = cadenceSelected && hasContributionAmount
+                ? nonNegative(labState.contributionAmount) * compoundPeriodsPerYear(labState.contributionCadence)
+                : null;
+            const effectiveAnnualYield = !isBlankValue(labState.apr) && !!labState.compoundingCadence
+                ? compoundGrowthFactor(labState.apr, labState.compoundingCadence, 1) - 1
+                : null;
+            const unitProjection = projection ? simulateCompoundProjection({
                 ...labState,
                 startingBalance: 0,
                 contributionAmount: 1,
-                annualContributionIncrease: 0,
-                targetAmount: 0
-            });
-            const progressRatio = labState.targetAmount > 0
-                ? Math.min(projection.futureValue / labState.targetAmount, 1)
-                : 0;
+                annualContributionIncrease: "",
+                inflationRate: ""
+            }) : null;
 
             if (compoundContributionLabelEl) {
                 compoundContributionLabelEl.textContent = `Save Each ${cadenceUnitLabel}`;
             }
 
             if (compoundContributionNoteEl) {
-                compoundContributionNoteEl.textContent = labState.contributionCadence === "yearly"
-                    ? `${formatCurrency(labState.contributionAmount)} annual contribution`
-                    : `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} in year 1`;
+                if (!cadenceSelected) {
+                    compoundContributionNoteEl.textContent = "Choose a savings cadence to annualize contributions.";
+                } else if (isBlankValue(labState.contributionAmount)) {
+                    compoundContributionNoteEl.textContent = `Enter an amount to see the ${cadenceUnitLabel.toLowerCase()} pace.`;
+                } else if (labState.contributionCadence === "yearly") {
+                    compoundContributionNoteEl.textContent = `${formatCurrency(labState.contributionAmount)} annual contribution`;
+                } else {
+                    compoundContributionNoteEl.textContent = `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(annualizedContribution)} in year 1`;
+                }
+            }
+
+            if (!projection) {
+                if (compoundNoteEl) {
+                    compoundNoteEl.innerHTML = `
+                        <strong>Enter Inputs</strong>
+                        <span>Choose savings cadence, contribution timing, compounding, APR, and years. Then enter a starting balance and/or savings amount to see the projection update live.</span>
+                    `;
+                }
+
+                const emptyOutputs = {
+                    futureValue: "--",
+                    projectionNote: "Enter inputs to project growth.",
+                    contributionTotal: "--",
+                    annualizedContribution: annualizedContribution === null
+                        ? (cadenceSelected ? "Enter an amount to see year 1 pace." : "Choose amount and cadence.")
+                        : `Year 1 pace: ${formatCurrency(annualizedContribution)} per year`,
+                    interestEarned: "--",
+                    effectiveAnnualYield: effectiveAnnualYield === null
+                        ? "Choose APR and compounding."
+                        : `${formatPercent(effectiveAnnualYield)} effective annual yield`,
+                    realValue: "--",
+                    realValueNote: isBlankValue(labState.inflationRate)
+                        ? "Inflation-adjusted when provided."
+                        : `Inflation set to ${formatPercent(labState.inflationRate)}.`,
+                    unitGrowth: "--",
+                    totalDeposited: "--",
+                    yearsHorizon: isBlankValue(labState.years) ? "--" : formatYearsCompact(labState.years)
+                };
+
+                Object.entries(emptyOutputs).forEach(([key, value]) => {
+                    const el = compoundOutputEls.get(key);
+                    if (el) el.textContent = value;
+                });
+
+                if (compoundCompareEl) {
+                    compoundCompareEl.innerHTML = "";
+                }
+
+                if (compoundMilestonesEl) {
+                    compoundMilestonesEl.innerHTML = `
+                        <tr>
+                            <td colspan="4">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
+                        </tr>
+                    `;
+                }
+                return;
             }
 
             if (compoundNoteEl) {
                 compoundNoteEl.innerHTML = `
                     <strong>Current Math Basis</strong>
-                    <span>${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(labState.contributionCadence), 0)} deposits per year.</span>
-                    <span>${formatCurrency(Math.max(0, labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${formatYearsCompact(labState.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${labState.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
+                    <span>${formatCurrency(nonNegative(labState.contributionAmount))} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(labState.contributionCadence), 0)} deposits per year.</span>
+                    <span>${formatCurrency(nonNegative(labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${formatYearsCompact(labState.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${!isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
                     <span>Reality check: ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)} at the current settings.</span>
                 `;
             }
 
             const outputs = {
                 futureValue: formatCurrency(projection.futureValue),
+                projectionNote: "Nominal future value from current inputs.",
                 contributionTotal: formatCurrency(projection.contributionTotal),
+                annualizedContribution: !isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0
+                    ? `Year 1 pace: ${formatCurrency(projection.annualizedContribution)} per year`
+                    : `${formatCurrency(projection.annualizedContribution)} per year`,
                 interestEarned: formatCurrency(projection.interestEarned),
-                realValue: formatCurrency(projection.realValue),
-                annualizedContribution: yearOneContributionLabel,
                 effectiveAnnualYield: `${formatPercent(projection.effectiveAnnualYield)} effective annual yield`,
-                goalProgress: labState.targetAmount > 0
-                    ? `Goal progress: ${formatNumberValue(progressRatio * 100, 1)}% of ${formatCurrency(labState.targetAmount)}`
-                    : "Goal progress: add a target to track a finish line",
-                goalEta: labState.targetAmount > 0
-                    ? `Goal ETA: ${goalYears === null ? "Not reached under current inputs" : formatYearsCompact(goalYears)}`
-                    : "Goal ETA: set a target amount",
+                realValue: formatCurrency(projection.realValue),
+                realValueNote: isBlankValue(labState.inflationRate) || normalizeRate(labState.inflationRate) === 0
+                    ? "No inflation adjustment applied."
+                    : `Inflation-adjusted at ${formatPercent(labState.inflationRate)}.`,
                 unitGrowth: `${formatCurrency(unitProjection.futureValue)} from each ${formatCurrency(1)} ${cadenceLabel.toLowerCase()} save`,
                 totalDeposited: formatCurrency(projection.totalDeposited),
                 yearsHorizon: formatYearsCompact(labState.years)
@@ -1642,6 +1679,8 @@
 
             if (key === "contributionCadence" || key === "compoundingCadence" || key === "contributionTiming") {
                 labState[key] = rawValue;
+            } else if (isBlankValue(rawValue)) {
+                labState[key] = "";
             } else if (key === "apr" || key === "annualContributionIncrease" || key === "inflationRate") {
                 labState[key] = normalizeRate(parseNumber(rawValue) / 100);
             } else if (key === "years") {
@@ -1894,14 +1933,6 @@
                 return;
             }
 
-            if (event.target.closest("[data-llbs-compound-sync-snapshot]")) {
-                loadCompoundLabFromSnapshot();
-                syncCompoundLabForm();
-                refreshCompoundLab();
-                scheduleSave();
-                return;
-            }
-
             const taxToggle = event.target.closest("[data-llbs-tax-toggle]");
             if (taxToggle) {
                 const body = root.querySelector("#llbsTaxProfileBody");
@@ -2045,12 +2076,8 @@
             }
         });
 
-        if (!hasPersistedCompoundLab) {
-            loadCompoundLabFromSnapshot();
-        }
-
         refreshAndDelta();
-        if (shouldSeedDefault || !hasPersistedCompoundLab) persistNow();
+        if (shouldSeedDefault) persistNow();
         else setStatus("Loaded");
 
         scheduleNetWorthColumnHeightSync();
