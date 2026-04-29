@@ -5750,7 +5750,10 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
         /* ── Row card ──────────────────────────────────────────────────── */
-        .sa-alloc-row{margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
+        .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(130px,.75fr) minmax(90px,.45fr) minmax(90px,.45fr) minmax(135px,.65fr) minmax(130px,.75fr) minmax(120px,.7fr) 32px;gap:10px;align-items:center;width:100%;max-width:100%;margin:0 0 10px;padding:0 12px;box-sizing:border-box;color:#c9a448;font-size:.7rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;}
+        .savings-row-header.compact{grid-template-columns:minmax(150px,1.4fr) minmax(72px,.45fr) minmax(105px,.7fr) minmax(72px,.45fr) minmax(105px,.7fr) 32px;}
+        .savings-row-header span:last-child{justify-self:end;}
         /* ── Desktop full grid (8 cols) ─────────────────────────────────── */
         .savings-row{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(130px,.75fr) minmax(90px,.45fr) minmax(90px,.45fr) minmax(135px,.65fr) minmax(130px,.75fr) minmax(120px,.7fr) 32px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
         .savings-row>*{min-width:0;}
@@ -5760,17 +5763,17 @@ if (t.id === "SavingsAccelerator") {
         .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
         .savings-name:focus,.savings-start-date:focus{border-color:#ddb457!important;box-shadow:0 0 0 2px rgba(166,128,35,.2)!important;}
         /* ── Money input wrapper ─────────────────────────────────────────── */
-        .legend-money-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;}
+        .legend-money-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
         .legend-money-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;color:#0b2a66;line-height:1;pointer-events:none;user-select:none;}
         .legend-money-field{flex:1 1 auto;min-width:0;height:100%;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 12px 0 0!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;}
         .legend-money-input:focus-within{border-color:#d4af37;box-shadow:0 0 0 3px rgba(212,175,55,.18);}
         /* ── Percent input wrapper ───────────────────────────────────────── */
-        .legend-percent-input{display:flex;align-items:center;width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92);border:1.2px solid rgba(166,128,35,.4);border-radius:8px;overflow:hidden;}
-        .legend-percent-field{flex:1 1 auto;min-width:0;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:8px 4px 8px 10px;color:#1a2540!important;font-weight:700;outline:none!important;}
-        .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:700;color:#a68023;pointer-events:none;user-select:none;}
+        .legend-percent-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
+        .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
+        .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
         /* ── Projected YE display (read-only) ────────────────────────────── */
-        .projected-year-end{display:flex;align-items:center;gap:4px;width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:8px;padding:7px 8px;overflow:hidden;}
+        .projected-year-end{display:flex;align-items:center;gap:4px;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:7px 8px;overflow:hidden;}
         .projected-label{font-size:.68rem;font-weight:700;color:#64748b;flex:0 0 auto;white-space:nowrap;}
         .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:800;}
         /* ── Buttons ─────────────────────────────────────────────────────── */
@@ -5783,6 +5786,7 @@ if (t.id === "SavingsAccelerator") {
         .sa-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
         /* ── Mobile ──────────────────────────────────────────────────────── */
         @media (max-width: 760px){
+            .savings-row-header,.savings-row-header.compact{display:none;}
             .savings-row,.savings-row.compact{grid-template-columns:1fr 1fr;}
             .savings-name{grid-column:1 / -1;}
             .savings-start-date{grid-column:span 1;}
@@ -5797,11 +5801,11 @@ if (t.id === "SavingsAccelerator") {
     <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;max-width:380px;">
             <div class="${prefix}-label">Savings Allocation</div>
-            <div style="position:relative;">
-                <input id="${pid('Allocation')}" type="text" class="form-control" readonly
+            <div class="legend-money-input sa-source-money">
+                <span class="legend-money-prefix">$</span>
+                <input id="${pid('Allocation')}" type="text" class="legend-money-field" readonly data-money-input="true"
                        placeholder="Sync from Expense Lens…"
-                       style="border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.06);font-weight:800;font-size:1.1rem;color:#d4a820;padding-right:30px;cursor:default;"/>
-                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;">$</span>
+                       style="font-size:1.1rem;color:#d4a820;cursor:default;"/>
             </div>
             <div style="font-size:0.72rem;color:#94A3B8;margin-top:5px;font-style:italic;">
                 Auto-synced · ${isBusinessSA ? "Business " : ""}Expense Lens remaining balance
@@ -5820,6 +5824,27 @@ if (t.id === "SavingsAccelerator") {
             <div style="flex:1;text-align:right;font-weight:700;color:#fff;">
                 Total Allocated: <span id="${pid('PctTotal')}" style="color:#a68023;font-weight:900;">0%</span>
             </div>
+        </div>
+        <div class="savings-row-header${isDualPanel ? ' compact' : ''}" aria-hidden="true">
+            ${isDualPanel
+                ? `
+                    <span>Bucket Name</span>
+                    <span>Alloc %</span>
+                    <span>Alloc $</span>
+                    <span>APR %</span>
+                    <span>Projected YE</span>
+                    <span>Edit</span>
+                `
+                : `
+                    <span>Bucket Name</span>
+                    <span>Allocation Amount</span>
+                    <span>Allocation %</span>
+                    <span>APR %</span>
+                    <span>Start Date</span>
+                    <span>Starting Balance</span>
+                    <span>Projected YE</span>
+                    <span>Remove</span>
+                `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
         <div class="d-flex gap-2 mt-3">
@@ -6215,9 +6240,9 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.appendChild(row);
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
-        markNeutral(amt);
+        markWithSuffix(markNeutral, amt);
         markWithSuffix(markNeutral, apr);
-        markNeutral(startingBalanceInput);
+        markWithSuffix(markNeutral, startingBalanceInput);
     };
 
     const refreshSurplus = () => {

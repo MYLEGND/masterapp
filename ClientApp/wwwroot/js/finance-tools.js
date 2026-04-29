@@ -1649,29 +1649,40 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
-        .${prefix}-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));}
-        .${prefix}-alloc-summary{display:grid;gap:8px;align-items:center;grid-template-columns:minmax(150px,2.5fr) minmax(70px,.7fr) minmax(78px,.78fr) minmax(70px,.7fr) minmax(108px,1.1fr) auto;}
-        .${prefix}-field{min-width:0;}
-        .${prefix}-field-name{grid-area:name;}
-        .${prefix}-field-amount{grid-area:amount;}
-        .${prefix}-field-percent{grid-area:percent;}
-        .${prefix}-field-apr{grid-area:apr;}
-        .${prefix}-field-startdate{grid-area:date;}
-        .${prefix}-field-starting{grid-area:starting;}
-        .${prefix}-field-projected{grid-area:projected;}
-        .${prefix}-field-toggle{grid-area:toggle;display:flex;justify-content:flex-end;}
-        .${prefix}-suffix-wrap{position:relative;min-width:0;}
-        .${prefix}-suffix-wrap .form-control{width:100%;padding-right:28px;}
-        .${prefix}-suffix{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;pointer-events:none;}
-        .${prefix}-alloc-toggle{min-width:72px;border:1px solid rgba(166,128,35,.42);border-radius:10px;padding:7px 10px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;}
-        .${prefix}-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:4px;}
-        .${prefix}-alloc-drawer.is-open{display:grid;}
-        .${prefix}-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
-        .${prefix}-alloc-row .sa-alloc-projected{font-weight:800;}
-        @media (max-width: 600px){
-            .${prefix}-alloc-summary{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:'name name' 'percent amount' 'apr projected' 'toggle toggle';}
-            .${prefix}-field-toggle{justify-content:flex-start;}
-            .${prefix}-alloc-drawer{grid-template-columns:1fr;}
+        .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(130px,.75fr) minmax(90px,.45fr) minmax(90px,.45fr) minmax(135px,.65fr) minmax(130px,.75fr) minmax(120px,.7fr) 32px;gap:10px;align-items:center;width:100%;max-width:100%;margin:0 0 10px;padding:0 12px;box-sizing:border-box;color:#c9a448;font-size:.7rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;}
+        .savings-row-header.compact{grid-template-columns:minmax(150px,1.4fr) minmax(72px,.45fr) minmax(105px,.7fr) minmax(72px,.45fr) minmax(105px,.7fr) 32px;}
+        .savings-row-header span:last-child{justify-self:end;}
+        .savings-row{display:grid;grid-template-columns:minmax(220px,1.5fr) minmax(130px,.75fr) minmax(90px,.45fr) minmax(90px,.45fr) minmax(135px,.65fr) minmax(130px,.75fr) minmax(120px,.7fr) 32px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
+        .savings-row>*{min-width:0;}
+        .savings-row.compact{grid-template-columns:minmax(150px,1.4fr) minmax(72px,.45fr) minmax(105px,.7fr) minmax(72px,.45fr) minmax(105px,.7fr) 32px;}
+        .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
+        .savings-name:focus,.savings-start-date:focus{border-color:#ddb457!important;box-shadow:0 0 0 2px rgba(166,128,35,.2)!important;}
+        .legend-money-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
+        .legend-money-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;color:#0b2a66;line-height:1;pointer-events:none;user-select:none;}
+        .legend-money-field{flex:1 1 auto;min-width:0;height:100%;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 12px 0 0!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;}
+        .legend-money-input:focus-within{border-color:#d4af37;box-shadow:0 0 0 3px rgba(212,175,55,.18);}
+        .legend-percent-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
+        .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
+        .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
+        .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
+        .projected-year-end{display:flex;align-items:center;gap:4px;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:7px 8px;overflow:hidden;}
+        .projected-label{font-size:.68rem;font-weight:700;color:#64748b;flex:0 0 auto;white-space:nowrap;}
+        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:800;}
+        .remove-row{border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;justify-self:end;align-self:center;}
+        .remove-row:hover{color:#c79931;}
+        .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
+        .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
+        .sa-alloc-drawer.is-open{display:grid;}
+        .sa-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
+        @media (max-width: 760px){
+            .savings-row-header,.savings-row-header.compact{display:none;}
+            .savings-row,.savings-row.compact{grid-template-columns:1fr 1fr;}
+            .savings-name{grid-column:1 / -1;}
+            .savings-start-date{grid-column:span 1;}
+            .projected-year-end{grid-column:span 1;}
+            .remove-row{justify-self:end;}
+            .sa-alloc-drawer{grid-template-columns:1fr;}
         }
     </style>
     <div id="${pid('TipLayer')}"></div>
@@ -1680,11 +1691,11 @@ if (t.id === "SavingsAccelerator") {
     <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;max-width:380px;">
             <div class="${prefix}-label">Savings Allocation</div>
-            <div style="position:relative;">
-                <input id="${pid('Allocation')}" type="text" class="form-control" readonly
+            <div class="legend-money-input sa-source-money">
+                <span class="legend-money-prefix">$</span>
+                <input id="${pid('Allocation')}" type="text" class="legend-money-field" readonly data-money-input="true"
                        placeholder="Sync from Expense Lens…"
-                       style="border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.06);font-weight:800;font-size:1.1rem;color:#d4a820;padding-right:30px;cursor:default;"/>
-                <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;">$</span>
+                       style="font-size:1.1rem;color:#d4a820;cursor:default;"/>
             </div>
             <div style="font-size:0.72rem;color:#94A3B8;margin-top:5px;font-style:italic;">
                 Auto-synced · ${isBusinessSA ? "Business " : ""}Expense Lens remaining balance
@@ -1703,6 +1714,27 @@ if (t.id === "SavingsAccelerator") {
             <div style="flex:1;text-align:right;font-weight:700;color:#fff;">
                 Total Allocated: <span id="${pid('PctTotal')}" style="color:#a68023;font-weight:900;">0%</span>
             </div>
+        </div>
+        <div class="savings-row-header${isDualPanel ? ' compact' : ''}" aria-hidden="true">
+            ${isDualPanel
+                ? `
+                    <span>Bucket Name</span>
+                    <span>Alloc %</span>
+                    <span>Alloc $</span>
+                    <span>APR %</span>
+                    <span>Projected YE</span>
+                    <span>Edit</span>
+                `
+                : `
+                    <span>Bucket Name</span>
+                    <span>Allocation Amount</span>
+                    <span>Allocation %</span>
+                    <span>APR %</span>
+                    <span>Start Date</span>
+                    <span>Starting Balance</span>
+                    <span>Projected YE</span>
+                    <span>Remove</span>
+                `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
         <div class="d-flex gap-2 mt-3">
@@ -1971,6 +2003,26 @@ if (t.id === "SavingsAccelerator") {
         refreshSurplus();
     };
 
+    const makeSaMoney = (input) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'legend-money-input';
+        const pre = document.createElement('span');
+        pre.className = 'legend-money-prefix';
+        pre.textContent = '$';
+        wrap.append(pre, input);
+        return wrap;
+    };
+
+    const makeSaPct = (input) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'legend-percent-input';
+        const suf = document.createElement('span');
+        suf.className = 'legend-percent-suffix';
+        suf.textContent = '%';
+        wrap.append(input, suf);
+        return wrap;
+    };
+
     const createAllocationRow = (index, options = {}) => {
         const {
             name: preName = '',
@@ -1981,149 +2033,106 @@ if (t.id === "SavingsAccelerator") {
             allocationStartDate = '',
             startingBalance = ''
         } = options;
+
         const row = document.createElement('div');
-        row.className = `sa-alloc-row ${isDualPanel ? 'is-dual' : 'is-full'}`;
+        row.className = 'sa-alloc-row';
         row.dataset.description = description || '';
         row.dataset.isTemplate = isTemplate ? 'true' : 'false';
 
-        const summary = document.createElement('div');
-        summary.className = `${prefix}-alloc-summary`;
-
-        const inputStyle = 'background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;';
-        const readOnlyStyle = 'background:rgba(255,255,255,.55)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.25)!important;';
+        const grid = document.createElement('div');
+        grid.className = isDualPanel ? 'savings-row compact' : 'savings-row';
 
         const name = document.createElement('input');
-        name.className = 'form-control sa-alloc-name';
+        name.className = 'sa-alloc-name savings-name';
         name.placeholder = 'Bucket Name';
         name.value = preName;
         name.title = description || '';
-        name.style.cssText = inputStyle;
         name.addEventListener('input', saveAllocationState);
 
         const amt = document.createElement('input');
-        amt.className = 'form-control sa-alloc-amount';
+        amt.className = 'sa-alloc-amount legend-money-field allocation-amount';
         amt.readOnly = true;
-        amt.placeholder = 'Alloc. Amt';
-        amt.value = '';
-        amt.style.cssText = readOnlyStyle;
+        amt.placeholder = '0';
+        const amtWrap = makeSaMoney(amt);
 
         const pct = document.createElement('input');
-        pct.className = 'form-control sa-alloc-percent';
+        pct.className = 'sa-alloc-percent legend-percent-field allocation-percent';
         pct.value = prePercent || '';
-        pct.placeholder = '%';
-        pct.style.cssText = inputStyle;
+        pct.placeholder = '0';
         pct.oninput = refreshSurplus;
+        const pctWrap = makeSaPct(pct);
 
         const apr = document.createElement('input');
-        apr.className = 'form-control sa-alloc-apr';
-        apr.placeholder = 'APR';
+        apr.className = 'sa-alloc-apr legend-percent-field apr-percent';
+        apr.placeholder = '0';
         apr.value = aprPercent || '';
-        apr.style.cssText = inputStyle;
         apr.addEventListener('input', refreshSurplus);
+        const aprWrap = makeSaPct(apr);
 
         const startDate = document.createElement('input');
         startDate.type = 'date';
-        startDate.className = 'form-control sa-alloc-start-date';
+        startDate.className = 'sa-alloc-start-date savings-start-date';
         startDate.value = normalizeSavingsDateInput(allocationStartDate) || todayIsoDate();
-        startDate.style.cssText = inputStyle;
         startDate.addEventListener('input', refreshSurplus);
         startDate.addEventListener('change', refreshSurplus);
 
         const startingBalanceInput = document.createElement('input');
-        startingBalanceInput.className = 'form-control sa-alloc-starting-balance';
-        startingBalanceInput.placeholder = 'Start Bal';
+        startingBalanceInput.className = 'sa-alloc-starting-balance legend-money-field starting-balance';
+        startingBalanceInput.placeholder = '0';
         startingBalanceInput.value = startingBalance || '';
-        startingBalanceInput.style.cssText = inputStyle;
         startingBalanceInput.addEventListener('input', refreshSurplus);
+        const startingWrap = makeSaMoney(startingBalanceInput);
 
-        const projected = document.createElement('input');
-        projected.className = 'form-control sa-alloc-projected';
-        projected.placeholder = 'Proj. YE';
-        projected.readOnly = true;
-        projected.style.cssText = 'background:rgba(255,255,255,.55)!important;color:#15803d!important;font-weight:800!important;border:1.2px solid rgba(166,128,35,.25)!important;';
-
-        const makeField = (className, control, suffix = '') => {
-            const wrap = document.createElement('div');
-            wrap.className = `${prefix}-field ${prefix}-field-${className}`;
-            if (suffix) {
-                const controlWrap = document.createElement('div');
-                controlWrap.className = `${prefix}-suffix-wrap`;
-                const suffixEl = document.createElement('span');
-                suffixEl.className = `${prefix}-suffix`;
-                suffixEl.textContent = suffix;
-                controlWrap.append(control, suffixEl);
-                wrap.appendChild(controlWrap);
-            } else {
-                wrap.appendChild(control);
-            }
-            return wrap;
-        };
-
-        const drawer = document.createElement('div');
-        drawer.className = `${prefix}-alloc-drawer`;
-
-        const note = document.createElement('div');
-        note.className = `${prefix}-alloc-note`;
-        note.textContent = description || 'Customize this bucket to match the client’s current savings priority.';
-
-        const toggle = document.createElement('button');
-        toggle.type = 'button';
-        toggle.className = `${prefix}-alloc-toggle`;
-
-        const syncToggleLabel = () => {
-            toggle.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Edit';
-        };
-
-        toggle.addEventListener('click', () => {
-            drawer.classList.toggle('is-open');
-            syncToggleLabel();
-        });
-        syncToggleLabel();
-
-        summary.append(
-            makeField('name', name),
-            makeField('amount', amt, '$'),
-            makeField('percent', pct, '%'),
-            makeField('apr', apr, '%'),
-            makeField('projected', projected, '$'),
-            (() => {
-                const toggleWrap = document.createElement('div');
-                toggleWrap.className = `${prefix}-field-toggle`;
-                toggleWrap.appendChild(toggle);
-                return toggleWrap;
-            })()
-        );
-
-        drawer.append(
-            makeField('startdate', startDate),
-            makeField('starting', startingBalanceInput, '$'),
-            note
-        );
+        const projectedDiv = document.createElement('div');
+        projectedDiv.className = 'projected-year-end sa-alloc-projected';
+        const projectedLabel = document.createElement('span');
+        projectedLabel.className = 'projected-label';
+        projectedLabel.textContent = 'YE';
+        const projectedValue = document.createElement('strong');
+        projectedValue.textContent = '$0';
+        projectedDiv.append(projectedLabel, projectedValue);
 
         const del = document.createElement('button');
-        del.textContent = '✕';
-        del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;flex:0 0 16px;padding:0;';
+        del.type = 'button';
+        del.className = 'remove-row';
+        del.textContent = '×';
+        del.title = 'Remove bucket';
         del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
 
-        const toggleHost = summary.querySelector(`.${prefix}-field-toggle`);
-        if (toggleHost) toggleHost.appendChild(del);
+        const drawer = document.createElement('div');
+        drawer.className = 'sa-alloc-drawer';
+        const note = document.createElement('div');
+        note.className = 'sa-alloc-note';
+        note.textContent = description || 'Adjust APR, start date, and opening balance to refine the year-end projection.';
 
-        row.append(summary, drawer);
+        if (isDualPanel) {
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button';
+            editBtn.className = 'sa-alloc-toggle';
+            const syncLabel = () => { editBtn.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Edit'; };
+            editBtn.addEventListener('click', () => { drawer.classList.toggle('is-open'); syncLabel(); });
+            syncLabel();
+            grid.append(name, pctWrap, amtWrap, aprWrap, projectedDiv, editBtn);
+            const delRow = document.createElement('div');
+            delRow.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;grid-column:1/-1;';
+            delRow.appendChild(del);
+            drawer.append(startDate, startingWrap, note, delRow);
+            fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
+            fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 18 });
+            fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 18 });
+            fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 18 });
+        } else {
+            grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedDiv, del);
+            drawer.append(note);
+        }
+
+        row.append(grid, drawer);
         allocationContainer.appendChild(row);
-
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
         markWithSuffix(markNeutral, amt);
         markWithSuffix(markNeutral, apr);
         markWithSuffix(markNeutral, startingBalanceInput);
-        markWithSuffix(markNeutral, projected);
-        if (isDualPanel) {
-            fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
-            fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 22 });
-            fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 22 });
-            fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 22 });
-            fitSingleLineControlText(projected, { minSize: 10, maxSize: 14, reserve: 22 });
-        }
     };
 
     const refreshSurplus = () => {
@@ -2139,8 +2148,6 @@ if (t.id === "SavingsAccelerator") {
             const aprInput = row.querySelector('.sa-alloc-apr');
             const startDateInput = row.querySelector('.sa-alloc-start-date');
             const startingBalanceInput = row.querySelector('.sa-alloc-starting-balance');
-            const projectedInput = row.querySelector('.sa-alloc-projected');
-
             let pct = +pctInput.value || 0;
             if (usedPct + pct > 100) pct = Math.max(0, 100 - usedPct);
             usedPct += pct;
@@ -2156,9 +2163,11 @@ if (t.id === "SavingsAccelerator") {
 
             pctInput.value = pct;
             amtInput.value = Math.round(amt).toLocaleString();
-            if (projectedInput) {
-                projectedInput.value = Math.round(projection.projectedValue).toLocaleString();
-                projectedInput.title = projection.months > 0
+            const projectedEl = row.querySelector('.sa-alloc-projected');
+            if (projectedEl) {
+                const strong = projectedEl.querySelector('strong');
+                if (strong) strong.textContent = '$' + Math.round(projection.projectedValue).toLocaleString();
+                projectedEl.title = projection.months > 0
                     ? `${projection.months} monthly period${projection.months === 1 ? '' : 's'} through year end`
                     : 'No remaining monthly periods in the current year';
             }
@@ -2175,11 +2184,6 @@ if (t.id === "SavingsAccelerator") {
             ? '⚠️ Expense Lens shows no remaining balance to allocate. Adjust income or bills there first.'
             : '✅ Good remaining balance! Allocate it strategically across savings and financial goals.';
 
-        // ==========================================================
-        // ✅ COLOR CODING — INPUTS + OUTPUTS + ROWS (FULL COVERAGE)
-        // ==========================================================
-
-        // Source field + outputs
         if (surplus > 0) markWithSuffix(markIncome, saAllocationInput);
         else if (surplus < 0) markWithSuffix(markExpense, saAllocationInput);
         else markWithSuffix(markNeutral, saAllocationInput);
@@ -2192,15 +2196,16 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.querySelectorAll('.sa-alloc-name').forEach(n => markNeutral(n));
         allocationContainer.querySelectorAll('.sa-alloc-apr').forEach(p => markWithSuffix(markNeutral, p));
         allocationContainer.querySelectorAll('.sa-alloc-starting-balance').forEach(a => markWithSuffix(markNeutral, a));
-
         allocationContainer.querySelectorAll('.sa-alloc-amount').forEach(a => {
             if (surplus > 0) markWithSuffix(markIncome, a);
             else if (surplus < 0) markWithSuffix(markExpense, a);
             else markWithSuffix(markNeutral, a);
         });
-        allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(a => {
-            if (parseSavingsMoney(a.value) > 0) markWithSuffix(markIncome, a);
-            else markWithSuffix(markNeutral, a);
+        allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(el => {
+            const strong = el.querySelector('strong');
+            const val = strong ? parseSavingsMoney(strong.textContent) : 0;
+            if (val > 0) strong.style.color = '#15803d';
+            else if (strong) strong.style.color = '';
         });
 
         saveAllocationState();
