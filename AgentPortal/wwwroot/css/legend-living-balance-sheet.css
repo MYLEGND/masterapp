@@ -1529,74 +1529,22 @@ body.llbs-modal-open {
 
 .llbs-compound-head {
     display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 18px 20px 14px;
-    border-bottom: 1px solid rgba(243, 216, 139, .18);
-    background:
-        linear-gradient(180deg, rgba(7, 13, 25, .96), rgba(7, 13, 25, .88));
-    backdrop-filter: blur(8px);
-}
-
-.llbs-compound-head-copy {
-    display: grid;
+    align-items: center;
+    justify-content: flex-end;
     gap: 10px;
+    padding: 12px 14px 0;
 }
 
-.llbs-compound-kicker {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    padding: 6px 11px;
-    border: 1px solid rgba(243, 216, 139, .28);
-    border-radius: 999px;
-    background: rgba(243, 216, 139, .08);
-    color: #f7df98;
-    font-size: .68rem;
-    font-weight: 950;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-}
-
-.llbs-compound-title {
-    margin: 0;
-    color: #fff7dd;
-    font-size: 1.44rem;
-    font-weight: 950;
-    letter-spacing: .01em;
-}
-
-.llbs-compound-subtitle {
-    margin: 0;
-    max-width: 860px;
-    color: var(--llbs-soft-text);
-    font-size: .84rem;
-    font-weight: 700;
-    line-height: 1.35;
-}
-
-.llbs-compound-chip-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.llbs-compound-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 24px;
-    padding: 5px 9px;
-    border: 1px solid rgba(162, 214, 190, .18);
-    border-radius: 999px;
-    background:
-        linear-gradient(180deg, rgba(22, 103, 66, .18), rgba(8, 27, 18, .08)),
-        rgba(255, 255, 255, .03);
-    color: #dbffe8;
-    font-size: .67rem;
-    font-weight: 900;
-    letter-spacing: .06em;
-    text-transform: uppercase;
+.llbs-compound-a11y-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 .llbs-compound-head-actions {
@@ -1630,7 +1578,7 @@ body.llbs-modal-open {
     display: grid;
     grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
     gap: 14px;
-    padding: 14px;
+    padding: 10px 14px 14px;
 }
 
 .llbs-compound-panel {
