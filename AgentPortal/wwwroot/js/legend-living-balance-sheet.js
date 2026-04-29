@@ -985,11 +985,11 @@
                             <div class="llbs-compound-field-grid">
                                 <label class="llbs-compound-field">
                                     <span>Starting Balance</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span data-llbs-compound-contribution-label>Save Each Period</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
                                     <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>Choose a savings cadence to annualize contributions.</small>
                                 </label>
                                 <label class="llbs-compound-field">
@@ -1006,7 +1006,7 @@
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>APR %</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Compounding</span>
@@ -1016,15 +1016,15 @@
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Years</span>
-                                    <input type="number" min="0" step="0.25" class="llbs-compound-input" data-llbs-compound-field="years" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.25" class="llbs-compound-input" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Annual Step-Up %</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                 </label>
                                 <label class="llbs-compound-field">
                                     <span>Inflation %</span>
-                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" />
+                                    <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                 </label>
                             </div>
                             <div class="llbs-compound-explainer" data-llbs-compound-note></div>
@@ -1714,6 +1714,11 @@
                 window.requestAnimationFrame(() => {
                     root.querySelector('[data-llbs-compound-field="startingBalance"]')?.focus();
                 });
+                // Read DOM → state after browser autofill window (autofill doesn't fire input events)
+                window.setTimeout(() => {
+                    compoundFieldEls.forEach(f => { if (f.tagName !== "SELECT") updateCompoundLabField(f); });
+                    refreshCompoundLab(true);
+                }, 150);
             } else {
                 compoundTrigger?.focus();
             }
