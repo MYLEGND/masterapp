@@ -1466,6 +1466,15 @@
         const compoundCompareEl = root.querySelector("[data-llbs-compound-compare]");
         const compoundMilestonesEl = root.querySelector("[data-llbs-compound-milestones]");
 
+        // Direct listeners on compound fields guarantee updates even when delegation misfires
+        compoundFieldEls.forEach(f => {
+            const evtName = f.tagName === "SELECT" ? "change" : "input";
+            f.addEventListener(evtName, () => {
+                updateCompoundLabField(f);
+                if (f.tagName === "SELECT") syncCompoundLabForm();
+            });
+        });
+
         function getCompoundLabState() {
             state.compoundLab = normalizeCompoundLabState(state.compoundLab);
             return state.compoundLab;
