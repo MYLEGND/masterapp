@@ -3548,7 +3548,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             // Total Income is now computed from split fields — lock it
             elIncome.readOnly = true;
-            elIncome.style.background = 'rgba(0,0,0,0.04)';
+            const incomeMoneyWrap = elIncome.closest('.legend-money-input');
+            if (incomeMoneyWrap) {
+                incomeMoneyWrap.style.background = 'rgba(255,255,255,.82)';
+                incomeMoneyWrap.style.borderColor = 'rgba(166,128,35,.45)';
+            }
+            elIncome.style.background = 'transparent';
             elIncome.style.cursor = 'default';
             elIncome.style.color = '#64748B';
         }
