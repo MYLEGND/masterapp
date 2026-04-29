@@ -849,6 +849,12 @@ function upgradeMoneyInput(input) {
         });
     }
 
+    Array.from(input.classList).forEach((className) => {
+        if (/^m[trblxyse]?-\d+$/.test(className) && !wrapper.classList.contains(className)) {
+            wrapper.classList.add(className);
+            input.classList.remove(className);
+        }
+    });
     wrapper.classList.add("legend-money-input", "finance-money-input-group");
 
     let prefix = wrapper.querySelector(".legend-money-prefix");
@@ -861,6 +867,7 @@ function upgradeMoneyInput(input) {
 
     input.dataset.moneyInput = "true";
     input.classList.add("legend-money-field");
+    input.classList.remove("form-control", "form-control-sm", "form-select");
     input.setAttribute("inputmode", "decimal");
     if (input.type !== "hidden") {
         input.type = "text";
@@ -868,6 +875,17 @@ function upgradeMoneyInput(input) {
     if (/^\$/.test(input.placeholder || "")) {
         input.placeholder = (input.placeholder || "").replace(/^\$\s*/, "");
     }
+    input.style.setProperty("border", "0", "important");
+    input.style.setProperty("outline", "0", "important");
+    input.style.setProperty("background", "transparent", "important");
+    input.style.setProperty("box-shadow", "none", "important");
+    input.style.setProperty("border-radius", "0", "important");
+    input.style.setProperty("padding", "0 12px 0 0", "important");
+    input.style.setProperty("margin", "0", "important");
+    input.style.setProperty("height", "100%", "important");
+    input.style.setProperty("width", "100%", "important");
+    input.style.setProperty("min-width", "0", "important");
+    input.style.setProperty("appearance", "none", "important");
 
     if (input.dataset.moneyInputBound !== "true") {
         input.addEventListener("focus", () => {
