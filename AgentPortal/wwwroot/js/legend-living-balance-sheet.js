@@ -1451,6 +1451,13 @@
         let focusPulseTimer = null;
         const compoundOverlay = root.querySelector("[data-llbs-compound-overlay]");
         const compoundTrigger = root.querySelector("[data-llbs-compound-open]");
+        const compoundFieldEls = Array.from(root.querySelectorAll("[data-llbs-compound-field]"));
+        const compoundOutputEls = new Map(Array.from(root.querySelectorAll("[data-llbs-compound-output]")).map((el) => [el.getAttribute("data-llbs-compound-output"), el]));
+        const compoundContributionLabelEl = root.querySelector("[data-llbs-compound-contribution-label]");
+        const compoundContributionNoteEl = root.querySelector("[data-llbs-compound-contribution-note]");
+        const compoundNoteEl = root.querySelector("[data-llbs-compound-note]");
+        const compoundCompareEl = root.querySelector("[data-llbs-compound-compare]");
+        const compoundMilestonesEl = root.querySelector("[data-llbs-compound-milestones]");
 
         function getCompoundLabState() {
             state.compoundLab = normalizeCompoundLabState(state.compoundLab);
@@ -1466,7 +1473,7 @@
 
         function syncCompoundLabForm() {
             const labState = getCompoundLabState();
-            root.querySelectorAll("[data-llbs-compound-field]").forEach((field) => {
+            compoundFieldEls.forEach((field) => {
                 const key = field.getAttribute("data-llbs-compound-field");
                 if (!key || !(key in labState)) return;
                 if (field.tagName === "SELECT") {
@@ -1527,14 +1534,18 @@
             }).join("");
         }
 
-        function refreshCompoundLab() {
+        function refreshCompoundLab(force = false) {
             if (!compoundOverlay) return;
+            if (compoundOverlay.hidden && !force) return;
             const labState = getCompoundLabState();
             const projection = simulateCompoundProjection(labState);
             const goalYears = estimateCompoundGoalYears(labState);
             const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, labState.contributionCadence, "period");
             const cadenceUnitLabel = contributionCadenceUnitLabel(labState.contributionCadence);
             const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, labState.compoundingCadence, labState.compoundingCadence);
+            const yearOneContributionLabel = labState.annualContributionIncrease > 0
+                ? `Year 1 pace: ${formatCurrency(projection.annualizedContribution)} per year`
+                : `${formatCurrency(projection.annualizedContribution)} per year`;
             const unitProjection = simulateCompoundProjection({
                 ...labState,
                 startingBalance: 0,
@@ -1546,23 +1557,22 @@
                 ? Math.min(projection.futureValue / labState.targetAmount, 1)
                 : 0;
 
-            const contributionLabelEl = root.querySelector("[data-llbs-compound-contribution-label]");
-            if (contributionLabelEl) {
-                contributionLabelEl.textContent = `Save Each ${cadenceUnitLabel}`;
+            if (compoundContributionLabelEl) {
+                compoundContributionLabelEl.textContent = `Save Each ${cadenceUnitLabel}`;
             }
 
-            const contributionNoteEl = root.querySelector("[data-llbs-compound-contribution-note]");
-            if (contributionNoteEl) {
-                contributionNoteEl.textContent = labState.contributionCadence === "yearly"
+            if (compoundContributionNoteEl) {
+                compoundContributionNoteEl.textContent = labState.contributionCadence === "yearly"
                     ? `${formatCurrency(labState.contributionAmount)} annual contribution`
-                    : `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} per year`;
+                    : `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(projection.annualizedContribution)} in year 1`;
             }
 
-            const noteEl = root.querySelector("[data-llbs-compound-note]");
-            if (noteEl) {
-                noteEl.innerHTML = `
-                    <strong>${cadenceLabel} discipline + ${compoundingLabel} compounding</strong>
-                    <span>${formatCurrency(labState.contributionAmount)} saved ${cadenceLabel.toLowerCase()} means about ${formatCurrency(projection.annualizedContribution)} invested per year. At ${formatPercent(labState.apr)} APR, every ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} becomes ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)}. Calculations assume contributions land at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each period.</span>
+            if (compoundNoteEl) {
+                compoundNoteEl.innerHTML = `
+                    <strong>Current Math Basis</strong>
+                    <span>${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(labState.contributionCadence), 0)} deposits per year.</span>
+                    <span>${formatCurrency(Math.max(0, labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${formatYearsCompact(labState.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${labState.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
+                    <span>Reality check: ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${formatYearsCompact(labState.years)} at the current settings.</span>
                 `;
             }
 
@@ -1571,7 +1581,7 @@
                 contributionTotal: formatCurrency(projection.contributionTotal),
                 interestEarned: formatCurrency(projection.interestEarned),
                 realValue: formatCurrency(projection.realValue),
-                annualizedContribution: `${formatCurrency(projection.annualizedContribution)} per year`,
+                annualizedContribution: yearOneContributionLabel,
                 effectiveAnnualYield: `${formatPercent(projection.effectiveAnnualYield)} effective annual yield`,
                 goalProgress: labState.targetAmount > 0
                     ? `Goal progress: ${formatNumberValue(progressRatio * 100, 1)}% of ${formatCurrency(labState.targetAmount)}`
@@ -1585,18 +1595,16 @@
             };
 
             Object.entries(outputs).forEach(([key, value]) => {
-                const el = root.querySelector(`[data-llbs-compound-output="${key}"]`);
+                const el = compoundOutputEls.get(key);
                 if (el) el.textContent = value;
             });
 
-            const compareEl = root.querySelector("[data-llbs-compound-compare]");
-            if (compareEl) {
-                compareEl.innerHTML = renderCompoundComparisons(projection, labState);
+            if (compoundCompareEl) {
+                compoundCompareEl.innerHTML = renderCompoundComparisons(projection, labState);
             }
 
-            const milestonesEl = root.querySelector("[data-llbs-compound-milestones]");
-            if (milestonesEl) {
-                milestonesEl.innerHTML = compoundMilestoneYears(labState.years).map((years) => {
+            if (compoundMilestonesEl) {
+                compoundMilestonesEl.innerHTML = compoundMilestoneYears(labState.years).map((years) => {
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
@@ -1617,7 +1625,7 @@
             document.body.classList.toggle("llbs-modal-open", !!isOpen);
             if (isOpen) {
                 syncCompoundLabForm();
-                refreshCompoundLab();
+                refreshCompoundLab(true);
                 window.requestAnimationFrame(() => {
                     root.querySelector('[data-llbs-compound-field="startingBalance"]')?.focus();
                 });
@@ -1938,6 +1946,7 @@
         root.addEventListener("input", (event) => {
             const compoundField = event.target.closest("[data-llbs-compound-field]");
             if (compoundField) {
+                if (event.target.tagName === "SELECT") return;
                 updateCompoundLabField(compoundField);
                 return;
             }
@@ -1991,6 +2000,7 @@
         root.addEventListener("change", (event) => {
             const compoundField = event.target.closest("[data-llbs-compound-field]");
             if (compoundField) {
+                if (event.target.tagName !== "SELECT") return;
                 updateCompoundLabField(compoundField);
                 syncCompoundLabForm();
                 return;
