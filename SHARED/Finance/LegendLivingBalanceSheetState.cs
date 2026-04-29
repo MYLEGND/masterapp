@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.Json.Nodes;
 
 namespace Shared.Finance;
 
@@ -25,6 +26,7 @@ public sealed class LegendLivingBalanceSheetState
     public LegendBalanceSheetTaxProfile TaxProfile { get; set; } = new();
     public LegendBalanceSheetProtection Protection { get; set; } = new();
     public LegendBalanceSheetSummary Summary { get; set; } = new();
+    public JsonObject CompoundLab { get; set; } = new();
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Shared.Finance;
 
@@ -56,6 +57,7 @@ public static class LegendLivingBalanceSheetCalculator
         state.TaxProfile ??= new LegendBalanceSheetTaxProfile();
         state.Protection ??= new LegendBalanceSheetProtection();
         state.Summary ??= new LegendBalanceSheetSummary();
+        state.CompoundLab ??= new JsonObject();
 
         NormalizeProtection(state.Protection);
 

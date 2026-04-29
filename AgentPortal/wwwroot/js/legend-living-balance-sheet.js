@@ -1392,10 +1392,6 @@
                 try { dispose(); } catch (_) { }
             });
             windowCleanupFns.length = 0;
-            if (compoundLiveSyncTimer) {
-                window.clearInterval(compoundLiveSyncTimer);
-                compoundLiveSyncTimer = null;
-            }
             document.body.classList.remove("llbs-modal-open");
         };
         let loadedState = {};
@@ -1460,7 +1456,6 @@
         let saveTimer = null;
         let savedLabelTimer = null;
         let focusPulseTimer = null;
-        let compoundLiveSyncTimer = null;
         const compoundOverlay = root.querySelector("[data-llbs-compound-overlay]");
         const compoundTrigger = root.querySelector("[data-llbs-compound-open]");
         const compoundFieldEls = Array.from(root.querySelectorAll("[data-llbs-compound-field]"));
@@ -1470,15 +1465,6 @@
         const compoundNoteEl = root.querySelector("[data-llbs-compound-note]");
         const compoundCompareEl = root.querySelector("[data-llbs-compound-compare]");
         const compoundMilestonesEl = root.querySelector("[data-llbs-compound-milestones]");
-
-        // Direct listeners on compound fields guarantee updates even when delegation misfires
-        compoundFieldEls.forEach(f => {
-            const evtName = f.tagName === "SELECT" ? "change" : "input";
-            f.addEventListener(evtName, () => {
-                updateCompoundLabField(f);
-                if (f.tagName === "SELECT") syncCompoundLabForm();
-            });
-        });
 
         function getCompoundLabState() {
             state.compoundLab = normalizeCompoundLabState(state.compoundLab);
@@ -1519,7 +1505,7 @@
             return normalizeCompoundLabState(nextState);
         }
 
-        function mergeCompoundLabStateFromDom() {
+        function applyCompoundLabStateFromDom(options = {}) {
             const currentState = getCompoundLabState();
             const nextState = readCompoundLabStateFromDom();
             const changed = JSON.stringify(currentState) !== JSON.stringify(nextState);
@@ -1528,24 +1514,19 @@
                 state.compoundLab = nextState;
             }
 
-            return changed;
-        }
-
-        function stopCompoundLiveSync() {
-            if (compoundLiveSyncTimer) {
-                window.clearInterval(compoundLiveSyncTimer);
-                compoundLiveSyncTimer = null;
-            }
-        }
-
-        function startCompoundLiveSync() {
-            stopCompoundLiveSync();
-            compoundLiveSyncTimer = window.setInterval(() => {
-                if (!compoundOverlay || compoundOverlay.hidden) return;
-                if (!mergeCompoundLabStateFromDom()) return;
+            if ((changed || options.forceRefresh) && options.refresh !== false) {
                 refreshCompoundLab(true);
+            }
+
+            if (changed && options.syncForm) {
+                syncCompoundLabForm();
+            }
+
+            if (changed && options.save) {
                 scheduleSave();
-            }, 200);
+            }
+
+            return changed;
         }
 
         function syncCompoundLabForm() {
@@ -1602,7 +1583,6 @@
         function refreshCompoundLab(force = false) {
             if (!compoundOverlay) return;
             if (compoundOverlay.hidden && !force) return;
-            mergeCompoundLabStateFromDom();
             const labState = getCompoundLabState();
             const projection = simulateCompoundProjection(labState);
             const projectionConfig = projection?.config || null;
@@ -1780,34 +1760,37 @@
             compoundTrigger?.setAttribute("aria-expanded", isOpen ? "true" : "false");
             document.body.classList.toggle("llbs-modal-open", !!isOpen);
             if (isOpen) {
-                mergeCompoundLabStateFromDom();
                 syncCompoundLabForm();
                 refreshCompoundLab(true);
-                startCompoundLiveSync();
                 window.requestAnimationFrame(() => {
                     root.querySelector('[data-llbs-compound-field="startingBalance"]')?.focus();
                 });
-                // Read DOM → state after browser autofill window (autofill doesn't fire input events)
+                // One post-open pass catches browser autofill without adding another long-running sync loop.
                 window.setTimeout(() => {
-                    const syncedFromDom = mergeCompoundLabStateFromDom();
-                    if (syncedFromDom) {
-                        syncCompoundLabForm();
-                        scheduleSave();
-                    }
-                    refreshCompoundLab(true);
+                    applyCompoundLabStateFromDom({ refresh: true, syncForm: true, save: false, forceRefresh: true });
                 }, 150);
             } else {
-                stopCompoundLiveSync();
                 compoundTrigger?.focus();
             }
         }
 
         function updateCompoundLabField(field) {
             if (!field?.getAttribute("data-llbs-compound-field")) return;
-            mergeCompoundLabStateFromDom();
-            refreshCompoundLab();
-            scheduleSave();
+            applyCompoundLabStateFromDom({
+                refresh: true,
+                save: true,
+                forceRefresh: true,
+                syncForm: field.tagName === "SELECT"
+            });
         }
+
+        compoundFieldEls.forEach((field) => {
+            const eventName = field.tagName === "SELECT" ? "change" : "input";
+            field.addEventListener(eventName, () => updateCompoundLabField(field));
+            field.addEventListener("blur", () => {
+                applyCompoundLabStateFromDom({ refresh: true, forceRefresh: true, syncForm: true, save: false });
+            });
+        });
 
         function refreshAndDelta() {
             refresh(root, state);
@@ -2090,13 +2073,6 @@
         });
 
         root.addEventListener("input", (event) => {
-            const compoundField = event.target.closest("[data-llbs-compound-field]");
-            if (compoundField) {
-                if (event.target.tagName === "SELECT") return;
-                updateCompoundLabField(compoundField);
-                return;
-            }
-
             const input = event.target.closest("[data-llbs-input]");
             if (!input) return;
             const path = input.getAttribute("data-path");
@@ -2112,11 +2088,6 @@
         });
 
         root.addEventListener("blur", (event) => {
-            const compoundField = event.target.closest("[data-llbs-compound-field]");
-            if (compoundField) {
-                syncCompoundLabForm();
-            }
-
             const input = event.target.closest("[data-llbs-input]");
             if (input) commitInput(input);
         }, true);
@@ -2144,14 +2115,6 @@
         });
 
         root.addEventListener("change", (event) => {
-            const compoundField = event.target.closest("[data-llbs-compound-field]");
-            if (compoundField) {
-                if (event.target.tagName !== "SELECT") return;
-                updateCompoundLabField(compoundField);
-                syncCompoundLabForm();
-                return;
-            }
-
             const estateStatusSelect = event.target.closest("[data-llbs-estate-status]");
             if (estateStatusSelect) {
                 const path = estateStatusSelect.getAttribute("data-llbs-estate-status");
