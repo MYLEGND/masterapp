@@ -1392,6 +1392,10 @@
                 try { dispose(); } catch (_) { }
             });
             windowCleanupFns.length = 0;
+            if (compoundLiveSyncTimer) {
+                window.clearInterval(compoundLiveSyncTimer);
+                compoundLiveSyncTimer = null;
+            }
             document.body.classList.remove("llbs-modal-open");
         };
         let loadedState = {};
@@ -1456,6 +1460,7 @@
         let saveTimer = null;
         let savedLabelTimer = null;
         let focusPulseTimer = null;
+        let compoundLiveSyncTimer = null;
         const compoundOverlay = root.querySelector("[data-llbs-compound-overlay]");
         const compoundTrigger = root.querySelector("[data-llbs-compound-open]");
         const compoundFieldEls = Array.from(root.querySelectorAll("[data-llbs-compound-field]"));
@@ -1486,6 +1491,61 @@
                 return inputValueForKind(labState[field], "percent");
             }
             return inputValueForKind(labState[field], "number");
+        }
+
+        function normalizeCompoundLabFieldValue(key, rawValue) {
+            if (key === "contributionCadence" || key === "compoundingCadence" || key === "contributionTiming") {
+                return rawValue;
+            }
+            if (isBlankValue(rawValue)) {
+                return "";
+            }
+            if (key === "apr" || key === "annualContributionIncrease" || key === "inflationRate") {
+                return normalizeRate(parseNumber(rawValue) / 100);
+            }
+            if (key === "years") {
+                return Math.min(100, Math.max(0, parseNumber(rawValue)));
+            }
+            return nonNegative(rawValue);
+        }
+
+        function readCompoundLabStateFromDom() {
+            const nextState = { ...compoundLabDefault() };
+            compoundFieldEls.forEach((field) => {
+                const key = field.getAttribute("data-llbs-compound-field");
+                if (!key || !(key in nextState)) return;
+                nextState[key] = normalizeCompoundLabFieldValue(key, field.value ?? "");
+            });
+            return normalizeCompoundLabState(nextState);
+        }
+
+        function mergeCompoundLabStateFromDom() {
+            const currentState = getCompoundLabState();
+            const nextState = readCompoundLabStateFromDom();
+            const changed = JSON.stringify(currentState) !== JSON.stringify(nextState);
+
+            if (changed) {
+                state.compoundLab = nextState;
+            }
+
+            return changed;
+        }
+
+        function stopCompoundLiveSync() {
+            if (compoundLiveSyncTimer) {
+                window.clearInterval(compoundLiveSyncTimer);
+                compoundLiveSyncTimer = null;
+            }
+        }
+
+        function startCompoundLiveSync() {
+            stopCompoundLiveSync();
+            compoundLiveSyncTimer = window.setInterval(() => {
+                if (!compoundOverlay || compoundOverlay.hidden) return;
+                if (!mergeCompoundLabStateFromDom()) return;
+                refreshCompoundLab(true);
+                scheduleSave();
+            }, 200);
         }
 
         function syncCompoundLabForm() {
@@ -1542,6 +1602,7 @@
         function refreshCompoundLab(force = false) {
             if (!compoundOverlay) return;
             if (compoundOverlay.hidden && !force) return;
+            mergeCompoundLabStateFromDom();
             const labState = getCompoundLabState();
             const projection = simulateCompoundProjection(labState);
             const projectionConfig = projection?.config || null;
@@ -1553,6 +1614,7 @@
             const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, activeCadence, "period");
             const cadenceUnitLabel = activeCadence ? contributionCadenceUnitLabel(activeCadence) : "Period";
             const compoundingLabel = optionLabel(COMPOUNDING_CADENCES, projectionConfig?.compoundingCadence || labState.compoundingCadence, "Monthly");
+            const resolvedCadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, projectionConfig?.contributionCadence || labState.contributionCadence, "period");
             const annualizedContribution = cadenceSelected && hasContributionAmount
                 ? nonNegative(labState.contributionAmount) * compoundPeriodsPerYear(labState.contributionCadence)
                 : null;
@@ -1646,9 +1708,9 @@
                 compoundNoteEl.innerHTML = `
                     <strong>Current Math Basis</strong>
                     <span>${projectionConfig.contributionAmount > 0 ? `${formatCurrency(projectionConfig.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1 at ${formatNumberValue(compoundPeriodsPerYear(projectionConfig.contributionCadence), 0)} deposits per year.` : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</span>
-                    <span>${formatCurrency(nonNegative(labState.startingBalance))} starts compounding at ${formatPercent(labState.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)}. Deposits are applied at the ${labState.contributionTiming === "beginning" ? "beginning" : "end"} of each ${cadenceLabel.toLowerCase()} period${!isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
+                    <span>${formatCurrency(projectionConfig.startingBalance)} starts compounding at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel.toLowerCase()} period${!isBlankValue(labState.annualContributionIncrease) && normalizeRate(labState.annualContributionIncrease) > 0 ? `, and contributions step up ${formatPercent(labState.annualContributionIncrease)} each year` : ""}.</span>
                     ${assumptionNotes.length > 0 ? `<span>${assumptionNotes.join(" ")}</span>` : ""}
-                    <span>${projectionConfig.contributionAmount > 0 ? `Reality check: ${formatCurrency(1)} saved ${cadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)} at the current settings.` : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</span>
+                    <span>${projectionConfig.contributionAmount > 0 ? `Reality check: ${formatCurrency(1)} saved ${resolvedCadenceLabel.toLowerCase()} grows to ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.assumptions.usedDefaultYears ? "0 yrs" : formatYearsCompact(projectionConfig.years)} at the current settings.` : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</span>
                 `;
             }
 
@@ -1718,40 +1780,31 @@
             compoundTrigger?.setAttribute("aria-expanded", isOpen ? "true" : "false");
             document.body.classList.toggle("llbs-modal-open", !!isOpen);
             if (isOpen) {
+                mergeCompoundLabStateFromDom();
                 syncCompoundLabForm();
                 refreshCompoundLab(true);
+                startCompoundLiveSync();
                 window.requestAnimationFrame(() => {
                     root.querySelector('[data-llbs-compound-field="startingBalance"]')?.focus();
                 });
                 // Read DOM → state after browser autofill window (autofill doesn't fire input events)
                 window.setTimeout(() => {
-                    compoundFieldEls.forEach(f => { if (f.tagName !== "SELECT") updateCompoundLabField(f); });
+                    const syncedFromDom = mergeCompoundLabStateFromDom();
+                    if (syncedFromDom) {
+                        syncCompoundLabForm();
+                        scheduleSave();
+                    }
                     refreshCompoundLab(true);
                 }, 150);
             } else {
+                stopCompoundLiveSync();
                 compoundTrigger?.focus();
             }
         }
 
         function updateCompoundLabField(field) {
-            const key = field.getAttribute("data-llbs-compound-field");
-            if (!key) return;
-            const labState = getCompoundLabState();
-            const rawValue = field.value;
-
-            if (key === "contributionCadence" || key === "compoundingCadence" || key === "contributionTiming") {
-                labState[key] = rawValue;
-            } else if (isBlankValue(rawValue)) {
-                labState[key] = "";
-            } else if (key === "apr" || key === "annualContributionIncrease" || key === "inflationRate") {
-                labState[key] = normalizeRate(parseNumber(rawValue) / 100);
-            } else if (key === "years") {
-                labState[key] = Math.min(100, Math.max(0, parseNumber(rawValue)));
-            } else {
-                labState[key] = nonNegative(rawValue);
-            }
-
-            state.compoundLab = normalizeCompoundLabState(labState);
+            if (!field?.getAttribute("data-llbs-compound-field")) return;
+            mergeCompoundLabStateFromDom();
             refreshCompoundLab();
             scheduleSave();
         }
