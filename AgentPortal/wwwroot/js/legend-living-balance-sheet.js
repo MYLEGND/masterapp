@@ -991,11 +991,6 @@
                         </div>
                         <div class="llbs-compound-grid">
                             <section class="llbs-compound-panel llbs-compound-panel-inputs" aria-label="Compound interest inputs">
-                                <div class="llbs-compound-panel-top">
-                                    <span class="llbs-compound-section-kicker">Inputs</span>
-                                    <h4 class="llbs-compound-section-title">Build the savings story</h4>
-                                    <p class="llbs-compound-section-text">Starts ready with a 40-year runway and beginning deposits.</p>
-                                </div>
                                 <div class="llbs-compound-cluster">
                                     <div class="llbs-compound-cluster-title">Capital Base</div>
                                     <div class="llbs-compound-field-grid">
@@ -1057,11 +1052,6 @@
                                 <div class="llbs-compound-explainer" data-llbs-compound-note></div>
                             </section>
                             <section class="llbs-compound-panel llbs-compound-panel-results" aria-label="Compound interest results">
-                                <div class="llbs-compound-results-hero">
-                                    <span class="llbs-compound-section-kicker">Projection</span>
-                                    <h4 class="llbs-compound-section-title">See the payoff instantly</h4>
-                                    <p class="llbs-compound-section-text">Every card updates live from the inputs on the left.</p>
-                                </div>
                                 <div class="llbs-compound-summary-grid">
                                     <article class="llbs-compound-card llbs-compound-card-primary">
                                         <span>Projected Value</span>
