@@ -1854,10 +1854,10 @@
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
-                            <td>${formatYearsCompact(years)}</td>
-                            <td>${formatCurrency(point.futureValue)}</td>
-                            <td>${formatCurrency(point.totalDeposited)}</td>
-                            <td>${formatCurrency(point.interestEarned)}</td>
+                            <td class="is-horizon">${formatYearsCompact(years)}</td>
+                            <td class="is-projected">${formatCurrency(point.futureValue)}</td>
+                            <td class="is-saved">${formatCurrency(point.totalDeposited)}</td>
+                            <td class="is-interest">${formatCurrency(point.interestEarned)}</td>
                         </tr>
                     `;
                 }).join("");

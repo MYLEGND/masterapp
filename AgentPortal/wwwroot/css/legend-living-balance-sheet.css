@@ -1457,20 +1457,21 @@
 .llbs-compound-btn,
 .llbs-print-btn {
     min-height: 32px;
-    border: 1px solid rgba(243, 216, 139, .38);
+    border: 1px solid rgba(214, 186, 118, .34);
     border-radius: 8px;
     padding: 6px 11px;
-    color: #fff7dd;
-    background: linear-gradient(180deg, rgba(199, 153, 49, .1), rgba(124, 88, 18, .06));
+    color: #f9f0d7;
+    background: linear-gradient(180deg, rgba(18, 28, 43, .96), rgba(10, 18, 30, .96));
     font-size: .76rem;
     font-weight: 950;
     cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 
 .llbs-compound-btn {
-    background:
-        linear-gradient(180deg, rgba(20, 108, 67, .22), rgba(11, 56, 36, .12)),
-        linear-gradient(180deg, rgba(199, 153, 49, .14), rgba(124, 88, 18, .06));
+    border-color: rgba(104, 164, 130, .34);
+    color: #ecfff3;
+    background: linear-gradient(180deg, rgba(15, 38, 28, .98), rgba(10, 24, 19, .98));
 }
 
 .llbs-compound-btn:hover,
@@ -1498,7 +1499,7 @@ body.llbs-modal-open {
 .llbs-compound-backdrop {
     position: absolute;
     inset: 0;
-    background: rgba(4, 8, 18, .78);
+    background: rgba(3, 8, 17, .84);
     backdrop-filter: blur(10px);
 }
 
@@ -1510,14 +1511,10 @@ body.llbs-modal-open {
     overflow: hidden;
     border: 1.5px solid var(--llbs-line-strong);
     border-radius: 24px;
-    background:
-        radial-gradient(980px 360px at 8% -6%, rgba(221, 180, 87, .22), transparent 60%),
-        radial-gradient(680px 280px at 92% 0%, rgba(20, 108, 67, .18), transparent 60%),
-        radial-gradient(520px 220px at 100% 100%, rgba(37, 79, 149, .14), transparent 72%),
-        linear-gradient(180deg, #081223 0%, #0b1529 48%, #060d19 100%);
+    background: linear-gradient(180deg, #07111e 0%, #0b1524 52%, #09111d 100%);
     box-shadow:
         0 42px 120px rgba(0, 0, 0, .56),
-        inset 0 1px 0 rgba(255, 255, 255, .08);
+        inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
 .llbs-compound-stage {
@@ -1582,14 +1579,12 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-panel {
-    border: 1px solid rgba(243, 216, 139, .18);
+    border: 1px solid rgba(214, 186, 118, .16);
     border-radius: 18px;
-    background:
-        radial-gradient(220px 110px at 0 0, rgba(243, 216, 139, .08), transparent 78%),
-        linear-gradient(180deg, rgba(18, 34, 63, .94), rgba(8, 16, 30, .98));
+    background: linear-gradient(180deg, rgba(14, 22, 35, .98), rgba(9, 16, 27, .98));
     box-shadow:
-        0 22px 44px rgba(0, 0, 0, .24),
-        inset 0 1px 0 rgba(255, 255, 255, .06);
+        0 22px 44px rgba(0, 0, 0, .22),
+        inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 
 .llbs-compound-panel-inputs {
@@ -1608,19 +1603,15 @@ body.llbs-modal-open {
     display: grid;
     gap: 6px;
     padding: 12px 14px;
-    border: 1px solid rgba(243, 216, 139, .16);
+    border: 1px solid rgba(214, 186, 118, .12);
     border-radius: 16px;
-    background:
-        radial-gradient(200px 90px at 0 0, rgba(243, 216, 139, .12), transparent 78%),
-        linear-gradient(180deg, rgba(17, 32, 58, .92), rgba(9, 18, 34, .98));
+    background: linear-gradient(180deg, rgba(18, 28, 43, .96), rgba(10, 18, 30, .98));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .03);
 }
 
 .llbs-compound-results-hero {
-    border-color: rgba(53, 183, 121, .22);
-    background:
-        radial-gradient(260px 110px at 0 0, rgba(53, 183, 121, .12), transparent 78%),
-        radial-gradient(220px 120px at 100% 0, rgba(243, 216, 139, .1), transparent 78%),
-        linear-gradient(180deg, rgba(17, 32, 58, .92), rgba(9, 18, 34, .98));
+    border-color: rgba(104, 164, 130, .22);
+    background: linear-gradient(180deg, rgba(15, 29, 26, .98), rgba(11, 22, 21, .98));
 }
 
 .llbs-compound-section-kicker {
@@ -1652,10 +1643,9 @@ body.llbs-modal-open {
     gap: 10px;
     margin-top: 10px;
     padding: 12px;
-    border: 1px solid rgba(243, 216, 139, .12);
+    border: 1px solid rgba(214, 186, 118, .1);
     border-radius: 16px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .015));
+    background: linear-gradient(180deg, rgba(255, 255, 255, .025), rgba(255, 255, 255, .01));
 }
 
 .llbs-compound-cluster-title {
@@ -1700,17 +1690,16 @@ body.llbs-modal-open {
 .llbs-compound-select {
     width: 100%;
     min-height: 38px;
-    border: 1px solid rgba(243, 216, 139, .28);
+    border: 1px solid rgba(214, 186, 118, .18);
     border-radius: 11px;
     padding: 8px 11px;
-    background:
-        linear-gradient(180deg, rgba(8, 13, 24, .94), rgba(5, 10, 20, .88));
+    background: linear-gradient(180deg, rgba(6, 12, 21, .98), rgba(5, 10, 18, .98));
     color: var(--llbs-text);
     font-size: .88rem;
     font-weight: 850;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, .04),
-        0 10px 22px rgba(0, 0, 0, .12);
+        inset 0 1px 0 rgba(255, 255, 255, .03),
+        0 8px 18px rgba(0, 0, 0, .1);
     transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
@@ -1741,11 +1730,9 @@ body.llbs-modal-open {
     display: grid;
     gap: 6px;
     padding: 12px 13px;
-    border: 1px solid rgba(53, 183, 121, .24);
+    border: 1px solid rgba(104, 164, 130, .24);
     border-radius: 14px;
-    background:
-        radial-gradient(220px 110px at 0 0, rgba(53, 183, 121, .14), transparent 78%),
-        linear-gradient(180deg, rgba(15, 31, 30, .34), rgba(11, 26, 45, .16));
+    background: linear-gradient(180deg, rgba(13, 25, 23, .96), rgba(10, 18, 24, .96));
 }
 
 .llbs-compound-explainer strong {
@@ -1773,9 +1760,9 @@ body.llbs-modal-open {
     display: grid;
     gap: 10px;
     padding: 11px 12px;
-    border: 1px solid rgba(243, 216, 139, .14);
+    border: 1px solid rgba(214, 186, 118, .12);
     border-radius: 16px;
-    background: rgba(255, 255, 255, .025);
+    background: linear-gradient(180deg, rgba(12, 19, 31, .9), rgba(9, 15, 26, .9));
 }
 
 .llbs-compound-compare-grid {
@@ -1789,22 +1776,17 @@ body.llbs-modal-open {
     display: grid;
     gap: 4px;
     padding: 11px 12px;
-    border: 1px solid rgba(243, 216, 139, .18);
+    border: 1px solid rgba(214, 186, 118, .14);
     border-radius: 16px;
-    background:
-        radial-gradient(180px 80px at 0 0, rgba(243, 216, 139, .13), transparent 78%),
-        linear-gradient(180deg, rgba(18, 33, 60, .94), rgba(9, 16, 30, .98));
+    background: linear-gradient(180deg, rgba(16, 25, 40, .98), rgba(10, 18, 30, .98));
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, .05),
-        0 14px 32px rgba(0, 0, 0, .12);
+        inset 0 1px 0 rgba(255, 255, 255, .04),
+        0 12px 28px rgba(0, 0, 0, .12);
 }
 
 .llbs-compound-card-primary {
-    border-color: rgba(53, 183, 121, .36);
-    background:
-        radial-gradient(220px 110px at 0 0, rgba(53, 183, 121, .16), transparent 78%),
-        radial-gradient(220px 110px at 100% 0, rgba(243, 216, 139, .12), transparent 76%),
-        linear-gradient(180deg, rgba(18, 33, 60, .94), rgba(9, 16, 30, .98));
+    border-color: rgba(104, 164, 130, .32);
+    background: linear-gradient(180deg, rgba(14, 29, 24, .98), rgba(9, 19, 19, .98));
 }
 
 .llbs-compound-card span,
@@ -1840,7 +1822,7 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-compare-card em {
-    color: #dcffe9;
+    color: #bde9ca;
 }
 
 .llbs-compound-insight-strip {
@@ -1853,10 +1835,9 @@ body.llbs-modal-open {
     display: grid;
     gap: 3px;
     padding: 10px 11px;
-    border: 1px solid rgba(243, 216, 139, .16);
+    border: 1px solid rgba(214, 186, 118, .12);
     border-radius: 14px;
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .025));
+    background: linear-gradient(180deg, rgba(15, 23, 36, .98), rgba(10, 18, 29, .98));
 }
 
 .llbs-compound-insight-strip span {
@@ -1876,9 +1857,9 @@ body.llbs-modal-open {
 
 .llbs-compound-table-wrap {
     overflow: hidden;
-    border: 1px solid rgba(243, 216, 139, .16);
+    border: 1px solid rgba(214, 186, 118, .12);
     border-radius: 16px;
-    background: rgba(255, 255, 255, .03);
+    background: linear-gradient(180deg, rgba(11, 18, 30, .96), rgba(8, 14, 24, .96));
 }
 
 .llbs-compound-table-head {
@@ -1887,7 +1868,7 @@ body.llbs-modal-open {
     justify-content: space-between;
     gap: 10px;
     padding: 10px 12px 8px;
-    border-bottom: 1px solid rgba(243, 216, 139, .14);
+    border-bottom: 1px solid rgba(214, 186, 118, .1);
 }
 
 .llbs-compound-table-head-compact {
@@ -1921,7 +1902,7 @@ body.llbs-modal-open {
 .llbs-compound-table td {
     padding: 7px 10px;
     text-align: left;
-    border-bottom: 1px solid rgba(243, 216, 139, .1);
+    border-bottom: 1px solid rgba(214, 186, 118, .08);
 }
 
 .llbs-compound-table th {
@@ -1936,6 +1917,22 @@ body.llbs-modal-open {
     color: var(--llbs-text);
     font-size: .72rem;
     font-weight: 800;
+}
+
+.llbs-compound-table td.is-horizon {
+    color: #d7dee9;
+}
+
+.llbs-compound-table td.is-projected {
+    color: #f7f2df;
+}
+
+.llbs-compound-table td.is-saved {
+    color: #f3d88b;
+}
+
+.llbs-compound-table td.is-interest {
+    color: #9fe2bb;
 }
 
 .llbs-compound-table tbody tr:last-child td {
