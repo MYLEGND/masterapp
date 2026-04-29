@@ -307,6 +307,94 @@
         });
     }
 
+    function stripCurrencyInputValue(value) {
+        const text = String(value ?? "").trim();
+        if (!text) return "";
+        const cleaned = text.replace(/[$,\s]/g, "");
+        if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") return "";
+        return cleaned;
+    }
+
+    function sanitizeCurrencyInputEditValue(value) {
+        const stripped = String(value ?? "").replace(/[$,\s]/g, "");
+        const negative = stripped.startsWith("-") ? "-" : "";
+        const unsigned = stripped.replace(/-/g, "");
+        const parts = unsigned.split(".");
+        const whole = parts.shift()?.replace(/[^\d]/g, "") || "";
+        const decimal = parts.length > 0 ? `.${parts.join("").replace(/[^\d]/g, "")}` : "";
+        return `${negative}${whole}${decimal}`;
+    }
+
+    function formatCurrencyInputValue(value, maxFractionDigits = 2) {
+        const raw = stripCurrencyInputValue(value);
+        if (!raw) return "";
+        const numeric = Number(raw);
+        if (!Number.isFinite(numeric)) return "";
+        const decimalText = raw.includes(".") ? raw.split(".")[1] || "" : "";
+        const fractionDigits = decimalText ? Math.min(maxFractionDigits, decimalText.length) : 0;
+        return numeric.toLocaleString(undefined, {
+            minimumFractionDigits: fractionDigits,
+            maximumFractionDigits: fractionDigits
+        });
+    }
+
+    function isCompoundMoneyField(input) {
+        const key = input?.getAttribute?.("data-llbs-compound-field") || "";
+        return key === "startingBalance" || key === "contributionAmount";
+    }
+
+    function isCurrencyInputField(input) {
+        if (!input || input.tagName !== "INPUT") return false;
+        return input.matches('[data-llbs-input][data-kind="currency"]') || isCompoundMoneyField(input);
+    }
+
+    function setCurrencyInputVisibility(input, hidden) {
+        const wrapper = input?.closest?.(".llbs-money-input-group");
+        if (wrapper) wrapper.hidden = hidden;
+        if (input) input.hidden = hidden;
+    }
+
+    function upgradeCurrencyInputField(input) {
+        if (!isCurrencyInputField(input) || input.dataset.llbsMoneyInput === "true") return;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "input-group money llbs-money-input-group";
+        wrapper.hidden = input.hidden;
+        input.parentNode?.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+
+        const prefix = document.createElement("span");
+        prefix.className = "input-prefix";
+        prefix.textContent = "$";
+        wrapper.insertBefore(prefix, input);
+
+        input.dataset.llbsMoneyInput = "true";
+        input.classList.add("input-field");
+        input.type = "text";
+        input.setAttribute("inputmode", "decimal");
+
+        if (input.dataset.llbsMoneyInputBound !== "true") {
+            input.addEventListener("focus", () => {
+                input.value = stripCurrencyInputValue(input.value);
+            });
+            input.addEventListener("input", () => {
+                input.value = sanitizeCurrencyInputEditValue(input.value);
+            });
+            input.addEventListener("blur", () => {
+                input.value = formatCurrencyInputValue(input.value);
+            });
+            input.dataset.llbsMoneyInputBound = "true";
+        }
+
+        input.value = formatCurrencyInputValue(input.value);
+    }
+
+    function upgradeCurrencyInputFields(root) {
+        root.querySelectorAll("input").forEach((input) => {
+            upgradeCurrencyInputField(input);
+        });
+    }
+
     function formatYearsCompact(years) {
         const totalYears = Math.max(0, Number(years || 0));
         if (totalYears < 1) {
@@ -1294,7 +1382,8 @@
             if (document.activeElement === input) return;
             const path = input.getAttribute("data-path");
             const kind = input.getAttribute("data-kind") || "currency";
-            input.value = inputValueForKind(getPath(state, path), kind);
+            const nextValue = inputValueForKind(getPath(state, path), kind);
+            input.value = input.dataset.llbsMoneyInput === "true" ? formatCurrencyInputValue(nextValue) : nextValue;
         });
 
         root.querySelectorAll("[data-llbs-status]").forEach((select) => {
@@ -1402,6 +1491,7 @@
 
         host.innerHTML = renderShell(options);
         const root = host.querySelector(".llbs-tool");
+        upgradeCurrencyInputFields(root);
         const mainGridEl = root.querySelector(".llbs-main-grid");
         const mainStackEl = root.querySelector(".llbs-main-stack");
         const assetsSectionEl = root.querySelector('.llbs-card-section[data-tone="assets"]');
@@ -1600,7 +1690,8 @@
                     return;
                 }
                 if (options.skipActiveField && document.activeElement === field) return;
-                field.value = compoundFieldInputValue(key, labState);
+                const nextValue = compoundFieldInputValue(key, labState);
+                field.value = field.dataset.llbsMoneyInput === "true" ? formatCurrencyInputValue(nextValue) : nextValue;
             });
         }
 
@@ -1989,7 +2080,7 @@
             const input = button.parentElement?.querySelector("[data-llbs-input]");
             if (!input) return;
             button.hidden = true;
-            input.hidden = false;
+            setCurrencyInputVisibility(input, false);
             input.focus();
             input.select();
         }
@@ -1999,7 +2090,7 @@
             const path = input.getAttribute("data-path");
             const kind = input.getAttribute("data-kind") || "currency";
             updateValue(path, parseNumber(input.value), kind);
-            input.hidden = true;
+            setCurrencyInputVisibility(input, true);
             if (button) button.hidden = false;
         }
 

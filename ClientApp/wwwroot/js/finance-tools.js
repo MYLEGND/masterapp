@@ -47,6 +47,59 @@
             border-radius: 10px !important;
             box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
         }
+        #budget-embed .input-group.money,
+        .networth-tool .input-group.money {
+            display: flex !important;
+            align-items: center !important;
+            width: 100% !important;
+            min-height: 40px;
+            border: 1.5px solid rgba(166,128,35,.38) !important;
+            border-radius: 10px !important;
+            background-color: rgba(255,255,255,.92) !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+            overflow: hidden !important;
+            transition: border-color .15s ease, box-shadow .15s ease !important;
+        }
+        #budget-embed .input-group.money:focus-within,
+        .networth-tool .input-group.money:focus-within {
+            border-color: #ddb457 !important;
+            box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+        }
+        #budget-embed .input-group.money .input-prefix,
+        .networth-tool .input-group.money .input-prefix {
+            flex: 0 0 auto;
+            align-self: stretch;
+            display: inline-flex;
+            align-items: center;
+            padding: 0 0 0 12px;
+            color: #a68023;
+            font-weight: 900;
+            font-size: .95rem;
+            pointer-events: none;
+            background: transparent;
+        }
+        #budget-embed .input-group.money .input-field,
+        .networth-tool .input-group.money .input-field {
+            flex: 1 1 auto !important;
+            min-width: 0 !important;
+            width: 100% !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 8px 12px 8px 8px !important;
+            color: inherit !important;
+            font-weight: 800 !important;
+        }
+        #budget-embed .input-group.money .input-field:focus,
+        .networth-tool .input-group.money .input-field:focus {
+            outline: none !important;
+            box-shadow: none !important;
+        }
+        #budget-embed .input-group.money .input-field[readonly],
+        .networth-tool .input-group.money .input-field[readonly] {
+            cursor: default;
+        }
     `;
     document.head.appendChild(s);
 })();
@@ -471,7 +524,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const state = {};
 
         // Save all inputs
-        container.querySelectorAll('input').forEach(input => state[input.id] = input.value);
+        container.querySelectorAll('input').forEach(input => state[input.id] = getPersistedInputValue(input));
 
         // Save all outputs (span, td)
         container.querySelectorAll('span, td').forEach(el => {
@@ -504,6 +557,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         container.querySelectorAll('.advice, [id$="Advice"], [id$="Tip"], p.text-muted').forEach(el => {
             if (el.id && saved[el.id]) el.textContent = saved[el.id];
         });
+
+        formatMoneyInputs(container);
     }
 
     function clearToolState(toolId) {
@@ -547,6 +602,8 @@ document.addEventListener("DOMContentLoaded", async function () {
         container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
         container.style.color = '#f8fafc';
+
+        upgradeMoneyInputs(container);
     }
 
     // ------------------- Global Tooltip Hide (bind once) -------------------
@@ -631,8 +688,193 @@ function markGold(el)    { paint(el, COLOR_GOLD, "900"); }
 function markWithSuffix(markFn, el) {
     if (!el) return;
     markFn(el);
-    const sib = el.nextElementSibling;
-    if (sib && sib.tagName === 'SPAN') markFn(sib);
+    const group = el.closest('.input-group.money');
+    if (group) {
+        group.querySelectorAll('.input-prefix').forEach(markFn);
+    }
+    [el.previousElementSibling, el.nextElementSibling].forEach((sib) => {
+        if (sib && sib.tagName === 'SPAN') markFn(sib);
+    });
+}
+
+const MONEY_INPUT_EXPLICIT_IDS = new Set([
+    "wbStartingBalance", "wbIncome", "saAllocation", "assets", "liabs", "cfIncome", "cfBills",
+    "dcDebt", "dcIncome", "fbBills", "wpNet", "wpSurplus", "fiNet", "fiExp", "fiPassive",
+    "dapA", "dapL", "dapIncome", "wfd_incomeGap", "wfd_invAmt", "wfd_liDeath", "wfd_liAmt",
+    "wfd_annDeath", "wfd_annAmt"
+]);
+
+const MONEY_INPUT_CLASS_NAMES = [
+    "sa-alloc-amount",
+    "sa-alloc-starting-balance",
+    "sa-alloc-projected"
+];
+
+function stripFormattedNumericValue(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const cleaned = text.replace(/[$,%\s]/g, "").replace(/,/g, "");
+    if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") return "";
+    return cleaned;
+}
+
+function sanitizeEditableNumericValue(value) {
+    const stripped = String(value ?? "").replace(/[$,\s]/g, "");
+    const negative = stripped.startsWith("-") ? "-" : "";
+    const unsigned = stripped.replace(/-/g, "");
+    const parts = unsigned.split(".");
+    const whole = parts.shift()?.replace(/[^\d]/g, "") || "";
+    const decimal = parts.length > 0 ? `.${parts.join("").replace(/[^\d]/g, "")}` : "";
+    return `${negative}${whole}${decimal}`;
+}
+
+function formatNumericDisplayValue(value, maxFractionDigits = 2) {
+    const raw = stripFormattedNumericValue(value);
+    if (!raw) return "";
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) return "";
+    const decimalText = raw.includes(".") ? raw.split(".")[1] || "" : "";
+    const fractionDigits = decimalText ? Math.min(maxFractionDigits, decimalText.length) : 0;
+    return numeric.toLocaleString(undefined, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    });
+}
+
+function getPersistedInputValue(input) {
+    if (!input) return "";
+    if (input.dataset.moneyInput === "true") {
+        return stripFormattedNumericValue(input.value);
+    }
+    const suffixText = Array.from(input.parentElement?.children || [])
+        .filter((child) => child !== input && child.tagName === "SPAN")
+        .map((child) => child.textContent.trim())
+        .join(" ");
+    if (suffixText.includes("%")) {
+        return stripFormattedNumericValue(input.value);
+    }
+    return input.value;
+}
+
+function findNearestInputLabelText(input) {
+    if (!input) return "";
+    if (input.id) {
+        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+        if (label) return label.textContent || "";
+    }
+    const wrappingLabel = input.closest("label");
+    if (wrappingLabel) return wrappingLabel.textContent || "";
+
+    let cursor = input.parentElement;
+    for (let depth = 0; cursor && depth < 3; depth += 1, cursor = cursor.parentElement) {
+        const previous = cursor.previousElementSibling;
+        if (previous && previous.tagName === "LABEL") return previous.textContent || "";
+    }
+    return "";
+}
+
+function hasDirectAffix(input, affixText) {
+    return Array.from(input.parentElement?.children || []).some((child) =>
+        child !== input &&
+        child.tagName === "SPAN" &&
+        child.textContent.trim() === affixText
+    );
+}
+
+function isMoneyInputCandidate(input) {
+    if (!input || input.tagName !== "INPUT") return false;
+    if (input.dataset.moneyInput === "true") return true;
+    if (input.type === "hidden" || input.type === "checkbox" || input.type === "radio" || input.type === "date") return false;
+    if (MONEY_INPUT_EXPLICIT_IDS.has(input.id)) return true;
+    if (MONEY_INPUT_CLASS_NAMES.some((className) => input.classList.contains(className))) return true;
+    if (hasDirectAffix(input, "%")) return false;
+    if (hasDirectAffix(input, "$")) return true;
+
+    const labelText = findNearestInputLabelText(input);
+    if (/%|percent|rate|years?|months?|inflation|tax bracket|efficiency|frequency|date|apr/i.test(labelText)) {
+        return false;
+    }
+
+    const placeholder = input.getAttribute("placeholder") || "";
+    if (/^\$/.test(placeholder)) return true;
+    if (/(?:^|[^0-9])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:[^0-9]|$)/.test(placeholder)) return true;
+
+    return /(balance|income|assets?|liab(?:ilities|s)?|net worth|monthly bills|expenses?|passive income|death benefit|cash value|starting dollar amount|income gap|surplus|allocation|value)/i.test(labelText);
+}
+
+function formatMoneyInputs(root) {
+    if (!root) return;
+    root.querySelectorAll('input[data-money-input="true"]').forEach((input) => {
+        if (document.activeElement === input) return;
+        input.value = formatNumericDisplayValue(input.value);
+    });
+}
+
+function upgradeMoneyInput(input) {
+    if (!input || input.dataset.moneyInput === "true") return;
+    const parent = input.parentElement;
+    let wrapper = parent;
+    const canReuseParent = !!parent &&
+        parent.tagName === "DIV" &&
+        Array.from(parent.children).every((child) =>
+            child === input ||
+            (child.tagName === "SPAN" && (child.textContent || "").trim() === "$")
+        );
+
+    if (!canReuseParent) {
+        wrapper = document.createElement("div");
+        input.parentNode?.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+    } else {
+        Array.from(parent.children).forEach((child) => {
+            if (child !== input && child.tagName === "SPAN" && (child.textContent || "").trim() === "$") {
+                child.remove();
+            }
+        });
+    }
+
+    wrapper.classList.add("input-group", "money", "finance-money-input-group");
+    wrapper.style.position = "relative";
+
+    let prefix = wrapper.querySelector(".input-prefix");
+    if (!prefix) {
+        prefix = document.createElement("span");
+        prefix.className = "input-prefix";
+        prefix.textContent = "$";
+        wrapper.insertBefore(prefix, input);
+    }
+
+    input.dataset.moneyInput = "true";
+    input.classList.add("input-field");
+    input.setAttribute("inputmode", "decimal");
+    if (input.type !== "hidden") {
+        input.type = "text";
+    }
+
+    if (input.dataset.moneyInputBound !== "true") {
+        input.addEventListener("focus", () => {
+            input.value = stripFormattedNumericValue(input.value);
+        });
+        input.addEventListener("input", () => {
+            input.value = sanitizeEditableNumericValue(input.value);
+        });
+        input.addEventListener("blur", () => {
+            input.value = formatNumericDisplayValue(input.value);
+        });
+        input.dataset.moneyInputBound = "true";
+    }
+
+    input.value = formatNumericDisplayValue(input.value);
+}
+
+function upgradeMoneyInputs(root) {
+    if (!root) return;
+    root.querySelectorAll("input").forEach((input) => {
+        if (isMoneyInputCandidate(input)) {
+            upgradeMoneyInput(input);
+        }
+    });
+    formatMoneyInputs(root);
 }
 
     const isDropdownTypeaheadKey = (event) =>
@@ -1375,6 +1617,30 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
+        .${prefix}-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:10px 12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));}
+        .${prefix}-alloc-summary{display:grid;gap:8px;align-items:center;grid-template-columns:minmax(150px,2.5fr) minmax(70px,.7fr) minmax(78px,.78fr) minmax(70px,.7fr) minmax(108px,1.1fr) auto;}
+        .${prefix}-field{min-width:0;}
+        .${prefix}-field-name{grid-area:name;}
+        .${prefix}-field-amount{grid-area:amount;}
+        .${prefix}-field-percent{grid-area:percent;}
+        .${prefix}-field-apr{grid-area:apr;}
+        .${prefix}-field-startdate{grid-area:date;}
+        .${prefix}-field-starting{grid-area:starting;}
+        .${prefix}-field-projected{grid-area:projected;}
+        .${prefix}-field-toggle{grid-area:toggle;display:flex;justify-content:flex-end;}
+        .${prefix}-suffix-wrap{position:relative;min-width:0;}
+        .${prefix}-suffix-wrap .form-control{width:100%;padding-right:28px;}
+        .${prefix}-suffix{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;pointer-events:none;}
+        .${prefix}-alloc-toggle{min-width:72px;border:1px solid rgba(166,128,35,.42);border-radius:10px;padding:7px 10px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;}
+        .${prefix}-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:4px;}
+        .${prefix}-alloc-drawer.is-open{display:grid;}
+        .${prefix}-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
+        .${prefix}-alloc-row .sa-alloc-projected{font-weight:800;}
+        @media (max-width: 600px){
+            .${prefix}-alloc-summary{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-areas:'name name' 'percent amount' 'apr projected' 'toggle toggle';}
+            .${prefix}-field-toggle{justify-content:flex-start;}
+            .${prefix}-alloc-drawer{grid-template-columns:1fr;}
+        }
     </style>
     <div id="${pid('TipLayer')}"></div>
     <h3 style="color:#a68023;font-weight:900;letter-spacing:0.5px;font-size:2rem;">${saTitle}</h3>
@@ -1426,6 +1692,8 @@ if (t.id === "SavingsAccelerator") {
     const delBtn = document.getElementById(pid('DelCat'));
     const saPctTotal = document.getElementById(pid('PctTotal'));
     const saRemaining = document.getElementById(pid('Remaining'));
+
+    upgradeMoneyInputs(container);
 
     let categoryCount = 0;
 
@@ -1494,6 +1762,58 @@ if (t.id === "SavingsAccelerator") {
         const rounded = Math.round(Number(value) || 0);
         const sign = rounded < 0 ? '-' : '';
         return `${sign}$${Math.abs(rounded).toLocaleString()}`;
+    };
+
+    const todayIsoDate = () => {
+        const now = new Date();
+        const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 10);
+    };
+
+    const normalizeSavingsDateInput = (value) => {
+        if (!value) return '';
+        const parsed = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+        if (Number.isNaN(parsed.getTime())) return '';
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+    };
+
+    const monthsToYearEnd = (value) => {
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const fallback = new Date(`${todayIsoDate()}T00:00:00`);
+        const rawDate = normalizeSavingsDateInput(value);
+        const parsed = rawDate ? new Date(`${rawDate}T00:00:00`) : fallback;
+        if (Number.isNaN(parsed.getTime())) return 0;
+        const yearEnd = new Date(currentYear, 11, 31);
+        if (parsed > yearEnd) return 0;
+        const effective = parsed.getFullYear() < currentYear ? new Date(currentYear, 0, 1) : parsed;
+        return Math.max(0, 12 - effective.getMonth());
+    };
+
+    const calculateProjectedYearEndValue = ({ allocationAmount, aprPercent, allocationStartDate, startingBalance }) => {
+        const months = monthsToYearEnd(allocationStartDate);
+        const monthlyContribution = Math.max(0, Number(allocationAmount) || 0);
+        const openingBalance = Math.max(0, parseSavingsMoney(startingBalance));
+        const aprRate = Math.max(0, parseSavingsMoney(aprPercent)) / 100;
+
+        if (months <= 0) {
+            return { months: 0, projectedValue: openingBalance };
+        }
+
+        if (aprRate > 0) {
+            const monthlyRate = aprRate / 12;
+            const growthFactor = Math.pow(1 + monthlyRate, months);
+            const contributionGrowth = monthlyContribution * ((growthFactor - 1) / monthlyRate);
+            return {
+                months,
+                projectedValue: (openingBalance * growthFactor) + contributionGrowth
+            };
+        }
+
+        return {
+            months,
+            projectedValue: openingBalance + (monthlyContribution * months)
+        };
     };
 
     const normalizeSavingsBillFrequency = (value) => {
@@ -1573,8 +1893,11 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             allocations.push({
                 name: row.querySelector('.sa-alloc-name').value || '',
-                percent: row.querySelector('.sa-alloc-percent').value || '',
-                description: row.dataset.description || ''
+                percent: stripFormattedNumericValue(row.querySelector('.sa-alloc-percent').value || ''),
+                description: row.dataset.description || '',
+                aprPercent: stripFormattedNumericValue(row.querySelector('.sa-alloc-apr')?.value || ''),
+                allocationStartDate: row.querySelector('.sa-alloc-start-date')?.value || '',
+                startingBalance: getPersistedInputValue(row.querySelector('.sa-alloc-starting-balance'))
             });
         });
         savePersistedState(saStateId, { allocations });
@@ -1582,7 +1905,13 @@ if (t.id === "SavingsAccelerator") {
 
     const injectDefaultSavingsAllocationRows = () => {
         getDefaultSavingsAllocationRows().forEach((allocation) => {
-            createAllocationRow(++categoryCount, allocation.name, allocation.percent, allocation.description, true);
+            createAllocationRow(++categoryCount, {
+                name: allocation.name,
+                percent: allocation.percent,
+                description: allocation.description,
+                isTemplate: true,
+                allocationStartDate: todayIsoDate()
+            });
         });
     };
 
@@ -1594,86 +1923,177 @@ if (t.id === "SavingsAccelerator") {
 
         if (hasMeaningfulSavingsAllocationRows(state?.allocations)) {
             (state.allocations || []).forEach(a => {
-                createAllocationRow(++categoryCount, a.name, a.percent, a.description || '', false);
+                createAllocationRow(++categoryCount, {
+                    name: a.name,
+                    percent: a.percent,
+                    description: a.description || '',
+                    isTemplate: false,
+                    aprPercent: a.aprPercent || '',
+                    allocationStartDate: a.allocationStartDate || '',
+                    startingBalance: a.startingBalance || ''
+                });
             });
         } else {
             injectDefaultSavingsAllocationRows();
         }
 
+        upgradeMoneyInputs(allocationContainer);
         refreshSurplus();
     };
 
-    const createAllocationRow = (index, preName = '', prePercent = '', description = '', isTemplate = false) => {
+    const createAllocationRow = (index, options = {}) => {
+        const {
+            name: preName = '',
+            percent: prePercent = '',
+            description = '',
+            isTemplate = false,
+            aprPercent = '',
+            allocationStartDate = '',
+            startingBalance = ''
+        } = options;
         const row = document.createElement('div');
-        row.className = 'sa-alloc-row d-flex align-items-center mb-2 gap-2';
-        row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
-        row.style.flexWrap = 'nowrap';
-        row.style.alignItems = 'center';
-        row.style.minWidth = '0';
+        row.className = `sa-alloc-row ${isDualPanel ? 'is-dual' : 'is-full'}`;
         row.dataset.description = description || '';
         row.dataset.isTemplate = isTemplate ? 'true' : 'false';
 
+        const summary = document.createElement('div');
+        summary.className = `${prefix}-alloc-summary`;
+
+        const inputStyle = 'background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;';
+        const readOnlyStyle = 'background:rgba(255,255,255,.55)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.25)!important;';
+
         const name = document.createElement('input');
         name.className = 'form-control sa-alloc-name';
-        name.style.flex = isDualPanel ? '1 1 220px' : '2';
-        name.style.minWidth = isDualPanel ? '96px' : '';
-        name.style.boxSizing = 'border-box';
-        name.placeholder = `Category ${index}`;
+        name.placeholder = 'Bucket Name';
         name.value = preName;
         name.title = description || '';
+        name.style.cssText = inputStyle;
         name.addEventListener('input', saveAllocationState);
-
-        const amtWrap = document.createElement('div');
-        amtWrap.style.cssText = `flex:${isDualPanel ? '0 1 112px' : '1'};min-width:${isDualPanel ? '92px' : '0'};position:relative;`;
 
         const amt = document.createElement('input');
         amt.className = 'form-control sa-alloc-amount';
         amt.readOnly = true;
-        amt.style.cssText = 'font-weight:700;';
-        amt.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
-        amt.style.setProperty('border', '1.5px solid rgba(166,128,35,.38)', 'important');
-        amt.style.setProperty('color', '#1a2540', 'important');
+        amt.placeholder = 'Alloc. Amt';
         amt.value = '';
-
-        const dollar = document.createElement('span');
-        dollar.textContent = '$';
-        dollar.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
-        amtWrap.appendChild(amt);
-        amtWrap.appendChild(dollar);
-
-        const pctWrap = document.createElement('div');
-        pctWrap.style.cssText = `flex:${isDualPanel ? '0 1 82px' : '1'};min-width:${isDualPanel ? '66px' : '0'};position:relative;`;
+        amt.style.cssText = readOnlyStyle;
 
         const pct = document.createElement('input');
         pct.className = 'form-control sa-alloc-percent';
         pct.value = prePercent || '';
-        pct.style.cssText = 'font-weight:700;padding-right:28px;';
-        pct.style.setProperty('background', 'rgba(255,255,255,.92)', 'important');
-        pct.style.setProperty('border', '1.5px solid rgba(166,128,35,.38)', 'important');
-        pct.style.setProperty('color', '#1a2540', 'important');
+        pct.placeholder = '%';
+        pct.style.cssText = inputStyle;
         pct.oninput = refreshSurplus;
 
-        const pctSign = document.createElement('span');
-        pctSign.textContent = '%';
-        pctSign.style.cssText = 'position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;color:#a68023;';
-        pctWrap.appendChild(pct);
-        pctWrap.appendChild(pctSign);
+        const apr = document.createElement('input');
+        apr.className = 'form-control sa-alloc-apr';
+        apr.placeholder = 'APR';
+        apr.value = aprPercent || '';
+        apr.style.cssText = inputStyle;
+        apr.addEventListener('input', refreshSurplus);
+
+        const startDate = document.createElement('input');
+        startDate.type = 'date';
+        startDate.className = 'form-control sa-alloc-start-date';
+        startDate.value = normalizeSavingsDateInput(allocationStartDate) || todayIsoDate();
+        startDate.style.cssText = inputStyle;
+        startDate.addEventListener('input', refreshSurplus);
+        startDate.addEventListener('change', refreshSurplus);
+
+        const startingBalanceInput = document.createElement('input');
+        startingBalanceInput.className = 'form-control sa-alloc-starting-balance';
+        startingBalanceInput.placeholder = 'Start Bal';
+        startingBalanceInput.value = startingBalance || '';
+        startingBalanceInput.style.cssText = inputStyle;
+        startingBalanceInput.addEventListener('input', refreshSurplus);
+
+        const projected = document.createElement('input');
+        projected.className = 'form-control sa-alloc-projected';
+        projected.placeholder = 'Proj. YE';
+        projected.readOnly = true;
+        projected.style.cssText = 'background:rgba(255,255,255,.55)!important;color:#15803d!important;font-weight:800!important;border:1.2px solid rgba(166,128,35,.25)!important;';
+
+        const makeField = (className, control, suffix = '') => {
+            const wrap = document.createElement('div');
+            wrap.className = `${prefix}-field ${prefix}-field-${className}`;
+            if (suffix) {
+                const controlWrap = document.createElement('div');
+                controlWrap.className = `${prefix}-suffix-wrap`;
+                const suffixEl = document.createElement('span');
+                suffixEl.className = `${prefix}-suffix`;
+                suffixEl.textContent = suffix;
+                controlWrap.append(control, suffixEl);
+                wrap.appendChild(controlWrap);
+            } else {
+                wrap.appendChild(control);
+            }
+            return wrap;
+        };
+
+        const drawer = document.createElement('div');
+        drawer.className = `${prefix}-alloc-drawer`;
+
+        const note = document.createElement('div');
+        note.className = `${prefix}-alloc-note`;
+        note.textContent = description || 'Customize this bucket to match the client’s current savings priority.';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = `${prefix}-alloc-toggle`;
+
+        const syncToggleLabel = () => {
+            toggle.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Edit';
+        };
+
+        toggle.addEventListener('click', () => {
+            drawer.classList.toggle('is-open');
+            syncToggleLabel();
+        });
+        syncToggleLabel();
+
+        summary.append(
+            makeField('name', name),
+            makeField('amount', amt, '$'),
+            makeField('percent', pct, '%'),
+            makeField('apr', apr, '%'),
+            makeField('projected', projected, '$'),
+            (() => {
+                const toggleWrap = document.createElement('div');
+                toggleWrap.className = `${prefix}-field-toggle`;
+                toggleWrap.appendChild(toggle);
+                return toggleWrap;
+            })()
+        );
+
+        drawer.append(
+            makeField('startdate', startDate),
+            makeField('starting', startingBalanceInput, '$'),
+            note
+        );
 
         const del = document.createElement('button');
         del.textContent = '✕';
         del.style.cssText = 'border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;flex:0 0 16px;padding:0;';
         del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
 
-        row.append(name, amtWrap, pctWrap, del);
+        const toggleHost = summary.querySelector(`.${prefix}-field-toggle`);
+        if (toggleHost) toggleHost.appendChild(del);
+
+        row.append(summary, drawer);
         allocationContainer.appendChild(row);
+        upgradeMoneyInputs(row);
 
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
         markWithSuffix(markNeutral, amt);
+        markWithSuffix(markNeutral, apr);
+        markWithSuffix(markNeutral, startingBalanceInput);
+        markWithSuffix(markNeutral, projected);
         if (isDualPanel) {
             fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
             fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 22 });
             fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 22 });
+            fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 22 });
+            fitSingleLineControlText(projected, { minSize: 10, maxSize: 14, reserve: 22 });
         }
     };
 
@@ -1687,6 +2107,10 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             const pctInput = row.querySelector('.sa-alloc-percent');
             const amtInput = row.querySelector('.sa-alloc-amount');
+            const aprInput = row.querySelector('.sa-alloc-apr');
+            const startDateInput = row.querySelector('.sa-alloc-start-date');
+            const startingBalanceInput = row.querySelector('.sa-alloc-starting-balance');
+            const projectedInput = row.querySelector('.sa-alloc-projected');
 
             let pct = +pctInput.value || 0;
             if (usedPct + pct > 100) pct = Math.max(0, 100 - usedPct);
@@ -1694,9 +2118,21 @@ if (t.id === "SavingsAccelerator") {
 
             const amt = surplus > 0 ? (pct / 100) * surplus : 0;
             totalAllocatedAmt += amt;
+            const projection = calculateProjectedYearEndValue({
+                allocationAmount: amt,
+                aprPercent: aprInput?.value || '',
+                allocationStartDate: startDateInput?.value || '',
+                startingBalance: startingBalanceInput?.value || ''
+            });
 
             pctInput.value = pct;
             amtInput.value = Math.round(amt).toLocaleString();
+            if (projectedInput) {
+                projectedInput.value = Math.round(projection.projectedValue).toLocaleString();
+                projectedInput.title = projection.months > 0
+                    ? `${projection.months} monthly period${projection.months === 1 ? '' : 's'} through year end`
+                    : 'No remaining monthly periods in the current year';
+            }
         });
 
         const remaining = surplus - totalAllocatedAmt;
@@ -1725,10 +2161,16 @@ if (t.id === "SavingsAccelerator") {
         // Rows — percent input + % suffix, name, amount + $ suffix
         allocationContainer.querySelectorAll('.sa-alloc-percent').forEach(p => markWithSuffix(markNeutral, p));
         allocationContainer.querySelectorAll('.sa-alloc-name').forEach(n => markNeutral(n));
+        allocationContainer.querySelectorAll('.sa-alloc-apr').forEach(p => markWithSuffix(markNeutral, p));
+        allocationContainer.querySelectorAll('.sa-alloc-starting-balance').forEach(a => markWithSuffix(markNeutral, a));
 
         allocationContainer.querySelectorAll('.sa-alloc-amount').forEach(a => {
             if (surplus > 0) markWithSuffix(markIncome, a);
             else if (surplus < 0) markWithSuffix(markExpense, a);
+            else markWithSuffix(markNeutral, a);
+        });
+        allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(a => {
+            if (parseSavingsMoney(a.value) > 0) markWithSuffix(markIncome, a);
             else markWithSuffix(markNeutral, a);
         });
 
@@ -2054,9 +2496,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         const saveExpenseLensState = (extraState = {}) => {
             try {
-                const income = elIncome.value || '';
-                const primaryIncome = elPrimaryIncome?.value || '';
-                const spouseIncome = elSpouseIncome?.value || '';
+                const income = getPersistedInputValue(elIncome);
+                const primaryIncome = getPersistedInputValue(elPrimaryIncome);
+                const spouseIncome = getPersistedInputValue(elSpouseIncome);
                 const categories = [];
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                     const index = row.id.replace(elId('CatRow'), '');
@@ -2065,7 +2507,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const dueEl = elById(`CatDue${index}`);
                     const frequencyEl = elById(`CatFrequency${index}`);
                     const name = nameEl ? nameEl.value || '' : '';
-                    const amount = amountEl ? amountEl.value || '' : '';
+                    const amount = amountEl ? getPersistedInputValue(amountEl) : '';
                     const due = dueEl ? dueEl.value || '' : '';
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
                     const isTemplate = row.dataset.isTemplate === 'true';
@@ -2105,6 +2547,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     }
                 }
                 if (categoriesCreated === 0) injectDefaultExpenseRows();
+                upgradeMoneyInputs(container);
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
@@ -2422,6 +2865,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
             categoriesContainer.appendChild(div);
+            upgradeMoneyInputs(div);
 
             if (isDualPanel) {
                 fitSingleLineControlText(nameInput, { minSize: 10, maxSize: 14 });
@@ -3076,6 +3520,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
 
             incomeFlexWrap.parentElement.insertBefore(splitRow, incomeFlexWrap.nextSibling);
+            upgradeMoneyInputs(splitRow);
 
             // Total Income is now computed from split fields — lock it
             elIncome.readOnly = true;
@@ -4483,8 +4928,8 @@ if (t.id === "WealthProjection") {
     };
     const saveWP = () => {
         savePersistedState('WealthProjection', {
-            wpNet: wpNet.value,
-            wpSurplus: wpSurplus.value,
+            wpNet: getPersistedInputValue(wpNet),
+            wpSurplus: getPersistedInputValue(wpSurplus),
             wpMonths: wpMonths.value,
             wpOut: wpOut.textContent,
             wp6: wp6.textContent,
@@ -4790,9 +5235,9 @@ if (t.id === "FreedomIndex") {
     };
     const saveFI = () => {
         savePersistedState('FreedomIndex', {
-            fiNet: fiNet.value,
-            fiExp: fiExp.value,
-            fiPassive: fiPassive.value,
+            fiNet: getPersistedInputValue(fiNet),
+            fiExp: getPersistedInputValue(fiExp),
+            fiPassive: getPersistedInputValue(fiPassive),
             fiOut: fiOut.textContent,
             fiNetOut: fiNetOut.textContent,
             fiExpOut: fiExpOut.textContent,
@@ -4802,6 +5247,7 @@ if (t.id === "FreedomIndex") {
         });
     };
     await loadFI();
+    formatMoneyInputs(container);
 
     // ✅ Color painter (no refresh needed)
     const applyFreedomColors = (netNum, expNum, passiveNum, fiNum, monthsNum) => {
@@ -5103,9 +5549,9 @@ if (t.id === "DebtAssetPulse") {
 
     const saveDAP = () => {
         savePersistedState('DebtAssetPulse', {
-            dapA: dapA.value,
-            dapL: dapL.value,
-            dapIncome: dapIncome.value,
+            dapA: getPersistedInputValue(dapA),
+            dapL: getPersistedInputValue(dapL),
+            dapIncome: getPersistedInputValue(dapIncome),
             dapOut: dapOut.textContent,
             dapAssets: dapAssets.textContent,
             dapLiabilities: dapLiabilities.textContent,
