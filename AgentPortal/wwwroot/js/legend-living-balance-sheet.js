@@ -22,13 +22,10 @@
         ["yearly", "Yearly"]
     ];
     const COMPOUNDING_CADENCES = [
-        ["daily", "Daily (365x)"],
-        ["weekly", "Weekly (52x)"],
         ["monthly", "Monthly (12x)"],
         ["quarterly", "Quarterly (4x)"],
         ["semiannual", "Semiannual (2x)"],
-        ["yearly", "Yearly (1x)"],
-        ["continuous", "Continuous"]
+        ["yearly", "Yearly (1x)"]
     ];
     const COMPOUND_TIMINGS = [
         ["beginning", "Beginning of period"],
@@ -231,7 +228,7 @@
             contributionTiming: "beginning",
             apr: "",
             years: 40,
-            compoundingCadence: "daily",
+            compoundingCadence: "monthly",
             annualContributionIncrease: "",
             inflationRate: ""
         };
