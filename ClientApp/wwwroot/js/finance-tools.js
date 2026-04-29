@@ -47,6 +47,60 @@
             border-radius: 10px !important;
             box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
         }
+        #budget-embed .legend-money-input,
+        .networth-tool .legend-money-input {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            min-width: 180px;
+            min-height: 42px;
+            background: #f4f4f2;
+            border: 1px solid rgba(198, 151, 45, 0.75);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
+        }
+        #budget-embed .legend-money-input[hidden],
+        .networth-tool .legend-money-input[hidden] {
+            display: none !important;
+        }
+        #budget-embed .legend-money-prefix,
+        .networth-tool .legend-money-prefix {
+            flex: 0 0 auto;
+            padding-left: 12px;
+            padding-right: 8px;
+            color: #0b2a66;
+            font-weight: 800;
+            line-height: 1;
+            pointer-events: none;
+            user-select: none;
+        }
+        #budget-embed .legend-money-field,
+        .networth-tool .legend-money-field {
+            flex: 1 1 auto;
+            min-width: 0;
+            width: 100%;
+            height: 100%;
+            border: 0 !important;
+            outline: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+            padding: 0 12px 0 0 !important;
+            color: #0b2a66 !important;
+            font-weight: 800 !important;
+        }
+        #budget-embed .legend-money-field:focus,
+        .networth-tool .legend-money-field:focus {
+            border: 0 !important;
+            outline: 0 !important;
+            box-shadow: none !important;
+        }
+        #budget-embed .legend-money-input:focus-within,
+        .networth-tool .legend-money-input:focus-within {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.18);
+        }
     `;
     document.head.appendChild(s);
 })();
@@ -548,6 +602,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
         container.style.color = '#f8fafc';
+        upgradeMoneyInputs(container);
     }
 
     // ------------------- Global Tooltip Hide (bind once) -------------------
@@ -632,8 +687,198 @@ function markGold(el)    { paint(el, COLOR_GOLD, "900"); }
 function markWithSuffix(markFn, el) {
     if (!el) return;
     markFn(el);
-    const sib = el.nextElementSibling;
-    if (sib && sib.tagName === 'SPAN') markFn(sib);
+    const group = el.closest('.legend-money-input');
+    if (group) {
+        group.querySelectorAll('.legend-money-prefix').forEach(markFn);
+    }
+    [el.previousElementSibling, el.nextElementSibling].forEach((sib) => {
+        if (sib && sib.tagName === 'SPAN') markFn(sib);
+    });
+}
+
+const MONEY_INPUT_EXPLICIT_IDS = new Set([
+    "wbStartingBalance", "wbIncome", "saAllocation", "assets", "liabs", "cfIncome", "cfBills",
+    "dcDebt", "dcIncome", "fbBills", "wpNet", "wpSurplus", "fiNet", "fiExp", "fiPassive",
+    "dapA", "dapL", "dapIncome", "wfd_base", "wfd_emergency", "wfd_desiredIncome",
+    "wfd_guaranteedIncome", "wfd_incomeGap", "wfd_invAmt", "wfd_liDeath", "wfd_liAmt",
+    "wfd_annDeath", "wfd_annAmt"
+]);
+
+const MONEY_INPUT_CLASS_NAMES = [
+    "sa-alloc-amount",
+    "sa-alloc-starting-balance",
+    "sa-alloc-projected"
+];
+
+function stripFormattedNumericValue(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const cleaned = text.replace(/[$,%\s]/g, "").replace(/,/g, "");
+    if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") return "";
+    return cleaned;
+}
+
+function sanitizeEditableNumericValue(value) {
+    const stripped = String(value ?? "").replace(/[$,\s]/g, "");
+    const negative = stripped.startsWith("-") ? "-" : "";
+    const unsigned = stripped.replace(/-/g, "");
+    const parts = unsigned.split(".");
+    const whole = parts.shift()?.replace(/[^\d]/g, "") || "";
+    const decimal = parts.length > 0 ? `.${parts.join("").replace(/[^\d]/g, "")}` : "";
+    return `${negative}${whole}${decimal}`;
+}
+
+function formatNumericDisplayValue(value, maxFractionDigits = 2) {
+    const raw = stripFormattedNumericValue(value);
+    if (!raw) return "";
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) return "";
+    const decimalText = raw.includes(".") ? raw.split(".")[1] || "" : "";
+    const fractionDigits = decimalText ? Math.min(maxFractionDigits, decimalText.length) : 0;
+    return numeric.toLocaleString(undefined, {
+        minimumFractionDigits: fractionDigits,
+        maximumFractionDigits: fractionDigits
+    });
+}
+
+function findNearestInputLabelText(input) {
+    if (!input) return "";
+    if (input.id) {
+        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
+        if (label) return label.textContent || "";
+    }
+    const wrappingLabel = input.closest("label");
+    if (wrappingLabel) return wrappingLabel.textContent || "";
+
+    let cursor = input.parentElement;
+    for (let depth = 0; cursor && depth < 3; depth += 1, cursor = cursor.parentElement) {
+        const previous = cursor.previousElementSibling;
+        if (previous && previous.tagName === "LABEL") return previous.textContent || "";
+    }
+    return "";
+}
+
+function hasDirectAffix(input, affixText) {
+    return Array.from(input.parentElement?.children || []).some((child) =>
+        child !== input &&
+        child.tagName === "SPAN" &&
+        child.textContent.trim() === affixText
+    );
+}
+
+function isMoneyInputCandidate(input) {
+    if (!input || input.tagName !== "INPUT") return false;
+    if (input.dataset.moneyInput === "true") return true;
+    if (input.type === "hidden" || input.type === "checkbox" || input.type === "radio" || input.type === "date") return false;
+    if (MONEY_INPUT_EXPLICIT_IDS.has(input.id)) return true;
+    if (MONEY_INPUT_CLASS_NAMES.some((className) => input.classList.contains(className))) return true;
+    if (hasDirectAffix(input, "%")) return false;
+    if (hasDirectAffix(input, "$")) return true;
+
+    const labelText = findNearestInputLabelText(input);
+    if (/%|percent|rate|years?|months?|inflation|tax bracket|efficiency|frequency|date|apr/i.test(labelText)) {
+        return false;
+    }
+
+    const placeholder = input.getAttribute("placeholder") || "";
+    if (/^\$/.test(placeholder)) return true;
+    if (/(?:^|[^0-9])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:[^0-9]|$)/.test(placeholder)) return true;
+
+    return /(balance|income|assets?|liab(?:ilities|s)?|net worth|monthly bills|expenses?|passive income|death benefit|cash value|starting dollar amount|income gap|surplus|allocation|value|amount|emergency)/i.test(labelText);
+}
+
+function formatMoneyInputs(root) {
+    if (!root) return;
+    root.querySelectorAll('input[data-money-input="true"]').forEach((input) => {
+        if (document.activeElement === input) return;
+        input.value = formatNumericDisplayValue(input.value);
+    });
+}
+
+function upgradeMoneyInput(input) {
+    if (!input || input.dataset.moneyInput === "true") return;
+    const parent = input.parentElement;
+    let wrapper = parent;
+    const canReuseParent = !!parent &&
+        parent.tagName === "DIV" &&
+        Array.from(parent.children).every((child) =>
+            child === input ||
+            (child.tagName === "SPAN" && (child.textContent || "").trim() === "$")
+        );
+
+    if (!canReuseParent) {
+        wrapper = document.createElement("div");
+        input.parentNode?.insertBefore(wrapper, input);
+        wrapper.appendChild(input);
+    } else {
+        Array.from(parent.children).forEach((child) => {
+            if (child !== input && child.tagName === "SPAN" && (child.textContent || "").trim() === "$") {
+                child.remove();
+            }
+        });
+    }
+
+    wrapper.classList.add("legend-money-input", "finance-money-input-group");
+
+    let prefix = wrapper.querySelector(".legend-money-prefix");
+    if (!prefix) {
+        prefix = document.createElement("span");
+        prefix.className = "legend-money-prefix";
+        prefix.textContent = "$";
+        wrapper.insertBefore(prefix, input);
+    }
+
+    input.dataset.moneyInput = "true";
+    input.classList.add("legend-money-field");
+    input.setAttribute("inputmode", "decimal");
+    if (input.type !== "hidden") {
+        input.type = "text";
+    }
+    if (/^\$/.test(input.placeholder || "")) {
+        input.placeholder = (input.placeholder || "").replace(/^\$\s*/, "");
+    }
+
+    if (input.dataset.moneyInputBound !== "true") {
+        input.addEventListener("focus", () => {
+            input.value = stripFormattedNumericValue(input.value);
+        });
+        input.addEventListener("input", () => {
+            input.value = sanitizeEditableNumericValue(input.value);
+        });
+        input.addEventListener("blur", () => {
+            input.value = formatNumericDisplayValue(input.value);
+        });
+        input.dataset.moneyInputBound = "true";
+    }
+
+    input.value = formatNumericDisplayValue(input.value);
+}
+
+function upgradeMoneyInputs(root) {
+    if (!root) return;
+    root.querySelectorAll("input").forEach((input) => {
+        if (isMoneyInputCandidate(input)) {
+            upgradeMoneyInput(input);
+        }
+    });
+    if (root.dataset.moneyInputObserverBound !== "true" && window.MutationObserver) {
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                mutation.addedNodes.forEach((node) => {
+                    if (!(node instanceof Element)) return;
+                    if (node.matches?.("input") && isMoneyInputCandidate(node)) {
+                        upgradeMoneyInput(node);
+                    }
+                    node.querySelectorAll?.("input").forEach((input) => {
+                        if (isMoneyInputCandidate(input)) upgradeMoneyInput(input);
+                    });
+                });
+            });
+        });
+        observer.observe(root, { childList: true, subtree: true });
+        root.dataset.moneyInputObserverBound = "true";
+    }
+    formatMoneyInputs(root);
 }
 
     const isDropdownTypeaheadKey = (event) =>

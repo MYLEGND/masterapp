@@ -307,20 +307,23 @@
         if (!isCurrencyInputField(input) || input.dataset.llbsMoneyInput === "true") return;
 
         const wrapper = document.createElement("div");
-        wrapper.className = "input-group money llbs-money-input-group";
+        wrapper.className = "legend-money-input llbs-money-input-group";
         wrapper.hidden = input.hidden;
         input.parentNode?.insertBefore(wrapper, input);
         wrapper.appendChild(input);
 
         const prefix = document.createElement("span");
-        prefix.className = "input-prefix";
+        prefix.className = "legend-money-prefix";
         prefix.textContent = "$";
         wrapper.insertBefore(prefix, input);
 
         input.dataset.llbsMoneyInput = "true";
-        input.classList.add("input-field");
+        input.classList.add("legend-money-field");
         input.type = "text";
         input.setAttribute("inputmode", "decimal");
+        if (/^\$/.test(input.placeholder || "")) {
+            input.placeholder = (input.placeholder || "").replace(/^\$\s*/, "");
+        }
 
         if (input.dataset.llbsMoneyInputBound !== "true") {
             input.addEventListener("focus", () => {
