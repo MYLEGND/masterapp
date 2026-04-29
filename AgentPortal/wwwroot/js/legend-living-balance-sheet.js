@@ -984,160 +984,153 @@
             <div class="llbs-compound-overlay" data-llbs-compound-overlay hidden>
                 <div class="llbs-compound-backdrop" data-llbs-compound-close></div>
                 <section class="llbs-compound-modal" id="llbsCompoundLabModal" role="dialog" aria-modal="true" aria-labelledby="llbsCompoundLabTitle">
-                    <div class="llbs-compound-head">
-                        <div class="llbs-compound-head-copy">
-                            <span class="llbs-compound-kicker">Agent Scenario Lab</span>
-                            <h3 class="llbs-compound-title" id="llbsCompoundLabTitle">Compound Interest Designer</h3>
-                            <p class="llbs-compound-subtitle">Model savings, compounding, and time in one live agent-ready view.</p>
-                            <div class="llbs-compound-chip-row" aria-hidden="true">
-                                <span class="llbs-compound-chip">40-year runway</span>
-                                <span class="llbs-compound-chip">Beginning deposits</span>
-                                <span class="llbs-compound-chip">Live compounding</span>
+                    <div class="llbs-compound-stage" data-llbs-compound-stage>
+                        <div class="llbs-compound-head">
+                            <h3 class="llbs-compound-a11y-title" id="llbsCompoundLabTitle">Compound Interest Designer</h3>
+                            <div class="llbs-compound-head-actions">
+                                <button type="button" class="llbs-clear" data-llbs-compound-reset>Reset Lab</button>
+                                <button type="button" class="llbs-compound-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
                             </div>
                         </div>
-                        <div class="llbs-compound-head-actions">
-                            <button type="button" class="llbs-clear" data-llbs-compound-reset>Reset Lab</button>
-                            <button type="button" class="llbs-compound-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
+                        <div class="llbs-compound-grid">
+                            <section class="llbs-compound-panel llbs-compound-panel-inputs" aria-label="Compound interest inputs">
+                                <div class="llbs-compound-panel-top">
+                                    <span class="llbs-compound-section-kicker">Inputs</span>
+                                    <h4 class="llbs-compound-section-title">Build the savings story</h4>
+                                    <p class="llbs-compound-section-text">Starts ready with a 40-year runway and beginning deposits.</p>
+                                </div>
+                                <div class="llbs-compound-cluster">
+                                    <div class="llbs-compound-cluster-title">Capital Base</div>
+                                    <div class="llbs-compound-field-grid">
+                                        <label class="llbs-compound-field">
+                                            <span>Starting Balance</span>
+                                            <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
+                                        </label>
+                                        <label class="llbs-compound-field">
+                                            <span data-llbs-compound-contribution-label>Save Each Period</span>
+                                            <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
+                                            <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="llbs-compound-cluster">
+                                    <div class="llbs-compound-cluster-title">Contribution Rhythm</div>
+                                    <div class="llbs-compound-field-grid">
+                                        <label class="llbs-compound-field">
+                                            <span>Savings Cadence</span>
+                                            <select class="llbs-compound-select" data-llbs-compound-field="contributionCadence">
+                                                ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
+                                            </select>
+                                        </label>
+                                        <label class="llbs-compound-field">
+                                            <span>Contribution Timing</span>
+                                            <select class="llbs-compound-select" data-llbs-compound-field="contributionTiming">
+                                                ${renderOptionList(COMPOUND_TIMINGS)}
+                                            </select>
+                                        </label>
+                                        <label class="llbs-compound-field">
+                                            <span>Years</span>
+                                            <input type="number" min="0" step="0.25" class="llbs-compound-input" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
+                                        </label>
+                                        <label class="llbs-compound-field">
+                                            <span>Annual Step-Up %</span>
+                                            <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="llbs-compound-cluster">
+                                    <div class="llbs-compound-cluster-title">Growth Assumptions</div>
+                                    <div class="llbs-compound-field-grid">
+                                        <label class="llbs-compound-field">
+                                            <span>APR %</span>
+                                            <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                        </label>
+                                        <label class="llbs-compound-field">
+                                            <span>Compounding</span>
+                                            <select class="llbs-compound-select" data-llbs-compound-field="compoundingCadence">
+                                                ${renderOptionList(COMPOUNDING_CADENCES)}
+                                            </select>
+                                        </label>
+                                        <label class="llbs-compound-field llbs-compound-field-wide">
+                                            <span>Inflation %</span>
+                                            <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="llbs-compound-explainer" data-llbs-compound-note></div>
+                            </section>
+                            <section class="llbs-compound-panel llbs-compound-panel-results" aria-label="Compound interest results">
+                                <div class="llbs-compound-results-hero">
+                                    <span class="llbs-compound-section-kicker">Projection</span>
+                                    <h4 class="llbs-compound-section-title">See the payoff instantly</h4>
+                                    <p class="llbs-compound-section-text">Every card updates live from the inputs on the left.</p>
+                                </div>
+                                <div class="llbs-compound-summary-grid">
+                                    <article class="llbs-compound-card llbs-compound-card-primary">
+                                        <span>Projected Value</span>
+                                        <strong data-llbs-compound-output="futureValue">--</strong>
+                                        <small data-llbs-compound-output="projectionNote">Enter inputs to project growth.</small>
+                                    </article>
+                                    <article class="llbs-compound-card">
+                                        <span>New Contributions</span>
+                                        <strong data-llbs-compound-output="contributionTotal">--</strong>
+                                        <small data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</small>
+                                    </article>
+                                    <article class="llbs-compound-card">
+                                        <span>Interest Earned</span>
+                                        <strong data-llbs-compound-output="interestEarned">--</strong>
+                                        <small data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</small>
+                                    </article>
+                                    <article class="llbs-compound-card">
+                                        <span>Real Purchasing Power</span>
+                                        <strong data-llbs-compound-output="realValue">--</strong>
+                                        <small data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</small>
+                                    </article>
+                                </div>
+                                <div class="llbs-compound-insight-strip">
+                                    <article>
+                                        <span>Power Per Habit</span>
+                                        <strong data-llbs-compound-output="unitGrowth">--</strong>
+                                    </article>
+                                    <article>
+                                        <span>Total Deposited</span>
+                                        <strong data-llbs-compound-output="totalDeposited">--</strong>
+                                    </article>
+                                    <article>
+                                        <span>Runway</span>
+                                        <strong data-llbs-compound-output="yearsHorizon">--</strong>
+                                    </article>
+                                </div>
+                                <div class="llbs-compound-compare-wrap">
+                                    <div class="llbs-compound-table-head llbs-compound-table-head-compact">
+                                        <div>
+                                            <h4>Scenario Stretch</h4>
+                                            <p>Show the lift from a better savings, rate, or time move.</p>
+                                        </div>
+                                    </div>
+                                    <div class="llbs-compound-compare-grid" data-llbs-compound-compare></div>
+                                </div>
+                                <div class="llbs-compound-table-wrap">
+                                    <div class="llbs-compound-table-head">
+                                        <div>
+                                            <h4>Growth Checkpoints</h4>
+                                            <p>Watch how time, discipline, and yield stack on top of each other.</p>
+                                        </div>
+                                    </div>
+                                    <table class="llbs-compound-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Horizon</th>
+                                                <th>Projected Value</th>
+                                                <th>Saved</th>
+                                                <th>Interest</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody data-llbs-compound-milestones></tbody>
+                                    </table>
+                                </div>
+                            </section>
                         </div>
-                    </div>
-                    <div class="llbs-compound-grid">
-                        <section class="llbs-compound-panel llbs-compound-panel-inputs" aria-label="Compound interest inputs">
-                            <div class="llbs-compound-panel-top">
-                                <span class="llbs-compound-section-kicker">Inputs</span>
-                                <h4 class="llbs-compound-section-title">Build the savings story</h4>
-                                <p class="llbs-compound-section-text">Starts ready with a 40-year runway and beginning deposits.</p>
-                            </div>
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Capital Base</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>Starting Balance</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span data-llbs-compound-contribution-label>Save Each Period</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
-                                        <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</small>
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Contribution Rhythm</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>Savings Cadence</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="contributionCadence">
-                                            ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
-                                        </select>
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Contribution Timing</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="contributionTiming">
-                                            ${renderOptionList(COMPOUND_TIMINGS)}
-                                        </select>
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Years</span>
-                                        <input type="number" min="0" step="0.25" class="llbs-compound-input" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Annual Step-Up %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Growth Assumptions</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>APR %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Compounding</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="compoundingCadence">
-                                            ${renderOptionList(COMPOUNDING_CADENCES)}
-                                        </select>
-                                    </label>
-                                    <label class="llbs-compound-field llbs-compound-field-wide">
-                                        <span>Inflation %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="llbs-compound-explainer" data-llbs-compound-note></div>
-                        </section>
-                        <section class="llbs-compound-panel llbs-compound-panel-results" aria-label="Compound interest results">
-                            <div class="llbs-compound-results-hero">
-                                <span class="llbs-compound-section-kicker">Projection</span>
-                                <h4 class="llbs-compound-section-title">See the payoff instantly</h4>
-                                <p class="llbs-compound-section-text">Every card updates live from the inputs on the left.</p>
-                            </div>
-                            <div class="llbs-compound-summary-grid">
-                                <article class="llbs-compound-card llbs-compound-card-primary">
-                                    <span>Projected Value</span>
-                                    <strong data-llbs-compound-output="futureValue">--</strong>
-                                    <small data-llbs-compound-output="projectionNote">Enter inputs to project growth.</small>
-                                </article>
-                                <article class="llbs-compound-card">
-                                    <span>New Contributions</span>
-                                    <strong data-llbs-compound-output="contributionTotal">--</strong>
-                                    <small data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</small>
-                                </article>
-                                <article class="llbs-compound-card">
-                                    <span>Interest Earned</span>
-                                    <strong data-llbs-compound-output="interestEarned">--</strong>
-                                    <small data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</small>
-                                </article>
-                                <article class="llbs-compound-card">
-                                    <span>Real Purchasing Power</span>
-                                    <strong data-llbs-compound-output="realValue">--</strong>
-                                    <small data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</small>
-                                </article>
-                            </div>
-                            <div class="llbs-compound-insight-strip">
-                                <article>
-                                    <span>Power Per Habit</span>
-                                    <strong data-llbs-compound-output="unitGrowth">--</strong>
-                                </article>
-                                <article>
-                                    <span>Total Deposited</span>
-                                    <strong data-llbs-compound-output="totalDeposited">--</strong>
-                                </article>
-                                <article>
-                                    <span>Runway</span>
-                                    <strong data-llbs-compound-output="yearsHorizon">--</strong>
-                                </article>
-                            </div>
-                            <div class="llbs-compound-compare-wrap">
-                                <div class="llbs-compound-table-head llbs-compound-table-head-compact">
-                                    <div>
-                                        <h4>Scenario Stretch</h4>
-                                        <p>Show the lift from a better savings, rate, or time move.</p>
-                                    </div>
-                                </div>
-                                <div class="llbs-compound-compare-grid" data-llbs-compound-compare></div>
-                            </div>
-                            <div class="llbs-compound-table-wrap">
-                                <div class="llbs-compound-table-head">
-                                    <div>
-                                        <h4>Growth Checkpoints</h4>
-                                        <p>Watch how time, discipline, and yield stack on top of each other.</p>
-                                    </div>
-                                </div>
-                                <table class="llbs-compound-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Horizon</th>
-                                            <th>Projected Value</th>
-                                            <th>Saved</th>
-                                            <th>Interest</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody data-llbs-compound-milestones></tbody>
-                                </table>
-                            </div>
-                        </section>
                     </div>
                 </section>
             </div>
@@ -1508,6 +1501,8 @@
         let savedLabelTimer = null;
         let focusPulseTimer = null;
         const compoundOverlay = root.querySelector("[data-llbs-compound-overlay]");
+        const compoundModal = root.querySelector("#llbsCompoundLabModal");
+        const compoundStage = root.querySelector("[data-llbs-compound-stage]");
         const compoundTrigger = root.querySelector("[data-llbs-compound-open]");
         const compoundFieldEls = Array.from(root.querySelectorAll("[data-llbs-compound-field]"));
         const compoundOutputEls = new Map(Array.from(root.querySelectorAll("[data-llbs-compound-output]")).map((el) => [el.getAttribute("data-llbs-compound-output"), el]));
@@ -1516,6 +1511,38 @@
         const compoundNoteEl = root.querySelector("[data-llbs-compound-note]");
         const compoundCompareEl = root.querySelector("[data-llbs-compound-compare]");
         const compoundMilestonesEl = root.querySelector("[data-llbs-compound-milestones]");
+        let compoundViewportFitFrame = 0;
+
+        function syncCompoundLabViewportFit() {
+            if (!compoundOverlay || !compoundModal || !compoundStage) return;
+            if (compoundOverlay.hidden) {
+                compoundStage.style.transform = "";
+                return;
+            }
+
+            compoundStage.style.transform = "scale(1)";
+            const availableWidth = compoundModal.clientWidth;
+            const availableHeight = compoundModal.clientHeight;
+            const naturalWidth = compoundStage.scrollWidth;
+            const naturalHeight = compoundStage.scrollHeight;
+            const widthScale = naturalWidth > 0 ? availableWidth / naturalWidth : 1;
+            const heightScale = naturalHeight > 0 ? availableHeight / naturalHeight : 1;
+            const scale = Math.min(1, widthScale, heightScale);
+
+            compoundStage.style.transform = `scale(${scale})`;
+        }
+
+        function scheduleCompoundLabViewportFit() {
+            window.cancelAnimationFrame(compoundViewportFitFrame);
+            compoundViewportFitFrame = window.requestAnimationFrame(() => {
+                syncCompoundLabViewportFit();
+            });
+        }
+
+        bindWindow("resize", () => {
+            scheduleCompoundLabViewportFit();
+        });
+        windowCleanupFns.push(() => window.cancelAnimationFrame(compoundViewportFitFrame));
 
         function getCompoundLabState() {
             state.compoundLab = normalizeCompoundLabState(state.compoundLab);
@@ -1746,6 +1773,7 @@
                         </tr>
                     `;
                 }
+                scheduleCompoundLabViewportFit();
                 return;
             }
 
@@ -1819,6 +1847,7 @@
                             <td colspan="4">Enter years to see growth checkpoints.</td>
                         </tr>
                     `;
+                    scheduleCompoundLabViewportFit();
                     return;
                 }
                 compoundMilestonesEl.innerHTML = compoundMilestoneYears(projectionConfig.years).map((years) => {
@@ -1833,6 +1862,8 @@
                     `;
                 }).join("");
             }
+
+            scheduleCompoundLabViewportFit();
         }
 
         function setCompoundLabOpen(isOpen) {
@@ -1845,8 +1876,10 @@
                 refreshCompoundLab(true);
                 window.requestAnimationFrame(() => {
                     root.querySelector('[data-llbs-compound-field="startingBalance"]')?.focus();
+                    scheduleCompoundLabViewportFit();
                 });
             } else {
+                compoundStage?.style.removeProperty("transform");
                 compoundTrigger?.focus();
             }
         }

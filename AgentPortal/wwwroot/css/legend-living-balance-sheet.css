@@ -1508,8 +1508,6 @@ body.llbs-modal-open {
     height: calc(100vh - 28px);
     max-height: calc(100vh - 28px);
     overflow: hidden;
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
     border: 1.5px solid var(--llbs-line-strong);
     border-radius: 24px;
     background:
@@ -1520,6 +1518,13 @@ body.llbs-modal-open {
     box-shadow:
         0 42px 120px rgba(0, 0, 0, .56),
         inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+
+.llbs-compound-stage {
+    width: 100%;
+    margin: 0 auto;
+    transform-origin: top center;
+    will-change: transform;
 }
 
 .llbs-compound-head {
@@ -1626,8 +1631,6 @@ body.llbs-modal-open {
     grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
     gap: 14px;
     padding: 14px;
-    min-height: 0;
-    overflow: hidden;
 }
 
 .llbs-compound-panel {
@@ -1644,15 +1647,12 @@ body.llbs-modal-open {
 .llbs-compound-panel-inputs {
     align-self: start;
     padding: 14px;
-    min-height: 0;
 }
 
 .llbs-compound-panel-results {
     display: grid;
     gap: 12px;
     padding: 14px;
-    min-height: 0;
-    grid-template-rows: auto auto auto auto minmax(0, 1fr);
 }
 
 .llbs-compound-panel-top,
@@ -1927,8 +1927,6 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-table-wrap {
-    display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
     border: 1px solid rgba(243, 216, 139, .16);
     border-radius: 16px;
@@ -2031,7 +2029,6 @@ body.llbs-modal-open {
 
     .llbs-compound-grid {
         grid-template-columns: 1fr;
-        overflow: auto;
     }
 
     .llbs-compound-panel-inputs {
