@@ -492,11 +492,11 @@
 
     function compoundMilestoneYears(years) {
         const plannedYears = Math.max(0, Number(years || 0));
-        return Array.from(new Set([1, 3, 5, 10, 20, 30, plannedYears]
+        return Array.from(new Set([1, 5, 10, 20, plannedYears]
             .filter(value => value > 0 && value <= 100)
             .map(value => Math.round(value * 100) / 100)))
             .sort((a, b) => a - b)
-            .slice(0, 7);
+            .slice(0, 5);
     }
 
     function inputValueForKind(value, kind) {
@@ -988,7 +988,7 @@
                         <div class="llbs-compound-head-copy">
                             <span class="llbs-compound-kicker">Agent Scenario Lab</span>
                             <h3 class="llbs-compound-title" id="llbsCompoundLabTitle">Compound Interest Designer</h3>
-                            <p class="llbs-compound-subtitle">Model disciplined saving, flexible contribution cadence, APR, and time so you can clearly show the power of compounding.</p>
+                            <p class="llbs-compound-subtitle">Model savings, compounding, and time in one live agent-ready view.</p>
                             <div class="llbs-compound-chip-row" aria-hidden="true">
                                 <span class="llbs-compound-chip">40-year runway</span>
                                 <span class="llbs-compound-chip">Beginning deposits</span>
@@ -1005,7 +1005,7 @@
                             <div class="llbs-compound-panel-top">
                                 <span class="llbs-compound-section-kicker">Inputs</span>
                                 <h4 class="llbs-compound-section-title">Build the savings story</h4>
-                                <p class="llbs-compound-section-text">The lab now opens with a 40-year horizon, beginning-of-period deposits, and live defaults so you can start modeling immediately.</p>
+                                <p class="llbs-compound-section-text">Starts ready with a 40-year runway and beginning deposits.</p>
                             </div>
                             <div class="llbs-compound-cluster">
                                 <div class="llbs-compound-cluster-title">Capital Base</div>
@@ -1071,7 +1071,7 @@
                             <div class="llbs-compound-results-hero">
                                 <span class="llbs-compound-section-kicker">Projection</span>
                                 <h4 class="llbs-compound-section-title">See the payoff instantly</h4>
-                                <p class="llbs-compound-section-text">Every result card updates live from the assumptions on the left so the conversation stays visual, fast, and credible.</p>
+                                <p class="llbs-compound-section-text">Every card updates live from the inputs on the left.</p>
                             </div>
                             <div class="llbs-compound-summary-grid">
                                 <article class="llbs-compound-card llbs-compound-card-primary">
@@ -1113,7 +1113,7 @@
                                 <div class="llbs-compound-table-head llbs-compound-table-head-compact">
                                     <div>
                                         <h4>Scenario Stretch</h4>
-                                        <p>Show how a little more time, savings, or yield changes the outcome.</p>
+                                        <p>Show the lift from a better savings, rate, or time move.</p>
                                     </div>
                                 </div>
                                 <div class="llbs-compound-compare-grid" data-llbs-compound-compare></div>

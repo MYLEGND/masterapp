@@ -1505,8 +1505,11 @@ body.llbs-modal-open {
 .llbs-compound-modal {
     position: relative;
     width: min(1460px, calc(100vw - 28px));
+    height: calc(100vh - 28px);
     max-height: calc(100vh - 28px);
-    overflow: auto;
+    overflow: hidden;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     border: 1.5px solid var(--llbs-line-strong);
     border-radius: 24px;
     background:
@@ -1520,14 +1523,11 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-head {
-    position: sticky;
-    top: 0;
-    z-index: 2;
     display: flex;
     align-items: flex-end;
     justify-content: space-between;
-    gap: 20px;
-    padding: 24px 24px 18px;
+    gap: 16px;
+    padding: 18px 20px 14px;
     border-bottom: 1px solid rgba(243, 216, 139, .18);
     background:
         linear-gradient(180deg, rgba(7, 13, 25, .96), rgba(7, 13, 25, .88));
@@ -1557,7 +1557,7 @@ body.llbs-modal-open {
 .llbs-compound-title {
     margin: 0;
     color: #fff7dd;
-    font-size: 1.6rem;
+    font-size: 1.44rem;
     font-weight: 950;
     letter-spacing: .01em;
 }
@@ -1566,9 +1566,9 @@ body.llbs-modal-open {
     margin: 0;
     max-width: 860px;
     color: var(--llbs-soft-text);
-    font-size: .95rem;
+    font-size: .84rem;
     font-weight: 700;
-    line-height: 1.45;
+    line-height: 1.35;
 }
 
 .llbs-compound-chip-row {
@@ -1580,15 +1580,15 @@ body.llbs-modal-open {
 .llbs-compound-chip {
     display: inline-flex;
     align-items: center;
-    min-height: 28px;
-    padding: 6px 10px;
+    min-height: 24px;
+    padding: 5px 9px;
     border: 1px solid rgba(162, 214, 190, .18);
     border-radius: 999px;
     background:
         linear-gradient(180deg, rgba(22, 103, 66, .18), rgba(8, 27, 18, .08)),
         rgba(255, 255, 255, .03);
     color: #dbffe8;
-    font-size: .72rem;
+    font-size: .67rem;
     font-weight: 900;
     letter-spacing: .06em;
     text-transform: uppercase;
@@ -1624,8 +1624,10 @@ body.llbs-modal-open {
 .llbs-compound-grid {
     display: grid;
     grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
-    gap: 20px;
-    padding: 20px;
+    gap: 14px;
+    padding: 14px;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .llbs-compound-panel {
@@ -1640,23 +1642,24 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-panel-inputs {
-    position: sticky;
-    top: 104px;
     align-self: start;
-    padding: 18px;
+    padding: 14px;
+    min-height: 0;
 }
 
 .llbs-compound-panel-results {
     display: grid;
-    gap: 18px;
-    padding: 18px;
+    gap: 12px;
+    padding: 14px;
+    min-height: 0;
+    grid-template-rows: auto auto auto auto minmax(0, 1fr);
 }
 
 .llbs-compound-panel-top,
 .llbs-compound-results-hero {
     display: grid;
-    gap: 8px;
-    padding: 16px 18px;
+    gap: 6px;
+    padding: 12px 14px;
     border: 1px solid rgba(243, 216, 139, .16);
     border-radius: 16px;
     background:
@@ -1683,7 +1686,7 @@ body.llbs-modal-open {
 .llbs-compound-section-title {
     margin: 0;
     color: #fff7dd;
-    font-size: 1.12rem;
+    font-size: 1rem;
     font-weight: 950;
     letter-spacing: .01em;
 }
@@ -1691,16 +1694,16 @@ body.llbs-modal-open {
 .llbs-compound-section-text {
     margin: 0;
     color: var(--llbs-soft-text);
-    font-size: .82rem;
+    font-size: .75rem;
     font-weight: 700;
-    line-height: 1.5;
+    line-height: 1.35;
 }
 
 .llbs-compound-cluster {
     display: grid;
-    gap: 12px;
-    margin-top: 14px;
-    padding: 14px;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 12px;
     border: 1px solid rgba(243, 216, 139, .12);
     border-radius: 16px;
     background:
@@ -1709,7 +1712,7 @@ body.llbs-modal-open {
 
 .llbs-compound-cluster-title {
     color: #edf7ff;
-    font-size: .78rem;
+    font-size: .72rem;
     font-weight: 950;
     letter-spacing: .12em;
     text-transform: uppercase;
@@ -1718,7 +1721,7 @@ body.llbs-modal-open {
 .llbs-compound-field-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
 }
 
 .llbs-compound-field {
@@ -1732,7 +1735,7 @@ body.llbs-modal-open {
 
 .llbs-compound-field span {
     color: #fff7dd;
-    font-size: .72rem;
+    font-size: .68rem;
     font-weight: 950;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -1740,22 +1743,22 @@ body.llbs-modal-open {
 
 .llbs-compound-field-note {
     color: var(--llbs-soft-text);
-    font-size: .73rem;
+    font-size: .68rem;
     font-weight: 800;
-    line-height: 1.35;
+    line-height: 1.25;
 }
 
 .llbs-compound-input,
 .llbs-compound-select {
     width: 100%;
-    min-height: 44px;
+    min-height: 38px;
     border: 1px solid rgba(243, 216, 139, .28);
-    border-radius: 12px;
-    padding: 10px 13px;
+    border-radius: 11px;
+    padding: 8px 11px;
     background:
         linear-gradient(180deg, rgba(8, 13, 24, .94), rgba(5, 10, 20, .88));
     color: var(--llbs-text);
-    font-size: .96rem;
+    font-size: .88rem;
     font-weight: 850;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, .04),
@@ -1776,7 +1779,7 @@ body.llbs-modal-open {
 
 .llbs-compound-select {
     appearance: none;
-    padding-right: 40px;
+    padding-right: 36px;
     background-image:
         linear-gradient(180deg, rgba(8, 13, 24, .94), rgba(5, 10, 20, .88)),
         url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5' stroke='%23f3d88b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -1786,10 +1789,10 @@ body.llbs-modal-open {
 }
 
 .llbs-compound-explainer {
-    margin-top: 14px;
+    margin-top: 10px;
     display: grid;
-    gap: 8px;
-    padding: 15px 16px;
+    gap: 6px;
+    padding: 12px 13px;
     border: 1px solid rgba(53, 183, 121, .24);
     border-radius: 14px;
     background:
@@ -1799,7 +1802,7 @@ body.llbs-modal-open {
 
 .llbs-compound-explainer strong {
     color: #dcffe9;
-    font-size: .78rem;
+    font-size: .72rem;
     font-weight: 950;
     letter-spacing: .08em;
     text-transform: uppercase;
@@ -1807,21 +1810,21 @@ body.llbs-modal-open {
 
 .llbs-compound-explainer span {
     color: var(--llbs-soft-text);
-    font-size: .8rem;
+    font-size: .73rem;
     font-weight: 700;
-    line-height: 1.45;
+    line-height: 1.3;
 }
 
 .llbs-compound-summary-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
 }
 
 .llbs-compound-compare-wrap {
     display: grid;
-    gap: 12px;
-    padding: 14px;
+    gap: 10px;
+    padding: 11px 12px;
     border: 1px solid rgba(243, 216, 139, .14);
     border-radius: 16px;
     background: rgba(255, 255, 255, .025);
@@ -1830,14 +1833,14 @@ body.llbs-modal-open {
 .llbs-compound-compare-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+    gap: 10px;
 }
 
 .llbs-compound-card,
 .llbs-compound-compare-card {
     display: grid;
-    gap: 6px;
-    padding: 15px 16px;
+    gap: 4px;
+    padding: 11px 12px;
     border: 1px solid rgba(243, 216, 139, .18);
     border-radius: 16px;
     background:
@@ -1868,23 +1871,23 @@ body.llbs-modal-open {
 .llbs-compound-card strong,
 .llbs-compound-compare-card strong {
     color: #fff7dd;
-    font-size: 1.38rem;
+    font-size: 1.14rem;
     font-weight: 950;
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
 }
 
 .llbs-compound-card-primary strong {
-    font-size: 2rem;
+    font-size: 1.62rem;
 }
 
 .llbs-compound-card small,
 .llbs-compound-compare-card small,
 .llbs-compound-compare-card em {
     color: var(--llbs-soft-text);
-    font-size: .76rem;
+    font-size: .69rem;
     font-weight: 800;
-    line-height: 1.35;
+    line-height: 1.22;
     font-style: normal;
 }
 
@@ -1895,13 +1898,13 @@ body.llbs-modal-open {
 .llbs-compound-insight-strip {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
+    gap: 8px;
 }
 
 .llbs-compound-insight-strip article {
     display: grid;
-    gap: 5px;
-    padding: 13px 14px;
+    gap: 3px;
+    padding: 10px 11px;
     border: 1px solid rgba(243, 216, 139, .16);
     border-radius: 14px;
     background:
@@ -1910,7 +1913,7 @@ body.llbs-modal-open {
 
 .llbs-compound-insight-strip span {
     color: var(--llbs-muted);
-    font-size: .68rem;
+    font-size: .64rem;
     font-weight: 900;
     letter-spacing: .09em;
     text-transform: uppercase;
@@ -1918,12 +1921,14 @@ body.llbs-modal-open {
 
 .llbs-compound-insight-strip strong {
     color: #fff7dd;
-    font-size: 1rem;
+    font-size: .88rem;
     font-weight: 900;
     font-variant-numeric: tabular-nums;
 }
 
 .llbs-compound-table-wrap {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
     border: 1px solid rgba(243, 216, 139, .16);
     border-radius: 16px;
@@ -1935,7 +1940,7 @@ body.llbs-modal-open {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 12px 14px 10px;
+    padding: 10px 12px 8px;
     border-bottom: 1px solid rgba(243, 216, 139, .14);
 }
 
@@ -1947,7 +1952,7 @@ body.llbs-modal-open {
 .llbs-compound-table-head h4 {
     margin: 0;
     color: #fff7dd;
-    font-size: .88rem;
+    font-size: .8rem;
     font-weight: 950;
     letter-spacing: .05em;
     text-transform: uppercase;
@@ -1956,25 +1961,26 @@ body.llbs-modal-open {
 .llbs-compound-table-head p {
     margin: 4px 0 0;
     color: var(--llbs-soft-text);
-    font-size: .75rem;
+    font-size: .68rem;
     font-weight: 700;
 }
 
 .llbs-compound-table {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
 }
 
 .llbs-compound-table th,
 .llbs-compound-table td {
-    padding: 10px 14px;
+    padding: 7px 10px;
     text-align: left;
     border-bottom: 1px solid rgba(243, 216, 139, .1);
 }
 
 .llbs-compound-table th {
     color: var(--llbs-gold-3);
-    font-size: .68rem;
+    font-size: .62rem;
     font-weight: 950;
     letter-spacing: .1em;
     text-transform: uppercase;
@@ -1982,7 +1988,7 @@ body.llbs-modal-open {
 
 .llbs-compound-table td {
     color: var(--llbs-text);
-    font-size: .8rem;
+    font-size: .72rem;
     font-weight: 800;
 }
 
@@ -2025,11 +2031,11 @@ body.llbs-modal-open {
 
     .llbs-compound-grid {
         grid-template-columns: 1fr;
+        overflow: auto;
     }
 
     .llbs-compound-panel-inputs {
-        position: static;
-        top: auto;
+        align-self: stretch;
     }
 
     .llbs-compound-summary-grid {
@@ -2102,6 +2108,7 @@ body.llbs-modal-open {
 
     .llbs-compound-modal {
         width: min(100vw - 20px, 1120px);
+        height: calc(100vh - 20px);
         max-height: calc(100vh - 20px);
     }
 
