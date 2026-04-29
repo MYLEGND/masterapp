@@ -2086,7 +2086,7 @@
         }
 
         function commitInput(input) {
-            const button = input.parentElement?.querySelector("[data-llbs-edit]");
+            const button = input.closest(".llbs-edit-wrap")?.querySelector("[data-llbs-edit]");
             const path = input.getAttribute("data-path");
             const kind = input.getAttribute("data-kind") || "currency";
             updateValue(path, parseNumber(input.value), kind);
