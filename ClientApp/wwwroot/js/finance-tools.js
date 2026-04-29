@@ -1293,6 +1293,73 @@ if (t.id === "SavingsAccelerator") {
     const savingsSubtitle = isBusinessSA
         ? "Pull the business remaining balance from Expense Lens and allocate operating surplus with clarity."
         : "Pull the remaining balance from Expense Lens and optimize how you allocate it for maximum wealth building.";
+    const DEFAULT_SAVINGS_HELPER_TEXT = "Default buckets are built for growth-mode clients, but every percentage can be customized.";
+
+    const getDefaultPersonalSavingsAllocationRows = () => ([
+        {
+            name: "Emergency Reserve / Cash Buffer",
+            percent: 30,
+            description: "Liquid savings for unexpected expenses, income gaps, deductibles, and short-term stability."
+        },
+        {
+            name: "Short-Term Sinking Funds",
+            percent: 15,
+            description: "Planned near-term needs like car repairs, travel, gifts, moving costs, deductibles, and annual expenses."
+        },
+        {
+            name: "Mid-Term Opportunity Fund",
+            percent: 20,
+            description: "Money set aside for goals within roughly 2–5 years such as a home fund, business launch, education, or major life moves."
+        },
+        {
+            name: "Retirement / Roth IRA / Long-Term Investing",
+            percent: 25,
+            description: "Long-term wealth building for retirement accounts, Roth IRA contributions, brokerage investing, or diversified long-term growth."
+        },
+        {
+            name: "Debt Paydown / Wealth Acceleration",
+            percent: 10,
+            description: "Extra dollars toward high-interest debt, principal reduction, or intentional wealth-building acceleration."
+        }
+    ]);
+
+    const getDefaultBusinessSavingsAllocationRows = () => ([
+        {
+            name: "Tax Reserve",
+            percent: 30,
+            description: "Set aside money for estimated taxes, payroll taxes, sales tax, and year-end tax obligations."
+        },
+        {
+            name: "Operating Reserve",
+            percent: 25,
+            description: "Business emergency fund for slow months, delayed receivables, repairs, chargebacks, or unexpected expenses."
+        },
+        {
+            name: "Payroll / Owner Pay Stability",
+            percent: 15,
+            description: "Stabilizes owner draws, contractor payments, payroll obligations, and predictable compensation."
+        },
+        {
+            name: "Growth / Marketing Reinvestment",
+            percent: 20,
+            description: "Capital for lead generation, marketing, sales tools, branding, technology, and client acquisition."
+        },
+        {
+            name: "Equipment / Systems / Future Expansion",
+            percent: 10,
+            description: "Reserved for equipment, software, hiring support, systems, expansion costs, or future business upgrades."
+        }
+    ]);
+
+    const getDefaultSavingsAllocationRows = () => (
+        isBusinessSA ? getDefaultBusinessSavingsAllocationRows() : getDefaultPersonalSavingsAllocationRows()
+    );
+
+    const hasMeaningfulSavingsAllocationRows = (rows) => Array.isArray(rows) && rows.some((row) => {
+        const name = String(row?.name || '').trim();
+        const percent = parseSavingsMoney(row?.percent);
+        return name.length > 0 || percent > 0;
+    });
 
     hostElement.innerHTML = `
 <div class="networth-tool p-4"
@@ -1328,6 +1395,9 @@ if (t.id === "SavingsAccelerator") {
     </div>
     <div class="mt-4">
         <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Savings Allocation Plan</h5>
+        <div style="margin-top:8px;color:#b9c5d8;font-size:.78rem;font-style:italic;">
+            ${DEFAULT_SAVINGS_HELPER_TEXT}
+        </div>
         <div class="d-flex align-items-center mb-3" style="gap:8px;">
             <div style="flex:2;font-weight:700;color:#fff;text-align:left;">
                 Remaining Allocation: <span id="${pid('Remaining')}" style="color:#a68023;font-weight:900;">$0</span>
@@ -1503,39 +1573,45 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             allocations.push({
                 name: row.querySelector('.sa-alloc-name').value || '',
-                percent: row.querySelector('.sa-alloc-percent').value || ''
+                percent: row.querySelector('.sa-alloc-percent').value || '',
+                description: row.dataset.description || ''
             });
         });
         savePersistedState(saStateId, { allocations });
     };
 
+    const injectDefaultSavingsAllocationRows = () => {
+        getDefaultSavingsAllocationRows().forEach((allocation) => {
+            createAllocationRow(++categoryCount, allocation.name, allocation.percent, allocation.description, true);
+        });
+    };
+
     const loadAllocationState = async () => {
         allocationContainer.innerHTML = '';
         categoryCount = 0;
-        let created = 0;
 
         const state = await loadPersistedState(saStateId);
 
-        (state.allocations || []).forEach(a => {
-            createAllocationRow(++categoryCount, a.name, a.percent);
-            created++;
-        });
-
-        while (created < 3) {
-            createAllocationRow(++categoryCount);
-            created++;
+        if (hasMeaningfulSavingsAllocationRows(state?.allocations)) {
+            (state.allocations || []).forEach(a => {
+                createAllocationRow(++categoryCount, a.name, a.percent, a.description || '', false);
+            });
+        } else {
+            injectDefaultSavingsAllocationRows();
         }
 
         refreshSurplus();
     };
 
-    const createAllocationRow = (index, preName = '', prePercent = '') => {
+    const createAllocationRow = (index, preName = '', prePercent = '', description = '', isTemplate = false) => {
         const row = document.createElement('div');
         row.className = 'sa-alloc-row d-flex align-items-center mb-2 gap-2';
         row.style.cssText = 'background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));padding:8px;border-radius:10px;border:1.5px solid rgba(166,128,35,.24);';
         row.style.flexWrap = 'nowrap';
         row.style.alignItems = 'center';
         row.style.minWidth = '0';
+        row.dataset.description = description || '';
+        row.dataset.isTemplate = isTemplate ? 'true' : 'false';
 
         const name = document.createElement('input');
         name.className = 'form-control sa-alloc-name';
@@ -1544,6 +1620,7 @@ if (t.id === "SavingsAccelerator") {
         name.style.boxSizing = 'border-box';
         name.placeholder = `Category ${index}`;
         name.value = preName;
+        name.title = description || '';
         name.addEventListener('input', saveAllocationState);
 
         const amtWrap = document.createElement('div');
@@ -1667,7 +1744,7 @@ if (t.id === "SavingsAccelerator") {
     addClearButton(container, () => {
         allocationContainer.innerHTML = '';
         categoryCount = 0;
-        for (let i = 0; i < 3; i++) createAllocationRow(++categoryCount);
+        injectDefaultSavingsAllocationRows();
         saPctTotal.textContent = '0%';
         saRemaining.textContent = '$0';
         saTips.textContent = 'Direct extra cash strategically across savings, debt reduction, and key priorities.';
