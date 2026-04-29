@@ -47,59 +47,6 @@
             border-radius: 10px !important;
             box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
         }
-        #budget-embed .input-group.money,
-        .networth-tool .input-group.money {
-            display: flex !important;
-            align-items: center !important;
-            width: 100% !important;
-            min-height: 40px;
-            border: 1.5px solid rgba(166,128,35,.38) !important;
-            border-radius: 10px !important;
-            background-color: rgba(255,255,255,.92) !important;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
-            overflow: hidden !important;
-            transition: border-color .15s ease, box-shadow .15s ease !important;
-        }
-        #budget-embed .input-group.money:focus-within,
-        .networth-tool .input-group.money:focus-within {
-            border-color: #ddb457 !important;
-            box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
-        }
-        #budget-embed .input-group.money .input-prefix,
-        .networth-tool .input-group.money .input-prefix {
-            flex: 0 0 auto;
-            align-self: stretch;
-            display: inline-flex;
-            align-items: center;
-            padding: 0 0 0 12px;
-            color: #a68023;
-            font-weight: 900;
-            font-size: .95rem;
-            pointer-events: none;
-            background: transparent;
-        }
-        #budget-embed .input-group.money .input-field,
-        .networth-tool .input-group.money .input-field {
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-            width: 100% !important;
-            border: none !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 8px 12px 8px 8px !important;
-            color: inherit !important;
-            font-weight: 800 !important;
-        }
-        #budget-embed .input-group.money .input-field:focus,
-        .networth-tool .input-group.money .input-field:focus {
-            outline: none !important;
-            box-shadow: none !important;
-        }
-        #budget-embed .input-group.money .input-field[readonly],
-        .networth-tool .input-group.money .input-field[readonly] {
-            cursor: default;
-        }
     `;
     document.head.appendChild(s);
 })();
@@ -524,7 +471,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const state = {};
 
         // Save all inputs
-        container.querySelectorAll('input').forEach(input => state[input.id] = getPersistedInputValue(input));
+        container.querySelectorAll('input').forEach(input => state[input.id] = input.value);
 
         // Save all outputs (span, td)
         container.querySelectorAll('span, td').forEach(el => {
@@ -558,7 +505,6 @@ document.addEventListener("DOMContentLoaded", async function () {
             if (el.id && saved[el.id]) el.textContent = saved[el.id];
         });
 
-        formatMoneyInputs(container);
     }
 
     function clearToolState(toolId) {
@@ -602,8 +548,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
         container.style.margin = '0 auto 50px auto';
         container.style.color = '#f8fafc';
-
-        upgradeMoneyInputs(container);
     }
 
     // ------------------- Global Tooltip Hide (bind once) -------------------
@@ -688,193 +632,8 @@ function markGold(el)    { paint(el, COLOR_GOLD, "900"); }
 function markWithSuffix(markFn, el) {
     if (!el) return;
     markFn(el);
-    const group = el.closest('.input-group.money');
-    if (group) {
-        group.querySelectorAll('.input-prefix').forEach(markFn);
-    }
-    [el.previousElementSibling, el.nextElementSibling].forEach((sib) => {
-        if (sib && sib.tagName === 'SPAN') markFn(sib);
-    });
-}
-
-const MONEY_INPUT_EXPLICIT_IDS = new Set([
-    "wbStartingBalance", "wbIncome", "saAllocation", "assets", "liabs", "cfIncome", "cfBills",
-    "dcDebt", "dcIncome", "fbBills", "wpNet", "wpSurplus", "fiNet", "fiExp", "fiPassive",
-    "dapA", "dapL", "dapIncome", "wfd_incomeGap", "wfd_invAmt", "wfd_liDeath", "wfd_liAmt",
-    "wfd_annDeath", "wfd_annAmt"
-]);
-
-const MONEY_INPUT_CLASS_NAMES = [
-    "sa-alloc-amount",
-    "sa-alloc-starting-balance",
-    "sa-alloc-projected"
-];
-
-function stripFormattedNumericValue(value) {
-    const text = String(value ?? "").trim();
-    if (!text) return "";
-    const cleaned = text.replace(/[$,%\s]/g, "").replace(/,/g, "");
-    if (cleaned === "" || cleaned === "-" || cleaned === "." || cleaned === "-.") return "";
-    return cleaned;
-}
-
-function sanitizeEditableNumericValue(value) {
-    const stripped = String(value ?? "").replace(/[$,\s]/g, "");
-    const negative = stripped.startsWith("-") ? "-" : "";
-    const unsigned = stripped.replace(/-/g, "");
-    const parts = unsigned.split(".");
-    const whole = parts.shift()?.replace(/[^\d]/g, "") || "";
-    const decimal = parts.length > 0 ? `.${parts.join("").replace(/[^\d]/g, "")}` : "";
-    return `${negative}${whole}${decimal}`;
-}
-
-function formatNumericDisplayValue(value, maxFractionDigits = 2) {
-    const raw = stripFormattedNumericValue(value);
-    if (!raw) return "";
-    const numeric = Number(raw);
-    if (!Number.isFinite(numeric)) return "";
-    const decimalText = raw.includes(".") ? raw.split(".")[1] || "" : "";
-    const fractionDigits = decimalText ? Math.min(maxFractionDigits, decimalText.length) : 0;
-    return numeric.toLocaleString(undefined, {
-        minimumFractionDigits: fractionDigits,
-        maximumFractionDigits: fractionDigits
-    });
-}
-
-function getPersistedInputValue(input) {
-    if (!input) return "";
-    if (input.dataset.moneyInput === "true") {
-        return stripFormattedNumericValue(input.value);
-    }
-    const suffixText = Array.from(input.parentElement?.children || [])
-        .filter((child) => child !== input && child.tagName === "SPAN")
-        .map((child) => child.textContent.trim())
-        .join(" ");
-    if (suffixText.includes("%")) {
-        return stripFormattedNumericValue(input.value);
-    }
-    return input.value;
-}
-
-function findNearestInputLabelText(input) {
-    if (!input) return "";
-    if (input.id) {
-        const label = document.querySelector(`label[for="${CSS.escape(input.id)}"]`);
-        if (label) return label.textContent || "";
-    }
-    const wrappingLabel = input.closest("label");
-    if (wrappingLabel) return wrappingLabel.textContent || "";
-
-    let cursor = input.parentElement;
-    for (let depth = 0; cursor && depth < 3; depth += 1, cursor = cursor.parentElement) {
-        const previous = cursor.previousElementSibling;
-        if (previous && previous.tagName === "LABEL") return previous.textContent || "";
-    }
-    return "";
-}
-
-function hasDirectAffix(input, affixText) {
-    return Array.from(input.parentElement?.children || []).some((child) =>
-        child !== input &&
-        child.tagName === "SPAN" &&
-        child.textContent.trim() === affixText
-    );
-}
-
-function isMoneyInputCandidate(input) {
-    if (!input || input.tagName !== "INPUT") return false;
-    if (input.dataset.moneyInput === "true") return true;
-    if (input.type === "hidden" || input.type === "checkbox" || input.type === "radio" || input.type === "date") return false;
-    if (MONEY_INPUT_EXPLICIT_IDS.has(input.id)) return true;
-    if (MONEY_INPUT_CLASS_NAMES.some((className) => input.classList.contains(className))) return true;
-    if (hasDirectAffix(input, "%")) return false;
-    if (hasDirectAffix(input, "$")) return true;
-
-    const labelText = findNearestInputLabelText(input);
-    if (/%|percent|rate|years?|months?|inflation|tax bracket|efficiency|frequency|date|apr/i.test(labelText)) {
-        return false;
-    }
-
-    const placeholder = input.getAttribute("placeholder") || "";
-    if (/^\$/.test(placeholder)) return true;
-    if (/(?:^|[^0-9])\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:[^0-9]|$)/.test(placeholder)) return true;
-
-    return /(balance|income|assets?|liab(?:ilities|s)?|net worth|monthly bills|expenses?|passive income|death benefit|cash value|starting dollar amount|income gap|surplus|allocation|value)/i.test(labelText);
-}
-
-function formatMoneyInputs(root) {
-    if (!root) return;
-    root.querySelectorAll('input[data-money-input="true"]').forEach((input) => {
-        if (document.activeElement === input) return;
-        input.value = formatNumericDisplayValue(input.value);
-    });
-}
-
-function upgradeMoneyInput(input) {
-    if (!input || input.dataset.moneyInput === "true") return;
-    const parent = input.parentElement;
-    let wrapper = parent;
-    const canReuseParent = !!parent &&
-        parent.tagName === "DIV" &&
-        Array.from(parent.children).every((child) =>
-            child === input ||
-            (child.tagName === "SPAN" && (child.textContent || "").trim() === "$")
-        );
-
-    if (!canReuseParent) {
-        wrapper = document.createElement("div");
-        input.parentNode?.insertBefore(wrapper, input);
-        wrapper.appendChild(input);
-    } else {
-        Array.from(parent.children).forEach((child) => {
-            if (child !== input && child.tagName === "SPAN" && (child.textContent || "").trim() === "$") {
-                child.remove();
-            }
-        });
-    }
-
-    wrapper.classList.add("input-group", "money", "finance-money-input-group");
-    wrapper.style.position = "relative";
-
-    let prefix = wrapper.querySelector(".input-prefix");
-    if (!prefix) {
-        prefix = document.createElement("span");
-        prefix.className = "input-prefix";
-        prefix.textContent = "$";
-        wrapper.insertBefore(prefix, input);
-    }
-
-    input.dataset.moneyInput = "true";
-    input.classList.add("input-field");
-    input.setAttribute("inputmode", "decimal");
-    if (input.type !== "hidden") {
-        input.type = "text";
-    }
-
-    if (input.dataset.moneyInputBound !== "true") {
-        input.addEventListener("focus", () => {
-            input.value = stripFormattedNumericValue(input.value);
-        });
-        input.addEventListener("input", () => {
-            input.value = sanitizeEditableNumericValue(input.value);
-        });
-        input.addEventListener("blur", () => {
-            input.value = formatNumericDisplayValue(input.value);
-        });
-        input.dataset.moneyInputBound = "true";
-    }
-
-    input.value = formatNumericDisplayValue(input.value);
-}
-
-function upgradeMoneyInputs(root) {
-    if (!root) return;
-    root.querySelectorAll("input").forEach((input) => {
-        if (isMoneyInputCandidate(input)) {
-            upgradeMoneyInput(input);
-        }
-    });
-    formatMoneyInputs(root);
+    const sib = el.nextElementSibling;
+    if (sib && sib.tagName === 'SPAN') markFn(sib);
 }
 
     const isDropdownTypeaheadKey = (event) =>
@@ -1693,8 +1452,6 @@ if (t.id === "SavingsAccelerator") {
     const saPctTotal = document.getElementById(pid('PctTotal'));
     const saRemaining = document.getElementById(pid('Remaining'));
 
-    upgradeMoneyInputs(container);
-
     let categoryCount = 0;
 
     const formatNumber = (val) => {
@@ -1893,11 +1650,11 @@ if (t.id === "SavingsAccelerator") {
         allocationContainer.querySelectorAll('.sa-alloc-row').forEach(row => {
             allocations.push({
                 name: row.querySelector('.sa-alloc-name').value || '',
-                percent: stripFormattedNumericValue(row.querySelector('.sa-alloc-percent').value || ''),
+                percent: row.querySelector('.sa-alloc-percent').value || '',
                 description: row.dataset.description || '',
-                aprPercent: stripFormattedNumericValue(row.querySelector('.sa-alloc-apr')?.value || ''),
+                aprPercent: row.querySelector('.sa-alloc-apr')?.value || '',
                 allocationStartDate: row.querySelector('.sa-alloc-start-date')?.value || '',
-                startingBalance: getPersistedInputValue(row.querySelector('.sa-alloc-starting-balance'))
+                startingBalance: row.querySelector('.sa-alloc-starting-balance')?.value || ''
             });
         });
         savePersistedState(saStateId, { allocations });
@@ -1937,7 +1694,6 @@ if (t.id === "SavingsAccelerator") {
             injectDefaultSavingsAllocationRows();
         }
 
-        upgradeMoneyInputs(allocationContainer);
         refreshSurplus();
     };
 
@@ -2080,7 +1836,6 @@ if (t.id === "SavingsAccelerator") {
 
         row.append(summary, drawer);
         allocationContainer.appendChild(row);
-        upgradeMoneyInputs(row);
 
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
@@ -2496,9 +2251,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         const saveExpenseLensState = (extraState = {}) => {
             try {
-                const income = getPersistedInputValue(elIncome);
-                const primaryIncome = getPersistedInputValue(elPrimaryIncome);
-                const spouseIncome = getPersistedInputValue(elSpouseIncome);
+                const income = elIncome.value || '';
+                const primaryIncome = elPrimaryIncome?.value || '';
+                const spouseIncome = elSpouseIncome?.value || '';
                 const categories = [];
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                     const index = row.id.replace(elId('CatRow'), '');
@@ -2507,7 +2262,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const dueEl = elById(`CatDue${index}`);
                     const frequencyEl = elById(`CatFrequency${index}`);
                     const name = nameEl ? nameEl.value || '' : '';
-                    const amount = amountEl ? getPersistedInputValue(amountEl) : '';
+                    const amount = amountEl ? amountEl.value || '' : '';
                     const due = dueEl ? dueEl.value || '' : '';
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
                     const isTemplate = row.dataset.isTemplate === 'true';
@@ -2547,7 +2302,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     }
                 }
                 if (categoriesCreated === 0) injectDefaultExpenseRows();
-                upgradeMoneyInputs(container);
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
@@ -2865,7 +2619,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
             categoriesContainer.appendChild(div);
-            upgradeMoneyInputs(div);
 
             if (isDualPanel) {
                 fitSingleLineControlText(nameInput, { minSize: 10, maxSize: 14 });
@@ -3520,7 +3273,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
 
             incomeFlexWrap.parentElement.insertBefore(splitRow, incomeFlexWrap.nextSibling);
-            upgradeMoneyInputs(splitRow);
 
             // Total Income is now computed from split fields — lock it
             elIncome.readOnly = true;
@@ -4928,8 +4680,8 @@ if (t.id === "WealthProjection") {
     };
     const saveWP = () => {
         savePersistedState('WealthProjection', {
-            wpNet: getPersistedInputValue(wpNet),
-            wpSurplus: getPersistedInputValue(wpSurplus),
+            wpNet: wpNet.value,
+            wpSurplus: wpSurplus.value,
             wpMonths: wpMonths.value,
             wpOut: wpOut.textContent,
             wp6: wp6.textContent,
@@ -5235,9 +4987,9 @@ if (t.id === "FreedomIndex") {
     };
     const saveFI = () => {
         savePersistedState('FreedomIndex', {
-            fiNet: getPersistedInputValue(fiNet),
-            fiExp: getPersistedInputValue(fiExp),
-            fiPassive: getPersistedInputValue(fiPassive),
+            fiNet: fiNet.value,
+            fiExp: fiExp.value,
+            fiPassive: fiPassive.value,
             fiOut: fiOut.textContent,
             fiNetOut: fiNetOut.textContent,
             fiExpOut: fiExpOut.textContent,
@@ -5247,7 +4999,6 @@ if (t.id === "FreedomIndex") {
         });
     };
     await loadFI();
-    formatMoneyInputs(container);
 
     // ✅ Color painter (no refresh needed)
     const applyFreedomColors = (netNum, expNum, passiveNum, fiNum, monthsNum) => {
@@ -5549,9 +5300,9 @@ if (t.id === "DebtAssetPulse") {
 
     const saveDAP = () => {
         savePersistedState('DebtAssetPulse', {
-            dapA: getPersistedInputValue(dapA),
-            dapL: getPersistedInputValue(dapL),
-            dapIncome: getPersistedInputValue(dapIncome),
+            dapA: dapA.value,
+            dapL: dapL.value,
+            dapIncome: dapIncome.value,
             dapOut: dapOut.textContent,
             dapAssets: dapAssets.textContent,
             dapLiabilities: dapLiabilities.textContent,
