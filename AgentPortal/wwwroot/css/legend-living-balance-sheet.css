@@ -1504,17 +1504,18 @@ body.llbs-modal-open {
 
 .llbs-compound-modal {
     position: relative;
-    width: min(1380px, calc(100vw - 28px));
+    width: min(1460px, calc(100vw - 28px));
     max-height: calc(100vh - 28px);
     overflow: auto;
     border: 1.5px solid var(--llbs-line-strong);
-    border-radius: 18px;
+    border-radius: 24px;
     background:
-        radial-gradient(920px 320px at 8% -6%, rgba(221, 180, 87, .2), transparent 60%),
-        radial-gradient(640px 240px at 92% 0%, rgba(20, 108, 67, .16), transparent 60%),
+        radial-gradient(980px 360px at 8% -6%, rgba(221, 180, 87, .22), transparent 60%),
+        radial-gradient(680px 280px at 92% 0%, rgba(20, 108, 67, .18), transparent 60%),
+        radial-gradient(520px 220px at 100% 100%, rgba(37, 79, 149, .14), transparent 72%),
         linear-gradient(180deg, #081223 0%, #0b1529 48%, #060d19 100%);
     box-shadow:
-        0 36px 110px rgba(0, 0, 0, .52),
+        0 42px 120px rgba(0, 0, 0, .56),
         inset 0 1px 0 rgba(255, 255, 255, .08);
 }
 
@@ -1523,35 +1524,74 @@ body.llbs-modal-open {
     top: 0;
     z-index: 2;
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 18px;
-    padding: 20px 22px 16px;
+    gap: 20px;
+    padding: 24px 24px 18px;
     border-bottom: 1px solid rgba(243, 216, 139, .18);
     background:
         linear-gradient(180deg, rgba(7, 13, 25, .96), rgba(7, 13, 25, .88));
     backdrop-filter: blur(8px);
 }
 
+.llbs-compound-head-copy {
+    display: grid;
+    gap: 10px;
+}
+
 .llbs-compound-kicker {
-    margin-bottom: 8px;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 6px 11px;
+    border: 1px solid rgba(243, 216, 139, .28);
+    border-radius: 999px;
+    background: rgba(243, 216, 139, .08);
+    color: #f7df98;
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
 }
 
 .llbs-compound-title {
-    margin: 0 0 5px;
+    margin: 0;
     color: #fff7dd;
-    font-size: 1.45rem;
+    font-size: 1.6rem;
     font-weight: 950;
     letter-spacing: .01em;
 }
 
 .llbs-compound-subtitle {
     margin: 0;
-    max-width: 900px;
+    max-width: 860px;
     color: var(--llbs-soft-text);
-    font-size: .92rem;
+    font-size: .95rem;
     font-weight: 700;
     line-height: 1.45;
+}
+
+.llbs-compound-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.llbs-compound-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 6px 10px;
+    border: 1px solid rgba(162, 214, 190, .18);
+    border-radius: 999px;
+    background:
+        linear-gradient(180deg, rgba(22, 103, 66, .18), rgba(8, 27, 18, .08)),
+        rgba(255, 255, 255, .03);
+    color: #dbffe8;
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .06em;
+    text-transform: uppercase;
 }
 
 .llbs-compound-head-actions {
@@ -1583,43 +1623,111 @@ body.llbs-modal-open {
 
 .llbs-compound-grid {
     display: grid;
-    grid-template-columns: minmax(380px, 430px) minmax(0, 1fr);
-    gap: 18px;
-    padding: 18px;
+    grid-template-columns: minmax(400px, 460px) minmax(0, 1fr);
+    gap: 20px;
+    padding: 20px;
 }
 
 .llbs-compound-panel {
     border: 1px solid rgba(243, 216, 139, .18);
-    border-radius: 14px;
+    border-radius: 18px;
     background:
-        linear-gradient(180deg, rgba(20, 41, 77, .92), rgba(9, 17, 32, .98));
+        radial-gradient(220px 110px at 0 0, rgba(243, 216, 139, .08), transparent 78%),
+        linear-gradient(180deg, rgba(18, 34, 63, .94), rgba(8, 16, 30, .98));
     box-shadow:
-        0 18px 38px rgba(0, 0, 0, .24),
+        0 22px 44px rgba(0, 0, 0, .24),
         inset 0 1px 0 rgba(255, 255, 255, .06);
 }
 
 .llbs-compound-panel-inputs {
     position: sticky;
-    top: 96px;
+    top: 104px;
     align-self: start;
-    padding: 16px;
+    padding: 18px;
 }
 
 .llbs-compound-panel-results {
     display: grid;
-    gap: 16px;
-    padding: 16px;
+    gap: 18px;
+    padding: 18px;
+}
+
+.llbs-compound-panel-top,
+.llbs-compound-results-hero {
+    display: grid;
+    gap: 8px;
+    padding: 16px 18px;
+    border: 1px solid rgba(243, 216, 139, .16);
+    border-radius: 16px;
+    background:
+        radial-gradient(200px 90px at 0 0, rgba(243, 216, 139, .12), transparent 78%),
+        linear-gradient(180deg, rgba(17, 32, 58, .92), rgba(9, 18, 34, .98));
+}
+
+.llbs-compound-results-hero {
+    border-color: rgba(53, 183, 121, .22);
+    background:
+        radial-gradient(260px 110px at 0 0, rgba(53, 183, 121, .12), transparent 78%),
+        radial-gradient(220px 120px at 100% 0, rgba(243, 216, 139, .1), transparent 78%),
+        linear-gradient(180deg, rgba(17, 32, 58, .92), rgba(9, 18, 34, .98));
+}
+
+.llbs-compound-section-kicker {
+    color: var(--llbs-gold-3);
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-section-title {
+    margin: 0;
+    color: #fff7dd;
+    font-size: 1.12rem;
+    font-weight: 950;
+    letter-spacing: .01em;
+}
+
+.llbs-compound-section-text {
+    margin: 0;
+    color: var(--llbs-soft-text);
+    font-size: .82rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+.llbs-compound-cluster {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+    padding: 14px;
+    border: 1px solid rgba(243, 216, 139, .12);
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .03), rgba(255, 255, 255, .015));
+}
+
+.llbs-compound-cluster-title {
+    color: #edf7ff;
+    font-size: .78rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
 }
 
 .llbs-compound-field-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 11px;
+    gap: 12px;
 }
 
 .llbs-compound-field {
     display: grid;
-    gap: 5px;
+    gap: 6px;
+}
+
+.llbs-compound-field-wide {
+    grid-column: 1 / -1;
 }
 
 .llbs-compound-field span {
@@ -1640,31 +1748,53 @@ body.llbs-modal-open {
 .llbs-compound-input,
 .llbs-compound-select {
     width: 100%;
-    min-height: 38px;
+    min-height: 44px;
     border: 1px solid rgba(243, 216, 139, .28);
-    border-radius: 10px;
-    padding: 8px 11px;
-    background: rgba(6, 11, 22, .78);
+    border-radius: 12px;
+    padding: 10px 13px;
+    background:
+        linear-gradient(180deg, rgba(8, 13, 24, .94), rgba(5, 10, 20, .88));
     color: var(--llbs-text);
-    font-size: .92rem;
-    font-weight: 800;
+    font-size: .96rem;
+    font-weight: 850;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .04),
+        0 10px 22px rgba(0, 0, 0, .12);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
 }
 
 .llbs-compound-input:focus,
 .llbs-compound-select:focus {
     outline: none;
     border-color: var(--llbs-gold-3);
-    box-shadow: 0 0 0 3px rgba(199, 153, 49, .16);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .04),
+        0 0 0 3px rgba(199, 153, 49, .16),
+        0 12px 26px rgba(0, 0, 0, .18);
+    transform: translateY(-1px);
+}
+
+.llbs-compound-select {
+    appearance: none;
+    padding-right: 40px;
+    background-image:
+        linear-gradient(180deg, rgba(8, 13, 24, .94), rgba(5, 10, 20, .88)),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5' stroke='%23f3d88b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat, no-repeat;
+    background-position: 0 0, right 12px center;
+    background-size: auto, 16px 16px;
 }
 
 .llbs-compound-explainer {
-    margin-top: 13px;
+    margin-top: 14px;
     display: grid;
-    gap: 6px;
-    padding: 13px 14px;
-    border: 1px solid rgba(53, 183, 121, .22);
-    border-radius: 12px;
-    background: linear-gradient(180deg, rgba(20, 108, 67, .15), rgba(15, 29, 56, .08));
+    gap: 8px;
+    padding: 15px 16px;
+    border: 1px solid rgba(53, 183, 121, .24);
+    border-radius: 14px;
+    background:
+        radial-gradient(220px 110px at 0 0, rgba(53, 183, 121, .14), transparent 78%),
+        linear-gradient(180deg, rgba(15, 31, 30, .34), rgba(11, 26, 45, .16));
 }
 
 .llbs-compound-explainer strong {
@@ -1688,6 +1818,15 @@ body.llbs-modal-open {
     gap: 12px;
 }
 
+.llbs-compound-compare-wrap {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(243, 216, 139, .14);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, .025);
+}
+
 .llbs-compound-compare-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1698,12 +1837,15 @@ body.llbs-modal-open {
 .llbs-compound-compare-card {
     display: grid;
     gap: 6px;
-    padding: 13px 14px;
+    padding: 15px 16px;
     border: 1px solid rgba(243, 216, 139, .18);
-    border-radius: 14px;
+    border-radius: 16px;
     background:
-        radial-gradient(180px 80px at 0 0, rgba(243, 216, 139, .12), transparent 78%),
+        radial-gradient(180px 80px at 0 0, rgba(243, 216, 139, .13), transparent 78%),
         linear-gradient(180deg, rgba(18, 33, 60, .94), rgba(9, 16, 30, .98));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .05),
+        0 14px 32px rgba(0, 0, 0, .12);
 }
 
 .llbs-compound-card-primary {
@@ -1726,9 +1868,14 @@ body.llbs-modal-open {
 .llbs-compound-card strong,
 .llbs-compound-compare-card strong {
     color: #fff7dd;
-    font-size: 1.34rem;
+    font-size: 1.38rem;
     font-weight: 950;
     line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+}
+
+.llbs-compound-card-primary strong {
+    font-size: 2rem;
 }
 
 .llbs-compound-card small,
@@ -1754,10 +1901,11 @@ body.llbs-modal-open {
 .llbs-compound-insight-strip article {
     display: grid;
     gap: 5px;
-    padding: 11px 12px;
+    padding: 13px 14px;
     border: 1px solid rgba(243, 216, 139, .16);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, .04);
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .05), rgba(255, 255, 255, .025));
 }
 
 .llbs-compound-insight-strip span {
@@ -1770,14 +1918,15 @@ body.llbs-modal-open {
 
 .llbs-compound-insight-strip strong {
     color: #fff7dd;
-    font-size: .92rem;
+    font-size: 1rem;
     font-weight: 900;
+    font-variant-numeric: tabular-nums;
 }
 
 .llbs-compound-table-wrap {
     overflow: hidden;
     border: 1px solid rgba(243, 216, 139, .16);
-    border-radius: 14px;
+    border-radius: 16px;
     background: rgba(255, 255, 255, .03);
 }
 
@@ -1788,6 +1937,11 @@ body.llbs-modal-open {
     gap: 10px;
     padding: 12px 14px 10px;
     border-bottom: 1px solid rgba(243, 216, 139, .14);
+}
+
+.llbs-compound-table-head-compact {
+    padding: 0;
+    border-bottom: none;
 }
 
 .llbs-compound-table-head h4 {
@@ -1925,6 +2079,7 @@ body.llbs-modal-open {
     .llbs-compound-head {
         flex-direction: column;
         position: static;
+        align-items: flex-start;
     }
 
     .llbs-compound-head-actions {
@@ -1953,6 +2108,13 @@ body.llbs-modal-open {
     .llbs-compound-grid,
     .llbs-compound-panel-inputs,
     .llbs-compound-panel-results {
+        padding: 12px;
+    }
+
+    .llbs-compound-cluster,
+    .llbs-compound-panel-top,
+    .llbs-compound-results-hero,
+    .llbs-compound-compare-wrap {
         padding: 12px;
     }
 
