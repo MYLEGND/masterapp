@@ -5802,17 +5802,17 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
         /* ── Row card ──────────────────────────────────────────────────── */
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
-        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 46px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
-        .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 38px;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 34px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
+        .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
         .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.1em;white-space:nowrap;overflow:visible;word-break:normal;}
         .savings-row-header .savings-row-header__multiline{display:block;white-space:normal;line-height:1.02;}
         .savings-row-header .savings-row-header__projection{letter-spacing:.05em;}
-        .savings-row-header .savings-row-header__remove{justify-self:center;white-space:nowrap;}
+        .savings-row-header .savings-row-header__action{justify-self:center;white-space:nowrap;}
         /* ── Desktop full grid (8 cols) ─────────────────────────────────── */
-        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 46px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
+        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 34px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
         .savings-row>*{min-width:0;}
         /* ── Compact grid (6 cols, business dual-panel) ──────────────────── */
-        .savings-row.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 38px;}
+        .savings-row.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
         .savings-row .legend-money-input,
         .savings-row .legend-percent-input,
         .savings-row .projected-year-end{
@@ -5850,8 +5850,8 @@ if (t.id === "SavingsAccelerator") {
         .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:0 10px;overflow:hidden;}
         .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:900;font-size:1rem;}
         /* ── Buttons ─────────────────────────────────────────────────────── */
-        .remove-row{border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;justify-self:center;align-self:center;}
-        .remove-row:hover{color:#c79931;}
+        .remove-row{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(166,128,35,.42);border-radius:999px;background:rgba(166,128,35,.08);color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1rem;line-height:1;justify-self:center;align-self:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
+        .remove-row:hover{color:#f2c867;border-color:rgba(199,153,49,.7);background:rgba(166,128,35,.16);}
         .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
         /* ── Expandable drawer ───────────────────────────────────────────── */
         .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
@@ -5906,7 +5906,7 @@ if (t.id === "SavingsAccelerator") {
                     <span>Alloc $</span>
                     <span>APR %</span>
                     <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                    <span class="savings-row-header__remove">Edit</span>
+                    <span class="savings-row-header__action">Edit</span>
                 `
                 : `
                     <span>Bucket Name</span>
@@ -5916,7 +5916,7 @@ if (t.id === "SavingsAccelerator") {
                     <span>Start Date</span>
                     <span>Starting Balance</span>
                     <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                    <span class="savings-row-header__remove">Remove</span>
+                    <span class="savings-row-header__action"></span>
                 `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
