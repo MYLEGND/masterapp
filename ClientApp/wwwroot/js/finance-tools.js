@@ -2658,6 +2658,8 @@ if (t.id === "SavingsAccelerator") {
                 ? ' is-compact'
                 : '';
         const hasAllVisibleBuckets = visibleBuckets.length > 0 && visibleBuckets.length === savingsIllustrationData.rows.length;
+        const isFinalIllustrationStep = savingsIllustrationStepIndex === savingsIllustrationData.steps.length - 1;
+        const showProjectedYearEndTotal = isFinalIllustrationStep && (projectedBucketCount > 0 || step.kind === 'surplus');
 
         illustrationContent.innerHTML = `
             <div class="savings-illustration-board${boardDensityClass}" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
@@ -2697,15 +2699,17 @@ if (t.id === "SavingsAccelerator") {
                                 <span class="savings-illustration-surplus-label">Surplus Allocation</span>
                                 <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
                             </div>
+                        </div>
+                        <div class="savings-illustration-surplus-shell${hasAllVisibleBuckets ? ' is-complete-flow' : ''}">
+                            <div class="savings-illustration-bucket-list${visibleBuckets.length ? ' has-buckets' : ' is-empty'}">${bucketRows}</div>
+                        </div>
+                        ${showProjectedYearEndTotal ? `
                             <div class="savings-illustration-projection-box" aria-live="polite">
                                 <span class="savings-illustration-projection-box__label">Projected Year-End Total</span>
                                 <span class="savings-illustration-projection-box__value">${escapeSavingsIllustrationHtml(money(savingsIllustrationData.projectedYearEndTotal))}</span>
                                 <span class="savings-illustration-projection-box__meta">${escapeSavingsIllustrationHtml(projectedBucketMeta)}</span>
                             </div>
-                        </div>
-                        <div class="savings-illustration-surplus-shell${hasAllVisibleBuckets ? ' is-complete-flow' : ''}">
-                            <div class="savings-illustration-bucket-list${visibleBuckets.length ? ' has-buckets' : ' is-empty'}">${bucketRows}</div>
-                        </div>
+                        ` : ''}
                     ` : ''}
                 </div>
             </div>`;
