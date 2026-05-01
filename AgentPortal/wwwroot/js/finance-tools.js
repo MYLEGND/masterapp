@@ -5719,31 +5719,37 @@ if (t.id === "SavingsAccelerator") {
         ? "Pull the business remaining balance from Expense Lens and allocate operating surplus with clarity."
         : "Pull the remaining balance from Expense Lens and optimize how you allocate it for maximum wealth building.";
     const DEFAULT_SAVINGS_HELPER_TEXT = "Default buckets intentionally start at 60% of available savings allocation so 40% remains open for lifestyle flexibility, and every percentage can be customized.";
+    const DEFAULT_SAVINGS_TEMPLATE_TOTAL_PERCENT = 60;
 
     const getDefaultPersonalSavingsAllocationRows = () => ([
         {
             name: "Emergency Reserve / Cash Buffer",
             percent: 18,
+            aprPercent: 3,
             description: "Liquid savings for unexpected expenses, income gaps, deductibles, and short-term stability."
         },
         {
             name: "Short-Term Sinking Funds",
             percent: 9,
+            aprPercent: 4,
             description: "Planned near-term needs like car repairs, travel, gifts, moving costs, deductibles, and annual expenses."
         },
         {
             name: "Mid-Term Opportunity Fund",
             percent: 12,
+            aprPercent: 7,
             description: "Money set aside for goals within roughly 2–5 years such as a home fund, business launch, education, or major life moves."
         },
         {
-            name: "Retirement / Roth IRA / Long-Term Investing",
+            name: "Retirement / Long-Term Investments",
             percent: 15,
-            description: "Long-term wealth building for retirement accounts, Roth IRA contributions, brokerage investing, or diversified long-term growth."
+            aprPercent: 10,
+            description: "Long-term wealth building for retirement accounts, brokerage investing, and diversified long-term growth."
         },
         {
             name: "Debt Paydown / Wealth Acceleration",
             percent: 6,
+            aprPercent: 3,
             description: "Extra dollars toward high-interest debt, principal reduction, or intentional wealth-building acceleration."
         }
     ]);
@@ -6875,29 +6881,65 @@ if (t.id === "SavingsAccelerator") {
         });
     };
 
-    const normalizeSavingsAllocationTemplateKey = (value) => String(value || '')
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
-        .trim();
+    const normalizeSavingsAllocationTemplateKey = (value) => {
+        const normalized = String(value || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+
+        if (/^retirement\b.*long term/.test(normalized)) {
+            return 'retirement long term investments';
+        }
+
+        return normalized;
+    };
+
+    const parseSavingsAllocationPercentValue = (value) => {
+        const numeric = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
+        return Number.isFinite(numeric) ? numeric : 0;
+    };
+
+    const formatSavingsAllocationPercentValue = (value) => {
+        const numeric = Math.max(0, Number(value) || 0);
+        const rounded = Math.round(numeric * 10) / 10;
+        return Math.abs(rounded % 1) < 0.001 ? String(Math.round(rounded)) : rounded.toFixed(1);
+    };
 
     const buildSavingsAllocationTemplateRows = (savedRows) => {
         const defaults = getDefaultSavingsAllocationRows();
         const normalizedSavedRows = Array.isArray(savedRows) ? savedRows : [];
+        const matchedSavedRows = defaults.map((allocation, index) => (
+            normalizedSavedRows[index]
+            || normalizedSavedRows.find((row) => (
+                normalizeSavingsAllocationTemplateKey(row?.name)
+                === normalizeSavingsAllocationTemplateKey(allocation.name)
+            ))
+            || null
+        ));
+        const hasFullTemplateMatch = matchedSavedRows.every((row) => row && normalizeSavingsAllocationTemplateKey(row.name));
+        const savedTemplatePercentTotal = matchedSavedRows.reduce((sum, row) => (
+            sum + Math.max(0, parseSavingsAllocationPercentValue(row?.percent))
+        ), 0);
+        const shouldProrateTemplatePercents =
+            hasFullTemplateMatch
+            && savedTemplatePercentTotal > DEFAULT_SAVINGS_TEMPLATE_TOTAL_PERCENT + 0.5;
+        const percentScale = shouldProrateTemplatePercents && savedTemplatePercentTotal > 0
+            ? DEFAULT_SAVINGS_TEMPLATE_TOTAL_PERCENT / savedTemplatePercentTotal
+            : 1;
 
         return defaults.map((allocation, index) => {
-            const matchedSavedRow = normalizedSavedRows[index]
-                || normalizedSavedRows.find((row) => (
-                    normalizeSavingsAllocationTemplateKey(row?.name)
-                    === normalizeSavingsAllocationTemplateKey(allocation.name)
-                ))
-                || {};
+            const matchedSavedRow = matchedSavedRows[index] || {};
+            const savedPercent = parseSavingsAllocationPercentValue(matchedSavedRow.percent);
+            const resolvedPercent = matchedSavedRow.percent == null
+                ? allocation.percent
+                : formatSavingsAllocationPercentValue(savedPercent * percentScale);
 
             return {
                 name: allocation.name,
-                percent: matchedSavedRow.percent ?? allocation.percent,
+                percent: resolvedPercent,
                 description: allocation.description,
                 isTemplate: true,
-                aprPercent: matchedSavedRow.aprPercent || '',
+                aprPercent: matchedSavedRow.aprPercent || allocation.aprPercent || '',
                 allocationStartDate: matchedSavedRow.allocationStartDate || todayIsoDate(),
                 startingBalance: matchedSavedRow.startingBalance || ''
             };
