@@ -5802,14 +5802,14 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
         /* ── Row card ──────────────────────────────────────────────────── */
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
-        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 34px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
         .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
         .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.1em;white-space:nowrap;overflow:visible;word-break:normal;}
         .savings-row-header .savings-row-header__multiline{display:block;white-space:normal;line-height:1.02;}
         .savings-row-header .savings-row-header__projection{letter-spacing:.05em;}
         .savings-row-header .savings-row-header__action{justify-self:center;white-space:nowrap;}
         /* ── Desktop full grid (8 cols) ─────────────────────────────────── */
-        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 34px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
+        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
         .savings-row>*{min-width:0;}
         /* ── Compact grid (6 cols, business dual-panel) ──────────────────── */
         .savings-row.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
@@ -5819,6 +5819,11 @@ if (t.id === "SavingsAccelerator") {
             min-width:0!important;
             width:100%;
             max-width:100%;
+        }
+        .savings-row .projected-year-end{
+            justify-self:start;
+            width:calc(100% - 6px);
+            margin-right:6px;
         }
         .savings-row .legend-percent-input{justify-self:stretch;}
         .savings-row .legend-percent-field{
@@ -5847,8 +5852,8 @@ if (t.id === "SavingsAccelerator") {
         .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
         /* ── Projected YE display (read-only) ────────────────────────────── */
-        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:0 10px;overflow:hidden;}
-        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:900;font-size:1rem;}
+        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:linear-gradient(180deg,rgba(244,244,242,.98),rgba(237,245,237,.96));border:1px solid rgba(198,151,45,.75);border-radius:12px;padding:0 12px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(31,157,85,.08), 0 1px 0 rgba(11,21,41,.18);}
+        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
         /* ── Buttons ─────────────────────────────────────────────────────── */
         .remove-row{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(166,128,35,.42);border-radius:999px;background:rgba(166,128,35,.08);color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1rem;line-height:1;justify-self:center;align-self:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
         .remove-row:hover{color:#f2c867;border-color:rgba(199,153,49,.7);background:rgba(166,128,35,.16);}
@@ -5916,7 +5921,6 @@ if (t.id === "SavingsAccelerator") {
                     <span>Start Date</span>
                     <span>Starting Balance</span>
                     <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                    <span class="savings-row-header__action"></span>
                 `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
@@ -6302,7 +6306,7 @@ if (t.id === "SavingsAccelerator") {
             fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 18 });
             fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 18 });
         } else {
-            grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedDiv, del);
+            grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedDiv);
             drawer.append(note);
         }
 
