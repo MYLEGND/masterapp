@@ -1690,7 +1690,7 @@ if (t.id === "SavingsAccelerator") {
 <div class="networth-tool p-4"
      style="background:radial-gradient(900px 320px at 0% 0%,rgba(166,128,35,.12),transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
             border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.58);
-            border:1.8px solid rgba(166,128,35,.52);max-width:1200px;margin:0 auto;
+            border:1.8px solid rgba(166,128,35,.52);width:min(96vw,1460px);max-width:1460px;margin:0 auto;
             color:#f8fafc;font-family:'Inter',sans-serif;">
     <style>
         .${prefix}-label{display:inline-flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:800;color:#a68023;}
@@ -1700,14 +1700,14 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
-        .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px;border-radius:12px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
-        .savings-row-header{display:grid;grid-template-columns:minmax(210px,1.9fr) minmax(145px,.95fr) minmax(112px,.58fr) minmax(108px,.56fr) minmax(150px,.92fr) minmax(145px,.95fr) minmax(150px,1fr) 36px;gap:10px;align-items:center;width:100%;max-width:100%;margin:0 0 10px;padding:0 12px;box-sizing:border-box;color:#c9a448;font-size:.68rem;font-weight:900;letter-spacing:.11em;line-height:1.2;text-transform:uppercase;}
-        .savings-row-header.compact{grid-template-columns:minmax(170px,1.5fr) minmax(88px,.55fr) minmax(120px,.8fr) minmax(88px,.55fr) minmax(128px,.85fr) 38px;}
-        .savings-row-header span{min-width:0;white-space:normal;overflow-wrap:anywhere;}
+        .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(265px,2.15fr) 156px 102px 94px 154px 156px 142px 30px;gap:12px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.65rem;font-weight:900;letter-spacing:.1em;line-height:1.15;text-transform:uppercase;}
+        .savings-row-header.compact{grid-template-columns:minmax(190px,1.7fr) 90px 128px 90px 138px 38px;}
+        .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.2em;white-space:normal;overflow-wrap:anywhere;}
         .savings-row-header span:last-child{justify-self:end;}
-        .savings-row{display:grid;grid-template-columns:minmax(210px,1.9fr) minmax(145px,.95fr) minmax(112px,.58fr) minmax(108px,.56fr) minmax(150px,.92fr) minmax(145px,.95fr) minmax(150px,1fr) 36px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
+        .savings-row{display:grid;grid-template-columns:minmax(265px,2.15fr) 156px 102px 94px 154px 156px 142px 30px;gap:12px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
         .savings-row>*{min-width:0;}
-        .savings-row.compact{grid-template-columns:minmax(170px,1.5fr) minmax(88px,.55fr) minmax(120px,.8fr) minmax(88px,.55fr) minmax(128px,.85fr) 38px;}
+        .savings-row.compact{grid-template-columns:minmax(190px,1.7fr) 90px 128px 90px 138px 38px;}
         .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
         .savings-name{text-overflow:ellipsis;}
         .savings-start-date{padding-right:12px;}
@@ -1720,9 +1720,8 @@ if (t.id === "SavingsAccelerator") {
         .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
         .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
-        .projected-year-end{display:flex;align-items:center;gap:4px;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:7px 8px;overflow:hidden;}
-        .projected-label{font-size:.68rem;font-weight:700;color:#64748b;flex:0 0 auto;white-space:nowrap;}
-        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:800;}
+        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:0 12px;overflow:hidden;}
+        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:900;font-size:1.08rem;}
         .remove-row{border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;justify-self:end;align-self:center;}
         .remove-row:hover{color:#c79931;}
         .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
@@ -2139,12 +2138,9 @@ if (t.id === "SavingsAccelerator") {
 
         const projectedDiv = document.createElement('div');
         projectedDiv.className = 'projected-year-end sa-alloc-projected';
-        const projectedLabel = document.createElement('span');
-        projectedLabel.className = 'projected-label';
-        projectedLabel.textContent = 'YE';
         const projectedValue = document.createElement('strong');
         projectedValue.textContent = '$0';
-        projectedDiv.append(projectedLabel, projectedValue);
+        projectedDiv.append(projectedValue);
 
         const del = document.createElement('button');
         del.type = 'button';
@@ -2182,6 +2178,7 @@ if (t.id === "SavingsAccelerator") {
 
         row.append(grid, drawer);
         allocationContainer.appendChild(row);
+        fitSingleLineControlText(name, { minSize: 10, maxSize: 14, reserve: 12 });
         markNeutral(name);
         markWithSuffix(markNeutral, pct);
         markWithSuffix(markNeutral, amt);
