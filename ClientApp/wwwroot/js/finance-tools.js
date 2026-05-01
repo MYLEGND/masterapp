@@ -1618,32 +1618,32 @@ if (t.id === "SavingsAccelerator") {
     const savingsSubtitle = isBusinessSA
         ? "Pull the business remaining balance from Expense Lens and allocate operating surplus with clarity."
         : "Pull the remaining balance from Expense Lens and optimize how you allocate it for maximum wealth building.";
-    const DEFAULT_SAVINGS_HELPER_TEXT = "Default buckets are built for growth-mode clients, but every percentage can be customized.";
+    const DEFAULT_SAVINGS_HELPER_TEXT = "Default buckets intentionally start at 60% of available savings allocation so 40% remains open for lifestyle flexibility, and every percentage can be customized.";
 
     const getDefaultPersonalSavingsAllocationRows = () => ([
         {
             name: "Emergency Reserve / Cash Buffer",
-            percent: 30,
+            percent: 18,
             description: "Liquid savings for unexpected expenses, income gaps, deductibles, and short-term stability."
         },
         {
             name: "Short-Term Sinking Funds",
-            percent: 15,
+            percent: 9,
             description: "Planned near-term needs like car repairs, travel, gifts, moving costs, deductibles, and annual expenses."
         },
         {
             name: "Mid-Term Opportunity Fund",
-            percent: 20,
+            percent: 12,
             description: "Money set aside for goals within roughly 2–5 years such as a home fund, business launch, education, or major life moves."
         },
         {
             name: "Retirement / Roth IRA / Long-Term Investing",
-            percent: 25,
+            percent: 15,
             description: "Long-term wealth building for retirement accounts, Roth IRA contributions, brokerage investing, or diversified long-term growth."
         },
         {
             name: "Debt Paydown / Wealth Acceleration",
-            percent: 10,
+            percent: 6,
             description: "Extra dollars toward high-interest debt, principal reduction, or intentional wealth-building acceleration."
         }
     ]);
@@ -1651,27 +1651,27 @@ if (t.id === "SavingsAccelerator") {
     const getDefaultBusinessSavingsAllocationRows = () => ([
         {
             name: "Tax Reserve",
-            percent: 30,
+            percent: 18,
             description: "Set aside money for estimated taxes, payroll taxes, sales tax, and year-end tax obligations."
         },
         {
             name: "Operating Reserve",
-            percent: 25,
+            percent: 15,
             description: "Business emergency fund for slow months, delayed receivables, repairs, chargebacks, or unexpected expenses."
         },
         {
             name: "Payroll / Owner Pay Stability",
-            percent: 15,
+            percent: 9,
             description: "Stabilizes owner draws, contractor payments, payroll obligations, and predictable compensation."
         },
         {
             name: "Growth / Marketing Reinvestment",
-            percent: 20,
+            percent: 12,
             description: "Capital for lead generation, marketing, sales tools, branding, technology, and client acquisition."
         },
         {
             name: "Equipment / Systems / Future Expansion",
-            percent: 10,
+            percent: 6,
             description: "Reserved for equipment, software, hiring support, systems, expansion costs, or future business upgrades."
         }
     ]);
@@ -1748,14 +1748,14 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-btn__icon svg{width:16px;height:16px;display:block;}
         .savings-illustration-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.8);backdrop-filter:blur(10px);z-index:2147483000;}
         .savings-illustration-backdrop.is-open{display:flex;}
-        .savings-illustration-modal{width:min(1460px,96vw);max-height:min(92vh,940px);overflow:auto;border-radius:28px;border:1px solid rgba(214,176,90,.34);background:radial-gradient(1400px 520px at 0% 0%,rgba(166,128,35,.14),transparent 52%),linear-gradient(180deg,rgba(5,13,28,.995),rgba(10,22,44,.99));box-shadow:0 46px 120px rgba(0,0,0,.58);padding:16px 16px 14px;}
-        .savings-illustration-modal-head{display:grid;grid-template-columns:minmax(300px,.92fr) minmax(420px,1.2fr) auto;align-items:start;gap:14px;padding-bottom:12px;border-bottom:1px solid rgba(214,176,90,.18);}
+        .savings-illustration-modal{width:min(1460px,96vw);height:min(92vh,940px);max-height:min(92vh,940px);overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto;border-radius:28px;border:1px solid rgba(214,176,90,.34);background:radial-gradient(1400px 520px at 0% 0%,rgba(166,128,35,.14),transparent 52%),linear-gradient(180deg,rgba(5,13,28,.995),rgba(10,22,44,.99));box-shadow:0 46px 120px rgba(0,0,0,.58);padding:14px 14px 12px;}
+        .savings-illustration-modal-head{display:grid;grid-template-columns:minmax(300px,.92fr) minmax(420px,1.2fr) auto;align-items:start;gap:12px;padding-bottom:10px;border-bottom:1px solid rgba(214,176,90,.18);}
         .savings-illustration-modal-copy{min-width:0;}
         .savings-illustration-modal-copy h4{margin:0;color:#f8fafc;font-size:1.05rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;}
         .savings-illustration-modal-copy p{margin:8px 0 0;color:#d2d7e1;font-size:.82rem;line-height:1.32;max-width:460px;}
-        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:rgba(166,128,35,.12);border:1px solid rgba(214,176,90,.34);color:#f4d06f;font-size:.54rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:12px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-summary-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;min-height:92px;border-radius:20px;border:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(14,25,45,.92),rgba(9,18,36,.94));overflow:hidden;align-self:start;}
-        .savings-illustration-summary-metric{display:flex;flex-direction:column;justify-content:center;gap:6px;padding:13px 14px;min-width:0;border-left:1px solid rgba(148,163,184,.14);}
+        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;background:rgba(166,128,35,.12);border:1px solid rgba(214,176,90,.34);color:#f4d06f;font-size:.52rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-summary-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;min-height:82px;border-radius:20px;border:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(14,25,45,.92),rgba(9,18,36,.94));overflow:hidden;align-self:start;}
+        .savings-illustration-summary-metric{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:11px 13px;min-width:0;border-left:1px solid rgba(148,163,184,.14);}
         .savings-illustration-summary-metric:first-child{border-left:none;}
         .savings-illustration-summary-metric-label{display:block;color:#94a3b8;font-size:.64rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;line-height:1.15;}
         .savings-illustration-summary-metric-value{display:block;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1768,9 +1768,9 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-close{width:42px;height:42px;border-radius:15px;border:1px solid rgba(214,176,90,.56);background:rgba(11,22,43,.94);color:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
         .savings-illustration-close:hover{background:rgba(18,34,62,.98);border-color:#f1cf82;}
         .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
-        .savings-illustration-content{padding-top:12px;}
-        .savings-illustration-board{position:relative;display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:32px;min-height:0;padding:18px 20px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));}
-        .savings-illustration-left{display:flex;flex-direction:column;justify-content:flex-start;}
+        .savings-illustration-content{padding-top:10px;min-height:0;display:flex;overflow:hidden;}
+        .savings-illustration-board{position:relative;flex:1 1 auto;display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:28px;min-height:0;height:100%;padding:14px 18px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));overflow:hidden;}
+        .savings-illustration-left{display:flex;flex-direction:column;justify-content:flex-start;min-height:0;}
         .savings-illustration-rail{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:100%;}
         .savings-illustration-account-flow{position:relative;width:min(100%,430px);}
         .savings-illustration-rail-link{display:flex;align-items:center;justify-content:center;width:min(100%,430px);height:54px;}
@@ -1788,49 +1788,79 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-node-stack{display:flex;flex-direction:column;gap:8px;width:100%;}
         .savings-illustration-kicker{display:block;color:#f4c95f;font-size:.62rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;}
         .savings-illustration-kicker--expense{color:#ff5f67;}
-        .savings-illustration-card{width:min(100%,430px);padding:16px 18px;border-radius:20px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 22px 46px rgba(0,0,0,.22);}
+        .savings-illustration-card{width:min(100%,430px);padding:15px 17px;border-radius:20px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 22px 46px rgba(0,0,0,.22);}
         .savings-illustration-card--account{margin-top:2px;}
         .savings-illustration-card--expense{border-color:rgba(255,95,103,.84);}
         .savings-illustration-card.is-active{box-shadow:0 24px 52px rgba(0,0,0,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-card__body{display:grid;grid-template-columns:70px minmax(0,1fr);gap:16px;align-items:center;}
-        .savings-illustration-card__icon{width:70px;height:70px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
-        .savings-illustration-card__icon svg{width:34px;height:34px;display:block;}
+        .savings-illustration-card__body{display:grid;grid-template-columns:66px minmax(0,1fr);gap:14px;align-items:center;}
+        .savings-illustration-card__icon{width:66px;height:66px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
+        .savings-illustration-card__icon svg{width:32px;height:32px;display:block;}
         .savings-illustration-card--source .savings-illustration-card__icon,
         .savings-illustration-card--account .savings-illustration-card__icon{color:#f4c95f;background:radial-gradient(circle at 30% 30%,rgba(244,201,95,.14),rgba(244,201,95,.04));}
         .savings-illustration-card--expense .savings-illustration-card__icon{color:#ff6f72;background:radial-gradient(circle at 30% 30%,rgba(255,111,114,.16),rgba(255,111,114,.05));}
-        .savings-illustration-card__copy{display:flex;flex-direction:column;gap:4px;min-width:0;}
-        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:.96rem;font-weight:900;line-height:1.22;}
+        .savings-illustration-card__copy{display:flex;flex-direction:column;gap:3px;min-width:0;}
+        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:.94rem;font-weight:900;line-height:1.2;}
         .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.75rem;font-weight:700;line-height:1.24;}
-        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:1rem;font-weight:900;line-height:1.12;}
+        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:.98rem;font-weight:900;line-height:1.1;}
         .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
-        .savings-illustration-right{display:flex;flex-direction:column;gap:12px;min-width:0;padding-left:28px;}
+        .savings-illustration-right{display:flex;flex-direction:column;gap:10px;min-width:0;padding-left:22px;min-height:0;align-self:stretch;}
         .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:4px;padding-top:0;}
         .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
-        .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.88rem;font-weight:900;}
-        .savings-illustration-surplus-shell{min-height:100%;}
-        .savings-illustration-bucket-list{display:flex;flex-direction:column;gap:12px;padding-left:0;}
-        .savings-illustration-bucket-row{position:relative;min-width:0;}
-        .savings-illustration-bucket-card{min-height:92px;padding:15px 18px 14px;border-radius:18px;border:1px solid rgba(82,224,130,.34);border-left:4px solid rgba(82,224,130,.94);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);}
+        .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;}
+        .savings-illustration-surplus-shell{position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
+        .savings-illustration-bucket-list{position:relative;display:flex;flex:1 1 auto;min-height:100%;flex-direction:column;justify-content:space-between;gap:10px;padding:6px 0 4px;overflow:visible;}
+        .savings-illustration-bucket-list::before{content:"";position:absolute;left:0;top:16px;bottom:40px;width:4px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.94),rgba(82,224,130,.48));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
+        .savings-illustration-bucket-list::after{content:"";position:absolute;left:0;top:16px;width:42px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.94),rgba(82,224,130,.58));}
+        .savings-illustration-bucket-row{position:relative;min-width:0;padding-left:52px;}
+        .savings-illustration-bucket-row::before{content:"";position:absolute;left:0;top:50%;width:36px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.9),rgba(82,224,130,.65));transform:translateY(-50%);}
+        .savings-illustration-bucket-row::after{content:"";position:absolute;left:34px;top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.92);}
+        .savings-illustration-bucket-card{position:relative;min-height:84px;padding:12px 16px 11px;border-radius:18px;border:1px solid rgba(82,224,130,.34);border-left:4px solid rgba(82,224,130,.94);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);overflow:hidden;}
+        .savings-illustration-bucket-card::before{content:"";position:absolute;inset:0 auto 0 0;width:78px;background:linear-gradient(90deg,rgba(82,224,130,.1),rgba(82,224,130,0));pointer-events:none;}
         .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{border-color:rgba(111,241,155,.42);box-shadow:0 22px 44px rgba(0,0,0,.22),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-bucket-card__grid{display:grid;grid-template-columns:68px minmax(220px,1.55fr) minmax(96px,.56fr) minmax(74px,.36fr) minmax(136px,.74fr);gap:14px;align-items:center;min-width:0;}
-        .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
-        .savings-illustration-bucket-card__icon svg{width:31px;height:31px;display:block;}
-        .savings-illustration-bucket-card__main{display:flex;flex-direction:column;gap:3px;min-width:0;}
-        .savings-illustration-bucket-card__title{display:-webkit-box;color:#f8fafc;font-size:.94rem;font-weight:900;line-height:1.2;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.72rem;font-weight:700;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-illustration-bucket-card__grid{position:relative;z-index:1;display:grid;grid-template-columns:58px minmax(220px,1.95fr) minmax(104px,.58fr) minmax(72px,.34fr) minmax(138px,.74fr);gap:12px;align-items:center;min-width:0;}
+        .savings-illustration-bucket-card__icon{width:56px;height:56px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
+        .savings-illustration-bucket-card__icon svg{width:29px;height:29px;display:block;}
+        .savings-illustration-bucket-card__main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+        .savings-illustration-bucket-card__title{display:block;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.14;word-break:break-word;}
+        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.68rem;font-weight:700;line-height:1.14;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .savings-illustration-bucket-card__amount,
-        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:4px;min-width:0;padding-left:14px;border-left:1px solid rgba(148,163,184,.14);}
+        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:3px;min-width:0;padding-left:12px;border-left:1px solid rgba(148,163,184,.14);}
         .savings-illustration-bucket-card__amount-label,
-        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.66rem;font-weight:900;line-height:1.08;}
-        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.94rem;font-weight:900;line-height:1.08;}
-        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.82rem;font-weight:900;line-height:1.08;}
-        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.9rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.62rem;font-weight:900;line-height:1.06;}
+        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.9rem;font-weight:900;line-height:1.05;}
+        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.78rem;font-weight:900;line-height:1.05;}
+        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;line-height:1.05;}
         .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
-        .savings-illustration-footer{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(214,176,90,.18);}
-        .savings-illustration-progress{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;flex-wrap:wrap;}
-        .savings-illustration-progress-dot{width:12px;height:12px;border-radius:999px;background:rgba(148,163,184,.26);border:1px solid rgba(148,163,184,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:8px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-card{min-height:80px;padding:11px 14px 10px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(208px,1.95fr) minmax(96px,.56fr) minmax(66px,.32fr) minmax(128px,.7fr);gap:10px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon{width:52px;height:52px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon svg{width:27px;height:27px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-card__title{font-size:.88rem;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:7px;padding-top:4px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-list::before{bottom:34px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-row{padding-left:48px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-row::before{width:32px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-row::after{left:30px;border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card{min-height:74px;padding:10px 13px 9px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card::before{width:70px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__grid{grid-template-columns:50px minmax(190px,2fr) minmax(90px,.54fr) minmax(60px,.3fr) minmax(116px,.64fr);gap:9px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__icon{width:48px;height:48px;border-radius:14px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__icon svg{width:24px;height:24px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__title{font-size:.84rem;line-height:1.1;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__meta{font-size:.64rem;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount,
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat{padding-left:10px;gap:2px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-label,
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat-label{font-size:.58rem;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-value,
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat-value{font-size:.8rem;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-share{font-size:.72rem;}
+        .savings-illustration-footer{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;margin-top:10px;padding-top:12px;border-top:1px solid rgba(214,176,90,.18);}
+        .savings-illustration-progress{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;flex-wrap:nowrap;}
+        .savings-illustration-progress-dot{width:11px;height:11px;border-radius:999px;background:rgba(148,163,184,.26);border:1px solid rgba(148,163,184,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
         .savings-illustration-progress-dot.is-active{background:#f4c95f;box-shadow:0 0 0 2px rgba(244,201,95,.12),0 0 14px rgba(244,201,95,.35);}
-        .savings-illustration-nav-btn{min-width:112px;min-height:46px;width:auto;padding:0 22px;border-radius:16px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.86rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-nav-btn{min-width:108px;min-height:42px;width:auto;padding:0 20px;border-radius:16px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.82rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
         .savings-illustration-nav-btn:hover:not(:disabled){background:linear-gradient(180deg,rgba(23,41,70,.99),rgba(15,28,50,.98));border-color:#f1cf82;}
         .savings-illustration-nav-btn:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
         .savings-illustration-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -1867,6 +1897,7 @@ if (t.id === "SavingsAccelerator") {
         }
         .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
         .savings-name{text-overflow:ellipsis;}
+        .savings-name[readonly]{background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94))!important;color:#f8fafc!important;border-color:rgba(166,128,35,.3)!important;cursor:default;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
         .savings-start-date{padding-right:12px;}
         .savings-name:focus,.savings-start-date:focus{border-color:#ddb457!important;box-shadow:0 0 0 2px rgba(166,128,35,.2)!important;}
         .legend-money-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
@@ -1882,8 +1913,6 @@ if (t.id === "SavingsAccelerator") {
         .projected-year-end .projected-value{flex:1 1 auto;min-width:0;padding:0 12px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
         .projected-year-end.is-neutral .projected-prefix,
         .projected-year-end.is-neutral .projected-value{color:#0b2a66;}
-        .remove-row{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(166,128,35,.42);border-radius:999px;background:rgba(166,128,35,.08);color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1rem;line-height:1;justify-self:center;align-self:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
-        .remove-row:hover{color:#f2c867;border-color:rgba(199,153,49,.7);background:rgba(166,128,35,.16);}
         .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
         .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
         .sa-alloc-drawer.is-open{display:grid;}
@@ -1891,19 +1920,32 @@ if (t.id === "SavingsAccelerator") {
         @media (max-width: 1260px){
             .savings-illustration-modal-head{grid-template-columns:minmax(260px,.95fr) minmax(320px,1.2fr) auto;}
             .savings-illustration-summary-bar{grid-template-columns:repeat(3,minmax(0,1fr));}
-            .savings-illustration-board{grid-template-columns:minmax(300px,.88fr) minmax(440px,1.18fr);gap:24px;}
-            .savings-illustration-right{padding-left:18px;}
+            .savings-illustration-board{grid-template-columns:minmax(300px,.88fr) minmax(440px,1.18fr);gap:22px;}
+            .savings-illustration-right{padding-left:14px;}
             .savings-illustration-transfer-arrow{left:calc(100% + 12px);width:64px;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:64px minmax(180px,1.42fr) minmax(86px,.5fr) minmax(68px,.34fr) minmax(120px,.64fr);}
+            .savings-illustration-bucket-list::after{width:38px;}
+            .savings-illustration-bucket-row{padding-left:48px;}
+            .savings-illustration-bucket-row::before{width:32px;}
+            .savings-illustration-bucket-row::after{left:30px;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(176px,1.52fr) minmax(88px,.52fr) minmax(64px,.32fr) minmax(118px,.64fr);}
         }
         @media (max-width: 980px){
+            .savings-illustration-modal{height:auto;max-height:90vh;overflow:auto;display:block;}
+            .savings-illustration-content{display:block;overflow:visible;}
             .savings-illustration-modal-head{grid-template-columns:1fr auto;}
             .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
             .savings-illustration-board{grid-template-columns:1fr;gap:16px;min-height:0;}
             .savings-illustration-right{padding-left:0;}
+            .savings-illustration-surplus-shell{display:block;height:auto;}
             .savings-illustration-transfer-arrow{display:none;}
             .savings-illustration-transfer-arrow-mobile{display:flex;align-items:center;justify-content:center;height:42px;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:64px minmax(0,1.3fr) minmax(84px,.48fr) minmax(64px,.3fr) minmax(112px,.58fr);}
+            .savings-illustration-bucket-list{min-height:0;justify-content:flex-start;gap:10px;}
+            .savings-illustration-bucket-list::before{top:16px;bottom:44px;}
+            .savings-illustration-bucket-list::after{top:16px;width:38px;}
+            .savings-illustration-bucket-row{padding-left:50px;}
+            .savings-illustration-bucket-row::before{width:34px;}
+            .savings-illustration-bucket-row::after{left:32px;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:68px minmax(0,1.34fr) minmax(92px,.52fr) minmax(70px,.34fr) minmax(120px,.62fr);}
         }
         @media (max-width: 760px){
             .savings-accelerator-actions{width:100%;justify-content:flex-start;}
@@ -1914,7 +1956,6 @@ if (t.id === "SavingsAccelerator") {
             .savings-name{grid-column:1 / -1;}
             .savings-start-date{grid-column:span 1;}
             .projected-year-end{grid-column:span 1;}
-            .remove-row{justify-self:end;}
             .sa-alloc-drawer{grid-template-columns:1fr;}
             .savings-illustration-backdrop{padding:10px;}
             .savings-illustration-modal{padding:14px 12px 12px;max-height:90vh;}
@@ -1933,7 +1974,12 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-account-flow{width:100%;}
             .savings-illustration-rail-link{width:100%;}
             .savings-illustration-transfer-arrow-mobile{height:38px;}
-            .savings-illustration-bucket-card{padding:14px 14px 12px;}
+            .savings-illustration-bucket-list::before{top:14px;bottom:40px;}
+            .savings-illustration-bucket-list::after{top:14px;width:32px;}
+            .savings-illustration-bucket-row{padding-left:42px;}
+            .savings-illustration-bucket-row::before{width:26px;}
+            .savings-illustration-bucket-row::after{left:24px;border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
+            .savings-illustration-bucket-card{min-height:90px;padding:14px 14px 12px;}
             .savings-illustration-bucket-card__grid{grid-template-columns:1fr;gap:12px;}
             .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;}
             .savings-illustration-bucket-card__icon svg{width:32px;height:32px;}
@@ -1988,7 +2034,7 @@ if (t.id === "SavingsAccelerator") {
                     <span>Alloc $</span>
                     <span>APR %</span>
                     <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
-                    <span class="savings-row-header__action">Edit</span>
+                    <span class="savings-row-header__action">Details</span>
                 `
                 : `
                     <span>Bucket Name</span>
@@ -2001,10 +2047,6 @@ if (t.id === "SavingsAccelerator") {
                 `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
-        <div class="d-flex gap-2 mt-3">
-            <button id="${pid('AddCat')}" class="btn btn-outline-gold" style="font-weight:600;">+ Add Category</button>
-            <button id="${pid('DelCat')}" class="btn btn-outline-gold" style="font-weight:600;">- Delete Last</button>
-        </div>
     </div>
     <div id="${pid('Tips')}"
          style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
@@ -2036,8 +2078,6 @@ if (t.id === "SavingsAccelerator") {
     const saAllocationInput = document.getElementById(pid('Allocation'));
     const saTips = document.getElementById(pid('Tips'));
     const allocationContainer = document.getElementById(pid('AllocContainer'));
-    const addBtn = document.getElementById(pid('AddCat'));
-    const delBtn = document.getElementById(pid('DelCat'));
     const saPctTotal = document.getElementById(pid('PctTotal'));
     const saRemaining = document.getElementById(pid('Remaining'));
     const actionRow = document.getElementById(pid('ActionRow'));
@@ -2158,53 +2198,52 @@ if (t.id === "SavingsAccelerator") {
         if (kind === 'source') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M4 20h16M6 20V8l6-4 6 4v12M9 10h.01M15 10h.01M9 14h.01M15 14h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M4.5 20h15M7 20V7.5L12 4l5 3.5V20M9.2 10h.01M14.8 10h.01M9.2 14h.01M14.8 14h.01M11 20v-3h2v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'account') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 9.5 12 5l9 4.5M5 11h14M6 11v7M10 11v7M14 11v7M18 11v7M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 8.8 12 4l9 4.8M4.5 10.5h15M6.2 10.5v6.8M10.1 10.5v6.8M13.9 10.5v6.8M17.8 10.5v6.8M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'expense') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M7 4h10v16l-2-1.5L13 20l-2-1.5L9 20l-2-1.5L5 20V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M9 9h6M9 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-                    <path d="M14 15.5c.8 0 1.5-.56 1.5-1.25S14.8 13 14 13s-1.5.56-1.5 1.25S13.2 15.5 14 15.5Zm0 0v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                    <path d="M12 7.8v8.4M14.35 9.85c0-1.02-.96-1.85-2.15-1.85s-2.15.83-2.15 1.85.96 1.85 2.15 1.85 2.15.83 2.15 1.85-.96 1.85-2.15 1.85-2.15-.83-2.15-1.85" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'surplus' || kind === 'bucket-growth') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M5 17v-4M10 17V9M15 17v-6M19 7v10M6 9l4-3 4 2 5-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M17 4h4v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 18v-5M10 18v-8M15 18v-4M19 18V7M5.5 10.2 10 6.8l4.1 2.7L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M16.2 5H19v2.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-protection') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M12 3 19 6v5c0 4.5-2.8 7.7-7 10-4.2-2.3-7-5.5-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="m9.5 12.5 1.8 1.8 3.2-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 8.6v6.8M8.6 12h6.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-short') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M6.5 15h11l-1-3.8a2 2 0 0 0-1.94-1.5H9.44a2 2 0 0 0-1.94 1.5L6.5 15Zm0 0H5.4a1.4 1.4 0 0 0-1.4 1.4V18h1.5m12-3h1.1A1.4 1.4 0 0 1 20 16.4V18h-1.5M8 18a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM9 9 8 7m8 2 1-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8.1 10.2c1.1-1.45 3-2.35 5.2-2.35 3.56 0 6.45 2.3 6.45 5.12 0 1.04-.4 2.01-1.1 2.82l1.05 1.44h-2.44a9 9 0 0 1-2.66.39H9.6l-.64 1.87H7.25l.57-2.09c-1.34-.86-2.12-2.13-2.12-3.58 0-1.3.63-2.47 1.67-3.32Zm2.6 1.2h.01M16.2 11.35h.01M13.05 9.1h2.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-retirement') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 11.8a4.1 4.1 0 1 0 0-8.2 4.1 4.1 0 0 0 0 8.2ZM5.2 20a6.8 6.8 0 0 1 13.6 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-debt') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M5 16a7 7 0 1 1 14 0M5 16h14M12 16l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 16a7 7 0 1 1 14 0M5 16h14M12 16l4.1-4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                     <circle cx="12" cy="16" r="1.2" fill="currentColor"/>
                 </svg>`;
         }
@@ -2219,9 +2258,9 @@ if (t.id === "SavingsAccelerator") {
         const normalized = String(name || '').toLowerCase();
         if (/(emergency|reserve|protect|protection|safety|buffer)/.test(normalized)) return 'bucket-protection';
         if (/(sinking|car|vehicle|travel|vacation|home|repair|medical|short)/.test(normalized)) return 'bucket-short';
-        if (/(growth|opportun|wealth|mid|invest|brokerage|education)/.test(normalized)) return 'bucket-growth';
         if (/(retire|roth|ira|401|long.?term)/.test(normalized)) return 'bucket-retirement';
         if (/(debt|loan|paydown|credit|acceler)/.test(normalized)) return 'bucket-debt';
+        if (/(growth|opportun|wealth|mid|invest|brokerage|education)/.test(normalized)) return 'bucket-growth';
         return 'bucket-generic';
     };
 
@@ -2604,8 +2643,14 @@ if (t.id === "SavingsAccelerator") {
                 savingsIllustrationStepIndex
             );
         }
+        const boardDensityClass = visibleBuckets.length >= 5
+            ? ' is-dense'
+            : visibleBuckets.length >= 4
+                ? ' is-compact'
+                : '';
+
         illustrationContent.innerHTML = `
-            <div class="savings-illustration-board" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
+            <div class="savings-illustration-board${boardDensityClass}" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
                 <div class="savings-illustration-left">
                     <div class="savings-illustration-rail">
                         ${sourceCard}
@@ -2736,27 +2781,48 @@ if (t.id === "SavingsAccelerator") {
         });
     };
 
+    const normalizeSavingsAllocationTemplateKey = (value) => String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, ' ')
+        .trim();
+
+    const buildSavingsAllocationTemplateRows = (savedRows) => {
+        const defaults = getDefaultSavingsAllocationRows();
+        const normalizedSavedRows = Array.isArray(savedRows) ? savedRows : [];
+
+        return defaults.map((allocation, index) => {
+            const matchedSavedRow = normalizedSavedRows[index]
+                || normalizedSavedRows.find((row) => (
+                    normalizeSavingsAllocationTemplateKey(row?.name)
+                    === normalizeSavingsAllocationTemplateKey(allocation.name)
+                ))
+                || {};
+
+            return {
+                name: allocation.name,
+                percent: matchedSavedRow.percent ?? allocation.percent,
+                description: allocation.description,
+                isTemplate: true,
+                aprPercent: matchedSavedRow.aprPercent || '',
+                allocationStartDate: matchedSavedRow.allocationStartDate || todayIsoDate(),
+                startingBalance: matchedSavedRow.startingBalance || ''
+            };
+        });
+    };
+
     const loadAllocationState = async () => {
         allocationContainer.innerHTML = '';
         categoryCount = 0;
 
         const state = await loadPersistedState(saStateId);
 
-        if (hasMeaningfulSavingsAllocationRows(state?.allocations)) {
-            (state.allocations || []).forEach(a => {
-                createAllocationRow(++categoryCount, {
-                    name: a.name,
-                    percent: a.percent,
-                    description: a.description || '',
-                    isTemplate: false,
-                    aprPercent: a.aprPercent || '',
-                    allocationStartDate: a.allocationStartDate || '',
-                    startingBalance: a.startingBalance || ''
-                });
-            });
-        } else {
-            injectDefaultSavingsAllocationRows();
-        }
+        const rowsToRender = hasMeaningfulSavingsAllocationRows(state?.allocations)
+            ? buildSavingsAllocationTemplateRows(state.allocations)
+            : buildSavingsAllocationTemplateRows();
+
+        rowsToRender.forEach((allocation) => {
+            createAllocationRow(++categoryCount, allocation);
+        });
 
         refreshSurplus();
     };
@@ -2802,14 +2868,16 @@ if (t.id === "SavingsAccelerator") {
 
         const name = document.createElement('input');
         name.className = 'sa-alloc-name savings-name';
-        name.placeholder = 'Bucket Name';
         name.value = preName;
+        name.readOnly = true;
+        name.tabIndex = -1;
+        name.setAttribute('aria-readonly', 'true');
         name.title = description || '';
-        name.addEventListener('input', saveAllocationState);
 
         const amt = document.createElement('input');
         amt.className = 'sa-alloc-amount legend-money-field allocation-amount';
         amt.readOnly = true;
+        amt.tabIndex = -1;
         amt.placeholder = '0';
         const amtWrap = makeSaMoney(amt);
 
@@ -2851,13 +2919,6 @@ if (t.id === "SavingsAccelerator") {
         projectedValue.textContent = '0';
         projectedDiv.append(projectedPrefix, projectedValue);
 
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'remove-row';
-        del.textContent = '×';
-        del.title = 'Remove bucket';
-        del.onclick = () => { allocationContainer.removeChild(row); refreshSurplus(); };
-
         const drawer = document.createElement('div');
         drawer.className = 'sa-alloc-drawer';
         const note = document.createElement('div');
@@ -2868,14 +2929,11 @@ if (t.id === "SavingsAccelerator") {
             const editBtn = document.createElement('button');
             editBtn.type = 'button';
             editBtn.className = 'sa-alloc-toggle';
-            const syncLabel = () => { editBtn.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Edit'; };
+            const syncLabel = () => { editBtn.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Details'; };
             editBtn.addEventListener('click', () => { drawer.classList.toggle('is-open'); syncLabel(); });
             syncLabel();
             grid.append(name, pctWrap, amtWrap, aprWrap, projectedDiv, editBtn);
-            const delRow = document.createElement('div');
-            delRow.style.cssText = 'display:flex;justify-content:flex-end;align-items:center;grid-column:1/-1;';
-            delRow.appendChild(del);
-            drawer.append(startDate, startingWrap, note, delRow);
+            drawer.append(startDate, startingWrap, note);
             fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
             fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 18 });
             fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 18 });
@@ -3017,12 +3075,6 @@ if (t.id === "SavingsAccelerator") {
             closeSavingsIllustration();
         }
     });
-
-    addBtn.onclick = () => { createAllocationRow(++categoryCount); refreshSurplus(); };
-    delBtn.onclick = () => {
-        const last = allocationContainer.lastElementChild;
-        if (last) { allocationContainer.removeChild(last); refreshSurplus(); }
-    };
 
     addClearButton(container, () => {
         allocationContainer.innerHTML = '';
