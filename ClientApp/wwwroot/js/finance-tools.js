@@ -1741,7 +1741,7 @@ if (t.id === "SavingsAccelerator") {
         .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
         .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
-        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
+        .projected-year-end{justify-self:stretch;}
         .projected-year-end .projected-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;line-height:1;pointer-events:none;user-select:none;color:#2f8f55;}
         .projected-year-end .projected-value{flex:1 1 auto;min-width:0;padding:0 12px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
         .projected-year-end.is-neutral .projected-prefix,
@@ -2160,7 +2160,7 @@ if (t.id === "SavingsAccelerator") {
         const startingWrap = makeSaMoney(startingBalanceInput);
 
         const projectedDiv = document.createElement('div');
-        projectedDiv.className = 'projected-year-end sa-alloc-projected';
+        projectedDiv.className = 'legend-money-input projected-year-end sa-alloc-projected';
         const projectedPrefix = document.createElement('span');
         projectedPrefix.className = 'projected-prefix';
         projectedPrefix.textContent = '$';
