@@ -1808,9 +1808,9 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
         .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;}
         .savings-illustration-surplus-shell{position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
-        .savings-illustration-bucket-list{position:relative;display:flex;flex:1 1 auto;min-height:100%;flex-direction:column;justify-content:space-between;gap:10px;padding:6px 0 4px;overflow:visible;}
+        .savings-illustration-bucket-list{position:relative;display:flex;flex:1 1 auto;min-height:0;flex-direction:column;justify-content:flex-start;gap:14px;padding:6px 0 4px;overflow:visible;}
         .savings-illustration-bucket-list::before{content:"";position:absolute;left:0;top:16px;bottom:40px;width:4px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.94),rgba(82,224,130,.48));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
-        .savings-illustration-bucket-list::after{content:"";position:absolute;left:0;top:16px;width:42px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.94),rgba(82,224,130,.58));}
+        .savings-illustration-bucket-list::after{content:none;}
         .savings-illustration-bucket-row{position:relative;min-width:0;padding-left:52px;}
         .savings-illustration-bucket-row::before{content:"";position:absolute;left:0;top:50%;width:36px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.9),rgba(82,224,130,.65));transform:translateY(-50%);}
         .savings-illustration-bucket-row::after{content:"";position:absolute;left:34px;top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.92);}
@@ -1831,13 +1831,13 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.78rem;font-weight:900;line-height:1.05;}
         .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;line-height:1.05;}
         .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:8px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:12px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card{min-height:80px;padding:11px 14px 10px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(208px,1.95fr) minmax(96px,.56fr) minmax(66px,.32fr) minmax(128px,.7fr);gap:10px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon{width:52px;height:52px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon svg{width:27px;height:27px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__title{font-size:.88rem;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:7px;padding-top:4px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:10px;padding-top:4px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-list::before{bottom:34px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-row{padding-left:48px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-row::before{width:32px;}
@@ -1941,7 +1941,6 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-transfer-arrow-mobile{display:flex;align-items:center;justify-content:center;height:42px;}
             .savings-illustration-bucket-list{min-height:0;justify-content:flex-start;gap:10px;}
             .savings-illustration-bucket-list::before{top:16px;bottom:44px;}
-            .savings-illustration-bucket-list::after{top:16px;width:38px;}
             .savings-illustration-bucket-row{padding-left:50px;}
             .savings-illustration-bucket-row::before{width:34px;}
             .savings-illustration-bucket-row::after{left:32px;}
@@ -2198,53 +2197,56 @@ if (t.id === "SavingsAccelerator") {
         if (kind === 'source') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M4.5 20h15M7 20V7.5L12 4l5 3.5V20M9.2 10h.01M14.8 10h.01M9.2 14h.01M14.8 14h.01M11 20v-3h2v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 20h12M8 20V8.2L12 5l4 3.2V20M7.2 8.8H16.8M9.7 10.9h.01M14.3 10.9h.01M9.7 14.5h.01M14.3 14.5h.01M11 20v-3.1h2V20" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'account') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 8.8 12 4l9 4.8M4.5 10.5h15M6.2 10.5v6.8M10.1 10.5v6.8M13.9 10.5v6.8M17.8 10.5v6.8M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3.5 9.2 12 5l8.5 4.2M5 10.6h14M6.5 18.2v-5.9M10.2 18.2v-5.9M13.8 18.2v-5.9M17.5 18.2v-5.9M4.5 20h15" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'expense') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M7 4h10v16l-2-1.5L13 20l-2-1.5L9 20l-2-1.5L5 20V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M12 7.8v8.4M14.35 9.85c0-1.02-.96-1.85-2.15-1.85s-2.15.83-2.15 1.85.96 1.85 2.15 1.85 2.15.83 2.15 1.85-.96 1.85-2.15 1.85-2.15-.83-2.15-1.85" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 4.5h8v14.2l-1.8-1.3-2 1.4-2-1.4-2 1.4-1.7-1.3V6.3A1.8 1.8 0 0 1 8 4.5Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 7.2v8.3M14.3 9.1c0-.9-.9-1.6-2-1.6s-2 .7-2 1.6.9 1.6 2 1.6 2 .8 2 1.8-.9 1.6-2 1.6-2-.7-2-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'surplus' || kind === 'bucket-growth') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M5 18v-5M10 18v-8M15 18v-4M19 18V7M5.5 10.2 10 6.8l4.1 2.7L19 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M16.2 5H19v2.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5.2 18v-4.9M10 18v-7.5M14.8 18v-5.5M19 18V8M5.8 10.7 10 7.4l3.8 2.5L18.9 5" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M16.2 5H19v2.8" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-protection') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 3 19 6v5c0 4.5-2.8 7.7-7 10-4.2-2.3-7-5.5-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M12 8.6v6.8M8.6 12h6.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 3.7 18.7 6.6v4.8c0 4.1-2.5 7.1-6.7 9.4-4.2-2.3-6.7-5.3-6.7-9.4V6.6L12 3.7Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 8.6v5.8M9.1 11.5h5.8" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-short') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8.1 10.2c1.1-1.45 3-2.35 5.2-2.35 3.56 0 6.45 2.3 6.45 5.12 0 1.04-.4 2.01-1.1 2.82l1.05 1.44h-2.44a9 9 0 0 1-2.66.39H9.6l-.64 1.87H7.25l.57-2.09c-1.34-.86-2.12-2.13-2.12-3.58 0-1.3.63-2.47 1.67-3.32Zm2.6 1.2h.01M16.2 11.35h.01M13.05 9.1h2.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8.3 10.2c1.1-1.7 3-2.7 5.4-2.7 3.3 0 6 2 6 4.8 0 1-.4 1.9-1.1 2.7l.9 1.6h-2.3l-.4 1.5h-1.7l-.4-1.1h-3.6c-3.4 0-6.1-1.9-6.1-4.6 0-1.7 1-3.1 2.7-4" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9.3 18v1.5M16.1 18v1.5M10.3 9h2.4M16.5 11.3h.01" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-retirement') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M12 11.8a4.1 4.1 0 1 0 0-8.2 4.1 4.1 0 0 0 0 8.2ZM5.2 20a6.8 6.8 0 0 1 13.6 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 11a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6.2 20v-1.1c0-2.8 2.6-5 5.8-5s5.8 2.2 5.8 5V20M8.7 20c.1-1.5 1.5-2.7 3.3-2.7 1.8 0 3.2 1.2 3.3 2.7" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-debt') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M5 16a7 7 0 1 1 14 0M5 16h14M12 16l4.1-4.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <circle cx="12" cy="16" r="1.2" fill="currentColor"/>
+                    <path d="M5 16.3a7 7 0 1 1 14 0M6.1 16.3h11.8M12 16.3l3.7-3.8" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9 10.1h.01M15 10.1h.01" stroke="currentColor" stroke-width="1.95" stroke-linecap="round"/>
+                    <circle cx="12" cy="16.3" r="1.15" fill="currentColor"/>
                 </svg>`;
         }
         return `
@@ -2488,15 +2490,6 @@ if (t.id === "SavingsAccelerator") {
                 activeBucketIndex: -1
             },
             {
-                kind: 'expense',
-                header: 'Your lifestyle costs come out first',
-                accountLabel,
-                expensesLabel,
-                totalExpenses,
-                visibleBucketCount: 0,
-                activeBucketIndex: -1
-            },
-            {
                 kind: 'surplus',
                 header: 'Your remaining cashflow becomes the opportunity',
                 accountLabel,
@@ -2559,7 +2552,7 @@ if (t.id === "SavingsAccelerator") {
         const stepCountText = `STEP ${savingsIllustrationStepIndex + 1} OF ${savingsIllustrationData.steps.length}`;
         const money = formatSavingsMoneyText;
         const stepHasAccount = step.kind !== 'origin';
-        const stepHasExpenses = ['expense', 'surplus', 'bucket', 'summary'].includes(step.kind);
+        const stepHasExpenses = ['surplus', 'bucket', 'summary'].includes(step.kind);
         const stepHasSurplus = ['surplus', 'bucket', 'summary'].includes(step.kind);
         const visibleBuckets = savingsIllustrationData.rows.slice(0, step.visibleBucketCount || 0);
         const sourceParts = String(step.sourceLabel || savingsIllustrationData.steps[0]?.sourceLabel || '')
@@ -2579,7 +2572,7 @@ if (t.id === "SavingsAccelerator") {
                 label: 'Expenses',
                 value: money(savingsIllustrationData.totalExpenses),
                 tone: 'expense',
-                active: step.kind === 'expense'
+                active: step.kind === 'surplus' && !visibleBuckets.length
             }),
             buildSavingsIllustrationSummaryMetric({
                 label: 'Available',
@@ -2627,7 +2620,7 @@ if (t.id === "SavingsAccelerator") {
                 value: money(savingsIllustrationData.totalExpenses),
                 tone: 'expense',
                 icon: 'expense',
-                active: step.kind === 'expense'
+                active: step.kind === 'surplus' && !visibleBuckets.length
             })
             : '';
         const bucketRows = visibleBuckets.map((bucket) => buildSavingsIllustrationBucketCard({
