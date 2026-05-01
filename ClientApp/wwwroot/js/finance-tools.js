@@ -2166,7 +2166,7 @@ if (t.id === "SavingsAccelerator") {
         projectedPrefix.textContent = '$';
         const projectedValue = document.createElement('strong');
         projectedValue.className = 'projected-value';
-        projectedValue.textContent = '$0';
+        projectedValue.textContent = '0';
         projectedDiv.append(projectedPrefix, projectedValue);
 
         const del = document.createElement('button');
