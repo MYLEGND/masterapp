@@ -50,9 +50,19 @@ namespace ClientApp.Controllers
         public async Task<IActionResult> Index()
         {
             var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-            if (context == null) return Forbid();
 
             ViewData["Title"] = "Finance";
+            if (context == null)
+            {
+                ViewBag.ClientProfileId = null;
+                ViewBag.ClientUserId = "";
+                ViewBag.IsBusinessClient = false;
+                ViewBag.ClientFirstName = "";
+                ViewBag.SpouseFirstName = "";
+                ViewBag.HasSpouse = false;
+                return View();
+            }
+
             ViewBag.ClientProfileId = context.ClientProfileId;
             ViewBag.ClientUserId = context.ClientUserId;
             ViewBag.IsBusinessClient = IsBusinessClient(context.Profile.CrmNotes);
