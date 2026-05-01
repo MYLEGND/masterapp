@@ -5879,9 +5879,9 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-rail-link--expense .savings-illustration-rail-link-line{background:linear-gradient(180deg,rgba(255,107,107,.98),rgba(255,107,107,.34));}
         .savings-illustration-rail-link-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:10px solid transparent;border-right:10px solid transparent;border-top:15px solid rgba(214,176,90,.98);}
         .savings-illustration-rail-link--expense .savings-illustration-rail-link-line::after{border-top-color:rgba(255,107,107,.98);}
-        .savings-illustration-transfer-arrow{position:absolute;left:calc(100% + 18px);top:50%;width:88px;height:18px;transform:translateY(-50%);display:flex;align-items:center;pointer-events:none;}
-        .savings-illustration-transfer-arrow-line{position:relative;width:100%;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.98),rgba(82,224,130,.54));}
-        .savings-illustration-transfer-arrow-line::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:10px solid transparent;border-bottom:10px solid transparent;border-left:16px solid rgba(82,224,130,.98);}
+        .savings-illustration-transfer-arrow{position:absolute;left:calc(100% + 16px);top:50%;width:82px;height:18px;transform:translateY(-50%);display:flex;align-items:center;pointer-events:none;}
+        .savings-illustration-transfer-arrow-line{position:relative;width:100%;height:3px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.98),rgba(82,224,130,.62));}
+        .savings-illustration-transfer-arrow-line::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:17px solid rgba(82,224,130,.98);}
         .savings-illustration-transfer-arrow-mobile{display:none;}
         .savings-illustration-transfer-arrow-mobile-line{position:relative;width:4px;height:34px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.98),rgba(82,224,130,.54));}
         .savings-illustration-transfer-arrow-mobile-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:9px solid transparent;border-right:9px solid transparent;border-top:13px solid rgba(82,224,130,.98);}
@@ -5903,17 +5903,19 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.75rem;font-weight:700;line-height:1.24;}
         .savings-illustration-card__value{display:block;color:#55dd7c;font-size:.98rem;font-weight:900;line-height:1.1;}
         .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
-        .savings-illustration-right{display:flex;flex-direction:column;gap:10px;min-width:0;padding-left:22px;min-height:0;align-self:stretch;}
+        .savings-illustration-right{display:flex;flex-direction:column;gap:10px;min-width:0;padding-left:18px;min-height:0;align-self:stretch;}
         .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:4px;padding-top:0;}
         .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
         .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;}
-        .savings-illustration-surplus-shell{position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
-        .savings-illustration-bucket-list{position:relative;display:flex;flex:1 1 auto;min-height:0;flex-direction:column;justify-content:flex-start;gap:14px;padding:6px 0 4px;overflow:visible;}
-        .savings-illustration-bucket-list::before{content:"";position:absolute;left:0;top:16px;bottom:40px;width:4px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.94),rgba(82,224,130,.48));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
-        .savings-illustration-bucket-list::after{content:none;}
-        .savings-illustration-bucket-row{position:relative;min-width:0;padding-left:52px;}
-        .savings-illustration-bucket-row::before{content:"";position:absolute;left:0;top:50%;width:36px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.9),rgba(82,224,130,.65));transform:translateY(-50%);}
-        .savings-illustration-bucket-row::after{content:"";position:absolute;left:34px;top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.92);}
+        .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:48px;--surplus-branch-width:36px;--surplus-stroke:4px;position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
+        .savings-illustration-bucket-list{position:relative;display:flex;flex:0 0 auto;align-self:flex-start;width:100%;min-height:0;flex-direction:column;justify-content:flex-start;gap:14px;padding:24px 0 2px;overflow:visible;}
+        .savings-illustration-bucket-list.has-buckets::before{content:"";position:absolute;left:var(--surplus-spine-left);top:0;width:var(--surplus-hook-width);height:var(--surplus-stroke);border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.96),rgba(82,224,130,.58));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
+        .savings-illustration-bucket-list.has-buckets::after{content:"";position:absolute;left:var(--surplus-spine-left);top:2px;bottom:42px;width:var(--surplus-stroke);border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.94),rgba(82,224,130,.5));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
+        .savings-illustration-bucket-list.is-empty{min-height:72px;padding-top:0;}
+        .savings-illustration-surplus-shell.is-complete-flow .savings-illustration-bucket-list{flex:1 1 auto;justify-content:space-between;min-height:0;}
+        .savings-illustration-bucket-row{position:relative;min-width:0;padding-left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) + 14px);}
+        .savings-illustration-bucket-row::before{content:"";position:absolute;left:var(--surplus-spine-left);top:50%;width:var(--surplus-branch-width);height:var(--surplus-stroke);border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.96),rgba(82,224,130,.66));transform:translateY(-50%);}
+        .savings-illustration-bucket-row::after{content:"";position:absolute;left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) - 1px);top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.94);}
         .savings-illustration-bucket-card{position:relative;min-height:84px;padding:12px 16px 11px;border-radius:18px;border:1px solid rgba(82,224,130,.34);border-left:4px solid rgba(82,224,130,.94);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);overflow:hidden;}
         .savings-illustration-bucket-card::before{content:"";position:absolute;inset:0 auto 0 0;width:78px;background:linear-gradient(90deg,rgba(82,224,130,.1),rgba(82,224,130,0));pointer-events:none;}
         .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{border-color:rgba(111,241,155,.42);box-shadow:0 22px 44px rgba(0,0,0,.22),0 0 0 1px rgba(255,255,255,.05) inset;}
@@ -5931,17 +5933,18 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.78rem;font-weight:900;line-height:1.05;}
         .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;line-height:1.05;}
         .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:12px;}
+        .savings-illustration-board.is-compact .savings-illustration-surplus-shell{--surplus-hook-width:44px;--surplus-branch-width:34px;}
+        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:12px;padding-top:22px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card{min-height:80px;padding:11px 14px 10px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(208px,1.95fr) minmax(96px,.56fr) minmax(66px,.32fr) minmax(128px,.7fr);gap:10px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon{width:52px;height:52px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon svg{width:27px;height:27px;}
         .savings-illustration-board.is-compact .savings-illustration-bucket-card__title{font-size:.88rem;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:10px;padding-top:4px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-list::before{bottom:34px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-row{padding-left:48px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-row::before{width:32px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-row::after{left:30px;border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
+        .savings-illustration-board.is-dense .savings-illustration-surplus-shell{--surplus-spine-left:12px;--surplus-hook-width:38px;--surplus-branch-width:30px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:10px;padding-top:18px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-list.has-buckets::after{bottom:34px;}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-row{padding-left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) + 10px);}
+        .savings-illustration-board.is-dense .savings-illustration-bucket-row::after{border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-card{min-height:74px;padding:10px 13px 9px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-card::before{width:70px;}
         .savings-illustration-board.is-dense .savings-illustration-bucket-card__grid{grid-template-columns:50px minmax(190px,2fr) minmax(90px,.54fr) minmax(60px,.3fr) minmax(116px,.64fr);gap:9px;}
@@ -6021,12 +6024,9 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-modal-head{grid-template-columns:minmax(260px,.95fr) minmax(320px,1.2fr) auto;}
             .savings-illustration-summary-bar{grid-template-columns:repeat(3,minmax(0,1fr));}
             .savings-illustration-board{grid-template-columns:minmax(300px,.88fr) minmax(440px,1.18fr);gap:22px;}
-            .savings-illustration-right{padding-left:14px;}
-            .savings-illustration-transfer-arrow{left:calc(100% + 12px);width:64px;}
-            .savings-illustration-bucket-list::after{width:38px;}
-            .savings-illustration-bucket-row{padding-left:48px;}
-            .savings-illustration-bucket-row::before{width:32px;}
-            .savings-illustration-bucket-row::after{left:30px;}
+            .savings-illustration-right{padding-left:12px;}
+            .savings-illustration-surplus-shell{--surplus-spine-left:12px;--surplus-hook-width:42px;--surplus-branch-width:32px;}
+            .savings-illustration-transfer-arrow{left:calc(100% + 12px);width:70px;}
             .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(176px,1.52fr) minmax(88px,.52fr) minmax(64px,.32fr) minmax(118px,.64fr);}
         }
         @media (max-width: 980px){
@@ -6036,14 +6036,12 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
             .savings-illustration-board{grid-template-columns:1fr;gap:16px;min-height:0;}
             .savings-illustration-right{padding-left:0;}
+            .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:40px;--surplus-branch-width:32px;}
             .savings-illustration-surplus-shell{display:block;height:auto;}
             .savings-illustration-transfer-arrow{display:none;}
             .savings-illustration-transfer-arrow-mobile{display:flex;align-items:center;justify-content:center;height:42px;}
-            .savings-illustration-bucket-list{min-height:0;justify-content:flex-start;gap:10px;}
-            .savings-illustration-bucket-list::before{top:16px;bottom:44px;}
-            .savings-illustration-bucket-row{padding-left:50px;}
-            .savings-illustration-bucket-row::before{width:34px;}
-            .savings-illustration-bucket-row::after{left:32px;}
+            .savings-illustration-bucket-list{min-height:0;justify-content:flex-start;gap:10px;padding-top:22px;}
+            .savings-illustration-bucket-list.has-buckets::after{bottom:40px;}
             .savings-illustration-bucket-card__grid{grid-template-columns:68px minmax(0,1.34fr) minmax(92px,.52fr) minmax(70px,.34fr) minmax(120px,.62fr);}
         }
         @media (max-width: 760px){
@@ -6073,11 +6071,10 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-account-flow{width:100%;}
             .savings-illustration-rail-link{width:100%;}
             .savings-illustration-transfer-arrow-mobile{height:38px;}
-            .savings-illustration-bucket-list::before{top:14px;bottom:40px;}
-            .savings-illustration-bucket-list::after{top:14px;width:32px;}
-            .savings-illustration-bucket-row{padding-left:42px;}
-            .savings-illustration-bucket-row::before{width:26px;}
-            .savings-illustration-bucket-row::after{left:24px;border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
+            .savings-illustration-surplus-shell{--surplus-spine-left:10px;--surplus-hook-width:30px;--surplus-branch-width:24px;}
+            .savings-illustration-bucket-list{padding-top:18px;}
+            .savings-illustration-bucket-list.has-buckets::after{bottom:38px;}
+            .savings-illustration-bucket-row::after{border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
             .savings-illustration-bucket-card{min-height:90px;padding:14px 14px 12px;}
             .savings-illustration-bucket-card__grid{grid-template-columns:1fr;gap:12px;}
             .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;}
@@ -6744,6 +6741,7 @@ if (t.id === "SavingsAccelerator") {
             : visibleBuckets.length >= 4
                 ? ' is-compact'
                 : '';
+        const hasAllVisibleBuckets = visibleBuckets.length > 0 && visibleBuckets.length === savingsIllustrationData.rows.length;
 
         illustrationContent.innerHTML = `
             <div class="savings-illustration-board${boardDensityClass}" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
@@ -6782,8 +6780,8 @@ if (t.id === "SavingsAccelerator") {
                             <span class="savings-illustration-surplus-label">Surplus Allocation</span>
                             <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
                         </div>
-                        <div class="savings-illustration-surplus-shell">
-                            <div class="savings-illustration-bucket-list">${bucketRows}</div>
+                        <div class="savings-illustration-surplus-shell${hasAllVisibleBuckets ? ' is-complete-flow' : ''}">
+                            <div class="savings-illustration-bucket-list${visibleBuckets.length ? ' has-buckets' : ' is-empty'}">${bucketRows}</div>
                         </div>
                     ` : ''}
                 </div>
