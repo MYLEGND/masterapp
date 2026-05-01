@@ -1810,9 +1810,14 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-card__value{display:block;color:#55dd7c;font-size:.98rem;font-weight:900;line-height:1.1;}
         .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
         .savings-illustration-right{display:flex;flex-direction:column;gap:10px;min-width:0;padding-left:18px;min-height:0;align-self:stretch;}
-        .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:4px;padding-top:0;}
+        .savings-illustration-surplus-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(228px,260px);gap:14px;align-items:end;padding-top:0;}
+        .savings-illustration-surplus-copy{display:flex;flex-direction:column;gap:4px;min-width:0;}
         .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
         .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;}
+        .savings-illustration-projection-box{display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:70px;padding:12px 14px;border-radius:18px;border:1px solid rgba(82,224,130,.28);background:linear-gradient(180deg,rgba(14,30,49,.95),rgba(10,22,39,.94));box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 16px 30px rgba(0,0,0,.14);}
+        .savings-illustration-projection-box__label{display:block;color:#9fb0c8;font-size:.62rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
+        .savings-illustration-projection-box__value{display:block;color:#55dd7c;font-size:1rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-projection-box__meta{display:block;color:#d4d9e2;font-size:.68rem;font-weight:700;line-height:1.12;}
         .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:48px;--surplus-branch-width:36px;--surplus-stroke:4px;position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
         .savings-illustration-bucket-list{position:relative;display:flex;flex:0 0 auto;align-self:flex-start;width:100%;min-height:0;flex-direction:column;justify-content:flex-start;gap:14px;padding:24px 0 2px;overflow:visible;}
         .savings-illustration-bucket-list.has-buckets::before{content:"";position:absolute;left:var(--surplus-spine-left);top:0;width:var(--surplus-hook-width);height:var(--surplus-stroke);border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.96),rgba(82,224,130,.58));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
@@ -1942,6 +1947,7 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
             .savings-illustration-board{grid-template-columns:1fr;gap:16px;min-height:0;}
             .savings-illustration-right{padding-left:0;}
+            .savings-illustration-surplus-head{grid-template-columns:1fr;}
             .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:40px;--surplus-branch-width:32px;}
             .savings-illustration-surplus-shell{display:block;height:auto;}
             .savings-illustration-transfer-arrow{display:none;}
@@ -2633,6 +2639,10 @@ if (t.id === "SavingsAccelerator") {
             bucket,
             active: step.kind === 'bucket' && bucket.index === step.activeBucketIndex
         })).join('');
+        const projectedBucketCount = savingsIllustrationData.rows.length;
+        const projectedBucketMeta = projectedBucketCount === 1
+            ? 'Across 1 allocation bucket'
+            : `Across ${projectedBucketCount} allocation buckets`;
 
         illustrationCounter.textContent = stepCountText;
         if (illustrationSummary) illustrationSummary.innerHTML = summaryMetrics;
@@ -2683,8 +2693,15 @@ if (t.id === "SavingsAccelerator") {
                 <div class="savings-illustration-right">
                     ${stepHasSurplus ? `
                         <div class="savings-illustration-surplus-head">
-                            <span class="savings-illustration-surplus-label">Surplus Allocation</span>
-                            <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
+                            <div class="savings-illustration-surplus-copy">
+                                <span class="savings-illustration-surplus-label">Surplus Allocation</span>
+                                <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
+                            </div>
+                            <div class="savings-illustration-projection-box" aria-live="polite">
+                                <span class="savings-illustration-projection-box__label">Projected Year-End Total</span>
+                                <span class="savings-illustration-projection-box__value">${escapeSavingsIllustrationHtml(money(savingsIllustrationData.projectedYearEndTotal))}</span>
+                                <span class="savings-illustration-projection-box__meta">${escapeSavingsIllustrationHtml(projectedBucketMeta)}</span>
+                            </div>
                         </div>
                         <div class="savings-illustration-surplus-shell${hasAllVisibleBuckets ? ' is-complete-flow' : ''}">
                             <div class="savings-illustration-bucket-list${visibleBuckets.length ? ' has-buckets' : ' is-empty'}">${bucketRows}</div>
