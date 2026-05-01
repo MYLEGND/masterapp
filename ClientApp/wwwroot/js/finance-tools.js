@@ -2197,20 +2197,20 @@ if (t.id === "SavingsAccelerator") {
         if (kind === 'source') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M6 20h12M8 20V8.2L12 5l4 3.2V20M7.2 8.8H16.8M9.7 10.9h.01M14.3 10.9h.01M9.7 14.5h.01M14.3 14.5h.01M11 20v-3.1h2V20" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 20h12M8 20V8.4L12 5l4 3.4V20M8 8.9h8M10 11.2h.01M14 11.2h.01M10 14.7h.01M14 14.7h.01M11 20v-3.3h2V20" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'account') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3.5 9.2 12 5l8.5 4.2M5 10.6h14M6.5 18.2v-5.9M10.2 18.2v-5.9M13.8 18.2v-5.9M17.5 18.2v-5.9M4.5 20h15" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3.5 9 12 5l8.5 4M5 10.6h14M6.6 18.2v-5.8M10.2 18.2v-5.8M13.8 18.2v-5.8M17.4 18.2v-5.8M4.4 20h15.2" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'expense') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8 4.5h8v14.2l-1.8-1.3-2 1.4-2-1.4-2 1.4-1.7-1.3V6.3A1.8 1.8 0 0 1 8 4.5Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M12 7.2v8.3M14.3 9.1c0-.9-.9-1.6-2-1.6s-2 .7-2 1.6.9 1.6 2 1.6 2 .8 2 1.8-.9 1.6-2 1.6-2-.7-2-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 4.5h8v14.3l-1.9-1.3-2.1 1.4-2.1-1.4-2 1.4-1.4-1V6.2A1.7 1.7 0 0 1 8 4.5Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M12 7.1v8.2M14.2 9.1c0-.9-.9-1.6-2-1.6s-2 .7-2 1.6.9 1.6 2 1.6 2 .8 2 1.8-.9 1.6-2 1.6-2-.7-2-1.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'surplus' || kind === 'bucket-growth') {
@@ -2230,8 +2230,8 @@ if (t.id === "SavingsAccelerator") {
         if (kind === 'bucket-short') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M8.3 10.2c1.1-1.7 3-2.7 5.4-2.7 3.3 0 6 2 6 4.8 0 1-.4 1.9-1.1 2.7l.9 1.6h-2.3l-.4 1.5h-1.7l-.4-1.1h-3.6c-3.4 0-6.1-1.9-6.1-4.6 0-1.7 1-3.1 2.7-4" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M9.3 18v1.5M16.1 18v1.5M10.3 9h2.4M16.5 11.3h.01" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8.2 10.3c1-1.6 2.9-2.6 5.3-2.6 3.4 0 6.2 2 6.2 4.8 0 1-.4 2-1.1 2.7l.9 1.4h-2.2l-.5 1.4h-1.6l-.4-1.1h-3.8c-3.4 0-6.2-1.9-6.2-4.5 0-1.7 1.1-3.2 2.8-4.1Z" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9.2 18v1.3M16 18v1.3M10.1 9.2h2.5M16.5 11.3h.01" stroke="currentColor" stroke-width="1.95" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'bucket-retirement') {
@@ -2490,9 +2490,19 @@ if (t.id === "SavingsAccelerator") {
                 activeBucketIndex: -1
             },
             {
+                kind: 'expense',
+                header: 'Your lifestyle costs come out first',
+                accountLabel,
+                expensesLabel,
+                totalExpenses,
+                visibleBucketCount: 0,
+                activeBucketIndex: -1
+            },
+            {
                 kind: 'surplus',
                 header: 'Your remaining cashflow becomes the opportunity',
                 accountLabel,
+                expensesLabel,
                 surplusLabel,
                 savingsAllocation,
                 remainingAllocation,
@@ -2503,27 +2513,18 @@ if (t.id === "SavingsAccelerator") {
                 kind: 'bucket',
                 header: `Allocating to ${bucket.name}`,
                 accountLabel,
+                expensesLabel,
                 bucket,
                 visibleBucketCount: index + 1,
                 activeBucketIndex: index
-            })),
-            {
-                kind: 'summary',
-                header: 'Your complete cashflow system',
-                sourceLabel,
-                accountLabel,
-                expensesLabel,
-                totalExpenses,
-                totalAllocated,
-                remainingAllocation,
-                projectedYearEndTotal,
-                rows,
-                visibleBucketCount: rows.length,
-                activeBucketIndex: -1
-            }
+            }))
         ];
 
         return {
+            sourceLabel,
+            accountLabel,
+            expensesLabel,
+            surplusLabel,
             monthlyIncome,
             totalExpenses,
             savingsAllocation,
@@ -2552,15 +2553,17 @@ if (t.id === "SavingsAccelerator") {
         const stepCountText = `STEP ${savingsIllustrationStepIndex + 1} OF ${savingsIllustrationData.steps.length}`;
         const money = formatSavingsMoneyText;
         const stepHasAccount = step.kind !== 'origin';
-        const stepHasExpenses = ['surplus', 'bucket', 'summary'].includes(step.kind);
-        const stepHasSurplus = ['surplus', 'bucket', 'summary'].includes(step.kind);
+        const stepHasExpenses = ['expense', 'surplus', 'bucket'].includes(step.kind);
+        const stepHasSurplus = ['surplus', 'bucket'].includes(step.kind);
         const visibleBuckets = savingsIllustrationData.rows.slice(0, step.visibleBucketCount || 0);
-        const sourceParts = String(step.sourceLabel || savingsIllustrationData.steps[0]?.sourceLabel || '')
+        const sourceParts = String(step.sourceLabel || savingsIllustrationData.sourceLabel || savingsIllustrationData.steps[0]?.sourceLabel || '')
             .split('/')
             .map((part) => part.trim())
             .filter(Boolean);
         const sourceTitle = sourceParts[0] || 'Company';
         const sourceSubtitle = sourceParts.slice(1).join(' / ') || (isBusinessSA ? 'Revenue Source' : 'Income Source');
+        const accountTitle = step.accountLabel || savingsIllustrationData.accountLabel || (isBusinessSA ? 'Business Operating Account' : 'Personal Checking / Savings');
+        const expenseTitle = step.expensesLabel || savingsIllustrationData.expensesLabel || (isBusinessSA ? 'Total Business Expenses' : 'Total Expenses');
         const summaryMetrics = [
             buildSavingsIllustrationSummaryMetric({
                 label: 'Income',
@@ -2572,7 +2575,7 @@ if (t.id === "SavingsAccelerator") {
                 label: 'Expenses',
                 value: money(savingsIllustrationData.totalExpenses),
                 tone: 'expense',
-                active: step.kind === 'surplus' && !visibleBuckets.length
+                active: step.kind === 'expense'
             }),
             buildSavingsIllustrationSummaryMetric({
                 label: 'Available',
@@ -2590,7 +2593,7 @@ if (t.id === "SavingsAccelerator") {
                 label: 'Remaining',
                 value: money(savingsIllustrationData.remainingAllocation),
                 tone: 'remaining',
-                active: step.kind === 'summary'
+                active: false
             })
         ].join('');
 
@@ -2605,7 +2608,7 @@ if (t.id === "SavingsAccelerator") {
         const accountCard = stepHasAccount
             ? buildSavingsIllustrationCard({
                 kicker: 'Cash Received',
-                title: step.accountLabel,
+                title: accountTitle,
                 value: money(savingsIllustrationData.monthlyIncome),
                 tone: 'account',
                 icon: 'account',
@@ -2615,12 +2618,12 @@ if (t.id === "SavingsAccelerator") {
         const expenseCard = stepHasExpenses
             ? buildSavingsIllustrationCard({
                 kicker: 'Expenses',
-                title: step.expensesLabel,
+                title: expenseTitle,
                 subtitle: 'From Expense Lens',
                 value: money(savingsIllustrationData.totalExpenses),
                 tone: 'expense',
                 icon: 'expense',
-                active: step.kind === 'surplus' && !visibleBuckets.length
+                active: step.kind === 'expense'
             })
             : '';
         const bucketRows = visibleBuckets.map((bucket) => buildSavingsIllustrationBucketCard({
