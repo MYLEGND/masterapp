@@ -1700,6 +1700,133 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
+        .savings-accelerator-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+        .savings-accelerator-title{flex:1 1 320px;min-width:0;}
+        .savings-accelerator-title h3{margin:0;color:#a68023;font-weight:900;letter-spacing:.5px;font-size:2rem;}
+        .savings-accelerator-title p{margin:8px 0 0;color:#b9c5d8;font-style:italic;}
+        .savings-accelerator-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:0 0 auto;flex-wrap:wrap;}
+        .savings-illustration-btn,
+        .savings-accelerator-actions .clear-btn{
+            min-height:40px!important;
+            height:40px!important;
+            padding:0 16px!important;
+            border-radius:12px!important;
+            border:1.5px solid rgba(214,176,90,.88)!important;
+            background:linear-gradient(180deg,rgba(9,19,38,.98),rgba(16,31,58,.98))!important;
+            color:#f7e7be!important;
+            font-weight:800!important;
+            font-size:.86rem!important;
+            letter-spacing:.01em;
+            line-height:1!important;
+            display:inline-flex!important;
+            align-items:center!important;
+            justify-content:center!important;
+            gap:8px;
+            box-shadow:0 14px 34px rgba(3,8,20,.32),inset 0 1px 0 rgba(255,255,255,.06)!important;
+            position:static!important;
+            transform:none!important;
+            top:auto!important;
+            right:auto!important;
+            width:auto!important;
+            min-width:108px!important;
+            margin:0!important;
+            text-decoration:none!important;
+        }
+        .savings-illustration-btn:hover,
+        .savings-accelerator-actions .clear-btn:hover{
+            background:linear-gradient(180deg,rgba(17,35,66,.99),rgba(24,46,80,.99))!important;
+            color:#fff4d4!important;
+            border-color:#f1cf82!important;
+            box-shadow:0 18px 40px rgba(3,8,20,.42),0 0 0 1px rgba(214,176,90,.14) inset!important;
+        }
+        .savings-illustration-btn:focus,
+        .savings-accelerator-actions .clear-btn:focus{
+            outline:none!important;
+            box-shadow:0 0 0 3px rgba(214,176,90,.28),0 14px 34px rgba(3,8,20,.32)!important;
+        }
+        .savings-illustration-btn__icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
+        .savings-illustration-btn__icon svg{width:16px;height:16px;display:block;}
+        .savings-illustration-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.78);backdrop-filter:blur(10px);z-index:2147483000;}
+        .savings-illustration-backdrop.is-open{display:flex;}
+        .savings-illustration-modal{width:min(1080px,100%);max-height:min(88vh,900px);overflow:auto;border-radius:24px;border:1px solid rgba(214,176,90,.32);background:radial-gradient(1200px 420px at 0% 0%,rgba(166,128,35,.16),transparent 52%),linear-gradient(180deg,rgba(8,17,33,.995),rgba(15,29,56,.99));box-shadow:0 40px 110px rgba(0,0,0,.55);padding:16px 16px 14px;}
+        .savings-illustration-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+        .savings-illustration-modal-copy h4{margin:0;color:#f8fafc;font-size:1.05rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;}
+        .savings-illustration-modal-copy p{display:none;}
+        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border-radius:999px;background:rgba(166,128,35,.14);border:1px solid rgba(214,176,90,.3);color:#f2d487;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin-bottom:6px;}
+        .savings-illustration-close{width:38px;height:38px;border-radius:999px;border:1px solid rgba(214,176,90,.4);background:rgba(255,255,255,.06);color:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-close:hover{background:rgba(214,176,90,.14);border-color:rgba(214,176,90,.62);}
+        .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.26);}
+        .savings-illustration-content{display:flex;flex-direction:column;gap:12px;}
+        .savings-illustration-step{display:flex;flex-direction:column;gap:12px;}
+        .savings-illustration-step-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+        .savings-illustration-step-copy h5{margin:0;color:#fff;font-size:1.05rem;font-weight:900;letter-spacing:.01em;}
+        .savings-illustration-step-copy p{display:none;}
+        .savings-illustration-stats-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;width:100%;}
+        .savings-illustration-stat-pill{padding:8px 10px;border-radius:13px;border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.04);min-width:0;}
+        .savings-illustration-stat-pill span{display:block;color:#94a3b8;font-size:.58rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;}
+        .savings-illustration-stat-pill strong{display:block;margin-top:5px;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-illustration-stat-pill--source{border-color:rgba(214,176,90,.25);}
+        .savings-illustration-stat-pill--expense{border-color:rgba(248,113,113,.28);}
+        .savings-illustration-stat-pill--surplus,
+        .savings-illustration-stat-pill--bucket{border-color:rgba(74,222,128,.24);}
+        .savings-illustration-stat-pill.is-active{box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 10px 24px rgba(2,6,23,.26);}
+        .savings-flow-stage{padding:12px;border-radius:20px;border:1px solid rgba(214,176,90,.18);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
+        .savings-flow-mainline{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
+        .savings-flow-node{min-width:180px;max-width:240px;padding:11px 12px;border-radius:17px;border:1px solid rgba(148,163,184,.2);background:linear-gradient(180deg,rgba(15,23,42,.94),rgba(9,14,27,.94));box-shadow:0 14px 32px rgba(2,6,23,.2);color:#f8fafc;}
+        .savings-flow-node--source,.savings-flow-node--account{border-color:rgba(214,176,90,.28);}
+        .savings-flow-node--expense{border-color:rgba(248,113,113,.34);}
+        .savings-flow-node--surplus,.savings-flow-node--bucket{border-color:rgba(74,222,128,.26);}
+        .savings-flow-node.is-active{transform:translateY(-1px);box-shadow:0 18px 36px rgba(2,6,23,.28),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-flow-node__head{display:flex;align-items:center;gap:10px;min-width:0;}
+        .savings-flow-node__icon{width:40px;height:40px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);}
+        .savings-flow-node__icon svg{width:20px;height:20px;display:block;}
+        .savings-flow-node--source .savings-flow-node__icon,
+        .savings-flow-node--account .savings-flow-node__icon{color:#f4d06f;background:rgba(214,176,90,.12);border-color:rgba(214,176,90,.24);}
+        .savings-flow-node--expense .savings-flow-node__icon{color:#f87171;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.22);}
+        .savings-flow-node--surplus .savings-flow-node__icon,
+        .savings-flow-node--bucket .savings-flow-node__icon{color:#4ade80;background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.18);}
+        .savings-flow-node__copy{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1 1 auto;}
+        .savings-flow-node__label{display:block;color:#e2e8f0;font-size:.78rem;font-weight:800;line-height:1.25;}
+        .savings-flow-node__value{display:block;color:#fff;font-size:1.08rem;line-height:1.1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-flow-node__stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px;}
+        .savings-flow-node__stat{padding:6px 7px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.05);}
+        .savings-flow-node__stat-label{display:block;color:#94a3b8;font-size:.56rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.2;}
+        .savings-flow-node__stat-value{display:block;margin-top:4px;color:#f8fafc;font-size:.72rem;font-weight:800;line-height:1.2;word-break:break-word;}
+        .savings-flow-arrow{display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;line-height:1;min-width:24px;}
+        .savings-flow-arrow--gold{color:#f4d06f;}
+        .savings-flow-arrow--red{color:#f87171;}
+        .savings-flow-arrow--green{color:#4ade80;}
+        .savings-flow-branches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;}
+        .savings-flow-branch-card{padding:10px 12px;border-radius:16px;border:1px solid rgba(148,163,184,.18);background:rgba(255,255,255,.04);}
+        .savings-flow-branch-card--expense{border-color:rgba(248,113,113,.28);}
+        .savings-flow-branch-card--surplus{border-color:rgba(74,222,128,.22);}
+        .savings-flow-branch-card.is-active{box-shadow:0 14px 30px rgba(2,6,23,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-flow-branch-card__top{display:flex;align-items:center;gap:9px;min-width:0;}
+        .savings-flow-branch-card__icon{width:34px;height:34px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
+        .savings-flow-branch-card__icon svg{width:17px;height:17px;display:block;}
+        .savings-flow-branch-card--expense .savings-flow-branch-card__icon{color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.22);}
+        .savings-flow-branch-card--surplus .savings-flow-branch-card__icon{color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.18);}
+        .savings-flow-branch-card__copy{min-width:0;display:flex;flex-direction:column;gap:2px;}
+        .savings-flow-branch-card__label{display:block;color:#e2e8f0;font-size:.76rem;font-weight:800;line-height:1.2;}
+        .savings-flow-branch-card__value{display:block;color:#fff;font-size:1rem;font-weight:900;line-height:1.1;}
+        .savings-flow-bucket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px;}
+        .savings-flow-bucket-chip{padding:10px;border-radius:15px;border:1px solid rgba(74,222,128,.2);background:rgba(74,222,128,.06);}
+        .savings-flow-bucket-chip.is-active{border-color:rgba(74,222,128,.38);box-shadow:0 14px 28px rgba(20,83,45,.2),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-flow-bucket-chip__head{display:flex;align-items:center;gap:8px;min-width:0;}
+        .savings-flow-bucket-chip__icon{width:30px;height:30px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.18);}
+        .savings-flow-bucket-chip__icon svg{width:15px;height:15px;display:block;}
+        .savings-flow-bucket-chip__copy{min-width:0;display:flex;flex-direction:column;gap:3px;}
+        .savings-flow-bucket-chip strong{display:block;color:#f8fafc;font-size:.8rem;font-weight:800;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-flow-bucket-chip span{display:block;color:#bbf7d0;font-size:.72rem;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-flow-bucket-chip__stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;}
+        .savings-flow-bucket-chip__stat{padding:5px 6px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.04);}
+        .savings-flow-bucket-chip__stat-label{display:block;color:#94a3b8;font-size:.54rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.2;}
+        .savings-flow-bucket-chip__stat-value{display:block;margin-top:4px;color:#f8fafc;font-size:.69rem;font-weight:800;line-height:1.2;word-break:break-word;}
+        .savings-illustration-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(214,176,90,.14);}
+        .savings-illustration-nav-btn{min-height:40px;padding:0 16px;border-radius:12px;border:1px solid rgba(214,176,90,.32);background:rgba(255,255,255,.05);color:#f8fafc;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
+        .savings-illustration-nav-btn:hover:not(:disabled){background:rgba(214,176,90,.14);border-color:rgba(214,176,90,.58);}
+        .savings-illustration-nav-btn:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
+        .savings-illustration-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
         .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
         .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
@@ -1752,7 +1879,14 @@ if (t.id === "SavingsAccelerator") {
         .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
         .sa-alloc-drawer.is-open{display:grid;}
         .sa-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
+        @media (max-width: 920px){
+            .savings-illustration-stats-strip{grid-template-columns:repeat(3,minmax(0,1fr));}
+            .savings-flow-branches{grid-template-columns:1fr;}
+        }
         @media (max-width: 760px){
+            .savings-accelerator-actions{width:100%;justify-content:flex-start;}
+            .savings-illustration-btn,
+            .savings-accelerator-actions .clear-btn{flex:1 1 calc(50% - 5px);}
             .savings-row-header,.savings-row-header.compact{display:none;}
             .savings-row,.savings-row.compact{grid-template-columns:1fr 1fr;}
             .savings-name{grid-column:1 / -1;}
@@ -1760,11 +1894,28 @@ if (t.id === "SavingsAccelerator") {
             .projected-year-end{grid-column:span 1;}
             .remove-row{justify-self:end;}
             .sa-alloc-drawer{grid-template-columns:1fr;}
+            .savings-illustration-backdrop{padding:10px;}
+            .savings-illustration-modal{padding:14px 12px 12px;max-height:90vh;}
+            .savings-illustration-step-copy{align-items:flex-start;}
+            .savings-illustration-stats-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .savings-flow-mainline{flex-direction:column;}
+            .savings-flow-arrow{transform:rotate(90deg);}
+            .savings-flow-node,
+            .savings-flow-bucket-grid{width:100%;max-width:none;}
+            .savings-flow-node__stats,
+            .savings-flow-bucket-chip__stats{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .savings-illustration-footer{flex-wrap:wrap;}
+            .savings-illustration-nav-btn{flex:1 1 calc(50% - 6px);}
         }
     </style>
     <div id="${pid('TipLayer')}"></div>
-    <h3 style="color:#a68023;font-weight:900;letter-spacing:0.5px;font-size:2rem;">${saTitle}</h3>
-    <p style="font-style:italic;color:#b9c5d8;margin-bottom:20px;">${savingsSubtitle}</p>
+    <div class="savings-accelerator-header">
+        <div class="savings-accelerator-title">
+            <h3>${saTitle}</h3>
+            <p>${savingsSubtitle}</p>
+        </div>
+        <div id="${pid('ActionRow')}" class="savings-accelerator-actions" aria-label="Savings Accelerator actions"></div>
+    </div>
     <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
         <div style="flex:1;min-width:200px;max-width:380px;">
             <div class="${prefix}-label">Savings Allocation</div>
@@ -1822,6 +1973,23 @@ if (t.id === "SavingsAccelerator") {
          style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
+    <div id="${pid('IllustrationBackdrop')}" class="savings-illustration-backdrop" hidden aria-hidden="true">
+        <div id="${pid('IllustrationModal')}" class="savings-illustration-modal" role="dialog" aria-modal="true" aria-labelledby="${pid('IllustrationTitle')}" aria-describedby="${pid('IllustrationSubtitle')}">
+            <div class="savings-illustration-modal-head">
+                <div class="savings-illustration-modal-copy">
+                    <div id="${pid('IllustrationCounter')}" class="savings-illustration-step-counter" aria-live="polite">Step 1 of 1</div>
+                    <h4 id="${pid('IllustrationTitle')}">Cashflow Illustration</h4>
+                    <p id="${pid('IllustrationSubtitle')}">See how income, expenses, and surplus allocation work together.</p>
+                </div>
+                <button id="${pid('IllustrationClose')}" type="button" class="savings-illustration-close" aria-label="Close cashflow illustration">&times;</button>
+            </div>
+            <div id="${pid('IllustrationContent')}" class="savings-illustration-content"></div>
+            <div class="savings-illustration-footer">
+                <button id="${pid('IllustrationBack')}" type="button" class="savings-illustration-nav-btn" aria-label="Go to previous illustration step">Back</button>
+                <button id="${pid('IllustrationNext')}" type="button" class="savings-illustration-nav-btn" aria-label="Go to next illustration step">Next</button>
+            </div>
+        </div>
+    </div>
 </div>`;
 
     const container = hostElement.querySelector('.networth-tool');
@@ -1833,8 +2001,20 @@ if (t.id === "SavingsAccelerator") {
     const delBtn = document.getElementById(pid('DelCat'));
     const saPctTotal = document.getElementById(pid('PctTotal'));
     const saRemaining = document.getElementById(pid('Remaining'));
+    const actionRow = document.getElementById(pid('ActionRow'));
+    const illustrationBackdrop = document.getElementById(pid('IllustrationBackdrop'));
+    const illustrationContent = document.getElementById(pid('IllustrationContent'));
+    const illustrationCounter = document.getElementById(pid('IllustrationCounter'));
+    const illustrationBackBtn = document.getElementById(pid('IllustrationBack'));
+    const illustrationNextBtn = document.getElementById(pid('IllustrationNext'));
+    const illustrationCloseBtn = document.getElementById(pid('IllustrationClose'));
 
     let categoryCount = 0;
+    let latestExpenseLensState = null;
+    let savingsIllustrationData = { steps: [] };
+    let savingsIllustrationStepIndex = 0;
+    let savingsIllustrationOpen = false;
+    let savingsIllustrationTrigger = null;
 
     const formatNumber = (val) => {
         val = val.toString().replace(/,/g, '');
@@ -1902,6 +2082,126 @@ if (t.id === "SavingsAccelerator") {
         const sign = rounded < 0 ? '-' : '';
         return `${sign}$${Math.abs(rounded).toLocaleString()}`;
     };
+
+    const escapeSavingsIllustrationHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char] || char));
+
+    const formatSavingsIllustrationPercent = (value) => {
+        const numeric = parseFloat(String(value ?? '').replace(/[^0-9.-]/g, ''));
+        if (!Number.isFinite(numeric)) return '0%';
+        const digits = Math.abs(numeric % 1) > 0.001 ? 1 : 0;
+        return `${numeric.toLocaleString(undefined, {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: 1
+        })}%`;
+    };
+
+    const formatSavingsIllustrationDate = (value) => {
+        const normalized = normalizeSavingsDateInput(value);
+        if (!normalized) return 'Not set';
+        const parsed = new Date(`${normalized}T00:00:00`);
+        if (Number.isNaN(parsed.getTime())) return 'Not set';
+        return parsed.toLocaleDateString(undefined, {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    };
+
+    const getSavingsIllustrationIcon = (kind) => {
+        if (kind === 'source') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M4 20h16M6 20V8l6-4 6 4v12M9 10h.01M15 10h.01M9 14h.01M15 14h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'account') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M3 9.5h18v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-8Zm0 3.5h18M7 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'expense') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M7 4h10v16l-2-1.5L13 20l-2-1.5L9 20l-2-1.5L5 20V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M9 9h6M9 13h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>`;
+        }
+        if (kind === 'surplus') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M5 16l4-4 3 3 7-7M14 8h5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        return `
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="5" y="5" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M9 12h6M12 9v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>`;
+    };
+
+    const buildSavingsIllustrationStat = (label, value, className = 'savings-flow-node__stat') => `
+        <div class="${className}">
+            <span class="${className}-label">${escapeSavingsIllustrationHtml(label)}</span>
+            <span class="${className}-value">${escapeSavingsIllustrationHtml(value)}</span>
+        </div>`;
+
+    const buildSavingsIllustrationNode = ({ label, value = '', tone = 'source', icon = tone, active = false, stats = [] }) => `
+        <div class="savings-flow-node savings-flow-node--${tone}${active ? ' is-active' : ''}">
+            <div class="savings-flow-node__head">
+                <span class="savings-flow-node__icon">${getSavingsIllustrationIcon(icon)}</span>
+                <div class="savings-flow-node__copy">
+                    <span class="savings-flow-node__label">${escapeSavingsIllustrationHtml(label)}</span>
+                    ${value ? `<span class="savings-flow-node__value">${escapeSavingsIllustrationHtml(value)}</span>` : ''}
+                </div>
+            </div>
+            ${stats.length > 0 ? `<div class="savings-flow-node__stats">${stats.join('')}</div>` : ''}
+        </div>`;
+
+    const buildSavingsIllustrationBranchCard = ({ label, value = '', tone = 'expense', icon = tone, active = false }) => `
+        <div class="savings-flow-branch-card savings-flow-branch-card--${tone}${active ? ' is-active' : ''}">
+            <div class="savings-flow-branch-card__top">
+                <span class="savings-flow-branch-card__icon">${getSavingsIllustrationIcon(icon)}</span>
+                <div class="savings-flow-branch-card__copy">
+                    <span class="savings-flow-branch-card__label">${escapeSavingsIllustrationHtml(label)}</span>
+                    <span class="savings-flow-branch-card__value">${escapeSavingsIllustrationHtml(value)}</span>
+                </div>
+            </div>
+        </div>`;
+
+    const buildSavingsIllustrationSummaryPill = ({ label, value, tone = 'source', active = false }) => `
+        <div class="savings-illustration-stat-pill savings-illustration-stat-pill--${tone}${active ? ' is-active' : ''}">
+            <span>${escapeSavingsIllustrationHtml(label)}</span>
+            <strong>${escapeSavingsIllustrationHtml(value)}</strong>
+        </div>`;
+
+    const buildSavingsIllustrationBucketChip = ({ bucket, active = false, expanded = false }) => `
+        <div class="savings-flow-bucket-chip${active ? ' is-active' : ''}">
+            <div class="savings-flow-bucket-chip__head">
+                <span class="savings-flow-bucket-chip__icon">${getSavingsIllustrationIcon('bucket')}</span>
+                <div class="savings-flow-bucket-chip__copy">
+                    <strong>${escapeSavingsIllustrationHtml(bucket.name)}</strong>
+                    <span>${escapeSavingsIllustrationHtml(`${bucket.allocationAmountText} · ${bucket.allocationPercentText}`)}</span>
+                </div>
+            </div>
+            ${expanded ? `
+                <div class="savings-flow-bucket-chip__stats">
+                    ${buildSavingsIllustrationStat('APR', bucket.aprPercentText, 'savings-flow-bucket-chip__stat')}
+                    ${buildSavingsIllustrationStat('Start', bucket.startDateText, 'savings-flow-bucket-chip__stat')}
+                    ${buildSavingsIllustrationStat('Start Bal', bucket.startingBalanceText, 'savings-flow-bucket-chip__stat')}
+                    ${buildSavingsIllustrationStat('Year-End', bucket.projectedYearEndText, 'savings-flow-bucket-chip__stat')}
+                </div>
+            ` : ''}
+        </div>`;
+
+    const buildSavingsIllustrationArrow = (tone) => `
+        <div class="savings-flow-arrow savings-flow-arrow--${tone}" aria-hidden="true">➜</div>`;
 
     const todayIsoDate = () => {
         const now = new Date();
@@ -2012,8 +2312,280 @@ if (t.id === "SavingsAccelerator") {
         return parseSavingsMoney(state?.income);
     };
 
+    const buildSavingsIllustrationData = () => {
+        const sourceLabel = isBusinessSA ? 'Company / Revenue Source' : 'Company / Income Source';
+        const accountLabel = isBusinessSA ? 'Business Operating Account' : 'Personal Checking / Savings';
+        const expensesLabel = isBusinessSA ? 'Total Business Expenses' : 'Total Expenses';
+        const surplusLabel = isBusinessSA ? 'Business Surplus / Remaining Allocation' : 'Surplus / Remaining Allocation';
+        const expenseState = latestExpenseLensState || {};
+        const monthlyIncome = getExpenseLensIncomeTotal(expenseState);
+        const totalExpenses = calculateExpenseLensMonthlyTotal(expenseState);
+        const savingsAllocation = parseSavingsMoney(saAllocationInput.value);
+        const rows = Array.from(allocationContainer.querySelectorAll('.sa-alloc-row')).map((row, index) => {
+            const projectedValue = parseSavingsMoney(row.querySelector('.projected-value')?.textContent || '');
+            const allocationAmount = parseSavingsMoney(row.querySelector('.sa-alloc-amount')?.value || '');
+            const allocationPercent = row.querySelector('.sa-alloc-percent')?.value || '';
+            const aprPercent = row.querySelector('.sa-alloc-apr')?.value || '';
+            const startDate = row.querySelector('.sa-alloc-start-date')?.value || '';
+            const startingBalance = row.querySelector('.sa-alloc-starting-balance')?.value || '';
+            const bucketName = String(row.querySelector('.sa-alloc-name')?.value || '').trim() || `Bucket ${index + 1}`;
+
+            return {
+                index,
+                name: bucketName,
+                allocationAmount,
+                allocationAmountText: formatSavingsMoneyText(allocationAmount),
+                allocationPercentText: formatSavingsIllustrationPercent(allocationPercent),
+                aprPercentText: formatSavingsIllustrationPercent(aprPercent),
+                startDateText: formatSavingsIllustrationDate(startDate),
+                startingBalanceText: formatSavingsMoneyText(parseSavingsMoney(startingBalance)),
+                projectedYearEndValue: projectedValue,
+                projectedYearEndText: formatSavingsMoneyText(projectedValue)
+            };
+        });
+
+        const totalAllocated = rows.reduce((sum, row) => sum + row.allocationAmount, 0);
+        const remainingAllocation = parseSavingsMoney(saRemaining.textContent) || (savingsAllocation - totalAllocated);
+        const projectedYearEndTotal = rows.reduce((sum, row) => sum + row.projectedYearEndValue, 0);
+
+        const steps = [
+            {
+                kind: 'origin',
+                header: 'Where your money starts',
+                sourceLabel,
+                monthlyIncome,
+                visibleBucketCount: 0,
+                activeBucketIndex: -1
+            },
+            {
+                kind: 'account',
+                header: 'Money enters your account',
+                sourceLabel,
+                accountLabel,
+                monthlyIncome,
+                visibleBucketCount: 0,
+                activeBucketIndex: -1
+            },
+            {
+                kind: 'expense',
+                header: 'Your lifestyle costs come out first',
+                accountLabel,
+                expensesLabel,
+                totalExpenses,
+                visibleBucketCount: 0,
+                activeBucketIndex: -1
+            },
+            {
+                kind: 'surplus',
+                header: 'Your remaining cashflow becomes the opportunity',
+                accountLabel,
+                surplusLabel,
+                savingsAllocation,
+                remainingAllocation,
+                visibleBucketCount: 0,
+                activeBucketIndex: -1
+            },
+            ...rows.map((bucket, index) => ({
+                kind: 'bucket',
+                header: `Allocating to ${bucket.name}`,
+                accountLabel,
+                bucket,
+                visibleBucketCount: index + 1,
+                activeBucketIndex: index
+            })),
+            {
+                kind: 'summary',
+                header: 'Your complete cashflow system',
+                sourceLabel,
+                accountLabel,
+                expensesLabel,
+                totalExpenses,
+                totalAllocated,
+                remainingAllocation,
+                projectedYearEndTotal,
+                rows,
+                visibleBucketCount: rows.length,
+                activeBucketIndex: -1
+            }
+        ];
+
+        return {
+            monthlyIncome,
+            totalExpenses,
+            savingsAllocation,
+            totalAllocated,
+            remainingAllocation,
+            projectedYearEndTotal,
+            rows,
+            steps
+        };
+    };
+
+    const renderSavingsIllustrationStep = () => {
+        if (!illustrationContent || !illustrationCounter || !illustrationBackBtn || !illustrationNextBtn) return;
+        if (!savingsIllustrationData.steps.length) {
+            illustrationContent.innerHTML = '';
+            illustrationCounter.textContent = 'Step 0 of 0';
+            illustrationBackBtn.disabled = true;
+            illustrationNextBtn.disabled = true;
+            return;
+        }
+
+        savingsIllustrationStepIndex = Math.max(0, Math.min(savingsIllustrationStepIndex, savingsIllustrationData.steps.length - 1));
+        const step = savingsIllustrationData.steps[savingsIllustrationStepIndex];
+        const stepCountText = `Step ${savingsIllustrationStepIndex + 1} of ${savingsIllustrationData.steps.length}`;
+        const money = formatSavingsMoneyText;
+        const stepHasAccount = step.kind !== 'origin';
+        const stepHasExpenses = ['expense', 'surplus', 'bucket', 'summary'].includes(step.kind);
+        const stepHasSurplus = ['surplus', 'bucket', 'summary'].includes(step.kind);
+        const visibleBuckets = savingsIllustrationData.rows.slice(0, step.visibleBucketCount || 0);
+        const visibleAllocated = visibleBuckets.reduce((sum, bucket) => sum + bucket.allocationAmount, 0);
+        const visibleProjected = visibleBuckets.reduce((sum, bucket) => sum + bucket.projectedYearEndValue, 0);
+        const visibleRemaining = savingsIllustrationData.savingsAllocation - visibleAllocated;
+        const summaryPills = [
+            buildSavingsIllustrationSummaryPill({
+                label: 'Income',
+                value: money(savingsIllustrationData.monthlyIncome),
+                tone: 'source',
+                active: step.kind === 'origin' || step.kind === 'account'
+            }),
+            stepHasExpenses ? buildSavingsIllustrationSummaryPill({
+                label: 'Expenses',
+                value: money(savingsIllustrationData.totalExpenses),
+                tone: 'expense',
+                active: step.kind === 'expense'
+            }) : '',
+            stepHasSurplus ? buildSavingsIllustrationSummaryPill({
+                label: 'Available',
+                value: money(savingsIllustrationData.savingsAllocation),
+                tone: 'surplus',
+                active: step.kind === 'surplus'
+            }) : '',
+            visibleBuckets.length > 0 ? buildSavingsIllustrationSummaryPill({
+                label: 'Allocated',
+                value: money(visibleAllocated),
+                tone: 'bucket',
+                active: step.kind === 'bucket'
+            }) : '',
+            (stepHasSurplus || visibleBuckets.length > 0) ? buildSavingsIllustrationSummaryPill({
+                label: 'Remaining',
+                value: money(visibleRemaining),
+                tone: 'source',
+                active: step.kind === 'summary'
+            }) : '',
+            visibleBuckets.length > 0 ? buildSavingsIllustrationSummaryPill({
+                label: 'Year-End',
+                value: money(visibleProjected),
+                tone: 'bucket',
+                active: step.kind === 'summary'
+            }) : ''
+        ].filter(Boolean).join('');
+
+        const sourceNode = buildSavingsIllustrationNode({
+            label: step.sourceLabel,
+            value: money(savingsIllustrationData.monthlyIncome),
+            tone: 'source',
+            icon: 'source',
+            active: step.kind === 'origin'
+        });
+        const accountNode = stepHasAccount
+            ? buildSavingsIllustrationNode({
+                label: step.accountLabel,
+                value: money(savingsIllustrationData.monthlyIncome),
+                tone: 'account',
+                icon: 'account',
+                active: step.kind === 'account'
+            })
+            : '';
+        const branches = [
+            stepHasExpenses ? buildSavingsIllustrationBranchCard({
+                label: step.expensesLabel,
+                value: money(savingsIllustrationData.totalExpenses),
+                tone: 'expense',
+                icon: 'expense',
+                active: step.kind === 'expense'
+            }) : '',
+            stepHasSurplus ? buildSavingsIllustrationBranchCard({
+                label: step.surplusLabel,
+                value: money(savingsIllustrationData.savingsAllocation),
+                tone: 'surplus',
+                icon: 'surplus',
+                active: step.kind === 'surplus'
+            }) : ''
+        ].filter(Boolean).join('');
+        const bucketChips = visibleBuckets.length > 0
+            ? visibleBuckets.map((bucket) => buildSavingsIllustrationBucketChip({
+                bucket,
+                active: step.kind === 'bucket' && bucket.index === step.activeBucketIndex,
+                expanded: step.kind === 'bucket' && bucket.index === step.activeBucketIndex
+            })).join('')
+            : '';
+
+        illustrationCounter.textContent = stepCountText;
+        illustrationContent.innerHTML = `
+            <div class="savings-illustration-step">
+                <div class="savings-illustration-step-copy">
+                    <h5>${escapeSavingsIllustrationHtml(step.header)}</h5>
+                </div>
+                ${summaryPills ? `<div class="savings-illustration-stats-strip">${summaryPills}</div>` : ''}
+                <div class="savings-flow-stage">
+                    <div class="savings-flow-mainline">
+                        ${sourceNode}
+                        ${stepHasAccount ? `${buildSavingsIllustrationArrow('gold')}${accountNode}` : ''}
+                    </div>
+                    ${branches ? `<div class="savings-flow-branches">${branches}</div>` : ''}
+                    ${bucketChips ? `<div class="savings-flow-bucket-grid">${bucketChips}</div>` : ''}
+                </div>
+            </div>`;
+        illustrationBackBtn.disabled = savingsIllustrationStepIndex === 0;
+        illustrationNextBtn.disabled = false;
+        illustrationNextBtn.textContent = savingsIllustrationStepIndex === savingsIllustrationData.steps.length - 1
+            ? 'Restart'
+            : 'Next';
+        illustrationNextBtn.setAttribute('aria-label', illustrationNextBtn.textContent);
+    };
+
+    const refreshSavingsIllustrationData = () => {
+        savingsIllustrationData = buildSavingsIllustrationData();
+        if (savingsIllustrationStepIndex > savingsIllustrationData.steps.length - 1) {
+            savingsIllustrationStepIndex = Math.max(0, savingsIllustrationData.steps.length - 1);
+        }
+        if (savingsIllustrationOpen) {
+            renderSavingsIllustrationStep();
+        }
+    };
+
+    const closeSavingsIllustration = () => {
+        if (!illustrationBackdrop) return;
+        savingsIllustrationOpen = false;
+        illustrationBackdrop.hidden = true;
+        illustrationBackdrop.classList.remove('is-open');
+        illustrationBackdrop.setAttribute('aria-hidden', 'true');
+        if (savingsIllustrationTrigger && typeof savingsIllustrationTrigger.focus === 'function') {
+            requestAnimationFrame(() => {
+                try { savingsIllustrationTrigger.focus({ preventScroll: true }); } catch (_) { }
+            });
+        }
+    };
+
+    const openSavingsIllustration = (trigger) => {
+        if (!illustrationBackdrop) return;
+        savingsIllustrationTrigger = trigger || savingsIllustrationTrigger || null;
+        savingsIllustrationStepIndex = 0;
+        refreshSavingsIllustrationData();
+        savingsIllustrationOpen = true;
+        illustrationBackdrop.hidden = false;
+        illustrationBackdrop.classList.add('is-open');
+        illustrationBackdrop.setAttribute('aria-hidden', 'false');
+        renderSavingsIllustrationStep();
+        requestAnimationFrame(() => {
+            try { illustrationCloseBtn?.focus({ preventScroll: true }); } catch (_) { }
+        });
+    };
+
     const applyExpenseLensToSavingsAccelerator = async (event) => {
         const state = event?.detail || await loadPersistedState(linkedELStateId);
+        latestExpenseLensState = state || {};
         const income = getExpenseLensIncomeTotal(state);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
         const hasSavedRemaining = state && Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining');
@@ -2290,7 +2862,51 @@ if (t.id === "SavingsAccelerator") {
         });
 
         saveAllocationState();
+        refreshSavingsIllustrationData();
     };
+
+    const illustrationBtn = document.createElement('button');
+    illustrationBtn.type = 'button';
+    illustrationBtn.className = 'savings-illustration-btn';
+    illustrationBtn.setAttribute('aria-haspopup', 'dialog');
+    illustrationBtn.setAttribute('aria-controls', pid('IllustrationModal'));
+    illustrationBtn.setAttribute('aria-label', 'Open cashflow illustration');
+    illustrationBtn.innerHTML = `
+        <span class="savings-illustration-btn__icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M3 7h6v4H3V7Zm12 0h6v4h-6V7ZM9 15h6v4H9v-4ZM9 9h6m-3 0v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </span>
+        <span>Illustration</span>`;
+    illustrationBtn.addEventListener('click', () => openSavingsIllustration(illustrationBtn));
+    actionRow?.appendChild(illustrationBtn);
+
+    allocationContainer.addEventListener('input', () => refreshSavingsIllustrationData());
+    allocationContainer.addEventListener('change', () => refreshSavingsIllustrationData());
+
+    illustrationBackBtn?.addEventListener('click', () => {
+        if (savingsIllustrationStepIndex > 0) {
+            savingsIllustrationStepIndex -= 1;
+            renderSavingsIllustrationStep();
+        }
+    });
+
+    illustrationNextBtn?.addEventListener('click', () => {
+        if (!savingsIllustrationData.steps.length) return;
+        if (savingsIllustrationStepIndex >= savingsIllustrationData.steps.length - 1) {
+            savingsIllustrationStepIndex = 0;
+        } else {
+            savingsIllustrationStepIndex += 1;
+        }
+        renderSavingsIllustrationStep();
+    });
+
+    illustrationCloseBtn?.addEventListener('click', closeSavingsIllustration);
+    illustrationBackdrop?.addEventListener('click', (event) => {
+        if (event.target === illustrationBackdrop) {
+            closeSavingsIllustration();
+        }
+    });
 
     addBtn.onclick = () => { createAllocationRow(++categoryCount); refreshSurplus(); };
     delBtn.onclick = () => {
@@ -2307,7 +2923,15 @@ if (t.id === "SavingsAccelerator") {
         saTips.textContent = 'Direct extra cash strategically across savings, debt reduction, and key priorities.';
         clearPersistedState(saStateId);
         hideTip();
+        closeSavingsIllustration();
         refreshSurplus();
+    }, actionRow);
+
+    toolContext.onWindow('keydown', (event) => {
+        if (event.key === 'Escape' && savingsIllustrationOpen) {
+            event.preventDefault();
+            closeSavingsIllustration();
+        }
     });
 
     await loadAllocationState();
