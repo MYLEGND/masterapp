@@ -1717,11 +1717,7 @@ if (t.id === "SavingsAccelerator") {
             width:100%;
             max-width:100%;
         }
-        .savings-row .projected-year-end{
-            justify-self:start;
-            width:calc(100% - 6px);
-            margin-right:6px;
-        }
+        .savings-row .projected-year-end{justify-self:stretch;}
         .savings-row .legend-percent-input{justify-self:stretch;}
         .savings-row .legend-percent-field{
             padding:0 1px 0 6px!important;
@@ -1745,8 +1741,11 @@ if (t.id === "SavingsAccelerator") {
         .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
         .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
-        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:linear-gradient(180deg,rgba(244,244,242,.98),rgba(237,245,237,.96));border:1px solid rgba(198,151,45,.75);border-radius:12px;padding:0 12px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.55), inset 0 -1px 0 rgba(31,157,85,.08), 0 1px 0 rgba(11,21,41,.18);}
-        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
+        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
+        .projected-year-end .projected-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;line-height:1;pointer-events:none;user-select:none;color:#2f8f55;}
+        .projected-year-end .projected-value{flex:1 1 auto;min-width:0;padding:0 12px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
+        .projected-year-end.is-neutral .projected-prefix,
+        .projected-year-end.is-neutral .projected-value{color:#0b2a66;}
         .remove-row{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border:1px solid rgba(166,128,35,.42);border-radius:999px;background:rgba(166,128,35,.08);color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1rem;line-height:1;justify-self:center;align-self:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);}
         .remove-row:hover{color:#f2c867;border-color:rgba(199,153,49,.7);background:rgba(166,128,35,.16);}
         .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
@@ -2162,9 +2161,13 @@ if (t.id === "SavingsAccelerator") {
 
         const projectedDiv = document.createElement('div');
         projectedDiv.className = 'projected-year-end sa-alloc-projected';
+        const projectedPrefix = document.createElement('span');
+        projectedPrefix.className = 'projected-prefix';
+        projectedPrefix.textContent = '$';
         const projectedValue = document.createElement('strong');
+        projectedValue.className = 'projected-value';
         projectedValue.textContent = '$0';
-        projectedDiv.append(projectedValue);
+        projectedDiv.append(projectedPrefix, projectedValue);
 
         const del = document.createElement('button');
         del.type = 'button';
@@ -2240,11 +2243,15 @@ if (t.id === "SavingsAccelerator") {
             amtInput.value = Math.round(amt).toLocaleString();
             const projectedEl = row.querySelector('.sa-alloc-projected');
             if (projectedEl) {
-                const strong = projectedEl.querySelector('strong');
-                if (strong) strong.textContent = '$' + Math.round(projection.projectedValue).toLocaleString();
-                projectedEl.title = projection.months > 0
+                const roundedProjection = Math.round(projection.projectedValue);
+                const strong = projectedEl.querySelector('.projected-value');
+                if (strong) strong.textContent = Math.abs(roundedProjection).toLocaleString();
+                const projectionSummary = projection.months > 0
                     ? `${projection.months} monthly period${projection.months === 1 ? '' : 's'} through year end`
                     : 'No remaining monthly periods in the current year';
+                projectedEl.removeAttribute('title');
+                projectedEl.classList.toggle('is-neutral', roundedProjection <= 0);
+                projectedEl.setAttribute('aria-label', `$${Math.abs(roundedProjection).toLocaleString()} projected year-end value. ${projectionSummary}.`);
             }
         });
 
@@ -2277,10 +2284,9 @@ if (t.id === "SavingsAccelerator") {
             else markWithSuffix(markNeutral, a);
         });
         allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(el => {
-            const strong = el.querySelector('strong');
+            const strong = el.querySelector('.projected-value');
             const val = strong ? parseSavingsMoney(strong.textContent) : 0;
-            if (val > 0) strong.style.color = '#15803d';
-            else if (strong) strong.style.color = '';
+            el.classList.toggle('is-neutral', val <= 0);
         });
 
         saveAllocationState();
