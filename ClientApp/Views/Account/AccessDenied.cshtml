@@ -6,6 +6,10 @@
     Context.Response.StatusCode = 403;
 
     var returnUrl = (string)(ViewBag.ReturnUrl ?? "/profile");
+    var isFinanceRoute = returnUrl.StartsWith("/Finance", System.StringComparison.OrdinalIgnoreCase);
+    var message = isFinanceRoute
+        ? "Finance requires a client context. If you are signed in as an agent, open a client first or use View as Client before opening Finance."
+        : "You’re signed in, but you don’t have permission to view that client profile.";
 }
 
 <!DOCTYPE html>
@@ -33,7 +37,7 @@
     <div class="wrap">
         <div class="cardx">
             <h1 class="title">Access Denied</h1>
-            <p class="sub">You’re signed in, but you don’t have permission to view that client profile.</p>
+            <p class="sub">@message</p>
             <div class="divider"></div>
 
             <a class="btnx primary" href="@returnUrl">Go Back</a>
