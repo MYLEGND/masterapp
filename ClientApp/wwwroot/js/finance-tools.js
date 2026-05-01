@@ -1769,70 +1769,73 @@ if (t.id === "SavingsAccelerator") {
         .savings-illustration-close:hover{background:rgba(18,34,62,.98);border-color:#f1cf82;}
         .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
         .savings-illustration-content{padding-top:12px;}
-        .savings-illustration-board{display:grid;grid-template-columns:minmax(320px,368px) 54px minmax(0,1fr);gap:14px;min-height:0;padding:14px 16px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));}
+        .savings-illustration-board{position:relative;display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:32px;min-height:0;padding:18px 20px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));}
         .savings-illustration-left{display:flex;flex-direction:column;justify-content:flex-start;}
-        .savings-illustration-rail{display:flex;flex-direction:column;align-items:flex-start;gap:10px;min-height:100%;}
-        .savings-illustration-rail-link{display:flex;align-items:center;justify-content:center;width:100%;height:42px;}
-        .savings-illustration-rail-link--expense{height:54px;}
-        .savings-illustration-rail-link-line{position:relative;width:3px;height:100%;border-radius:999px;background:linear-gradient(180deg,rgba(214,176,90,.95),rgba(214,176,90,.35));}
+        .savings-illustration-rail{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:100%;}
+        .savings-illustration-account-flow{position:relative;width:min(100%,430px);}
+        .savings-illustration-rail-link{display:flex;align-items:center;justify-content:center;width:min(100%,430px);height:54px;}
+        .savings-illustration-rail-link--expense{height:62px;}
+        .savings-illustration-rail-link-line{position:relative;width:4px;height:100%;border-radius:999px;background:linear-gradient(180deg,rgba(214,176,90,.95),rgba(214,176,90,.35));}
         .savings-illustration-rail-link--expense .savings-illustration-rail-link-line{background:linear-gradient(180deg,rgba(255,107,107,.98),rgba(255,107,107,.34));}
-        .savings-illustration-rail-link-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:9px solid transparent;border-right:9px solid transparent;border-top:13px solid rgba(214,176,90,.98);}
+        .savings-illustration-rail-link-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:10px solid transparent;border-right:10px solid transparent;border-top:15px solid rgba(214,176,90,.98);}
         .savings-illustration-rail-link--expense .savings-illustration-rail-link-line::after{border-top-color:rgba(255,107,107,.98);}
+        .savings-illustration-transfer-arrow{position:absolute;left:calc(100% + 18px);top:50%;width:88px;height:18px;transform:translateY(-50%);display:flex;align-items:center;pointer-events:none;}
+        .savings-illustration-transfer-arrow-line{position:relative;width:100%;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.98),rgba(82,224,130,.54));}
+        .savings-illustration-transfer-arrow-line::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:10px solid transparent;border-bottom:10px solid transparent;border-left:16px solid rgba(82,224,130,.98);}
+        .savings-illustration-transfer-arrow-mobile{display:none;}
+        .savings-illustration-transfer-arrow-mobile-line{position:relative;width:4px;height:34px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.98),rgba(82,224,130,.54));}
+        .savings-illustration-transfer-arrow-mobile-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:9px solid transparent;border-right:9px solid transparent;border-top:13px solid rgba(82,224,130,.98);}
         .savings-illustration-node-stack{display:flex;flex-direction:column;gap:8px;width:100%;}
         .savings-illustration-kicker{display:block;color:#f4c95f;font-size:.62rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;}
         .savings-illustration-kicker--expense{color:#ff5f67;}
-        .savings-illustration-card{width:min(100%,332px);padding:14px 16px;border-radius:18px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 20px 42px rgba(0,0,0,.22);}
+        .savings-illustration-card{width:min(100%,430px);padding:16px 18px;border-radius:20px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 22px 46px rgba(0,0,0,.22);}
         .savings-illustration-card--account{margin-top:2px;}
         .savings-illustration-card--expense{border-color:rgba(255,95,103,.84);}
         .savings-illustration-card.is-active{box-shadow:0 24px 52px rgba(0,0,0,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-card__body{display:grid;grid-template-columns:62px minmax(0,1fr);gap:14px;align-items:center;}
-        .savings-illustration-card__icon{width:62px;height:62px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
-        .savings-illustration-card__icon svg{width:31px;height:31px;display:block;}
+        .savings-illustration-card__body{display:grid;grid-template-columns:70px minmax(0,1fr);gap:16px;align-items:center;}
+        .savings-illustration-card__icon{width:70px;height:70px;border-radius:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
+        .savings-illustration-card__icon svg{width:34px;height:34px;display:block;}
         .savings-illustration-card--source .savings-illustration-card__icon,
         .savings-illustration-card--account .savings-illustration-card__icon{color:#f4c95f;background:radial-gradient(circle at 30% 30%,rgba(244,201,95,.14),rgba(244,201,95,.04));}
         .savings-illustration-card--expense .savings-illustration-card__icon{color:#ff6f72;background:radial-gradient(circle at 30% 30%,rgba(255,111,114,.16),rgba(255,111,114,.05));}
         .savings-illustration-card__copy{display:flex;flex-direction:column;gap:4px;min-width:0;}
-        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:.9rem;font-weight:900;line-height:1.2;}
-        .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.72rem;font-weight:700;line-height:1.22;}
-        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:.92rem;font-weight:900;line-height:1.1;}
+        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:.96rem;font-weight:900;line-height:1.22;}
+        .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.75rem;font-weight:700;line-height:1.24;}
+        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:1rem;font-weight:900;line-height:1.12;}
         .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
-        .savings-illustration-branch{display:flex;align-items:center;justify-content:center;padding-top:106px;}
-        .savings-illustration-branch-link{position:relative;width:100%;height:3px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.92),rgba(82,224,130,.44));}
-        .savings-illustration-branch-link::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:15px solid rgba(82,224,130,.98);}
-        .savings-illustration-right{display:flex;flex-direction:column;gap:12px;min-width:0;}
-        .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:4px;padding-top:2px;}
+        .savings-illustration-right{display:flex;flex-direction:column;gap:12px;min-width:0;padding-left:28px;}
+        .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:4px;padding-top:0;}
         .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
         .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.88rem;font-weight:900;}
-        .savings-illustration-surplus-shell{position:relative;padding-left:0;min-height:100%;}
-        .savings-illustration-surplus-spine{position:absolute;left:0;top:6px;bottom:12px;width:3px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.92),rgba(82,224,130,.28));}
-        .savings-illustration-bucket-list{display:flex;flex-direction:column;gap:10px;padding-left:0;}
-        .savings-illustration-bucket-row{position:relative;display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:center;}
-        .savings-illustration-bucket-row::before{content:"";position:absolute;left:0;top:50%;width:28px;height:3px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.92),rgba(82,224,130,.52));transform:translateY(-50%);}
-        .savings-illustration-bucket-row::after{content:"";position:absolute;left:26px;top:50%;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid rgba(82,224,130,.96);transform:translateY(-50%);}
-        .savings-illustration-bucket-row.is-active::before{box-shadow:0 0 14px rgba(82,224,130,.36);}
-        .savings-illustration-bucket-card{margin-left:8px;padding:12px 14px 11px;border-radius:18px;border:1px solid rgba(82,224,130,.46);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);}
-        .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{box-shadow:0 22px 44px rgba(0,0,0,.22),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-bucket-card__grid{display:grid;grid-template-columns:58px minmax(0,1.85fr) minmax(70px,.42fr) minmax(56px,.32fr) minmax(102px,.5fr);gap:12px;align-items:center;}
-        .savings-illustration-bucket-card__icon{width:58px;height:58px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
-        .savings-illustration-bucket-card__icon svg{width:28px;height:28px;display:block;}
+        .savings-illustration-surplus-shell{min-height:100%;}
+        .savings-illustration-bucket-list{display:flex;flex-direction:column;gap:12px;padding-left:0;}
+        .savings-illustration-bucket-row{position:relative;min-width:0;}
+        .savings-illustration-bucket-card{min-height:92px;padding:15px 18px 14px;border-radius:18px;border:1px solid rgba(82,224,130,.34);border-left:4px solid rgba(82,224,130,.94);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);}
+        .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{border-color:rgba(111,241,155,.42);box-shadow:0 22px 44px rgba(0,0,0,.22),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-illustration-bucket-card__grid{display:grid;grid-template-columns:68px minmax(220px,1.55fr) minmax(96px,.56fr) minmax(74px,.36fr) minmax(136px,.74fr);gap:14px;align-items:center;min-width:0;}
+        .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
+        .savings-illustration-bucket-card__icon svg{width:31px;height:31px;display:block;}
         .savings-illustration-bucket-card__main{display:flex;flex-direction:column;gap:3px;min-width:0;}
-        .savings-illustration-bucket-card__title{display:-webkit-box;color:#f8fafc;font-size:.82rem;font-weight:900;line-height:1.18;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.68rem;font-weight:700;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-illustration-bucket-card__title{display:-webkit-box;color:#f8fafc;font-size:.94rem;font-weight:900;line-height:1.2;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.72rem;font-weight:700;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
         .savings-illustration-bucket-card__amount,
-        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:4px;min-width:0;padding-left:12px;border-left:1px solid rgba(148,163,184,.14);}
-        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.86rem;font-weight:900;line-height:1.05;}
-        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.78rem;font-weight:900;line-height:1.05;}
-        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.64rem;font-weight:900;line-height:1.08;}
-        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.82rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:4px;min-width:0;padding-left:14px;border-left:1px solid rgba(148,163,184,.14);}
+        .savings-illustration-bucket-card__amount-label,
+        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.66rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.94rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.82rem;font-weight:900;line-height:1.08;}
+        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.9rem;font-weight:900;line-height:1.08;}
         .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
-        .savings-illustration-footer{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(214,176,90,.18);}
+        .savings-illustration-footer{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:16px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(214,176,90,.18);}
         .savings-illustration-progress{display:flex;align-items:center;justify-content:center;gap:10px;min-width:0;flex-wrap:wrap;}
         .savings-illustration-progress-dot{width:12px;height:12px;border-radius:999px;background:rgba(148,163,184,.26);border:1px solid rgba(148,163,184,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
         .savings-illustration-progress-dot.is-active{background:#f4c95f;box-shadow:0 0 0 2px rgba(244,201,95,.12),0 0 14px rgba(244,201,95,.35);}
-        .savings-illustration-nav-btn{min-height:46px;padding:0 22px;border-radius:16px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.86rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-nav-btn{min-width:112px;min-height:46px;width:auto;padding:0 22px;border-radius:16px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.86rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
         .savings-illustration-nav-btn:hover:not(:disabled){background:linear-gradient(180deg,rgba(23,41,70,.99),rgba(15,28,50,.98));border-color:#f1cf82;}
         .savings-illustration-nav-btn:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
         .savings-illustration-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
+        .savings-illustration-footer .savings-illustration-nav-btn:first-child{justify-self:start;}
+        .savings-illustration-footer .savings-illustration-nav-btn:last-child{justify-self:end;}
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
         .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
         .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
@@ -1888,15 +1891,19 @@ if (t.id === "SavingsAccelerator") {
         @media (max-width: 1260px){
             .savings-illustration-modal-head{grid-template-columns:minmax(260px,.95fr) minmax(320px,1.2fr) auto;}
             .savings-illustration-summary-bar{grid-template-columns:repeat(3,minmax(0,1fr));}
-            .savings-illustration-board{grid-template-columns:minmax(290px,336px) 42px minmax(0,1fr);}
-            .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(0,1.75fr) minmax(64px,.4fr) minmax(50px,.28fr) minmax(94px,.48fr);}
+            .savings-illustration-board{grid-template-columns:minmax(300px,.88fr) minmax(440px,1.18fr);gap:24px;}
+            .savings-illustration-right{padding-left:18px;}
+            .savings-illustration-transfer-arrow{left:calc(100% + 12px);width:64px;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:64px minmax(180px,1.42fr) minmax(86px,.5fr) minmax(68px,.34fr) minmax(120px,.64fr);}
         }
         @media (max-width: 980px){
             .savings-illustration-modal-head{grid-template-columns:1fr auto;}
             .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
-            .savings-illustration-board{grid-template-columns:1fr;gap:14px;min-height:0;}
-            .savings-illustration-branch{display:none;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(0,1fr) minmax(64px,.38fr) minmax(50px,.28fr) minmax(88px,.46fr);}
+            .savings-illustration-board{grid-template-columns:1fr;gap:16px;min-height:0;}
+            .savings-illustration-right{padding-left:0;}
+            .savings-illustration-transfer-arrow{display:none;}
+            .savings-illustration-transfer-arrow-mobile{display:flex;align-items:center;justify-content:center;height:42px;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:64px minmax(0,1.3fr) minmax(84px,.48fr) minmax(64px,.3fr) minmax(112px,.58fr);}
         }
         @media (max-width: 760px){
             .savings-accelerator-actions{width:100%;justify-content:flex-start;}
@@ -1923,7 +1930,10 @@ if (t.id === "SavingsAccelerator") {
             .savings-illustration-card__body{grid-template-columns:64px minmax(0,1fr);gap:14px;}
             .savings-illustration-card__icon{width:64px;height:64px;border-radius:18px;}
             .savings-illustration-card__icon svg{width:34px;height:34px;}
-            .savings-illustration-bucket-card{margin-left:8px;padding:12px;}
+            .savings-illustration-account-flow{width:100%;}
+            .savings-illustration-rail-link{width:100%;}
+            .savings-illustration-transfer-arrow-mobile{height:38px;}
+            .savings-illustration-bucket-card{padding:14px 14px 12px;}
             .savings-illustration-bucket-card__grid{grid-template-columns:1fr;gap:12px;}
             .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;}
             .savings-illustration-bucket-card__icon svg{width:32px;height:32px;}
@@ -2259,6 +2269,7 @@ if (t.id === "SavingsAccelerator") {
                         <span class="savings-illustration-bucket-card__meta">${escapeSavingsIllustrationHtml(`Balance: ${bucket.startingBalanceText}`)}</span>
                     </div>
                     <div class="savings-illustration-bucket-card__amount">
+                        <span class="savings-illustration-bucket-card__amount-label">Allocated</span>
                         <span class="savings-illustration-bucket-card__amount-value">${escapeSavingsIllustrationHtml(bucket.allocationAmountText)}</span>
                         <span class="savings-illustration-bucket-card__amount-share">${escapeSavingsIllustrationHtml(bucket.allocationPercentText)}</span>
                     </div>
@@ -2551,43 +2562,35 @@ if (t.id === "SavingsAccelerator") {
             })
         ].join('');
 
-        const leftRail = [
-            buildSavingsIllustrationCard({
-                kicker: 'Income Source',
-                title: sourceTitle,
-                subtitle: sourceSubtitle,
-                tone: 'source',
-                icon: 'source',
-                active: step.kind === 'origin'
-            }),
-            stepHasAccount ? `
-                <div class="savings-illustration-rail-link" aria-hidden="true">
-                    <div class="savings-illustration-rail-link-line"></div>
-                </div>
-                ${buildSavingsIllustrationCard({
-                    kicker: 'Cash Received',
-                    title: step.accountLabel,
-                    value: money(savingsIllustrationData.monthlyIncome),
-                    tone: 'account',
-                    icon: 'account',
-                    active: step.kind === 'account'
-                })}
-            ` : '',
-            stepHasExpenses ? `
-                <div class="savings-illustration-rail-link savings-illustration-rail-link--expense" aria-hidden="true">
-                    <div class="savings-illustration-rail-link-line"></div>
-                </div>
-                ${buildSavingsIllustrationCard({
-                    kicker: 'Expenses',
-                    title: step.expensesLabel,
-                    subtitle: 'From Expense Lens',
-                    value: money(savingsIllustrationData.totalExpenses),
-                    tone: 'expense',
-                    icon: 'expense',
-                    active: step.kind === 'expense'
-                })}
-            ` : ''
-        ].filter(Boolean).join('');
+        const sourceCard = buildSavingsIllustrationCard({
+            kicker: 'Income Source',
+            title: sourceTitle,
+            subtitle: sourceSubtitle,
+            tone: 'source',
+            icon: 'source',
+            active: step.kind === 'origin'
+        });
+        const accountCard = stepHasAccount
+            ? buildSavingsIllustrationCard({
+                kicker: 'Cash Received',
+                title: step.accountLabel,
+                value: money(savingsIllustrationData.monthlyIncome),
+                tone: 'account',
+                icon: 'account',
+                active: step.kind === 'account'
+            })
+            : '';
+        const expenseCard = stepHasExpenses
+            ? buildSavingsIllustrationCard({
+                kicker: 'Expenses',
+                title: step.expensesLabel,
+                subtitle: 'From Expense Lens',
+                value: money(savingsIllustrationData.totalExpenses),
+                tone: 'expense',
+                icon: 'expense',
+                active: step.kind === 'expense'
+            })
+            : '';
         const bucketRows = visibleBuckets.map((bucket) => buildSavingsIllustrationBucketCard({
             bucket,
             active: step.kind === 'bucket' && bucket.index === step.activeBucketIndex
@@ -2605,12 +2608,33 @@ if (t.id === "SavingsAccelerator") {
             <div class="savings-illustration-board" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
                 <div class="savings-illustration-left">
                     <div class="savings-illustration-rail">
-                        ${leftRail}
+                        ${sourceCard}
+                        ${stepHasAccount ? `
+                            <div class="savings-illustration-rail-link" aria-hidden="true">
+                                <div class="savings-illustration-rail-link-line"></div>
+                            </div>
+                            <div class="savings-illustration-account-flow">
+                                ${accountCard}
+                                ${stepHasSurplus ? `
+                                    <div class="savings-illustration-transfer-arrow" aria-hidden="true">
+                                        <div class="savings-illustration-transfer-arrow-line"></div>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                        ${stepHasExpenses ? `
+                            <div class="savings-illustration-rail-link savings-illustration-rail-link--expense" aria-hidden="true">
+                                <div class="savings-illustration-rail-link-line"></div>
+                            </div>
+                            ${expenseCard}
+                        ` : ''}
                     </div>
                 </div>
-                <div class="savings-illustration-branch" aria-hidden="true">
-                    ${stepHasSurplus ? '<div class="savings-illustration-branch-link"></div>' : ''}
-                </div>
+                ${stepHasSurplus ? `
+                    <div class="savings-illustration-transfer-arrow-mobile" aria-hidden="true">
+                        <div class="savings-illustration-transfer-arrow-mobile-line"></div>
+                    </div>
+                ` : ''}
                 <div class="savings-illustration-right">
                     ${stepHasSurplus ? `
                         <div class="savings-illustration-surplus-head">
@@ -2618,7 +2642,6 @@ if (t.id === "SavingsAccelerator") {
                             <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
                         </div>
                         <div class="savings-illustration-surplus-shell">
-                            <div class="savings-illustration-surplus-spine" aria-hidden="true"></div>
                             <div class="savings-illustration-bucket-list">${bucketRows}</div>
                         </div>
                     ` : ''}
