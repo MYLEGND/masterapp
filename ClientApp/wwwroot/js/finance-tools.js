@@ -1701,13 +1701,33 @@ if (t.id === "SavingsAccelerator") {
         .${prefix}-tipbox b{font-weight:900;}
         .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
-        .savings-row-header{display:grid;grid-template-columns:minmax(265px,2.15fr) 156px 102px 94px 154px 156px 142px 30px;gap:12px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.65rem;font-weight:900;letter-spacing:.1em;line-height:1.15;text-transform:uppercase;}
-        .savings-row-header.compact{grid-template-columns:minmax(190px,1.7fr) 90px 128px 90px 138px 38px;}
-        .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.2em;white-space:normal;overflow-wrap:anywhere;}
-        .savings-row-header span:last-child{justify-self:end;}
-        .savings-row{display:grid;grid-template-columns:minmax(265px,2.15fr) 156px 102px 94px 154px 156px 142px 30px;gap:12px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
+        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 46px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
+        .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 38px;}
+        .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.1em;white-space:nowrap;overflow:visible;word-break:normal;}
+        .savings-row-header .savings-row-header__multiline{display:block;white-space:normal;line-height:1.02;}
+        .savings-row-header .savings-row-header__projection{letter-spacing:.05em;}
+        .savings-row-header .savings-row-header__remove{justify-self:center;white-space:nowrap;}
+        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 156px 46px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
         .savings-row>*{min-width:0;}
-        .savings-row.compact{grid-template-columns:minmax(190px,1.7fr) 90px 128px 90px 138px 38px;}
+        .savings-row.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 38px;}
+        .savings-row .legend-money-input,
+        .savings-row .legend-percent-input,
+        .savings-row .projected-year-end{
+            min-width:0!important;
+            width:100%;
+            max-width:100%;
+        }
+        .savings-row .legend-percent-input{justify-self:stretch;}
+        .savings-row .legend-percent-field{
+            padding:0 1px 0 6px!important;
+            text-align:center;
+        }
+        .savings-row .legend-percent-suffix{
+            padding:0 6px 0 1px;
+        }
+        .savings-row .legend-money-field{
+            padding:0 10px 0 0!important;
+        }
         .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
         .savings-name{text-overflow:ellipsis;}
         .savings-start-date{padding-right:12px;}
@@ -1720,9 +1740,9 @@ if (t.id === "SavingsAccelerator") {
         .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
         .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
         .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
-        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:0 12px;overflow:hidden;}
-        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:900;font-size:1.08rem;}
-        .remove-row{border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;justify-self:end;align-self:center;}
+        .projected-year-end{display:flex;align-items:center;justify-content:flex-start;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:rgba(255,255,255,.55);border:1.2px solid rgba(166,128,35,.25);border-radius:10px;padding:0 10px;overflow:hidden;}
+        .projected-year-end strong{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#15803d;font-weight:900;font-size:1rem;}
+        .remove-row{border:none;background:transparent;color:#a68023;font-weight:900;cursor:pointer;padding:0;font-size:1.1rem;line-height:1;justify-self:center;align-self:center;}
         .remove-row:hover{color:#c79931;}
         .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
         .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
@@ -1775,18 +1795,18 @@ if (t.id === "SavingsAccelerator") {
                     <span>Alloc %</span>
                     <span>Alloc $</span>
                     <span>APR %</span>
-                    <span>Projected YE</span>
-                    <span>Edit</span>
+                    <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
+                    <span class="savings-row-header__remove">Edit</span>
                 `
                 : `
                     <span>Bucket Name</span>
                     <span>Allocation Amount</span>
-                    <span>Allocation %</span>
+                    <span class="savings-row-header__multiline">Allocation<br>%</span>
                     <span>APR %</span>
                     <span>Start Date</span>
                     <span>Starting Balance</span>
-                    <span>Projected YE</span>
-                    <span>Remove</span>
+                    <span class="savings-row-header__multiline savings-row-header__projection">Projected<br>Year-End</span>
+                    <span class="savings-row-header__remove">Remove</span>
                 `}
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
