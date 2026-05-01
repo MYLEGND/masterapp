@@ -1746,85 +1746,91 @@ if (t.id === "SavingsAccelerator") {
         }
         .savings-illustration-btn__icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
         .savings-illustration-btn__icon svg{width:16px;height:16px;display:block;}
-        .savings-illustration-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.78);backdrop-filter:blur(10px);z-index:2147483000;}
+        .savings-illustration-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.8);backdrop-filter:blur(10px);z-index:2147483000;}
         .savings-illustration-backdrop.is-open{display:flex;}
-        .savings-illustration-modal{width:min(1080px,100%);max-height:min(88vh,900px);overflow:auto;border-radius:24px;border:1px solid rgba(214,176,90,.32);background:radial-gradient(1200px 420px at 0% 0%,rgba(166,128,35,.16),transparent 52%),linear-gradient(180deg,rgba(8,17,33,.995),rgba(15,29,56,.99));box-shadow:0 40px 110px rgba(0,0,0,.55);padding:16px 16px 14px;}
-        .savings-illustration-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+        .savings-illustration-modal{width:min(1520px,100%);max-height:min(92vh,980px);overflow:auto;border-radius:28px;border:1px solid rgba(214,176,90,.34);background:radial-gradient(1400px 520px at 0% 0%,rgba(166,128,35,.14),transparent 52%),linear-gradient(180deg,rgba(5,13,28,.995),rgba(10,22,44,.99));box-shadow:0 46px 120px rgba(0,0,0,.58);padding:18px 18px 16px;}
+        .savings-illustration-modal-head{display:grid;grid-template-columns:minmax(320px,1.05fr) minmax(420px,1.45fr) auto;align-items:start;gap:18px;padding-bottom:14px;border-bottom:1px solid rgba(214,176,90,.18);}
+        .savings-illustration-modal-copy{min-width:0;}
         .savings-illustration-modal-copy h4{margin:0;color:#f8fafc;font-size:1.05rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;}
-        .savings-illustration-modal-copy p{display:none;}
-        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border-radius:999px;background:rgba(166,128,35,.14);border:1px solid rgba(214,176,90,.3);color:#f2d487;font-size:.68rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;margin-bottom:6px;}
-        .savings-illustration-close{width:38px;height:38px;border-radius:999px;border:1px solid rgba(214,176,90,.4);background:rgba(255,255,255,.06);color:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.15rem;font-weight:700;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-close:hover{background:rgba(214,176,90,.14);border-color:rgba(214,176,90,.62);}
-        .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.26);}
-        .savings-illustration-content{display:flex;flex-direction:column;gap:12px;}
-        .savings-illustration-step{display:flex;flex-direction:column;gap:12px;}
-        .savings-illustration-step-copy{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
-        .savings-illustration-step-copy h5{margin:0;color:#fff;font-size:1.05rem;font-weight:900;letter-spacing:.01em;}
-        .savings-illustration-step-copy p{display:none;}
-        .savings-illustration-stats-strip{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;width:100%;}
-        .savings-illustration-stat-pill{padding:8px 10px;border-radius:13px;border:1px solid rgba(148,163,184,.16);background:rgba(255,255,255,.04);min-width:0;}
-        .savings-illustration-stat-pill span{display:block;color:#94a3b8;font-size:.58rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;}
-        .savings-illustration-stat-pill strong{display:block;margin-top:5px;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-illustration-stat-pill--source{border-color:rgba(214,176,90,.25);}
-        .savings-illustration-stat-pill--expense{border-color:rgba(248,113,113,.28);}
-        .savings-illustration-stat-pill--surplus,
-        .savings-illustration-stat-pill--bucket{border-color:rgba(74,222,128,.24);}
-        .savings-illustration-stat-pill.is-active{box-shadow:0 0 0 1px rgba(255,255,255,.08) inset,0 10px 24px rgba(2,6,23,.26);}
-        .savings-flow-stage{padding:12px;border-radius:20px;border:1px solid rgba(214,176,90,.18);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
-        .savings-flow-mainline{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;}
-        .savings-flow-node{min-width:180px;max-width:240px;padding:11px 12px;border-radius:17px;border:1px solid rgba(148,163,184,.2);background:linear-gradient(180deg,rgba(15,23,42,.94),rgba(9,14,27,.94));box-shadow:0 14px 32px rgba(2,6,23,.2);color:#f8fafc;}
-        .savings-flow-node--source,.savings-flow-node--account{border-color:rgba(214,176,90,.28);}
-        .savings-flow-node--expense{border-color:rgba(248,113,113,.34);}
-        .savings-flow-node--surplus,.savings-flow-node--bucket{border-color:rgba(74,222,128,.26);}
-        .savings-flow-node.is-active{transform:translateY(-1px);box-shadow:0 18px 36px rgba(2,6,23,.28),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-flow-node__head{display:flex;align-items:center;gap:10px;min-width:0;}
-        .savings-flow-node__icon{width:40px;height:40px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);}
-        .savings-flow-node__icon svg{width:20px;height:20px;display:block;}
-        .savings-flow-node--source .savings-flow-node__icon,
-        .savings-flow-node--account .savings-flow-node__icon{color:#f4d06f;background:rgba(214,176,90,.12);border-color:rgba(214,176,90,.24);}
-        .savings-flow-node--expense .savings-flow-node__icon{color:#f87171;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.22);}
-        .savings-flow-node--surplus .savings-flow-node__icon,
-        .savings-flow-node--bucket .savings-flow-node__icon{color:#4ade80;background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.18);}
-        .savings-flow-node__copy{min-width:0;display:flex;flex-direction:column;gap:3px;flex:1 1 auto;}
-        .savings-flow-node__label{display:block;color:#e2e8f0;font-size:.78rem;font-weight:800;line-height:1.25;}
-        .savings-flow-node__value{display:block;color:#fff;font-size:1.08rem;line-height:1.1;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-flow-node__stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px;}
-        .savings-flow-node__stat{padding:6px 7px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.05);}
-        .savings-flow-node__stat-label{display:block;color:#94a3b8;font-size:.56rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.2;}
-        .savings-flow-node__stat-value{display:block;margin-top:4px;color:#f8fafc;font-size:.72rem;font-weight:800;line-height:1.2;word-break:break-word;}
-        .savings-flow-arrow{display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:900;line-height:1;min-width:24px;}
-        .savings-flow-arrow--gold{color:#f4d06f;}
-        .savings-flow-arrow--red{color:#f87171;}
-        .savings-flow-arrow--green{color:#4ade80;}
-        .savings-flow-branches{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px;}
-        .savings-flow-branch-card{padding:10px 12px;border-radius:16px;border:1px solid rgba(148,163,184,.18);background:rgba(255,255,255,.04);}
-        .savings-flow-branch-card--expense{border-color:rgba(248,113,113,.28);}
-        .savings-flow-branch-card--surplus{border-color:rgba(74,222,128,.22);}
-        .savings-flow-branch-card.is-active{box-shadow:0 14px 30px rgba(2,6,23,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-flow-branch-card__top{display:flex;align-items:center;gap:9px;min-width:0;}
-        .savings-flow-branch-card__icon{width:34px;height:34px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
-        .savings-flow-branch-card__icon svg{width:17px;height:17px;display:block;}
-        .savings-flow-branch-card--expense .savings-flow-branch-card__icon{color:#f87171;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.22);}
-        .savings-flow-branch-card--surplus .savings-flow-branch-card__icon{color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.18);}
-        .savings-flow-branch-card__copy{min-width:0;display:flex;flex-direction:column;gap:2px;}
-        .savings-flow-branch-card__label{display:block;color:#e2e8f0;font-size:.76rem;font-weight:800;line-height:1.2;}
-        .savings-flow-branch-card__value{display:block;color:#fff;font-size:1rem;font-weight:900;line-height:1.1;}
-        .savings-flow-bucket-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin-top:10px;}
-        .savings-flow-bucket-chip{padding:10px;border-radius:15px;border:1px solid rgba(74,222,128,.2);background:rgba(74,222,128,.06);}
-        .savings-flow-bucket-chip.is-active{border-color:rgba(74,222,128,.38);box-shadow:0 14px 28px rgba(20,83,45,.2),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-flow-bucket-chip__head{display:flex;align-items:center;gap:8px;min-width:0;}
-        .savings-flow-bucket-chip__icon{width:30px;height:30px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;color:#4ade80;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.18);}
-        .savings-flow-bucket-chip__icon svg{width:15px;height:15px;display:block;}
-        .savings-flow-bucket-chip__copy{min-width:0;display:flex;flex-direction:column;gap:3px;}
-        .savings-flow-bucket-chip strong{display:block;color:#f8fafc;font-size:.8rem;font-weight:800;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-flow-bucket-chip span{display:block;color:#bbf7d0;font-size:.72rem;font-weight:800;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-flow-bucket-chip__stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:8px;}
-        .savings-flow-bucket-chip__stat{padding:5px 6px;border-radius:9px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.04);}
-        .savings-flow-bucket-chip__stat-label{display:block;color:#94a3b8;font-size:.54rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;line-height:1.2;}
-        .savings-flow-bucket-chip__stat-value{display:block;margin-top:4px;color:#f8fafc;font-size:.69rem;font-weight:800;line-height:1.2;word-break:break-word;}
-        .savings-illustration-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(214,176,90,.14);}
-        .savings-illustration-nav-btn{min-height:40px;padding:0 16px;border-radius:12px;border:1px solid rgba(214,176,90,.32);background:rgba(255,255,255,.05);color:#f8fafc;font-weight:800;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;}
-        .savings-illustration-nav-btn:hover:not(:disabled){background:rgba(214,176,90,.14);border-color:rgba(214,176,90,.58);}
+        .savings-illustration-modal-copy p{margin:10px 0 0;color:#d2d7e1;font-size:.88rem;line-height:1.35;max-width:480px;}
+        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:rgba(166,128,35,.12);border:1px solid rgba(214,176,90,.34);color:#f4d06f;font-size:.56rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-summary-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;min-height:118px;border-radius:22px;border:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(14,25,45,.92),rgba(9,18,36,.94));overflow:hidden;align-self:start;}
+        .savings-illustration-summary-metric{display:flex;flex-direction:column;justify-content:center;gap:8px;padding:16px 18px;min-width:0;border-left:1px solid rgba(148,163,184,.14);}
+        .savings-illustration-summary-metric:first-child{border-left:none;}
+        .savings-illustration-summary-metric-label{display:block;color:#94a3b8;font-size:.72rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;line-height:1.2;}
+        .savings-illustration-summary-metric-value{display:block;color:#f8fafc;font-size:1rem;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        .savings-illustration-summary-metric--income .savings-illustration-summary-metric-value{color:#f8fafc;}
+        .savings-illustration-summary-metric--expense .savings-illustration-summary-metric-value{color:#ff6f72;}
+        .savings-illustration-summary-metric--available .savings-illustration-summary-metric-value,
+        .savings-illustration-summary-metric--allocated .savings-illustration-summary-metric-value{color:#54df7c;}
+        .savings-illustration-summary-metric--remaining .savings-illustration-summary-metric-value{color:#f8fafc;}
+        .savings-illustration-summary-metric.is-active{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);}
+        .savings-illustration-close{width:46px;height:46px;border-radius:16px;border:1px solid rgba(214,176,90,.56);background:rgba(11,22,43,.94);color:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.3rem;font-weight:800;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-close:hover{background:rgba(18,34,62,.98);border-color:#f1cf82;}
+        .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
+        .savings-illustration-content{padding-top:16px;}
+        .savings-illustration-board{display:grid;grid-template-columns:minmax(380px,470px) 92px minmax(0,1fr);gap:18px;min-height:620px;padding:18px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));}
+        .savings-illustration-left{display:flex;flex-direction:column;justify-content:flex-start;}
+        .savings-illustration-rail{display:flex;flex-direction:column;align-items:flex-start;gap:14px;min-height:100%;}
+        .savings-illustration-rail-link{display:flex;align-items:center;justify-content:center;width:100%;height:66px;}
+        .savings-illustration-rail-link--expense{height:84px;}
+        .savings-illustration-rail-link-line{position:relative;width:4px;height:100%;border-radius:999px;background:linear-gradient(180deg,rgba(214,176,90,.95),rgba(214,176,90,.35));}
+        .savings-illustration-rail-link--expense .savings-illustration-rail-link-line{background:linear-gradient(180deg,rgba(255,107,107,.98),rgba(255,107,107,.34));}
+        .savings-illustration-rail-link-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:11px solid transparent;border-right:11px solid transparent;border-top:16px solid rgba(214,176,90,.98);}
+        .savings-illustration-rail-link--expense .savings-illustration-rail-link-line::after{border-top-color:rgba(255,107,107,.98);}
+        .savings-illustration-node-stack{display:flex;flex-direction:column;gap:8px;width:100%;}
+        .savings-illustration-kicker{display:block;color:#f4c95f;font-size:.68rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;}
+        .savings-illustration-kicker--expense{color:#ff5f67;}
+        .savings-illustration-card{width:min(100%,356px);padding:20px 22px;border-radius:22px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 26px 60px rgba(0,0,0,.24);}
+        .savings-illustration-card--account{margin-top:2px;}
+        .savings-illustration-card--expense{border-color:rgba(255,95,103,.84);}
+        .savings-illustration-card.is-active{box-shadow:0 30px 66px rgba(0,0,0,.28),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-illustration-card__body{display:grid;grid-template-columns:82px minmax(0,1fr);gap:18px;align-items:center;}
+        .savings-illustration-card__icon{width:82px;height:82px;border-radius:22px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
+        .savings-illustration-card__icon svg{width:42px;height:42px;display:block;}
+        .savings-illustration-card--source .savings-illustration-card__icon,
+        .savings-illustration-card--account .savings-illustration-card__icon{color:#f4c95f;background:radial-gradient(circle at 30% 30%,rgba(244,201,95,.14),rgba(244,201,95,.04));}
+        .savings-illustration-card--expense .savings-illustration-card__icon{color:#ff6f72;background:radial-gradient(circle at 30% 30%,rgba(255,111,114,.16),rgba(255,111,114,.05));}
+        .savings-illustration-card__copy{display:flex;flex-direction:column;gap:6px;min-width:0;}
+        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:1rem;font-weight:900;line-height:1.28;}
+        .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.78rem;font-weight:700;line-height:1.28;}
+        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:1rem;font-weight:900;line-height:1.12;}
+        .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
+        .savings-illustration-branch{display:flex;align-items:center;justify-content:center;padding-top:118px;}
+        .savings-illustration-branch-link{position:relative;width:100%;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.92),rgba(82,224,130,.44));}
+        .savings-illustration-branch-link::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:18px solid rgba(82,224,130,.98);}
+        .savings-illustration-right{display:flex;flex-direction:column;gap:12px;min-width:0;}
+        .savings-illustration-surplus-head{display:flex;flex-direction:column;gap:6px;padding-top:10px;}
+        .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.82rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
+        .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.94rem;font-weight:900;}
+        .savings-illustration-surplus-shell{position:relative;padding-left:0;min-height:100%;}
+        .savings-illustration-surplus-spine{position:absolute;left:0;top:8px;bottom:18px;width:4px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.92),rgba(82,224,130,.28));}
+        .savings-illustration-bucket-list{display:flex;flex-direction:column;gap:14px;padding-left:0;}
+        .savings-illustration-bucket-row{position:relative;display:grid;grid-template-columns:48px minmax(0,1fr);gap:14px;align-items:center;}
+        .savings-illustration-bucket-row::before{content:"";position:absolute;left:0;top:50%;width:36px;height:4px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.92),rgba(82,224,130,.52));transform:translateY(-50%);}
+        .savings-illustration-bucket-row::after{content:"";position:absolute;left:34px;top:50%;border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.96);transform:translateY(-50%);}
+        .savings-illustration-bucket-row.is-active::before{box-shadow:0 0 14px rgba(82,224,130,.36);}
+        .savings-illustration-bucket-card{margin-left:18px;padding:18px 18px 16px;border-radius:22px;border:1px solid rgba(82,224,130,.46);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 24px 54px rgba(0,0,0,.2);}
+        .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{box-shadow:0 28px 60px rgba(0,0,0,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
+        .savings-illustration-bucket-card__grid{display:grid;grid-template-columns:88px minmax(0,1.6fr) minmax(84px,.58fr) minmax(72px,.42fr) minmax(112px,.62fr);gap:16px;align-items:center;}
+        .savings-illustration-bucket-card__icon{width:88px;height:88px;border-radius:22px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
+        .savings-illustration-bucket-card__icon svg{width:42px;height:42px;display:block;}
+        .savings-illustration-bucket-card__main{display:flex;flex-direction:column;gap:6px;min-width:0;}
+        .savings-illustration-bucket-card__title{display:block;color:#f8fafc;font-size:.98rem;font-weight:900;line-height:1.26;}
+        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.76rem;font-weight:700;line-height:1.25;}
+        .savings-illustration-bucket-card__amount,
+        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:6px;min-width:0;padding-left:16px;border-left:1px solid rgba(148,163,184,.14);}
+        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.98rem;font-weight:900;line-height:1.1;}
+        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.9rem;font-weight:900;line-height:1.1;}
+        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.74rem;font-weight:900;line-height:1.15;}
+        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.96rem;font-weight:900;line-height:1.12;}
+        .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
+        .savings-illustration-footer{display:grid;grid-template-columns:minmax(120px,1fr) auto minmax(120px,1fr);align-items:center;gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(214,176,90,.18);}
+        .savings-illustration-progress{display:flex;align-items:center;justify-content:center;gap:12px;min-width:0;flex-wrap:wrap;}
+        .savings-illustration-progress-dot{width:14px;height:14px;border-radius:999px;background:rgba(148,163,184,.26);border:1px solid rgba(148,163,184,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-progress-dot.is-active{background:#f4c95f;box-shadow:0 0 0 2px rgba(244,201,95,.12),0 0 18px rgba(244,201,95,.35);}
+        .savings-illustration-nav-btn{min-height:52px;padding:0 26px;border-radius:18px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.92rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
+        .savings-illustration-nav-btn:hover:not(:disabled){background:linear-gradient(180deg,rgba(23,41,70,.99),rgba(15,28,50,.98));border-color:#f1cf82;}
         .savings-illustration-nav-btn:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
         .savings-illustration-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
         .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
@@ -1879,9 +1885,18 @@ if (t.id === "SavingsAccelerator") {
         .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
         .sa-alloc-drawer.is-open{display:grid;}
         .sa-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
-        @media (max-width: 920px){
-            .savings-illustration-stats-strip{grid-template-columns:repeat(3,minmax(0,1fr));}
-            .savings-flow-branches{grid-template-columns:1fr;}
+        @media (max-width: 1260px){
+            .savings-illustration-modal-head{grid-template-columns:minmax(280px,1fr) minmax(320px,1.2fr) auto;}
+            .savings-illustration-summary-bar{grid-template-columns:repeat(3,minmax(0,1fr));}
+            .savings-illustration-board{grid-template-columns:minmax(320px,400px) 64px minmax(0,1fr);}
+            .savings-illustration-bucket-card__grid{grid-template-columns:74px minmax(0,1.6fr) minmax(80px,.58fr) minmax(66px,.42fr) minmax(96px,.62fr);}
+        }
+        @media (max-width: 980px){
+            .savings-illustration-modal-head{grid-template-columns:1fr auto;}
+            .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
+            .savings-illustration-board{grid-template-columns:1fr;gap:14px;min-height:0;}
+            .savings-illustration-branch{display:none;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:74px minmax(0,1fr) repeat(3,minmax(72px,.48fr));}
         }
         @media (max-width: 760px){
             .savings-accelerator-actions{width:100%;justify-content:flex-start;}
@@ -1896,16 +1911,28 @@ if (t.id === "SavingsAccelerator") {
             .sa-alloc-drawer{grid-template-columns:1fr;}
             .savings-illustration-backdrop{padding:10px;}
             .savings-illustration-modal{padding:14px 12px 12px;max-height:90vh;}
-            .savings-illustration-step-copy{align-items:flex-start;}
-            .savings-illustration-stats-strip{grid-template-columns:repeat(2,minmax(0,1fr));}
-            .savings-flow-mainline{flex-direction:column;}
-            .savings-flow-arrow{transform:rotate(90deg);}
-            .savings-flow-node,
-            .savings-flow-bucket-grid{width:100%;max-width:none;}
-            .savings-flow-node__stats,
-            .savings-flow-bucket-chip__stats{grid-template-columns:repeat(2,minmax(0,1fr));}
-            .savings-illustration-footer{flex-wrap:wrap;}
-            .savings-illustration-nav-btn{flex:1 1 calc(50% - 6px);}
+            .savings-illustration-modal-head{grid-template-columns:1fr auto;gap:12px;}
+            .savings-illustration-modal-copy h4{font-size:1.3rem;}
+            .savings-illustration-modal-copy p{display:block;font-size:.92rem;}
+            .savings-illustration-step-counter{margin-bottom:12px;}
+            .savings-illustration-summary-bar{grid-template-columns:repeat(2,minmax(0,1fr));}
+            .savings-illustration-summary-metric{min-height:76px;padding:14px 12px;border-left:none;border-top:1px solid rgba(148,163,184,.14);}
+            .savings-illustration-summary-metric:nth-child(-n+2){border-top:none;}
+            .savings-illustration-board{padding:12px;}
+            .savings-illustration-card{width:100%;padding:16px;}
+            .savings-illustration-card__body{grid-template-columns:64px minmax(0,1fr);gap:14px;}
+            .savings-illustration-card__icon{width:64px;height:64px;border-radius:18px;}
+            .savings-illustration-card__icon svg{width:34px;height:34px;}
+            .savings-illustration-bucket-card{margin-left:10px;padding:14px 14px 12px;}
+            .savings-illustration-bucket-card__grid{grid-template-columns:1fr;gap:12px;}
+            .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;}
+            .savings-illustration-bucket-card__icon svg{width:32px;height:32px;}
+            .savings-illustration-bucket-card__amount,
+            .savings-illustration-bucket-card__stat{padding-left:0;border-left:none;border-top:1px solid rgba(148,163,184,.14);padding-top:10px;}
+            .savings-illustration-bucket-list{gap:12px;}
+            .savings-illustration-footer{grid-template-columns:1fr;gap:14px;}
+            .savings-illustration-progress{order:3;}
+            .savings-illustration-nav-btn{width:100%;}
         }
     </style>
     <div id="${pid('TipLayer')}"></div>
@@ -1981,11 +2008,13 @@ if (t.id === "SavingsAccelerator") {
                     <h4 id="${pid('IllustrationTitle')}">Cashflow Illustration</h4>
                     <p id="${pid('IllustrationSubtitle')}">See how income, expenses, and surplus allocation work together.</p>
                 </div>
+                <div id="${pid('IllustrationSummary')}" class="savings-illustration-summary-bar" aria-live="polite"></div>
                 <button id="${pid('IllustrationClose')}" type="button" class="savings-illustration-close" aria-label="Close cashflow illustration">&times;</button>
             </div>
             <div id="${pid('IllustrationContent')}" class="savings-illustration-content"></div>
             <div class="savings-illustration-footer">
                 <button id="${pid('IllustrationBack')}" type="button" class="savings-illustration-nav-btn" aria-label="Go to previous illustration step">Back</button>
+                <div id="${pid('IllustrationProgress')}" class="savings-illustration-progress" aria-hidden="true"></div>
                 <button id="${pid('IllustrationNext')}" type="button" class="savings-illustration-nav-btn" aria-label="Go to next illustration step">Next</button>
             </div>
         </div>
@@ -2008,6 +2037,8 @@ if (t.id === "SavingsAccelerator") {
     const illustrationBackBtn = document.getElementById(pid('IllustrationBack'));
     const illustrationNextBtn = document.getElementById(pid('IllustrationNext'));
     const illustrationCloseBtn = document.getElementById(pid('IllustrationClose'));
+    const illustrationSummary = document.getElementById(pid('IllustrationSummary'));
+    const illustrationProgress = document.getElementById(pid('IllustrationProgress'));
 
     let categoryCount = 0;
     let latestExpenseLensState = null;
@@ -2123,20 +2154,48 @@ if (t.id === "SavingsAccelerator") {
         if (kind === 'account') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M3 9.5h18v8A2.5 2.5 0 0 1 18.5 20h-13A2.5 2.5 0 0 1 3 17.5v-8Zm0 3.5h18M7 6h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M3 9.5 12 5l9 4.5M5 11h14M6 11v7M10 11v7M14 11v7M18 11v7M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>`;
         }
         if (kind === 'expense') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <path d="M7 4h10v16l-2-1.5L13 20l-2-1.5L9 20l-2-1.5L5 20V6a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M9 9h6M9 13h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M9 9h6M9 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                    <path d="M14 15.5c.8 0 1.5-.56 1.5-1.25S14.8 13 14 13s-1.5.56-1.5 1.25S13.2 15.5 14 15.5Zm0 0v1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                 </svg>`;
         }
-        if (kind === 'surplus') {
+        if (kind === 'surplus' || kind === 'bucket-growth') {
             return `
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                    <path d="M5 16l4-4 3 3 7-7M14 8h5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 17v-4M10 17V9M15 17v-6M19 7v10M6 9l4-3 4 2 5-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M17 4h4v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'bucket-protection') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 3 19 6v5c0 4.5-2.8 7.7-7 10-4.2-2.3-7-5.5-7-10V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="m9.5 12.5 1.8 1.8 3.2-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'bucket-short') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M6.5 15h11l-1-3.8a2 2 0 0 0-1.94-1.5H9.44a2 2 0 0 0-1.94 1.5L6.5 15Zm0 0H5.4a1.4 1.4 0 0 0-1.4 1.4V18h1.5m12-3h1.1A1.4 1.4 0 0 1 20 16.4V18h-1.5M8 18a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm8 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM9 9 8 7m8 2 1-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'bucket-retirement') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8a7 7 0 0 1 14 0M4 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>`;
+        }
+        if (kind === 'bucket-debt') {
+            return `
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M5 16a7 7 0 1 1 14 0M5 16h14M12 16l4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                    <circle cx="12" cy="16" r="1.2" fill="currentColor"/>
                 </svg>`;
         }
         return `
@@ -2146,62 +2205,74 @@ if (t.id === "SavingsAccelerator") {
             </svg>`;
     };
 
-    const buildSavingsIllustrationStat = (label, value, className = 'savings-flow-node__stat') => `
-        <div class="${className}">
-            <span class="${className}-label">${escapeSavingsIllustrationHtml(label)}</span>
-            <span class="${className}-value">${escapeSavingsIllustrationHtml(value)}</span>
+    const getSavingsIllustrationBucketIconKey = (name) => {
+        const normalized = String(name || '').toLowerCase();
+        if (/(emergency|reserve|protect|protection|safety|buffer)/.test(normalized)) return 'bucket-protection';
+        if (/(sinking|car|vehicle|travel|vacation|home|repair|medical|short)/.test(normalized)) return 'bucket-short';
+        if (/(growth|opportun|wealth|mid|invest|brokerage|education)/.test(normalized)) return 'bucket-growth';
+        if (/(retire|roth|ira|401|long.?term)/.test(normalized)) return 'bucket-retirement';
+        if (/(debt|loan|paydown|credit|acceler)/.test(normalized)) return 'bucket-debt';
+        return 'bucket-generic';
+    };
+
+    const buildSavingsIllustrationSummaryMetric = ({ label, value, tone = 'income', active = false }) => `
+        <div class="savings-illustration-summary-metric savings-illustration-summary-metric--${tone}${active ? ' is-active' : ''}">
+            <span class="savings-illustration-summary-metric-label">${escapeSavingsIllustrationHtml(label)}</span>
+            <span class="savings-illustration-summary-metric-value">${escapeSavingsIllustrationHtml(value)}</span>
         </div>`;
 
-    const buildSavingsIllustrationNode = ({ label, value = '', tone = 'source', icon = tone, active = false, stats = [] }) => `
-        <div class="savings-flow-node savings-flow-node--${tone}${active ? ' is-active' : ''}">
-            <div class="savings-flow-node__head">
-                <span class="savings-flow-node__icon">${getSavingsIllustrationIcon(icon)}</span>
-                <div class="savings-flow-node__copy">
-                    <span class="savings-flow-node__label">${escapeSavingsIllustrationHtml(label)}</span>
-                    ${value ? `<span class="savings-flow-node__value">${escapeSavingsIllustrationHtml(value)}</span>` : ''}
+    const buildSavingsIllustrationProgressDots = (total, activeIndex) => Array.from({ length: total }, (_, index) => `
+        <span class="savings-illustration-progress-dot${index === activeIndex ? ' is-active' : ''}"></span>
+    `).join('');
+
+    const buildSavingsIllustrationCard = ({
+        kicker,
+        title,
+        subtitle = '',
+        value = '',
+        tone = 'source',
+        icon = tone,
+        active = false
+    }) => `
+        <div class="savings-illustration-node-stack">
+            <span class="savings-illustration-kicker${tone === 'expense' ? ' savings-illustration-kicker--expense' : ''}">${escapeSavingsIllustrationHtml(kicker)}</span>
+            <div class="savings-illustration-card savings-illustration-card--${tone}${active ? ' is-active' : ''}">
+                <div class="savings-illustration-card__body">
+                    <span class="savings-illustration-card__icon">${getSavingsIllustrationIcon(icon)}</span>
+                    <div class="savings-illustration-card__copy">
+                        <span class="savings-illustration-card__title">${escapeSavingsIllustrationHtml(title)}</span>
+                        ${subtitle ? `<span class="savings-illustration-card__sub">${escapeSavingsIllustrationHtml(subtitle)}</span>` : ''}
+                        ${value ? `<span class="savings-illustration-card__value">${escapeSavingsIllustrationHtml(value)}</span>` : ''}
+                    </div>
                 </div>
             </div>
-            ${stats.length > 0 ? `<div class="savings-flow-node__stats">${stats.join('')}</div>` : ''}
         </div>`;
 
-    const buildSavingsIllustrationBranchCard = ({ label, value = '', tone = 'expense', icon = tone, active = false }) => `
-        <div class="savings-flow-branch-card savings-flow-branch-card--${tone}${active ? ' is-active' : ''}">
-            <div class="savings-flow-branch-card__top">
-                <span class="savings-flow-branch-card__icon">${getSavingsIllustrationIcon(icon)}</span>
-                <div class="savings-flow-branch-card__copy">
-                    <span class="savings-flow-branch-card__label">${escapeSavingsIllustrationHtml(label)}</span>
-                    <span class="savings-flow-branch-card__value">${escapeSavingsIllustrationHtml(value)}</span>
+    const buildSavingsIllustrationBucketCard = ({ bucket, active = false }) => `
+        <div class="savings-illustration-bucket-row${active ? ' is-active' : ''}">
+            <div class="savings-illustration-bucket-card">
+                <div class="savings-illustration-bucket-card__grid">
+                    <span class="savings-illustration-bucket-card__icon">${getSavingsIllustrationIcon(getSavingsIllustrationBucketIconKey(bucket.name))}</span>
+                    <div class="savings-illustration-bucket-card__main">
+                        <span class="savings-illustration-bucket-card__title">${escapeSavingsIllustrationHtml(bucket.name)}</span>
+                        <span class="savings-illustration-bucket-card__meta">${escapeSavingsIllustrationHtml(`Start: ${bucket.startDateText}`)}</span>
+                        <span class="savings-illustration-bucket-card__meta">${escapeSavingsIllustrationHtml(`Balance: ${bucket.startingBalanceText}`)}</span>
+                    </div>
+                    <div class="savings-illustration-bucket-card__amount">
+                        <span class="savings-illustration-bucket-card__amount-value">${escapeSavingsIllustrationHtml(bucket.allocationAmountText)}</span>
+                        <span class="savings-illustration-bucket-card__amount-share">${escapeSavingsIllustrationHtml(bucket.allocationPercentText)}</span>
+                    </div>
+                    <div class="savings-illustration-bucket-card__stat">
+                        <span class="savings-illustration-bucket-card__stat-label">APR</span>
+                        <span class="savings-illustration-bucket-card__stat-value">${escapeSavingsIllustrationHtml(bucket.aprPercentText)}</span>
+                    </div>
+                    <div class="savings-illustration-bucket-card__stat savings-illustration-bucket-card__stat--projection">
+                        <span class="savings-illustration-bucket-card__stat-label">Projected Year-End</span>
+                        <span class="savings-illustration-bucket-card__stat-value">${escapeSavingsIllustrationHtml(bucket.projectedYearEndText)}</span>
+                    </div>
                 </div>
             </div>
         </div>`;
-
-    const buildSavingsIllustrationSummaryPill = ({ label, value, tone = 'source', active = false }) => `
-        <div class="savings-illustration-stat-pill savings-illustration-stat-pill--${tone}${active ? ' is-active' : ''}">
-            <span>${escapeSavingsIllustrationHtml(label)}</span>
-            <strong>${escapeSavingsIllustrationHtml(value)}</strong>
-        </div>`;
-
-    const buildSavingsIllustrationBucketChip = ({ bucket, active = false, expanded = false }) => `
-        <div class="savings-flow-bucket-chip${active ? ' is-active' : ''}">
-            <div class="savings-flow-bucket-chip__head">
-                <span class="savings-flow-bucket-chip__icon">${getSavingsIllustrationIcon('bucket')}</span>
-                <div class="savings-flow-bucket-chip__copy">
-                    <strong>${escapeSavingsIllustrationHtml(bucket.name)}</strong>
-                    <span>${escapeSavingsIllustrationHtml(`${bucket.allocationAmountText} · ${bucket.allocationPercentText}`)}</span>
-                </div>
-            </div>
-            ${expanded ? `
-                <div class="savings-flow-bucket-chip__stats">
-                    ${buildSavingsIllustrationStat('APR', bucket.aprPercentText, 'savings-flow-bucket-chip__stat')}
-                    ${buildSavingsIllustrationStat('Start', bucket.startDateText, 'savings-flow-bucket-chip__stat')}
-                    ${buildSavingsIllustrationStat('Start Bal', bucket.startingBalanceText, 'savings-flow-bucket-chip__stat')}
-                    ${buildSavingsIllustrationStat('Year-End', bucket.projectedYearEndText, 'savings-flow-bucket-chip__stat')}
-                </div>
-            ` : ''}
-        </div>`;
-
-    const buildSavingsIllustrationArrow = (tone) => `
-        <div class="savings-flow-arrow savings-flow-arrow--${tone}" aria-hidden="true">➜</div>`;
 
     const todayIsoDate = () => {
         const now = new Date();
@@ -2425,7 +2496,9 @@ if (t.id === "SavingsAccelerator") {
         if (!illustrationContent || !illustrationCounter || !illustrationBackBtn || !illustrationNextBtn) return;
         if (!savingsIllustrationData.steps.length) {
             illustrationContent.innerHTML = '';
-            illustrationCounter.textContent = 'Step 0 of 0';
+            illustrationCounter.textContent = 'STEP 0 OF 0';
+            if (illustrationSummary) illustrationSummary.innerHTML = '';
+            if (illustrationProgress) illustrationProgress.innerHTML = '';
             illustrationBackBtn.disabled = true;
             illustrationNextBtn.disabled = true;
             return;
@@ -2433,108 +2506,122 @@ if (t.id === "SavingsAccelerator") {
 
         savingsIllustrationStepIndex = Math.max(0, Math.min(savingsIllustrationStepIndex, savingsIllustrationData.steps.length - 1));
         const step = savingsIllustrationData.steps[savingsIllustrationStepIndex];
-        const stepCountText = `Step ${savingsIllustrationStepIndex + 1} of ${savingsIllustrationData.steps.length}`;
+        const stepCountText = `STEP ${savingsIllustrationStepIndex + 1} OF ${savingsIllustrationData.steps.length}`;
         const money = formatSavingsMoneyText;
         const stepHasAccount = step.kind !== 'origin';
         const stepHasExpenses = ['expense', 'surplus', 'bucket', 'summary'].includes(step.kind);
         const stepHasSurplus = ['surplus', 'bucket', 'summary'].includes(step.kind);
         const visibleBuckets = savingsIllustrationData.rows.slice(0, step.visibleBucketCount || 0);
-        const visibleAllocated = visibleBuckets.reduce((sum, bucket) => sum + bucket.allocationAmount, 0);
-        const visibleProjected = visibleBuckets.reduce((sum, bucket) => sum + bucket.projectedYearEndValue, 0);
-        const visibleRemaining = savingsIllustrationData.savingsAllocation - visibleAllocated;
-        const summaryPills = [
-            buildSavingsIllustrationSummaryPill({
+        const sourceParts = String(step.sourceLabel || savingsIllustrationData.steps[0]?.sourceLabel || '')
+            .split('/')
+            .map((part) => part.trim())
+            .filter(Boolean);
+        const sourceTitle = sourceParts[0] || 'Company';
+        const sourceSubtitle = sourceParts.slice(1).join(' / ') || (isBusinessSA ? 'Revenue Source' : 'Income Source');
+        const summaryMetrics = [
+            buildSavingsIllustrationSummaryMetric({
                 label: 'Income',
                 value: money(savingsIllustrationData.monthlyIncome),
-                tone: 'source',
+                tone: 'income',
                 active: step.kind === 'origin' || step.kind === 'account'
             }),
-            stepHasExpenses ? buildSavingsIllustrationSummaryPill({
+            buildSavingsIllustrationSummaryMetric({
                 label: 'Expenses',
                 value: money(savingsIllustrationData.totalExpenses),
                 tone: 'expense',
                 active: step.kind === 'expense'
-            }) : '',
-            stepHasSurplus ? buildSavingsIllustrationSummaryPill({
+            }),
+            buildSavingsIllustrationSummaryMetric({
                 label: 'Available',
                 value: money(savingsIllustrationData.savingsAllocation),
-                tone: 'surplus',
+                tone: 'available',
                 active: step.kind === 'surplus'
-            }) : '',
-            visibleBuckets.length > 0 ? buildSavingsIllustrationSummaryPill({
+            }),
+            buildSavingsIllustrationSummaryMetric({
                 label: 'Allocated',
-                value: money(visibleAllocated),
-                tone: 'bucket',
+                value: money(savingsIllustrationData.totalAllocated),
+                tone: 'allocated',
                 active: step.kind === 'bucket'
-            }) : '',
-            (stepHasSurplus || visibleBuckets.length > 0) ? buildSavingsIllustrationSummaryPill({
+            }),
+            buildSavingsIllustrationSummaryMetric({
                 label: 'Remaining',
-                value: money(visibleRemaining),
-                tone: 'source',
+                value: money(savingsIllustrationData.remainingAllocation),
+                tone: 'remaining',
                 active: step.kind === 'summary'
-            }) : '',
-            visibleBuckets.length > 0 ? buildSavingsIllustrationSummaryPill({
-                label: 'Year-End',
-                value: money(visibleProjected),
-                tone: 'bucket',
-                active: step.kind === 'summary'
-            }) : ''
-        ].filter(Boolean).join('');
-
-        const sourceNode = buildSavingsIllustrationNode({
-            label: step.sourceLabel,
-            value: money(savingsIllustrationData.monthlyIncome),
-            tone: 'source',
-            icon: 'source',
-            active: step.kind === 'origin'
-        });
-        const accountNode = stepHasAccount
-            ? buildSavingsIllustrationNode({
-                label: step.accountLabel,
-                value: money(savingsIllustrationData.monthlyIncome),
-                tone: 'account',
-                icon: 'account',
-                active: step.kind === 'account'
             })
-            : '';
-        const branches = [
-            stepHasExpenses ? buildSavingsIllustrationBranchCard({
-                label: step.expensesLabel,
-                value: money(savingsIllustrationData.totalExpenses),
-                tone: 'expense',
-                icon: 'expense',
-                active: step.kind === 'expense'
-            }) : '',
-            stepHasSurplus ? buildSavingsIllustrationBranchCard({
-                label: step.surplusLabel,
-                value: money(savingsIllustrationData.savingsAllocation),
-                tone: 'surplus',
-                icon: 'surplus',
-                active: step.kind === 'surplus'
-            }) : ''
+        ].join('');
+
+        const leftRail = [
+            buildSavingsIllustrationCard({
+                kicker: 'Income Source',
+                title: sourceTitle,
+                subtitle: sourceSubtitle,
+                tone: 'source',
+                icon: 'source',
+                active: step.kind === 'origin'
+            }),
+            stepHasAccount ? `
+                <div class="savings-illustration-rail-link" aria-hidden="true">
+                    <div class="savings-illustration-rail-link-line"></div>
+                </div>
+                ${buildSavingsIllustrationCard({
+                    kicker: 'Cash Received',
+                    title: step.accountLabel,
+                    value: money(savingsIllustrationData.monthlyIncome),
+                    tone: 'account',
+                    icon: 'account',
+                    active: step.kind === 'account'
+                })}
+            ` : '',
+            stepHasExpenses ? `
+                <div class="savings-illustration-rail-link savings-illustration-rail-link--expense" aria-hidden="true">
+                    <div class="savings-illustration-rail-link-line"></div>
+                </div>
+                ${buildSavingsIllustrationCard({
+                    kicker: 'Expenses',
+                    title: step.expensesLabel,
+                    subtitle: 'From Expense Lens',
+                    value: money(savingsIllustrationData.totalExpenses),
+                    tone: 'expense',
+                    icon: 'expense',
+                    active: step.kind === 'expense'
+                })}
+            ` : ''
         ].filter(Boolean).join('');
-        const bucketChips = visibleBuckets.length > 0
-            ? visibleBuckets.map((bucket) => buildSavingsIllustrationBucketChip({
-                bucket,
-                active: step.kind === 'bucket' && bucket.index === step.activeBucketIndex,
-                expanded: step.kind === 'bucket' && bucket.index === step.activeBucketIndex
-            })).join('')
-            : '';
+        const bucketRows = visibleBuckets.map((bucket) => buildSavingsIllustrationBucketCard({
+            bucket,
+            active: step.kind === 'bucket' && bucket.index === step.activeBucketIndex
+        })).join('');
 
         illustrationCounter.textContent = stepCountText;
+        if (illustrationSummary) illustrationSummary.innerHTML = summaryMetrics;
+        if (illustrationProgress) {
+            illustrationProgress.innerHTML = buildSavingsIllustrationProgressDots(
+                savingsIllustrationData.steps.length,
+                savingsIllustrationStepIndex
+            );
+        }
         illustrationContent.innerHTML = `
-            <div class="savings-illustration-step">
-                <div class="savings-illustration-step-copy">
-                    <h5>${escapeSavingsIllustrationHtml(step.header)}</h5>
-                </div>
-                ${summaryPills ? `<div class="savings-illustration-stats-strip">${summaryPills}</div>` : ''}
-                <div class="savings-flow-stage">
-                    <div class="savings-flow-mainline">
-                        ${sourceNode}
-                        ${stepHasAccount ? `${buildSavingsIllustrationArrow('gold')}${accountNode}` : ''}
+            <div class="savings-illustration-board" aria-label="${escapeSavingsIllustrationHtml(step.header)}">
+                <div class="savings-illustration-left">
+                    <div class="savings-illustration-rail">
+                        ${leftRail}
                     </div>
-                    ${branches ? `<div class="savings-flow-branches">${branches}</div>` : ''}
-                    ${bucketChips ? `<div class="savings-flow-bucket-grid">${bucketChips}</div>` : ''}
+                </div>
+                <div class="savings-illustration-branch" aria-hidden="true">
+                    ${stepHasSurplus ? '<div class="savings-illustration-branch-link"></div>' : ''}
+                </div>
+                <div class="savings-illustration-right">
+                    ${stepHasSurplus ? `
+                        <div class="savings-illustration-surplus-head">
+                            <span class="savings-illustration-surplus-label">Surplus Allocation</span>
+                            <span class="savings-illustration-surplus-value">${escapeSavingsIllustrationHtml(`${money(savingsIllustrationData.savingsAllocation)} Available to Allocate`)}</span>
+                        </div>
+                        <div class="savings-illustration-surplus-shell">
+                            <div class="savings-illustration-surplus-spine" aria-hidden="true"></div>
+                            <div class="savings-illustration-bucket-list">${bucketRows}</div>
+                        </div>
+                    ` : ''}
                 </div>
             </div>`;
         illustrationBackBtn.disabled = savingsIllustrationStepIndex === 0;
