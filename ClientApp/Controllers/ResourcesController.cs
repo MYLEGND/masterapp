@@ -1,6 +1,7 @@
 using ClientApp.Models;
 using ClientApp.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using System.Text.Json;
 using System.IO;
@@ -100,10 +101,20 @@ namespace ClientApp.Controllers
 
         private const long MaxPolicyFileBytes = 15 * 1024 * 1024;
         private readonly EffectiveClientContextService _clientContext;
+        private readonly IWebHostEnvironment _env;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<ResourcesController> _logger;
 
-        public ResourcesController(EffectiveClientContextService clientContext)
+        public ResourcesController(
+            EffectiveClientContextService clientContext,
+            IWebHostEnvironment env,
+            IConfiguration configuration,
+            ILogger<ResourcesController> logger)
         {
             _clientContext = clientContext;
+            _env = env;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         // GET: /Resources/
@@ -132,7 +143,6 @@ namespace ClientApp.Controllers
                                  .ToList();
 
             var policyFolder = GetPolicyDocumentsFolder(context.ClientProfileId);
-            Directory.CreateDirectory(policyFolder);
 
             var records = LoadPolicyRecords(policyFolder);
             var policyFiles = Directory.GetFiles(policyFolder)
@@ -229,7 +239,6 @@ namespace ClientApp.Controllers
             }
 
             var policyFolder = GetPolicyDocumentsFolder(context.ClientProfileId);
-            Directory.CreateDirectory(policyFolder);
 
             var originalName = Path.GetFileName(file.FileName ?? string.Empty);
             var extension = Path.GetExtension(originalName).ToLowerInvariant();
@@ -433,14 +442,86 @@ namespace ClientApp.Controllers
             System.IO.File.WriteAllText(indexPath, json);
         }
 
-        private static string GetPolicyDocumentsFolder(Guid clientProfileId)
+        private string GetPolicyDocumentsFolder(Guid clientProfileId)
         {
-            return Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "App_Data",
-                "client-uploads",
-                "policy-documents",
-                clientProfileId.ToString("N"));
+            var clientFolder = Path.Combine(GetPolicyDocumentsRoot(), clientProfileId.ToString("N"));
+            Directory.CreateDirectory(clientFolder);
+            MigrateLegacyPolicyDocumentsIfNeeded(clientProfileId, clientFolder);
+            return clientFolder;
+        }
+
+        private string GetPolicyDocumentsRoot()
+        {
+            var configuredRoot = Environment.GetEnvironmentVariable("LEGEND_CLIENT_POLICY_DOCUMENTS_ROOT");
+            if (string.IsNullOrWhiteSpace(configuredRoot))
+            {
+                configuredRoot = _configuration["ClientPolicyDocuments:Root"];
+            }
+
+            if (!string.IsNullOrWhiteSpace(configuredRoot))
+            {
+                Directory.CreateDirectory(configuredRoot);
+                return configuredRoot;
+            }
+
+            if (_env.IsDevelopment())
+            {
+                var localRoot = Path.Combine(_env.ContentRootPath, "App_Data", "client-uploads", "policy-documents");
+                Directory.CreateDirectory(localRoot);
+                return localRoot;
+            }
+
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (string.IsNullOrWhiteSpace(home))
+            {
+                home = "D:\\home";
+            }
+
+            var durableRoot = Path.Combine(home, "data", "client-uploads", "policy-documents");
+            Directory.CreateDirectory(durableRoot);
+            return durableRoot;
+        }
+
+        private string GetLegacyPolicyDocumentsRoot()
+        {
+            return Path.Combine(_env.ContentRootPath, "App_Data", "client-uploads", "policy-documents");
+        }
+
+        private void MigrateLegacyPolicyDocumentsIfNeeded(Guid clientProfileId, string targetFolder)
+        {
+            var legacyFolder = Path.Combine(GetLegacyPolicyDocumentsRoot(), clientProfileId.ToString("N"));
+            if (!Directory.Exists(legacyFolder))
+            {
+                return;
+            }
+
+            if (PathsEqual(legacyFolder, targetFolder))
+            {
+                return;
+            }
+
+            foreach (var sourcePath in Directory.GetFiles(legacyFolder))
+            {
+                var targetPath = Path.Combine(targetFolder, Path.GetFileName(sourcePath));
+                if (System.IO.File.Exists(targetPath))
+                {
+                    continue;
+                }
+
+                System.IO.File.Copy(sourcePath, targetPath, overwrite: false);
+            }
+
+            _logger.LogInformation(
+                "Migrated legacy client policy documents into durable storage. ClientProfileId={ClientProfileId}",
+                clientProfileId);
+        }
+
+        private static bool PathsEqual(string left, string right)
+        {
+            return string.Equals(
+                Path.GetFullPath(left).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetFullPath(right).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
         }
 
         private sealed class PolicyDocumentRecord
