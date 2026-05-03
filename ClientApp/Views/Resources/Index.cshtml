@@ -3,12 +3,14 @@
 @{
     ViewData["Title"] = "Resources";
     Layout = "~/Views/Shared/_Layout.cshtml";
+    var policyTypeCounts = Model.PolicyDocuments
+        .GroupBy(document => document.PolicyType ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 }
 
 <div class="resources-page container py-4">
 
     <div class="resources-hero mb-4">
-        <div class="hero-kicker">Legend™ Education</div>
         <h1 class="hero-title m-0">@ViewData["Title"]</h1>
         <p class="hero-sub m-0 mt-2">
             Keep your policy documents close, review educational material quickly, and access important support information in one place.
@@ -44,7 +46,11 @@
                             <div class="policy-type-lanes">
                                 @foreach (var policyType in family.Types)
                                 {
-                                    <button type="button" class="policy-type-lane" data-pick-policy-type="@policyType">@policyType</button>
+                                    var uploadedCount = policyTypeCounts.TryGetValue(policyType, out var count) ? count : 0;
+                                    <button type="button" class="policy-type-lane" data-pick-policy-type="@policyType">
+                                        <span class="policy-type-lane__label">@policyType</span>
+                                        <span class="policy-type-lane__count" aria-label="@uploadedCount uploaded for @policyType">@uploadedCount</span>
+                                    </button>
                                 }
                             </div>
                         </details>
@@ -128,6 +134,7 @@
                                 <div class="policy-list">
                                     @foreach (var document in group)
                                     {
+                                        var documentMeta = $"{document.PolicyFamily} • {document.PolicyType} • {document.Extension.TrimStart('.').ToUpperInvariant()} • {Math.Max(1, document.SizeBytes / 1024)} KB • Uploaded {document.UploadedUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
                                         <div class="policy-item" data-policy-type="@document.PolicyType">
                                             <button type="button"
                                                     class="policy-preview-trigger"
@@ -135,13 +142,19 @@
                                                     data-extension="@document.Extension"
                                                     data-preview-url="@document.PreviewUrl"
                                                     data-download-url="@document.DownloadUrl"
-                                                    data-meta="@document.PolicyFamily • @document.PolicyType • @document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")">
+                                                    data-meta="@documentMeta">
                                                 <span class="policy-name">@document.DisplayName</span>
-                                                <span class="policy-meta">@document.PolicyFamily • @document.PolicyType • @document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                                <span class="policy-meta">@documentMeta</span>
                                             </button>
 
                                             <div class="policy-actions">
-                                                <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener" download="false">View</a>
+                                                <a class="policy-action-link policy-inline-view"
+                                                   href="@document.PreviewUrl"
+                                                   data-name="@document.DisplayName"
+                                                   data-extension="@document.Extension"
+                                                   data-preview-url="@document.PreviewUrl"
+                                                   data-download-url="@document.DownloadUrl"
+                                                   data-meta="@documentMeta">View</a>
                                                 <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
                                                 <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
                                                     @Html.AntiForgeryToken()
@@ -392,6 +405,10 @@
 .policy-type-lanes{ padding:0 8px 8px; display:grid; gap:7px; }
 
 .policy-type-lane{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
     text-align:left;
     border:1px solid rgba(201,155,54,.36);
     border-radius:10px;
@@ -402,11 +419,35 @@
     padding:8px 10px;
 }
 
+.policy-type-lane__label{
+    flex:1 1 auto;
+}
+
+.policy-type-lane__count{
+    flex:0 0 auto;
+    min-width:28px;
+    padding:2px 8px;
+    border-radius:999px;
+    border:1px solid rgba(240,207,120,.36);
+    background:rgba(12,28,52,.82);
+    color:#f8df9a;
+    font-size:.74rem;
+    font-weight:950;
+    line-height:1.35;
+    text-align:center;
+}
+
 .policy-type-lane:hover,
 .policy-type-lane.active{
     border-color:rgba(240,207,120,.72);
     background:linear-gradient(180deg,#204171,#16335a);
     color:#f8df9a;
+}
+
+.policy-type-lane:hover .policy-type-lane__count,
+.policy-type-lane.active .policy-type-lane__count{
+    border-color:rgba(240,207,120,.72);
+    background:rgba(17,38,66,.95);
 }
 
 .policy-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
@@ -623,6 +664,7 @@
 .result-tag{ font-size:.76rem; font-weight:950; padding:4px 8px; border-radius:999px; }
 
 .preview-shell{ overflow:hidden; }
+.preview-shell{ scroll-margin-top: 18px; }
 
 .preview-head{
     padding:16px 18px;
@@ -911,8 +953,16 @@ document.addEventListener("DOMContentLoaded", function () {
     const downloadLink = document.getElementById("resourceDownload");
     const content = document.getElementById("resourceContent");
     const policyTriggers = document.querySelectorAll(".policy-preview-trigger");
+    const policyInlineViews = document.querySelectorAll(".policy-inline-view");
     const allowedTypes = [".pdf", ".png", ".jpg", ".jpeg"];
     let autoNameSeed = policyTypeSelect ? (policyTypeSelect.value || "") : "";
+
+    function scrollPreviewIntoView() {
+        if (!container || container.style.display === "none") return;
+        window.requestAnimationFrame(() => {
+            container.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    }
 
     function setActivePolicyLane(type) {
         policyTypeLanes.forEach(lane => lane.classList.toggle("active", lane.getAttribute("data-pick-policy-type") === type));
@@ -992,6 +1042,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         content.innerHTML = body;
+        scrollPreviewIntoView();
     }
 
     function renderResource(resource) {
@@ -1094,6 +1145,18 @@ document.addEventListener("DOMContentLoaded", function () {
 
     policyTriggers.forEach(trigger => {
         trigger.addEventListener("click", function () {
+            renderEmbeddedDocument(
+                this.dataset.name,
+                this.dataset.extension,
+                this.dataset.previewUrl,
+                this.dataset.meta,
+                this.dataset.downloadUrl);
+        });
+    });
+
+    policyInlineViews.forEach(link => {
+        link.addEventListener("click", function (event) {
+            event.preventDefault();
             renderEmbeddedDocument(
                 this.dataset.name,
                 this.dataset.extension,

@@ -29,7 +29,6 @@
 
     <!-- HEADER -->
     <div class="resources-hero mb-4">
-        <div class="hero-kicker">Legend™ Education</div>
         <h1 class="hero-title m-0">@ViewData["Title"]</h1>
         <p class="hero-sub m-0 mt-2">
             Browse or search available financial education resources.
@@ -305,6 +304,7 @@
     box-shadow:var(--shadow);
     overflow:hidden;
     position:relative;
+    scroll-margin-top:18px;
 }
 
 .preview-head{
@@ -480,6 +480,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const openLink = document.getElementById("resourceOpen");
     const content = document.getElementById("resourceContent");
 
+    function scrollPreviewIntoView() {
+        if (!container || container.style.display === "none") return;
+        window.requestAnimationFrame(() => {
+            container.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    }
+
     function extTag(ext){
         if (!ext) return "FILE";
         return ext.replace(".","").toUpperCase();
@@ -518,6 +525,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         content.innerHTML = body;
+        scrollPreviewIntoView();
     }
 
     // DROPDOWN

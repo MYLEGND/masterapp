@@ -189,7 +189,11 @@ namespace AgentPortal.Controllers;
         if (!await AgentOwnsClientAsync(agentOid, clientUserId))
             return Forbid();
 
-        return RedirectToAction("Index", "Resources", new { clientUserId });
+        var client = await GetClientAsync(clientUserId);
+        if (client == null)
+            return NotFound();
+
+        return await RedirectToClientPortalAsync(client, "/resources");
     }
 
     [HttpGet]
