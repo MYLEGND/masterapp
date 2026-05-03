@@ -272,14 +272,18 @@ namespace ClientApp.Controllers
             if (!updateResult.Success && !updateResult.Skipped)
             {
                 await tx.RollbackAsync();
-                ModelState.AddModelError("", "We couldn't update your sign-in email in the tenant. No changes were saved. Please try again.");
+                ModelState.AddModelError("",
+                    string.IsNullOrWhiteSpace(updateResult.Message)
+                        ? "We couldn't update your sign-in email in Azure. No changes were saved. Please try again."
+                        : updateResult.Message);
                 return View(model);
             }
 
             await tx.CommitAsync();
 
             if (updateResult.Skipped)
-                TempData["ProfileSavedWarning"] = "Profile saved locally, but tenant login email was not updated (Graph updater not configured).";
+                TempData["ProfileSavedWarning"] = updateResult.Message
+                    ?? "Profile saved locally, but the Azure sign-in email did not need to change.";
 
             return Redirect("/profile");
         }

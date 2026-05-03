@@ -1,4 +1,5 @@
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using ClientApp.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -28,7 +29,8 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<EffectiveClientContextService>();
-builder.Services.AddScoped<IAzureUserUpdater, NoopAzureUserUpdater>();
+builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
+builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
 builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
 
 // ------------------------------------------------------------

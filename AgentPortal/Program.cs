@@ -3,6 +3,7 @@ using AgentPortal.Middleware;
 using AgentPortal.Services;
 using Azure.Identity;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -72,6 +73,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ClientProvisioningService>();
+builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgencyCommandService>();

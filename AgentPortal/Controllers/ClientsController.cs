@@ -9,6 +9,7 @@ using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -42,6 +43,7 @@ namespace AgentPortal.Controllers;
         private readonly IConfiguration _config;
         private readonly ILogger<ClientsController> _logger;
         private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
+        private readonly IAzureClientEmailSyncService _azureClientEmailSync;
         private readonly ProductionService _production;
         private readonly EffectiveAgentContext _agentContext;
         private readonly IExecutionEngine _execution;
@@ -58,6 +60,7 @@ namespace AgentPortal.Controllers;
             IConfiguration config,
             ILogger<ClientsController> logger,
             IAgentTimeZoneResolver agentTimeZoneResolver,
+            IAzureClientEmailSyncService azureClientEmailSync,
             ProductionService production,
             EffectiveAgentContext agentContext,
             IExecutionEngine execution,
@@ -68,6 +71,7 @@ namespace AgentPortal.Controllers;
             _config = config;
             _logger = logger;
             _agentTimeZoneResolver = agentTimeZoneResolver;
+            _azureClientEmailSync = azureClientEmailSync;
             _production = production;
             _agentContext = agentContext;
             _execution = execution;
@@ -928,6 +932,30 @@ namespace AgentPortal.Controllers;
 
     private static bool HasPortalAccess(string? clientUserId)
         => Guid.TryParse(Norm(clientUserId), out _);
+
+    private async Task<string?> SyncPortalEmailAsync(ClientProfile profile, CancellationToken cancellationToken = default)
+    {
+        if (!HasPortalAccess(profile.ClientUserId))
+            return null;
+
+        var emailNorm = NormalizeEmail(profile.Email);
+        if (string.IsNullOrWhiteSpace(emailNorm))
+            return "Portal-enabled clients must have a real email address.";
+
+        var result = await _azureClientEmailSync.UpdateEmailAsync(profile.ClientUserId, emailNorm, cancellationToken);
+        if (result.Success)
+            return null;
+
+        _logger.LogError(
+            "Azure client email sync failed. ClientUserId={ClientUserId} Email={Email} Message={Message}",
+            profile.ClientUserId,
+            emailNorm,
+            result.Message);
+
+        return string.IsNullOrWhiteSpace(result.Message)
+            ? "We couldn't update the client's Microsoft sign-in email."
+            : result.Message;
+    }
 
     private static bool IsPortalRecordType(string? recordType)
     {
@@ -3267,7 +3295,21 @@ meta.Activities ??= new List<ClientCrmActivity>();
             }
         }
 
-        await _db.SaveChangesAsync();
+        await using (var tx = await _db.Database.BeginTransactionAsync())
+        {
+            await _db.SaveChangesAsync();
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync();
+                ModelState.AddModelError(nameof(EditClientViewModel.Email), syncError);
+                PrepareEditView(model, returnUrl);
+                return View(model);
+            }
+
+            await tx.CommitAsync();
+        }
 
         TempData["Created"] = $"{RecordTypeLabel(meta.RecordType)} profile updated.";
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
@@ -4006,10 +4048,33 @@ meta.Activities ??= new List<ClientCrmActivity>();
         // Optionally update email if a new one was provided
         if (!string.IsNullOrWhiteSpace(request.NewEmail))
         {
-            var newEmailNorm = request.NewEmail.Trim().ToLowerInvariant();
-            profile.Email = request.NewEmail.Trim();
+            var newEmailNorm = NormalizeEmail(request.NewEmail);
+            if (string.IsNullOrWhiteSpace(newEmailNorm))
+                return BadRequest("A real email address is required.");
+
+            var collision = await _db.ClientProfiles
+                .AsNoTracking()
+                .AnyAsync(x => x.NormalizedEmail == newEmailNorm && x.ClientUserId != clientUserIdNorm,
+                    HttpContext.RequestAborted);
+
+            if (collision)
+                return Conflict("That email is already tied to another client record.");
+
+            await using var tx = await _db.Database.BeginTransactionAsync(HttpContext.RequestAborted);
+            profile.Email = newEmailNorm;
             profile.NormalizedEmail = newEmailNorm;
+            profile.UpdatedUtc = DateTime.UtcNow;
+
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync(HttpContext.RequestAborted);
+                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+            }
+
+            await tx.CommitAsync(HttpContext.RequestAborted);
         }
 
         var emailTo = (profile.Email ?? "").Trim();
@@ -4510,12 +4575,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
         var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
         if (profile == null) return Forbid();
 
-        var emailNorm = NormLower(request.Email);
+        var emailNorm = NormalizeEmail(request.Email);
         if (!string.IsNullOrWhiteSpace(emailNorm))
         {
             var exists = await _db.ClientProfiles
                 .AsNoTracking()
-                .AnyAsync(x => x.Email == emailNorm && x.ClientUserId != profile.ClientUserId);
+                .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != profile.ClientUserId);
             if (exists)
                 return BadRequest("Email already exists on another client.");
         }
@@ -4639,7 +4704,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
         profile.Phone = (request.Phone ?? profile.Phone ?? "").Trim();
         profile.Email = string.IsNullOrWhiteSpace(emailNorm) ? (profile.Email ?? "") : emailNorm;
         profile.NormalizedEmail = NormalizeEmail(profile.Email);
-        if (string.IsNullOrWhiteSpace(profile.Email))
+        if (HasPortalAccess(profile.ClientUserId) && string.IsNullOrWhiteSpace(profile.NormalizedEmail))
+            return BadRequest("Portal-enabled clients require a real email address.");
+
+        if (!HasPortalAccess(profile.ClientUserId) && string.IsNullOrWhiteSpace(profile.Email))
         {
             profile.Email = $"{profile.ClientUserId}@leads.local";
             profile.NormalizedEmail = profile.Email.ToLowerInvariant();
@@ -4669,7 +4737,19 @@ meta.Activities ??= new List<ClientCrmActivity>();
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         profile.UpdatedUtc = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await using (var tx = await _db.Database.BeginTransactionAsync())
+        {
+            await _db.SaveChangesAsync();
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync();
+                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+            }
+
+            await tx.CommitAsync();
+        }
 
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
