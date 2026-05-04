@@ -22,7 +22,7 @@
         (Config["ClientPortalBaseUrl"]
         ?? (Env.IsDevelopment() ? "https://localhost:5221" : "https://client.mylegnd.com"))
         .TrimEnd('/');
-    var clientLoginUrl = $"{clientPortalBaseUrl}/Account/Login?returnUrl=%2F";
+    var clientLoginUrl = $"{clientPortalBaseUrl}/Account/AzureLogin";
 }
 <!DOCTYPE html>
 <html lang="en">

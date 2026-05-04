@@ -15,6 +15,27 @@ public class AccountController : Controller
         return Url.IsLocalUrl(target) ? target : "/";
     }
 
+    [HttpGet]
+    public async Task<IActionResult> AzureLogin(string returnUrl = "/")
+    {
+        var target = NormalizeReturnUrl(returnUrl);
+
+        // Start from a clean local session before sending the browser to Microsoft login.
+        Response.Cookies.Delete("impClientProfileId");
+        Response.Cookies.Delete("selfClientProfileId");
+        await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+        var props = new AuthenticationProperties
+        {
+            RedirectUri = target
+        };
+
+        // Force the Microsoft account picker instead of silently reusing a stale app session.
+        props.Items["prompt"] = "select_account";
+
+        return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
+    }
+
     // Optional landing page (you can keep this view if you want)
     [HttpGet]
     public IActionResult Login(string returnUrl = "/")
