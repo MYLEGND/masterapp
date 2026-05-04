@@ -15,7 +15,7 @@ public class AccountController : Controller
         return Url.IsLocalUrl(target) ? target : "/";
     }
 
-    [HttpGet]
+    [HttpGet("/Account/AzureLogin")]
     public async Task<IActionResult> AzureLogin(string returnUrl = "/")
     {
         var target = NormalizeReturnUrl(returnUrl);
