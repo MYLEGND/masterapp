@@ -85,10 +85,11 @@
         .navbar {
             background: #0b1529 !important;
             border: 1.5px solid var(--legend-gold-deep) !important;
-            padding: 2rem 2rem;
+            padding: 0.55rem 1.5rem 2.55rem;
             display: flex;
             flex-wrap: wrap;
             align-items: flex-start;
+            min-height: 148px;
             max-height: none;
             position: relative;
             box-shadow:
@@ -104,9 +105,9 @@
         }
 
         .navbar-brand img {
-            height: 100px;
+            height: 82px;
             width: auto;
-            max-height: 100px;
+            max-height: 82px;
             filter: drop-shadow(0 8px 16px rgba(64,47,11,.10));
         }
 
@@ -153,7 +154,7 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            margin-left: 1.5rem;
+            margin-left: 1rem;
             height: 100%;
         }
 
@@ -164,7 +165,7 @@
 
         .navbar-left .nav-row {
             display: flex;
-            gap: 2rem;
+            gap: 1.1rem;
             align-items: center;
             flex-wrap: wrap;
         }
@@ -175,7 +176,7 @@
             font-weight: 900;
             color: #f8fafc !important;
             white-space: nowrap;
-            padding: 0.7rem 1.35rem;
+            padding: 0.5rem 1.1rem;
             border-radius: 50px;
             transition: all 0.25s ease;
             letter-spacing: 0.55px;
@@ -201,7 +202,7 @@
         .navbar-right {
             display: flex;
             width: auto;
-            min-width: 360px;
+            min-width: 330px;
             justify-content: flex-end;
             gap: 6px;
             align-items: center;
@@ -217,7 +218,7 @@
             font-weight: 900;
             transition: all 0.25s ease;
             white-space: nowrap;
-            padding: .65rem 1.1rem;
+            padding: .5rem 1.05rem;
             border-radius: 30px;
             border: 1.5px solid rgba(166,128,35,.52);
             background: transparent;
@@ -341,16 +342,21 @@
 
         .header-psalms {
             position: absolute;
-            top: 112px;
+            bottom: 0.45rem;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 1.4rem;
+            font-size: 1.02rem;
             font-weight: 900;
             color: var(--legend-gold-bright);
-            letter-spacing: 1.8px;
+            letter-spacing: 1.1px;
             text-align: center;
             font-family: 'Inter', sans-serif;
-            padding: .55rem 1.2rem;
+            max-width: calc(100% - 3rem);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.05;
+            padding: 0.5rem 1rem;
             border-radius: 999px;
             border: 1.5px solid rgba(166,128,35,.60);
             background: #0f172a;
