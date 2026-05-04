@@ -600,13 +600,13 @@ footer.footer {
             @if (isLandingPage)
             {
                 <div class="navbar-brand" aria-label="Legend">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </div>
             }
             else
             {
                 <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                    <img src="~/images/company-icons/legend-protect-transparent.png" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </a>
 
                 <button class="nav-toggle" id="navToggle" aria-label="Toggle navigation" aria-expanded="false">
