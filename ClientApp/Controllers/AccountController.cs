@@ -9,19 +9,34 @@ namespace ClientApp.Controllers;
 [AllowAnonymous]
 public class AccountController : Controller
 {
+    private string NormalizeReturnUrl(string? returnUrl)
+    {
+        var target = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
+        return Url.IsLocalUrl(target) ? target : "/";
+    }
+
     // Optional landing page (you can keep this view if you want)
     [HttpGet]
     public IActionResult Login(string returnUrl = "/")
     {
-        ViewData["ReturnUrl"] = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
-        return View();
+        var target = NormalizeReturnUrl(returnUrl);
+
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            return LocalRedirect(target);
+        }
+
+        return Challenge(
+            new AuthenticationProperties { RedirectUri = target },
+            OpenIdConnectDefaults.AuthenticationScheme
+        );
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
     public IActionResult LoginSubmit(string returnUrl = "/")
     {
-        var target = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
+        var target = NormalizeReturnUrl(returnUrl);
 
         return Challenge(
             new AuthenticationProperties { RedirectUri = target },

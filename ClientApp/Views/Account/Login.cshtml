@@ -1,15 +1,31 @@
 @{
     ViewData["Title"] = "Login";
+    Layout = null;
+    var returnUrl = ViewData["ReturnUrl"]?.ToString() ?? "/";
 }
 
-<div class="container mt-5" style="max-width: 400px; text-align:center;">
-    <h2 class="mb-4">Welcome Back</h2>
-    <p class="mb-4">Click below to sign in with your account</p>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Legend™</title>
+</head>
+<body style="margin:0; min-height:100vh; display:grid; place-items:center; font-family:Inter, Arial, sans-serif; background:#f8fafc; color:#0f172a;">
+    <div style="width:min(92vw, 420px); text-align:center; padding:32px 24px; border:1px solid rgba(166,128,35,.25); border-radius:18px; background:#ffffff; box-shadow:0 18px 40px rgba(15,23,42,.08);">
+        <h1 style="margin:0 0 12px; font-size:2rem; color:#a68023;">Redirecting to secure sign-in...</h1>
+        <p style="margin:0 0 20px; font-size:1rem; line-height:1.6;">If nothing happens automatically, continue below.</p>
 
-    <form asp-action="LoginSubmit" method="post">
-        <input type="hidden" name="returnUrl" value="@ViewData["ReturnUrl"]" />
-        <button type="submit" class="btn" style="background-color:#a68023; color:#fff; font-weight:700; padding:1rem 2rem;">
-            Login with Azure AD
-        </button>
-    </form>
-</div>
+        <form id="loginForm" asp-action="LoginSubmit" method="post">
+            <input type="hidden" name="returnUrl" value="@returnUrl" />
+            <button type="submit" class="btn" style="background-color:#a68023; color:#fff; font-weight:700; padding:1rem 2rem; border:none; border-radius:12px; cursor:pointer;">
+                Continue to Sign In
+            </button>
+        </form>
+    </div>
+
+    <script>
+        document.getElementById('loginForm')?.submit();
+    </script>
+</body>
+</html>
