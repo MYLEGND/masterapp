@@ -407,6 +407,164 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     .experience { padding: 46px 18px; }
 }
 
+.read-at-your-pace {
+    padding-top: 28px;
+}
+
+.collapsible-stack {
+    display: grid;
+    gap: 14px;
+}
+
+.collapsible-panel {
+    background: linear-gradient(180deg, #0f172a 0%, #0c1427 100%);
+    border: 1.6px solid var(--gold-border);
+    border-radius: 20px;
+    box-shadow: 0 18px 40px rgba(0,0,0,0.16);
+    overflow: hidden;
+}
+
+.collapsible-panel[open] {
+    border-color: var(--gold-strong);
+    box-shadow: 0 22px 48px rgba(0,0,0,0.22);
+}
+
+.collapsible-panel > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    transition: background .18s ease;
+}
+
+.collapsible-panel > summary::-webkit-details-marker {
+    display: none;
+}
+
+.collapsible-panel > summary::marker {
+    content: "";
+}
+
+.collapsible-panel > summary:hover,
+.collapsible-panel > summary:focus-visible {
+    background: rgba(255,255,255,0.03);
+    outline: none;
+}
+
+.collapsible-copy {
+    min-width: 0;
+}
+
+.collapsible-kicker {
+    margin: 0 0 6px;
+    font-size: .78rem;
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    color: rgba(248,250,252,0.72);
+    font-weight: 900;
+}
+
+.collapsible-title {
+    margin: 0;
+    font-size: clamp(1.15rem, 2vw, 1.4rem);
+    font-weight: 900;
+    color: #f8fafc;
+    letter-spacing: -0.01em;
+}
+
+.collapsible-preview {
+    margin: 6px 0 0;
+    color: rgba(232,237,247,0.78);
+    line-height: 1.6;
+    max-width: 760px;
+}
+
+.collapsible-toggle {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    border: 1.2px solid rgba(199,153,49,0.48);
+    background: rgba(255,255,255,0.06);
+    position: relative;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.collapsible-toggle::before,
+.collapsible-toggle::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 14px;
+    height: 2px;
+    background: var(--gold-strong);
+    border-radius: 999px;
+    transform: translate(-50%, -50%);
+    transition: transform .18s ease, opacity .18s ease;
+}
+
+.collapsible-toggle::after {
+    transform: translate(-50%, -50%) rotate(90deg);
+}
+
+.collapsible-panel[open] .collapsible-toggle::after {
+    opacity: 0;
+}
+
+.collapsible-panel[open] > summary {
+    border-bottom: 1px solid rgba(199,153,49,0.22);
+}
+
+.collapsible-body {
+    padding: 18px 20px 20px;
+}
+
+.collapsible-body .grid-3,
+.collapsible-body .process,
+.collapsible-body .faq,
+.collapsible-body .trust-strip {
+    margin-top: 0;
+}
+
+.collapsible-body .cta-row {
+    margin-top: 18px;
+}
+
+.collapsible-body .card,
+.collapsible-body .stat,
+.collapsible-body .process-card {
+    height: 100%;
+}
+
+.faq-stack {
+    display: grid;
+    gap: 12px;
+}
+
+@@media (max-width: 768px) {
+    .collapsible-panel > summary {
+        align-items: flex-start;
+        padding: 16px 16px;
+    }
+
+    .collapsible-body {
+        padding: 16px;
+    }
+
+    .collapsible-preview {
+        max-width: none;
+    }
+
+    .collapsible-toggle {
+        width: 38px;
+        height: 38px;
+    }
+}
+
 </style>
 
 <div class="page-wrap">
@@ -473,146 +631,193 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
         </div>
     </section>
 
-    <!-- TRUST STRIP -->
-    <section class="section">
+    <section class="section read-at-your-pace">
         <div class="section-head">
-            <div class="section-sub" style="margin-bottom:12px;">Trusted by clients who need clarity, protection, and clean execution.</div>
+            <h2 class="section-title">Explore At Your Pace</h2>
+            <p class="section-sub">Everything below is organized into collapsible sections, so clients can open only what they want to read.</p>
         </div>
-        <div class="trust-strip">
-            <div class="stat">
-                <span class="value">Faith Based</span>
-                <span class="label">Client-first, relationship-driven planning</span>
-            </div>
-            <div class="stat">
-                <span class="value">Timely</span>
-                <span class="label">Structured planning without being rushed</span>
-            </div>
-            <div class="stat">
-                <span class="value">Alignment</span>
-                <span class="label">Built to work alongside your broader financial picture</span>
-            </div>
-            <div class="stat">
-                <span class="value">Structured</span>
-                <span class="label">Built with structure, clarity, and accountability</span>
-            </div>
-        </div>
-    </section>
 
-    <!-- PROBLEM / OUTCOME -->
-    <section class="section">
-        <div class="section-head">
-            <h2 class="section-title">What you gain</h2>
-            <p class="section-sub">Three outcomes every client cares about—delivered without jargon.</p>
-        </div>
-        <div class="grid-3">
-            <div class="card">
-                <p class="pill-title">Clarity</p>
-                <h3>Know exactly where you stand.</h3>
-                <p>We map accounts, obligations, and coverage so you see gaps and priorities on one page.</p>
-            </div>
-            <div class="card">
-                <p class="pill-title">Protection</p>
-                <h3>Protect income and family stability.</h3>
-                <p>Right-size life, disability, and health strategies around your real cash flow and risks.</p>
-            </div>
-            <div class="card">
-                <p class="pill-title">Legacy</p>
-                <h3>Keep what you build intact.</h3>
-                <p>Beneficiaries, ownership, and transfer structure that survive surprises—not just good intentions.</p>
-            </div>
-        </div>
-    </section>
+        <div class="collapsible-stack">
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Trust Markers</p>
+                        <h3 class="collapsible-title">Why clients trust the process</h3>
+                        <p class="collapsible-preview">Faith-based guidance, timely pacing, broader-picture alignment, and a structured process.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="trust-strip">
+                        <div class="stat">
+                            <span class="value">Faith Based</span>
+                            <span class="label">Client-first, relationship-driven planning</span>
+                        </div>
+                        <div class="stat">
+                            <span class="value">Timely</span>
+                            <span class="label">Structured planning without being rushed</span>
+                        </div>
+                        <div class="stat">
+                            <span class="value">Alignment</span>
+                            <span class="label">Built to work alongside your broader financial picture</span>
+                        </div>
+                        <div class="stat">
+                            <span class="value">Structured</span>
+                            <span class="label">Built with structure, clarity, and accountability</span>
+                        </div>
+                    </div>
+                </div>
+            </details>
 
-    <!-- SERVICES / VALUE -->
-    <section class="section">
-        <div class="section-head">
-            <h2 class="section-title">How we deliver</h2>
-            <p class="section-sub">Focused, professional-led planning and protection.</p>
-        </div>
-        <div class="grid-3">
-            <div class="card">
-                <p class="pill-title">Planning</p>
-                <h3>Financial organization</h3>
-                <p>Clear inventory, priorities, and a documented action path so you stay in control.</p>
-            </div>
-            <div class="card">
-                <p class="pill-title">Protection</p>
-                <h3>Coverage built on reality</h3>
-                <p>We tailor life/disability/health to your income, debts, dependents, and runway.</p>
-            </div>
-            <div class="card">
-                <p class="pill-title">Legacy</p>
-                <h3>Long-term structure</h3>
-                <p>Ownership, beneficiaries, and coordination with your estate/legal pros for clean transfer.</p>
-            </div>
-        </div>
-    </section>
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Outcomes</p>
+                        <h3 class="collapsible-title">What you gain</h3>
+                        <p class="collapsible-preview">Clarity, protection, and legacy planning delivered without jargon or pressure.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="grid-3">
+                        <div class="card">
+                            <p class="pill-title">Clarity</p>
+                            <h3>Know exactly where you stand.</h3>
+                            <p>We map accounts, obligations, and coverage so you see gaps and priorities on one page.</p>
+                        </div>
+                        <div class="card">
+                            <p class="pill-title">Protection</p>
+                            <h3>Protect income and family stability.</h3>
+                            <p>Right-size life, disability, and health strategies around your real cash flow and risks.</p>
+                        </div>
+                        <div class="card">
+                            <p class="pill-title">Legacy</p>
+                            <h3>Keep what you build intact.</h3>
+                            <p>Beneficiaries, ownership, and transfer structure that survive surprises, not just good intentions.</p>
+                        </div>
+                    </div>
+                </div>
+            </details>
 
-    <!-- PROCESS -->
-    <section class="section">
-        <div class="section-head">
-            <h2 class="section-title">Simple, fast process</h2>
-            <p class="section-sub">Three steps that get you protected without the noise.</p>
-        </div>
-        <div class="process">
-            <div class="process-card">
-                <div class="badge-num">1</div>
-                <h4>Assess</h4>
-                <p>We gather your facts, goals, and risks in one clean assessment.</p>
-            </div>
-            <div class="process-card">
-                <div class="badge-num">2</div>
-                <h4>Design</h4>
-                <p>We walk you through your options clearly, so you understand what you’re choosing and why it makes sense.</p>
-            </div>
-            <div class="process-card">
-                <div class="badge-num">3</div>
-                <h4>Implement</h4>
-                <p>We place the coverage, document it, and keep it updated, so you stay protected as life moves.</p>
-            </div>
-        </div>
-        <div class="cta-row" style="margin-top:16px; justify-content:center;">
-            <a asp-controller="RiskAssessment" asp-action="Index" class="btn btn-primary" data-cta="hero_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment</a>
-            <a href="@bookingLink" target="_blank" rel="noopener" class="btn btn-secondary" data-cta="footer_book_call">Book a Call</a>
-        </div>
-    </section>
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Delivery</p>
+                        <h3 class="collapsible-title">How we deliver</h3>
+                        <p class="collapsible-preview">Planning, protection, and long-term structure built around real life and real cash flow.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="grid-3">
+                        <div class="card">
+                            <p class="pill-title">Planning</p>
+                            <h3>Financial organization</h3>
+                            <p>Clear inventory, priorities, and a documented action path so you stay in control.</p>
+                        </div>
+                        <div class="card">
+                            <p class="pill-title">Protection</p>
+                            <h3>Coverage built on reality</h3>
+                            <p>We tailor life, disability, and health to your income, debts, dependents, and runway.</p>
+                        </div>
+                        <div class="card">
+                            <p class="pill-title">Legacy</p>
+                            <h3>Long-term structure</h3>
+                            <p>Ownership, beneficiaries, and coordination with your estate and legal professionals for clean transfer.</p>
+                        </div>
+                    </div>
+                </div>
+            </details>
 
-    <!-- FAQ -->
-    <section class="section">
-        <div class="section-head">
-            <h2 class="section-title">FAQs</h2>
-        </div>
-        <div class="faq">
-            <div class="card">
-                <h4>What happens in the assessment?</h4>
-                <p>We collect your goals, income, obligations, and current coverage. You get a clear gap analysis and next steps.</p>
-            </div>
-            <div class="card">
-                <h4>Is this just insurance?</h4>
-                <p>No. We start with organization and risk clarity, then tailor coverage. Planning and protection move together.</p>
-            </div>
-            <div class="card">
-                <h4>Is there pressure to buy?</h4>
-                <p>No. You see options, tradeoffs, and costs. You choose the path that makes the most sense for you.</p>
-            </div>
-            <div class="card">
-                <h4>How fast do I see a plan?</h4>
-                <p>You’ll receive your plan in a timely, well-structured way, without anything being rushed or overlooked.</p>
-            </div>
-            <div class="card">
-                <h4>Can you work with my CPA/attorney?</h4>
-                <p>Yes. We structure everything clearly so your CPA or attorney can review it, and we help keep everything aligned so nothing conflicts or gets missed.</p>
-            </div>
-        </div>
-    </section>
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Process</p>
+                        <h3 class="collapsible-title">Simple, fast process</h3>
+                        <p class="collapsible-preview">Three clean steps: assess, design, and implement without noise or confusion.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="process">
+                        <div class="process-card">
+                            <div class="badge-num">1</div>
+                            <h4>Assess</h4>
+                            <p>We gather your facts, goals, and risks in one clean assessment.</p>
+                        </div>
+                        <div class="process-card">
+                            <div class="badge-num">2</div>
+                            <h4>Design</h4>
+                            <p>We walk you through your options clearly, so you understand what you’re choosing and why it makes sense.</p>
+                        </div>
+                        <div class="process-card">
+                            <div class="badge-num">3</div>
+                            <h4>Implement</h4>
+                            <p>We place the coverage, document it, and keep it updated, so you stay protected as life moves.</p>
+                        </div>
+                    </div>
+                    <div class="cta-row" style="justify-content:center;">
+                        <a asp-controller="RiskAssessment" asp-action="Index" class="btn btn-primary" data-cta="hero_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment</a>
+                        <a href="@bookingLink" target="_blank" rel="noopener" class="btn btn-secondary" data-cta="footer_book_call">Book a Call</a>
+                    </div>
+                </div>
+            </details>
 
-    <!-- FINAL CTA BANNER -->
-    <section class="section shell-dark cta-banner">
-        <h3>Ready to lock in clarity and protection?</h3>
-        <p>Start with a clean assessment or talk with a licensed professional.</p>
-        <div class="cta-row" style="justify-content:center;">
-            <a asp-controller="RiskAssessment" asp-action="Index" class="btn btn-primary" data-cta="hero_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment</a>
-            <a href="@bookingLink" target="_blank" rel="noopener" class="btn btn-secondary" data-cta="footer_book_call">Book a Call</a>
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Questions</p>
+                        <h3 class="collapsible-title">Frequently asked questions</h3>
+                        <p class="collapsible-preview">Open the common questions clients usually want answered before they move forward.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="faq">
+                        <div class="card">
+                            <h4>What happens in the assessment?</h4>
+                            <p>We collect your goals, income, obligations, and current coverage. You get a clear gap analysis and next steps.</p>
+                        </div>
+                        <div class="card">
+                            <h4>Is this just insurance?</h4>
+                            <p>No. We start with organization and risk clarity, then tailor coverage. Planning and protection move together.</p>
+                        </div>
+                        <div class="card">
+                            <h4>Is there pressure to buy?</h4>
+                            <p>No. You see options, tradeoffs, and costs. You choose the path that makes the most sense for you.</p>
+                        </div>
+                        <div class="card">
+                            <h4>How fast do I see a plan?</h4>
+                            <p>You’ll receive your plan in a timely, well-structured way, without anything being rushed or overlooked.</p>
+                        </div>
+                        <div class="card">
+                            <h4>Can you work with my CPA/attorney?</h4>
+                            <p>Yes. We structure everything clearly so your CPA or attorney can review it, and we help keep everything aligned so nothing conflicts or gets missed.</p>
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            <details class="collapsible-panel">
+                <summary>
+                    <div class="collapsible-copy">
+                        <p class="collapsible-kicker">Next Step</p>
+                        <h3 class="collapsible-title">Ready when you are</h3>
+                        <p class="collapsible-preview">Start with a clean assessment or book time with a licensed professional when you want to move forward.</p>
+                    </div>
+                    <span class="collapsible-toggle" aria-hidden="true"></span>
+                </summary>
+                <div class="collapsible-body">
+                    <div class="shell-dark cta-banner">
+                        <h3>Ready to lock in clarity and protection?</h3>
+                        <p>Start with a clean assessment or talk with a licensed professional.</p>
+                        <div class="cta-row" style="justify-content:center;">
+                            <a asp-controller="RiskAssessment" asp-action="Index" class="btn btn-primary" data-cta="hero_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment</a>
+                            <a href="@bookingLink" target="_blank" rel="noopener" class="btn btn-secondary" data-cta="footer_book_call">Book a Call</a>
+                        </div>
+                    </div>
+                </div>
+            </details>
         </div>
     </section>
 
