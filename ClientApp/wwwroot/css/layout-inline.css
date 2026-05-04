@@ -24,18 +24,6 @@
             z-index: 1030;
         }
 
-        .navbar::before{
-            content:"";
-            position:absolute;
-            left:0;
-            right:0;
-            top:0;
-            height:4px;
-            background: linear-gradient(90deg, #a68023, #c79931 24%, #ddb457 52%, #c79931 80%, #a68023);
-            border-top-left-radius: 16px;
-            border-top-right-radius: 16px;
-        }
-
         .navbar-brand img {
             height: 82px;
             width: auto;
