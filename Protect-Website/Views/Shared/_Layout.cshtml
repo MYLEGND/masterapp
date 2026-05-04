@@ -1,5 +1,7 @@
 ﻿@using Microsoft.AspNetCore.Http
 @inject IHttpContextAccessor HttpContextAccessor
+@inject Microsoft.Extensions.Configuration.IConfiguration Config
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
@@ -16,6 +18,11 @@
         : string.Empty;
     var termsUrl = $"{legalBasePath}/Terms";
     var privacyUrl = $"{legalBasePath}/Privacy";
+    var clientPortalBaseUrl =
+        (Config["ClientPortalBaseUrl"]
+        ?? (Env.IsDevelopment() ? "https://localhost:5221" : "https://client.mylegnd.com"))
+        .TrimEnd('/');
+    var clientLoginUrl = $"{clientPortalBaseUrl}/Account/Login?returnUrl=%2F";
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -608,6 +615,7 @@ footer.footer {
                     <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
                     <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
                     <a class="nav-link" asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
+                    <a class="nav-link" href="@clientLoginUrl" data-cta="nav_client_login">Login</a>
                 </div>
             }
         </div>
