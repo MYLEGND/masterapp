@@ -1415,11 +1415,54 @@
 }
 
 @{
+    var legendProfileUser = HttpContextAccessor.HttpContext?.User;
+
+    string? CleanAgentFirstName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (trimmed.Contains("@")) return null;
+
+        var firstToken = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(firstToken)) return null;
+        if (firstToken.Contains(".")) return null;
+        if (firstToken.Length < 2) return null;
+
+        return firstToken;
+    }
+
+    var legendProfileUserId =
+        !string.IsNullOrWhiteSpace(impersonatedAgentId)
+            ? impersonatedAgentId
+            : legendProfileUser?.FindFirst("oid")?.Value
+                ?? legendProfileUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? legendProfileUser?.Identity?.Name;
+
+    var legendStoredAgentProfile =
+        !string.IsNullOrWhiteSpace(legendProfileUserId)
+            ? _db.AgentProfiles.AsNoTracking().FirstOrDefault(x => x.AgentUserId == legendProfileUserId)
+            : null;
+
+    var legendProfileFullName =
+        !string.IsNullOrWhiteSpace(legendStoredAgentProfile?.FullName)
+            ? legendStoredAgentProfile.FullName.Trim()
+            : !string.IsNullOrWhiteSpace(impersonatedDisplay)
+                ? impersonatedDisplay.Trim()
+                : legendProfileUser?.FindFirst("name")?.Value?.Trim()
+                    ?? legendProfileUser?.FindFirst(ClaimTypes.Name)?.Value?.Trim();
+
+    var legendProfileFirstName =
+        CleanAgentFirstName(legendProfileFullName)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst(ClaimTypes.GivenName)?.Value)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("given_name")?.Value)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("first_name")?.Value)
+        ?? "Agent";
+
     var legendAgentProfileJson = System.Text.Json.JsonSerializer.Serialize(new
     {
-        firstName = string.IsNullOrWhiteSpace(first) ? "Agent" : first.Trim(),
-        fullName = string.IsNullOrWhiteSpace(agentProfile?.FullName) ? displayName : agentProfile.FullName.Trim(),
-        phone = agentProfile?.Phone?.Trim() ?? ""
+        firstName = legendProfileFirstName,
+        fullName = string.IsNullOrWhiteSpace(legendProfileFullName) ? legendProfileFirstName : legendProfileFullName,
+        phone = legendStoredAgentProfile?.Phone?.Trim() ?? ""
     });
 }
 
