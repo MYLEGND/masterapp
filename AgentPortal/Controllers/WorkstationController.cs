@@ -14,12 +14,12 @@ public class WorkstationController : Controller
         _logger = logger;
     }
 
-    // Landing: default to Mortgage Protection rebuttals
+    // Landing: default to Final Expense rebuttals
     [HttpGet("")]
     [HttpGet("Index")]
     public IActionResult Index()
     {
-        return RedirectToAction(nameof(Rebuttals));
+        return RedirectToAction(nameof(FinalExpenseRebuttals));
     }
 
     // =========================================================
