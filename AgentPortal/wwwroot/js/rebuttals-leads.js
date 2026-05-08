@@ -1707,7 +1707,8 @@
       }
     }
 
-    async function syncNext(){
+    async function syncNext(options = {}){
+      const retrying = !!options.retrying;
       if (nextInFlight) return;
       nextInFlight = true;
       try {
@@ -1737,20 +1738,31 @@
         }
 
         if (!resolveCurrentLead()){
-          setStatusMessage('No active lead available', 'bad');
-          return;
+          const hydrated = await fetchActiveState();
+          if (!hydrated || !resolveCurrentLead()){
+            setStatusMessage('No active lead available', 'bad');
+            return;
+          }
         }
 
         if (!activeStateVersion){
           const hydrated = await fetchActiveState();
           if (!hydrated || !activeStateVersion){
             setStatusMessage('Unable to sync active lead', 'bad');
-          } else {
-            setStatusMessage('Synced to latest lead. Tap Next again.');
+            return;
           }
+
+          nextInFlight = false;
+          return syncNext({ retrying: true });
+        }
+
+        const currentLeadBeforeRequest = resolveCurrentLead();
+        if (!currentLeadBeforeRequest){
+          setStatusMessage('No active lead available', 'bad');
           return;
         }
 
+        const beforeLeadId = currentLeadBeforeRequest.leadId || '';
         const beforeVersion = activeStateVersion;
         const res = await fetch('/LeadBridge/Next', withDialHeaders({
           method: 'POST',
@@ -1762,13 +1774,34 @@
           body: `QueueKey=${encodeURIComponent(queueKey)}&Version=${encodeURIComponent(activeStateVersion||'')}`
         }));
         if (res.ok){
-        const payload = await res.json();
-        await applyRemoteState(payload, false);
-        const afterVersion = payload?.version || payload?.Version || activeStateVersion;
-        if (beforeVersion && afterVersion === beforeVersion){
-            setStatusMessage('Synced to latest lead. Tap Next again.');
+          const payload = await res.json();
+          await applyRemoteState(payload, false);
+
+          const afterLead = resolveCurrentLead();
+          const afterLeadId = afterLead?.leadId || '';
+          const afterVersion = payload?.version || payload?.Version || activeStateVersion;
+
+          const stateReconciledOnly =
+            !!beforeVersion &&
+            !!afterVersion &&
+            beforeVersion !== afterVersion &&
+            beforeLeadId &&
+            afterLeadId === beforeLeadId;
+
+          const leadDidNotAdvance =
+            beforeLeadId &&
+            afterLeadId &&
+            beforeLeadId === afterLeadId;
+
+          if (!retrying && (stateReconciledOnly || leadDidNotAdvance)){
+            nextInFlight = false;
+            return syncNext({ retrying: true });
+          }
+
+          if (beforeLeadId && afterLeadId && beforeLeadId !== afterLeadId){
+            setStatusMessage('Advanced to next lead');
+          }
         }
-      }
         else {
           const text = await res.text();
           console.error('LeadBridge Next failed', res.status, text);

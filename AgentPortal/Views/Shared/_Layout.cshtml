@@ -1469,9 +1469,95 @@
 <script>
     (function () {
         const profile = @Html.Raw(legendAgentProfileJson);
+        const textTemplateCache = new WeakMap();
+        const scriptTemplateCache = new WeakMap();
 
         function readString(value) {
             return typeof value === 'string' ? value.trim() : '';
+        }
+
+        function firstToken(value) {
+            const clean = readString(value);
+            if (!clean) return '';
+            return clean.split(/\s+/).filter(Boolean)[0] || '';
+        }
+
+        const US_STATE_NAME_BY_CODE = Object.freeze({
+            AL: 'Alabama',
+            AK: 'Alaska',
+            AZ: 'Arizona',
+            AR: 'Arkansas',
+            CA: 'California',
+            CO: 'Colorado',
+            CT: 'Connecticut',
+            DE: 'Delaware',
+            DC: 'District of Columbia',
+            FL: 'Florida',
+            GA: 'Georgia',
+            HI: 'Hawaii',
+            ID: 'Idaho',
+            IL: 'Illinois',
+            IN: 'Indiana',
+            IA: 'Iowa',
+            KS: 'Kansas',
+            KY: 'Kentucky',
+            LA: 'Louisiana',
+            ME: 'Maine',
+            MD: 'Maryland',
+            MA: 'Massachusetts',
+            MI: 'Michigan',
+            MN: 'Minnesota',
+            MS: 'Mississippi',
+            MO: 'Missouri',
+            MT: 'Montana',
+            NE: 'Nebraska',
+            NV: 'Nevada',
+            NH: 'New Hampshire',
+            NJ: 'New Jersey',
+            NM: 'New Mexico',
+            NY: 'New York',
+            NC: 'North Carolina',
+            ND: 'North Dakota',
+            OH: 'Ohio',
+            OK: 'Oklahoma',
+            OR: 'Oregon',
+            PA: 'Pennsylvania',
+            RI: 'Rhode Island',
+            SC: 'South Carolina',
+            SD: 'South Dakota',
+            TN: 'Tennessee',
+            TX: 'Texas',
+            UT: 'Utah',
+            VT: 'Vermont',
+            VA: 'Virginia',
+            WA: 'Washington',
+            WV: 'West Virginia',
+            WI: 'Wisconsin',
+            WY: 'Wyoming',
+            PR: 'Puerto Rico',
+            GU: 'Guam',
+            VI: 'U.S. Virgin Islands',
+            AS: 'American Samoa',
+            MP: 'Northern Mariana Islands'
+        });
+
+        const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+            Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+                acc[name.toUpperCase().replace(/[^A-Z]/g, '')] = name;
+                return acc;
+            }, {})
+        );
+
+        function normalizeStateName(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const codeKey = raw.toUpperCase().replace(/[^A-Z]/g, '');
+            if (US_STATE_NAME_BY_CODE[codeKey]) {
+                return US_STATE_NAME_BY_CODE[codeKey];
+            }
+
+            return US_STATE_CANONICAL_BY_KEY[codeKey] || raw;
         }
 
         function getFirstName() {
@@ -1487,28 +1573,110 @@
             return 'Agent';
         }
 
+        function getLead() {
+            const bridgeLead = window.LeadBridge?.getCurrentLead?.();
+            if (bridgeLead && typeof bridgeLead === 'object') return bridgeLead;
+
+            const currentLead = window.__currentLead;
+            return currentLead && typeof currentLead === 'object' ? currentLead : null;
+        }
+
+        function getLeadFirstName() {
+            const lead = getLead();
+            const leadFirstName = readString(lead?.firstName);
+            if (leadFirstName) return leadFirstName;
+
+            const leadName = firstToken(lead?.name || `${lead?.firstName || ''} ${lead?.lastName || ''}`);
+            return leadName || 'Client';
+        }
+
+        function getLeadState() {
+            const lead = getLead();
+            return normalizeStateName(lead?.state) || 'State';
+        }
+
+        function replacePlaceholderVariants(source, token, value) {
+            const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return source
+                .replace(new RegExp(`<\\s*${escapedToken}\\s*>`, 'gi'), value)
+                .replace(new RegExp(`&lt;\\s*${escapedToken}\\s*&gt;`, 'gi'), value);
+        }
+
+        function hasSupportedPlaceholder(value) {
+            return /(?:<|&lt;)\s*(?:your full name|your name|agent first name|agent name|client first name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
+        }
+
         const api = {
             get() {
                 return profile;
             },
             getFirstName,
+            getLead,
+            getLeadFirstName,
+            getLeadState,
             getPhone() {
                 return readString(profile?.phone);
             },
             fillScriptPlaceholders(text) {
                 const agentFirstName = getFirstName();
-                return String(text ?? '')
-                    .replace(/<your full name>/gi, agentFirstName)
-                    .replace(/<your name>/gi, agentFirstName)
-                    .replace(/<agent first name>/gi, agentFirstName)
-                    .replace(/<agent name>/gi, agentFirstName);
+                const leadFirstName = getLeadFirstName();
+                const leadState = getLeadState();
+                let rendered = String(text ?? '');
+
+                rendered = replacePlaceholderVariants(rendered, 'your full name', agentFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'your name', agentFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'agent first name', agentFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'agent name', agentFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'client first name', leadFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'client name', leadFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'client', leadFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'name', leadFirstName);
+                rendered = replacePlaceholderVariants(rendered, 'state', leadState);
+
+                return rendered;
+            },
+            applyScriptTemplates(root) {
+                if (!root) return;
+
+                const blocks = [];
+                if (root.nodeType === Node.ELEMENT_NODE && root.classList?.contains('script')) {
+                    blocks.push(root);
+                }
+                if (root.nodeType === Node.ELEMENT_NODE || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE || root.nodeType === Node.DOCUMENT_NODE) {
+                    root.querySelectorAll?.('.script').forEach(block => blocks.push(block));
+                }
+
+                blocks.forEach((block) => {
+                    const template = scriptTemplateCache.get(block) ?? block.innerHTML;
+                    if (!scriptTemplateCache.has(block) && hasSupportedPlaceholder(template)) {
+                        scriptTemplateCache.set(block, template);
+                    }
+
+                    const source = scriptTemplateCache.get(block);
+                    if (!source) return;
+
+                    const rendered = api.fillScriptPlaceholders(source);
+                    if (block.dataset.raw !== undefined) {
+                        block.dataset.raw = rendered;
+                    }
+                    if (block.innerHTML !== rendered) {
+                        block.innerHTML = rendered;
+                    }
+                });
             },
             applyPlaceholders(root) {
                 if (!root) return;
 
+                api.applyScriptTemplates(root);
+
                 const applyToTextNode = (node) => {
                     if (!node || typeof node.nodeValue !== 'string') return;
-                    const nextValue = api.fillScriptPlaceholders(node.nodeValue);
+                    const template = textTemplateCache.get(node) ?? node.nodeValue;
+                    if (!textTemplateCache.has(node)) {
+                        textTemplateCache.set(node, template);
+                    }
+
+                    const nextValue = api.fillScriptPlaceholders(template);
                     if (nextValue !== node.nodeValue) {
                         node.nodeValue = nextValue;
                     }
@@ -1529,7 +1697,8 @@
                 const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
                     acceptNode(node) {
                         const parentTag = node.parentElement?.tagName;
-                        if (!node.nodeValue || !node.nodeValue.includes('<')) {
+                        const template = textTemplateCache.get(node) ?? node.nodeValue;
+                        if (!template || !hasSupportedPlaceholder(template)) {
                             return NodeFilter.FILTER_REJECT;
                         }
 
@@ -1537,7 +1706,11 @@
                             return NodeFilter.FILTER_REJECT;
                         }
 
-                        return api.fillScriptPlaceholders(node.nodeValue) === node.nodeValue
+                        if (node.parentElement?.closest('.script')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        return api.fillScriptPlaceholders(template) === node.nodeValue
                             ? NodeFilter.FILTER_REJECT
                             : NodeFilter.FILTER_ACCEPT;
                     }
@@ -1601,6 +1774,8 @@
             syncWorkstationPlaceholders();
             mountWorkstationPlaceholderObserver();
         };
+
+        window.addEventListener('leadbridge:currentLead', syncWorkstationPlaceholders);
 
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', bootWorkstationPlaceholderSync, { once: true });

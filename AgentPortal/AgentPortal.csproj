@@ -64,7 +64,8 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.2" />
-    <PackageReference Include="Microsoft.Graph" Version="5.103.0" />
+    <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="1.22.2" />
     <PackageReference Include="Microsoft.Identity.Web" Version="4.4.0" />
     <PackageReference Include="Microsoft.Identity.Web.MicrosoftGraph" Version="4.4.0" />
     <PackageReference Include="Microsoft.Identity.Web.UI" Version="4.4.0" />
