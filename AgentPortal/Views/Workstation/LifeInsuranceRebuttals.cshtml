@@ -458,6 +458,7 @@
     const prosperNavArrow = document.getElementById("prosperNavArrow");
     const prosperUrl = '@Url.Action("LifeInsurance", "Workstation")';
     const defaultProsperId = "sec-aged";
+    const textScriptIds = new Set(["talk-to-spouse", "busy-call-back", "driving"]);
 
     let activeCategoryKey = null;
     let activeProsperId = defaultProsperId;
@@ -480,6 +481,34 @@
         }
 
         return String(text || "");
+    }
+
+    async function sendTextScriptMessage(message){
+        const text = String(message || "").trim();
+        if(!text) return false;
+
+        if(window.LeadBridge?.sendTextMessage){
+            const sent = await window.LeadBridge.sendTextMessage({ message: text });
+            if(sent) return true;
+        }
+
+        const lead = window.LeadBridge?.getCurrentLead?.() || window.__currentLead || null;
+        const digits = ((lead?.phone || lead?.phone2 || "")).replace(/\D/g, "");
+        if(!digits){
+            window.alert("No phone number is available on the current contact card.");
+            return false;
+        }
+
+        try { await navigator.clipboard.writeText(text); } catch {}
+        window.location.href = `sms:${digits}?&body=${encodeURIComponent(text)}`;
+        return true;
+    }
+
+    async function sendCategoryTextScript(categoryKey, itemId){
+        const category = categories.find(cat => cat.key === categoryKey);
+        const item = category?.items?.find(entry => entry.id === itemId);
+        if(!item) return;
+        await sendTextScriptMessage(personalizeScriptText(item.script));
     }
 
     function highlightText(text, search){
@@ -673,6 +702,11 @@
                     </div>
                     <div class="objection-body">
                         <pre class="script">${highlightText(personalizeScriptText(item.script), searchVal)}</pre>
+                        ${textScriptIds.has(item.id) ? `
+                            <div class="objection-actions">
+                                <button type="button" class="objection-text-btn" data-rb-text-category="${escapeHtml(activeCategory.key)}" data-rb-text-item="${escapeHtml(item.id)}">Text</button>
+                            </div>
+                        ` : ""}
                     </div>
                 </div>
             `;
@@ -855,6 +889,16 @@
     }
 
     rbContent.addEventListener("click", function(event){
+        const textBtn = event.target.closest("[data-rb-text-item]");
+        if(textBtn){
+            event.preventDefault();
+            sendCategoryTextScript(
+                textBtn.getAttribute("data-rb-text-category") || "",
+                textBtn.getAttribute("data-rb-text-item") || ""
+            );
+            return;
+        }
+
         const jumpBtn = event.target.closest("[data-jump]");
         if(!jumpBtn) return;
 

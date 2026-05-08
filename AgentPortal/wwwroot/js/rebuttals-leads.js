@@ -66,6 +66,11 @@
       const controller = pickLeadBridgeController(queueKey);
       return controller ? controller.getCurrentLead() : null;
     };
+    window.LeadBridge.sendTextMessage = async ({ message, queueKey } = {}) => {
+      const controller = pickLeadBridgeController(queueKey);
+      if (!controller || !message) return false;
+      return controller.sendTextMessage(message);
+    };
   }
 
   function registerLeadBridgeController(controller){
@@ -1220,6 +1225,40 @@
       });
     }
 
+    async function launchTextMessageForLead(lead, rawMessage){
+      const digits = ((lead?.phone || lead?.phone2 || '')).replace(/\D/g,'');
+      if (!digits){
+        setStatusMessage('No phone on file', 'bad');
+        return false;
+      }
+
+      const msg = String(rawMessage || '').trim();
+      if (!msg){
+        setStatusMessage('No message to send', 'bad');
+        return false;
+      }
+
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(msg);
+        copied = true;
+      } catch {}
+
+      setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
+      window.location.href = `sms:${digits}?&body=${encodeURIComponent(msg)}`;
+      return true;
+    }
+
+    async function sendCustomTextMessage(rawMessage){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setStatusMessage('No active lead available', 'bad');
+        return false;
+      }
+
+      return launchTextMessageForLead(lead, rawMessage);
+    }
+
     async function authorizePendingAction(){
       if (!pendingAction) return;
       const lead = findLeadById(pendingAction.leadId);
@@ -1237,13 +1276,7 @@
       }
 
       const msg = buildTextMessage(lead, leadOriginalLeadType(lead) || bucket || lead.bucket);
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(msg);
-        copied = true;
-      } catch {}
-      setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
-      window.location.href = `sms:${digits}?&body=${encodeURIComponent(msg)}`;
+      await launchTextMessageForLead(lead, msg);
     }
 
     function renderLead(lead, index, total){
@@ -1679,7 +1712,8 @@
       queueKey: normalizedQueueKey || '',
       rawQueueKey: queueKey || '',
       selectLeadById,
-      getCurrentLead: () => resolveCurrentLead()
+      getCurrentLead: () => resolveCurrentLead(),
+      sendTextMessage: (message) => sendCustomTextMessage(message)
     });
 
     async function deleteCurrentLead(){

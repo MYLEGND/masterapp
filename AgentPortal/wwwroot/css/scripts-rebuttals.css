@@ -11665,6 +11665,38 @@ details.section{
     border-color: rgba(127, 29, 29, .22) !important;
 }
 
+#rbShell .objection-actions{
+    margin-top: 14px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+#rbShell .objection-text-btn{
+    appearance: none;
+    border: 1px solid rgba(21, 128, 61, .34);
+    border-radius: 12px;
+    padding: 8px 14px;
+    background: linear-gradient(180deg, #ecfdf5, #bbf7d0);
+    color: #14532d;
+    font: 800 12px/1 var(--body);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    box-shadow: 0 10px 18px rgba(21, 128, 61, .12);
+    cursor: pointer;
+    transition: transform .14s ease, box-shadow .14s ease, filter .14s ease;
+}
+
+#rbShell .objection-text-btn:hover{
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+    box-shadow: 0 14px 22px rgba(21, 128, 61, .16);
+}
+
+#rbShell .objection-text-btn:active{
+    transform: translateY(1px);
+    box-shadow: 0 6px 12px rgba(21, 128, 61, .14);
+}
+
 /* ========================================================================
    FINAL PROPOSAL THEME LOCK (matches Home hp-* palette exactly)
    ======================================================================== */
