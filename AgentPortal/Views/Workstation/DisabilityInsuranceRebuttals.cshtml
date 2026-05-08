@@ -450,6 +450,14 @@
             .replace(/>/g, "&gt;");
     }
 
+    function personalizeScriptText(text){
+        if (window.LegendAgentProfileApi?.fillScriptPlaceholders){
+            return window.LegendAgentProfileApi.fillScriptPlaceholders(text);
+        }
+
+        return String(text || "");
+    }
+
     function highlightText(text, search){
         const safe = escapeHtml(text);
         if(!search) return safe;
@@ -478,7 +486,7 @@
         return categories
             .map(cat => {
                 const filteredItems = cat.items.filter(item => {
-                    const hay = [cat.name, cat.note, item.title, item.script].join(" ").toLowerCase();
+                    const hay = [cat.name, cat.note, item.title, personalizeScriptText(item.script)].join(" ").toLowerCase();
                     const matchesSearch = !searchVal || hay.includes(searchVal);
                     const matchesTone = !toneVal || item.signal === toneVal;
                     return matchesSearch && matchesTone;
@@ -640,7 +648,7 @@
                         <span class="mini-tag ${item.signal}">${getSignalLabel(item.signal)}</span>
                     </div>
                     <div class="objection-body">
-                        <pre class="script">${highlightText(item.script, searchVal)}</pre>
+                        <pre class="script">${highlightText(personalizeScriptText(item.script), searchVal)}</pre>
                     </div>
                 </div>
             `;

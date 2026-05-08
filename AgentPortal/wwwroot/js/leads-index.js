@@ -1133,7 +1133,6 @@ const pipelineLabels = {
   MortgageProtection: "MORTGAGE PROTECTION LEADS",
   LifeInsurance: "LIFE INSURANCE LEADS",
   FinalExpense: "FINAL EXPENSE LEADS",
-  Medicare: "MEDICARE LEADS",
   DisabilityInsurance: "DISABILITY INSURANCE LEADS",
   Contacted: "Contacted",
   Booked: "Booked",
@@ -1167,7 +1166,6 @@ const pipelineStages = [
   { key: "MortgageProtection", label: "MORTGAGE PROTECTION LEADS", tone: "warn", className: "stage-newlead", note: "Mortgage Protection leads direct from scripts." },
   { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "Life Insurance leads ready for first touch." },
   { key: "FinalExpense", label: "FINAL EXPENSE LEADS", tone: "warn", className: "stage-contacted", note: "Final Expense leads queued for contact." },
-  { key: "Medicare", label: "MEDICARE LEADS", tone: "info", className: "stage-meetingscheduled", note: "Medicare leads with compliance-first outreach." },
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
   { key: "NeedsDocs", label: "Needs Docs", tone: "info", className: "stage-applicationstarted", note: "Waiting on documents to proceed." },
@@ -1187,6 +1185,8 @@ const pipelineAliases = {
   meetingscheduled: "Booked",
   proposalsent: "FollowUp",
   applicationstarted: "NeedsDocs",
+  medicare: "MortgageProtection",
+  medicareleads: "MortgageProtection",
   submitted: "PolicyPlaced",
   closedlost: "NotInterested",
   closedwon: "PolicyPlaced",
@@ -1208,7 +1208,7 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   return pipelineAliases[value.toLowerCase()] || fallback;
 }
 
-const productBuckets = new Set(["MortgageProtection","LifeInsurance","FinalExpense","Medicare","DisabilityInsurance"]);
+const productBuckets = new Set(["MortgageProtection","LifeInsurance","FinalExpense","DisabilityInsurance"]);
 
 function normalizeOriginalLeadTypeValue(value){
   const normalized = normalizePipelineStageValue(value, "");

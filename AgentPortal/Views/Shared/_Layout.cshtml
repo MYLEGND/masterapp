@@ -1414,6 +1414,59 @@
 
 }
 
+@{
+    var legendAgentProfileJson = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        firstName = string.IsNullOrWhiteSpace(first) ? "Agent" : first.Trim(),
+        fullName = string.IsNullOrWhiteSpace(agentProfile?.FullName) ? displayName : agentProfile.FullName.Trim(),
+        phone = agentProfile?.Phone?.Trim() ?? ""
+    });
+}
+
+<script>
+    (function () {
+        const profile = @Html.Raw(legendAgentProfileJson);
+
+        function readString(value) {
+            return typeof value === 'string' ? value.trim() : '';
+        }
+
+        function getFirstName() {
+            const firstName = readString(profile?.firstName);
+            if (firstName) return firstName;
+
+            const fullName = readString(profile?.fullName);
+            if (fullName) {
+                const parts = fullName.split(/\s+/).filter(Boolean);
+                if (parts.length) return parts[0];
+            }
+
+            return 'Agent';
+        }
+
+        const api = {
+            get() {
+                return profile;
+            },
+            getFirstName,
+            getPhone() {
+                return readString(profile?.phone);
+            },
+            fillScriptPlaceholders(text) {
+                const agentFirstName = getFirstName();
+                return String(text ?? '')
+                    .replace(/<your full name>/gi, agentFirstName)
+                    .replace(/<your name>/gi, agentFirstName)
+                    .replace(/<agent first name>/gi, agentFirstName)
+                    .replace(/<agent name>/gi, agentFirstName);
+            }
+        };
+
+        window.LegendAgentProfile = Object.freeze({ ...profile, firstName: getFirstName() });
+        window.LegendAgentProfileApi = api;
+    })();
+</script>
+
 <div class="container layout-content flex-grow-1">
     <main role="main">
         @RenderBody()

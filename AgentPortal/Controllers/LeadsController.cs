@@ -31,9 +31,8 @@ public class LeadsController : Controller
     private static readonly string[] ProductBuckets =
     {
         "MortgageProtection",
-        "FinalExpense",
         "LifeInsurance",
-        "Medicare",
+        "FinalExpense",
         "DisabilityInsurance"
     };
 
@@ -42,7 +41,6 @@ public class LeadsController : Controller
         "MortgageProtection",
         "LifeInsurance",
         "FinalExpense",
-        "Medicare",
         "DisabilityInsurance",
         "Contacted",
         "Booked",
@@ -67,8 +65,8 @@ public class LeadsController : Controller
         ["finalexpenseleads"] = "FinalExpense",
         ["finalexpenserebuttals"] = "FinalExpense",
         ["finalexpense"] = "FinalExpense",
-        ["medicareleads"] = "Medicare",
-        ["medicare"] = "Medicare",
+        ["medicareleads"] = "MortgageProtection",
+        ["medicare"] = "MortgageProtection",
         ["disabilityinsuranceleads"] = "DisabilityInsurance",
         ["disabilityinsurancerebuttals"] = "DisabilityInsurance",
         ["disabilityinsurance"] = "DisabilityInsurance"
@@ -79,7 +77,7 @@ public class LeadsController : Controller
         ["mortgageprotection"] = "MortgageProtection",
         ["lifeinsurance"] = "LifeInsurance",
         ["finalexpense"] = "FinalExpense",
-        ["medicare"] = "Medicare",
+        ["medicare"] = "MortgageProtection",
         ["disabilityinsurance"] = "DisabilityInsurance",
         ["contacted"] = "Contacted",
         ["booked"] = "Booked",
@@ -137,6 +135,14 @@ public class LeadsController : Controller
         }
         // handle spaced display labels
         return BucketAliasMap.TryGetValue(key.ToLowerInvariant(), out var val) ? val : null;
+    }
+
+    private static string[] ExpandProductBucketValues(string normalizedBucket)
+    {
+        if (normalizedBucket.Equals("MortgageProtection", StringComparison.OrdinalIgnoreCase))
+            return new[] { "MortgageProtection", "Medicare" };
+
+        return new[] { normalizedBucket };
     }
 
     private static string? NormalizePipelineStage(string? stage)
@@ -339,7 +345,7 @@ public class LeadsController : Controller
             var vm = leads.Select(l =>
             {
                 var lead = l.Lead;
-                var stage = string.IsNullOrWhiteSpace(lead.Bucket) ? "Contacted" : lead.Bucket;
+                var stage = NormalizePipelineStage(lead.Bucket) ?? (string.IsNullOrWhiteSpace(lead.Bucket) ? "Contacted" : lead.Bucket);
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket);
                 var crmMeta = ReadLeadMeta(lead);
@@ -558,6 +564,9 @@ public class LeadsController : Controller
 
         var normalizedBucket = NormalizeBucket(bucket);
         var agentWideDialTotals = await GetAgentWideDialTotalsAsync(agentId, nowUtc, dialTimeZone);
+        var bucketValues = string.IsNullOrWhiteSpace(normalizedBucket)
+            ? Array.Empty<string>()
+            : ExpandProductBucketValues(normalizedBucket);
 
         var query = _db.WorkstationLeadProfiles
             .AsNoTracking()
@@ -574,8 +583,8 @@ public class LeadsController : Controller
         if (!string.IsNullOrWhiteSpace(normalizedBucket))
         {
             query = query.Where(x =>
-                (x.OriginalLeadType != null && x.OriginalLeadType == normalizedBucket) ||
-                ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == normalizedBucket));
+                (x.OriginalLeadType != null && bucketValues.Contains(x.OriginalLeadType)) ||
+                ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket)));
         }
 
         var rawLeads = await query
@@ -602,7 +611,7 @@ public class LeadsController : Controller
             x.Email,
             Phone = FormatPhoneDisplay(x.Phone),
             Phone2 = FormatPhoneDisplay(x.Phone2),
-            Bucket = x.Bucket,
+            Bucket = NormalizePipelineStage(x.Bucket) ?? x.Bucket,
             OriginalLeadType = originalLeadType,
             x.CrmStage,
             x.CrmStatus,
@@ -880,7 +889,7 @@ public class LeadsController : Controller
                     MortgageLender = l.MortgageLender,
                     LoanAmount = l.LoanAmount,
                     OriginalLeadType = originalLeadType,
-                    PipelineStage = string.IsNullOrWhiteSpace(l.Bucket) ? "Contacted" : l.Bucket,
+                    PipelineStage = NormalizePipelineStage(l.Bucket) ?? (string.IsNullOrWhiteSpace(l.Bucket) ? "Contacted" : l.Bucket),
                     PipelineOrder = l.CrmOrder,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
@@ -1387,13 +1396,16 @@ public class LeadsController : Controller
         var batchSize = Math.Clamp(req.BatchSize ?? 100, 1, 200);
 
         var isProductBucket = ProductBuckets.Contains(bucket, StringComparer.OrdinalIgnoreCase);
+        var bucketValues = isProductBucket
+            ? ExpandProductBucketValues(bucket)
+            : Array.Empty<string>();
 
         var toDelete = isProductBucket
             ? await _db.WorkstationLeadProfiles
                 .Where(x =>
                     x.AgentUserId == agentId &&
-                    (x.OriginalLeadType == bucket ||
-                     ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
+                    ((x.OriginalLeadType != null && bucketValues.Contains(x.OriginalLeadType)) ||
+                     ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket))))
                 .OrderByDescending(x => x.CreatedUtc)
                 .Take(batchSize)
                 .ToListAsync()
@@ -1411,8 +1423,8 @@ public class LeadsController : Controller
             ? await _db.WorkstationLeadProfiles
                 .CountAsync(x =>
                     x.AgentUserId == agentId &&
-                    (x.OriginalLeadType == bucket ||
-                     ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
+                    ((x.OriginalLeadType != null && bucketValues.Contains(x.OriginalLeadType)) ||
+                     ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket))))
             : await _db.WorkstationLeadProfiles
                 .CountAsync(x => x.AgentUserId == agentId && x.Bucket == bucket);
         return Json(new { deleted = toDelete.Count, remaining });
@@ -1461,14 +1473,16 @@ public class LeadsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Import(IFormFile? file, string bucket)
-        {
-            if (file == null || file.Length == 0)
-                return BadRequest("File required");
-            if (!ProductBuckets.Contains(bucket, StringComparer.OrdinalIgnoreCase))
-                return BadRequest("Invalid bucket");
+    public async Task<IActionResult> Import(IFormFile? file, string bucket)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest("File required");
 
-            bucket = NormalizeBucket(bucket) ?? bucket;
+        var normalizedBucket = NormalizeBucket(bucket);
+        if (string.IsNullOrWhiteSpace(normalizedBucket) || !ProductBuckets.Contains(normalizedBucket, StringComparer.OrdinalIgnoreCase))
+            return BadRequest("Invalid bucket");
+
+        bucket = normalizedBucket;
 
             const long maxUploadBytes = 5 * 1024 * 1024; // 5 MB ceiling to avoid OOM
             if (file.Length > maxUploadBytes)

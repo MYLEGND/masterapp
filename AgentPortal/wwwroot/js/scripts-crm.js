@@ -11,7 +11,6 @@
         { id: "MortgageProtection", title: "Mortgage Protection", tone: "stage-newlead" },
         { id: "FinalExpense", title: "Final Expense", tone: "stage-contacted" },
         { id: "LifeInsurance", title: "Life Insurance", tone: "stage-qualified" },
-        { id: "Medicare", title: "Medicare", tone: "stage-meetingscheduled" },
         { id: "DisabilityInsurance", title: "Disability", tone: "stage-opportunities" }
     ];
 

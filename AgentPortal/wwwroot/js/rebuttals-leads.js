@@ -127,8 +127,35 @@
   }
 
   function loadProfile(){
-    try { return JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") || {}; }
-    catch { return {}; }
+    let profile;
+    try { profile = JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") || {}; }
+    catch { profile = {}; }
+
+    const serverFirstName = normalizeProfileField(window.LegendAgentProfileApi?.getFirstName?.());
+    const serverPhone = normalizeProfileField(window.LegendAgentProfileApi?.getPhone?.());
+    let changed = false;
+
+    if (serverFirstName && profile.firstName !== serverFirstName){
+      profile.firstName = serverFirstName;
+      changed = true;
+    }
+
+    if (serverPhone && !normalizeProfileField(profile.phone)){
+      profile.phone = serverPhone;
+      changed = true;
+    }
+
+    if (changed){
+      try {
+        localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
+      } catch {}
+    }
+
+    return profile;
+  }
+
+  function normalizeProfileField(value){
+    return typeof value === "string" ? value.trim() : "";
   }
 
   function normalizeDialTotal(value){
