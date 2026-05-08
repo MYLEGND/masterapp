@@ -34,7 +34,6 @@ public class LeadBridgeController : ControllerBase
         ["lifeinsurancerebuttals"] = "LifeInsurance",
         ["medicare"] = "Medicare",
         ["medicareleads"] = "Medicare",
-        ["medicarerebuttals"] = "Medicare",
         ["disabilityinsurance"] = "DisabilityInsurance",
         ["disabilityinsuranceleads"] = "DisabilityInsurance",
         ["disabilityinsurancerebuttals"] = "DisabilityInsurance"

@@ -7,7 +7,6 @@
     MortgageProtection: "Mortgage Protection",
     LifeInsurance: "Life Insurance",
     FinalExpense: "Final Expense",
-    Medicare: "Medicare",
     DisabilityInsurance: "Disability Insurance",
     Contacted: "Contacted",
     Booked: "Booked",
@@ -24,7 +23,6 @@
     "MortgageProtection",
     "LifeInsurance",
     "FinalExpense",
-    "Medicare",
     "DisabilityInsurance",
     "Contacted",
     "Booked",
@@ -38,7 +36,12 @@
     "AIReception"
   ];
   const noCallStages = new Set(["Booked", "FollowUp", "PolicyPlaced"]);
-  const productBuckets = new Set(allStages.slice(0, 5));
+  const productBuckets = new Set([
+    "MortgageProtection",
+    "LifeInsurance",
+    "FinalExpense",
+    "DisabilityInsurance"
+  ]);
   const agentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
   const agentTzOffset = String(new Date().getTimezoneOffset());
   const signalRAvailable = typeof signalR !== 'undefined';
@@ -168,9 +171,6 @@
       lifeinsurance: 'LifeInsurance',
         lifeinsuranceleads: 'LifeInsurance',
         lifeinsurancerebuttals: 'LifeInsurance',
-      medicare: 'Medicare',
-        medicareleads: 'Medicare',
-        medicarerebuttals: 'Medicare',
         disabilityinsurance: 'DisabilityInsurance',
         disabilityinsuranceleads: 'DisabilityInsurance',
         disabilityinsurancerebuttals: 'DisabilityInsurance'

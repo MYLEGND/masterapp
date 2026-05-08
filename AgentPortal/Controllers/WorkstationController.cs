@@ -46,13 +46,6 @@ public class WorkstationController : Controller
         return View("LifeInsurance");
     }
 
-    [HttpGet("Medicare")]
-    public IActionResult Medicare()
-    {
-        ViewData["Title"] = "Medicare";
-        return View("Medicare");
-    }
-
     [HttpGet("DisabilityInsurance")]
     public IActionResult DisabilityInsurance()
     {
@@ -83,13 +76,6 @@ public class WorkstationController : Controller
     {
         ViewData["Title"] = "Final Expense Rebuttals";
         return View("FinalExpenseRebuttals");
-    }
-
-    [HttpGet("MedicareRebuttals")]
-    public IActionResult MedicareRebuttals()
-    {
-        ViewData["Title"] = "Medicare Rebuttals";
-        return View("MedicareRebuttals");
     }
 
     [HttpGet("LifeInsuranceRebuttals")]

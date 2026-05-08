@@ -68,7 +68,6 @@ public class LeadsController : Controller
         ["finalexpenserebuttals"] = "FinalExpense",
         ["finalexpense"] = "FinalExpense",
         ["medicareleads"] = "Medicare",
-        ["medicarerebuttals"] = "Medicare",
         ["medicare"] = "Medicare",
         ["disabilityinsuranceleads"] = "DisabilityInsurance",
         ["disabilityinsurancerebuttals"] = "DisabilityInsurance",
