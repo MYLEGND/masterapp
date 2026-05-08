@@ -12738,3 +12738,145 @@ details.section{
         padding: 17px 18px 13px 18px !important;
     }
 }
+
+/* ========================================================================
+   Rebuttals category rail refresh
+   ======================================================================== */
+#rbShell .nav-card .nav-body,
+#rbShell .prosper-nav-card .nav-body{
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px !important;
+}
+
+#rbShell .cat-btn{
+    position: relative;
+    padding: 11px 12px 10px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 12px 24px rgba(5,10,22,.20) !important;
+    overflow: hidden;
+}
+
+#rbShell .cat-btn::before{
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    border-radius: 999px;
+    opacity: .96;
+}
+
+#rbShell .cat-btn.good::before{ background: linear-gradient(180deg, #6ee7b7 0%, #16a34a 100%) !important; }
+#rbShell .cat-btn.warn::before{ background: linear-gradient(180deg, #fdba74 0%, #d97706 100%) !important; }
+#rbShell .cat-btn.bad::before{ background: linear-gradient(180deg, #fca5a5 0%, #dc2626 100%) !important; }
+#rbShell .cat-btn.info::before{ background: linear-gradient(180deg, #93c5fd 0%, #2563eb 100%) !important; }
+
+#rbShell .cat-btn.good{
+    background: linear-gradient(180deg, rgba(19,78,45,.98), rgba(8,30,20,.99)) !important;
+    border-color: rgba(110,231,183,.38) !important;
+}
+
+#rbShell .cat-btn.warn{
+    background: linear-gradient(180deg, rgba(137,75,6,.98), rgba(50,25,7,.99)) !important;
+    border-color: rgba(251,191,36,.42) !important;
+}
+
+#rbShell .cat-btn.bad{
+    background: linear-gradient(180deg, rgba(127,29,29,.99), rgba(52,12,12,.99)) !important;
+    border-color: rgba(248,113,113,.40) !important;
+}
+
+#rbShell .cat-btn.info{
+    background: linear-gradient(180deg, rgba(30,64,175,.98), rgba(15,23,68,.99)) !important;
+    border-color: rgba(96,165,250,.40) !important;
+}
+
+#rbShell .cat-btn:hover{
+    transform: translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 16px 28px rgba(5,10,22,.28) !important;
+}
+
+#rbShell .cat-btn.active{
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.08) inset,
+        0 0 0 2px rgba(244,220,147,.34),
+        0 18px 30px rgba(5,10,22,.30) !important;
+}
+
+#rbShell .cat-top{
+    gap: 8px !important;
+    margin-bottom: 6px;
+}
+
+#rbShell .cat-top > div:first-child{
+    gap: 8px !important;
+}
+
+#rbShell .cat-rank{
+    min-width: 30px;
+    height: 30px;
+    border-radius: 10px !important;
+    font-size: .8rem;
+    font-weight: 900;
+    background: rgba(255,255,255,.14) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    color: #fff6d6 !important;
+}
+
+#rbShell .cat-name,
+#rbShell .cat-top-single{
+    font-size: .94rem;
+    font-weight: 900;
+    line-height: 1.25;
+    letter-spacing: -.01em;
+    color: #ffffff !important;
+}
+
+#rbShell .cat-note{
+    margin-left: 38px;
+    color: rgba(255,255,255,.84) !important;
+    font-size: .8rem;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+#rbShell .cat-count{
+    min-width: 34px;
+    padding: 4px 8px;
+    border-radius: 999px !important;
+    font-size: .72rem;
+    font-weight: 900;
+    background: rgba(255,255,255,.14) !important;
+    border: 1px solid rgba(255,255,255,.16) !important;
+    color: #fff7d6 !important;
+}
+
+#rbShell .cat-btn.good .cat-name{ color: #ecfdf5 !important; }
+#rbShell .cat-btn.warn .cat-name{ color: #fff7ed !important; }
+#rbShell .cat-btn.bad .cat-name{ color: #fff1f2 !important; }
+#rbShell .cat-btn.info .cat-name{ color: #eff6ff !important; }
+
+@media (max-width: 1200px){
+    #rbShell .nav-card .nav-body,
+    #rbShell .prosper-nav-card .nav-body{
+        gap: 8px;
+        padding: 12px !important;
+    }
+
+    #rbShell .cat-btn{
+        padding: 10px 11px 9px !important;
+    }
+
+    #rbShell .cat-note{
+        margin-left: 36px;
+    }
+}
