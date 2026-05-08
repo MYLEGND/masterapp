@@ -1502,11 +1502,111 @@
                     .replace(/<your name>/gi, agentFirstName)
                     .replace(/<agent first name>/gi, agentFirstName)
                     .replace(/<agent name>/gi, agentFirstName);
+            },
+            applyPlaceholders(root) {
+                if (!root) return;
+
+                const applyToTextNode = (node) => {
+                    if (!node || typeof node.nodeValue !== 'string') return;
+                    const nextValue = api.fillScriptPlaceholders(node.nodeValue);
+                    if (nextValue !== node.nodeValue) {
+                        node.nodeValue = nextValue;
+                    }
+                };
+
+                if (root.nodeType === Node.TEXT_NODE) {
+                    applyToTextNode(root);
+                    return;
+                }
+
+                const isSupportedRoot =
+                    root.nodeType === Node.ELEMENT_NODE
+                    || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE
+                    || root.nodeType === Node.DOCUMENT_NODE;
+
+                if (!isSupportedRoot) return;
+
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                    acceptNode(node) {
+                        const parentTag = node.parentElement?.tagName;
+                        if (!node.nodeValue || !node.nodeValue.includes('<')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        if (parentTag === 'SCRIPT' || parentTag === 'STYLE' || parentTag === 'TEXTAREA' || parentTag === 'OPTION') {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        return api.fillScriptPlaceholders(node.nodeValue) === node.nodeValue
+                            ? NodeFilter.FILTER_REJECT
+                            : NodeFilter.FILTER_ACCEPT;
+                    }
+                });
+
+                const nodesToUpdate = [];
+                while (walker.nextNode()) {
+                    nodesToUpdate.push(walker.currentNode);
+                }
+
+                nodesToUpdate.forEach(applyToTextNode);
             }
         };
 
         window.LegendAgentProfile = Object.freeze({ ...profile, firstName: getFirstName() });
         window.LegendAgentProfileApi = api;
+
+        const workstationRoots = () => Array.from(document.querySelectorAll('#mpShell, #rbShell'));
+
+        const syncWorkstationPlaceholders = () => {
+            workstationRoots().forEach(root => api.applyPlaceholders(root));
+        };
+
+        const mountWorkstationPlaceholderObserver = () => {
+            const roots = workstationRoots();
+            if (!roots.length || window.__legendWorkstationPlaceholderObserver) return;
+
+            let syncing = false;
+            const observer = new MutationObserver((mutations) => {
+                if (syncing) return;
+                syncing = true;
+
+                try {
+                    mutations.forEach((mutation) => {
+                        if (mutation.type === 'characterData') {
+                            api.applyPlaceholders(mutation.target);
+                            return;
+                        }
+
+                        mutation.addedNodes.forEach((node) => {
+                            api.applyPlaceholders(node);
+                        });
+                    });
+                } finally {
+                    syncing = false;
+                }
+            });
+
+            roots.forEach((root) => {
+                observer.observe(root, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true
+                });
+            });
+
+            window.__legendWorkstationPlaceholderObserver = observer;
+        };
+
+        const bootWorkstationPlaceholderSync = () => {
+            syncWorkstationPlaceholders();
+            mountWorkstationPlaceholderObserver();
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootWorkstationPlaceholderSync, { once: true });
+        } else {
+            bootWorkstationPlaceholderSync();
+        }
     })();
 </script>
 
