@@ -11665,6 +11665,16 @@ details.section{
     border-color: rgba(127, 29, 29, .22) !important;
 }
 
+#mpShell .text-script-actions,
+#rbShell .prosper-body .text-script-actions,
+.scripts-shell .text-script-actions{
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+}
+
 
 /* ========================================================================
    FINAL PROPOSAL THEME LOCK (matches Home hp-* palette exactly)

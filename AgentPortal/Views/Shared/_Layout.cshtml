@@ -1471,6 +1471,7 @@
         const profile = @Html.Raw(legendAgentProfileJson);
         const textTemplateCache = new WeakMap();
         const scriptTemplateCache = new WeakMap();
+        let lastAppointmentTime = '';
 
         function readString(value) {
             return typeof value === 'string' ? value.trim() : '';
@@ -1622,6 +1623,31 @@
                 .trim();
         }
 
+        function resolveScriptRuntimeTokens(message) {
+            let resolved = normalizeScriptMessage(message);
+            if (!resolved) return '';
+
+            const hasAppointmentTimeToken =
+                /<\s*(?:appointment time|time)\s*>/i.test(resolved)
+                || /{{\s*appointmenttime\s*}}/i.test(resolved);
+
+            if (!hasAppointmentTimeToken) {
+                return resolved;
+            }
+
+            const entered = window.prompt('Enter the appointment time for this message:', lastAppointmentTime || '');
+            const appointmentTime = normalizeScriptMessage(entered);
+            if (!appointmentTime) return '';
+
+            lastAppointmentTime = appointmentTime;
+            return normalizeScriptMessage(
+                resolved
+                    .replace(/<\s*appointment time\s*>/gi, appointmentTime)
+                    .replace(/<\s*time\s*>/gi, appointmentTime)
+                    .replace(/{{\s*appointmenttime\s*}}/gi, appointmentTime)
+            );
+        }
+
         function getLeadPhoneDigits() {
             const lead = getLead();
             const raw = readString(lead?.phone) || readString(lead?.phone2);
@@ -1635,6 +1661,18 @@
         function extractScriptText(source) {
             if (!source) return '';
             return normalizeScriptMessage(source.innerText || source.textContent || '');
+        }
+
+        async function copyScriptTextMessage(message) {
+            const resolved = resolveScriptRuntimeTokens(api.fillScriptPlaceholders(message));
+            if (!resolved) return false;
+
+            try {
+                await navigator.clipboard.writeText(resolved);
+                return true;
+            } catch {
+                return false;
+            }
         }
 
         async function openTextComposer(message) {
@@ -1656,7 +1694,7 @@
         }
 
         async function sendScriptTextMessage(message) {
-            const normalized = normalizeScriptMessage(message);
+            const normalized = resolveScriptRuntimeTokens(api.fillScriptPlaceholders(message));
             if (!normalized) return false;
 
             if (window.LeadBridge?.sendTextMessage) {
@@ -1690,6 +1728,9 @@
                 return getAgentPhone();
             },
             extractScriptText,
+            copyTextMessage(message) {
+                return copyScriptTextMessage(message);
+            },
             sendTextMessage(message) {
                 return sendScriptTextMessage(message);
             },
@@ -1853,19 +1894,77 @@
             window.__legendWorkstationPlaceholderObserver = observer;
         };
 
-        const bindWorkstationTextButtons = () => {
-            if (window.__legendWorkstationTextButtonsBound) return;
+        function findScriptSource(trigger, selector) {
+            if (!trigger || !selector) return null;
+
+            const scopes = [
+                trigger.closest('.body'),
+                trigger.closest('.prosper-body'),
+                trigger.closest('.section'),
+                trigger.closest('.prosper-stage'),
+                trigger.closest('.content-body'),
+                document
+            ].filter(Boolean);
+
+            for (const scope of scopes) {
+                const found = scope.querySelector?.(selector);
+                if (found) return found;
+            }
+
+            return document.querySelector(selector);
+        }
+
+        function flashScriptActionButton(button, nextLabel) {
+            if (!button || !nextLabel) return;
+
+            const original = button.dataset.originalLabel || button.textContent || '';
+            if (!button.dataset.originalLabel) {
+                button.dataset.originalLabel = original;
+            }
+
+            if (button.__legendResetLabelTimer) {
+                window.clearTimeout(button.__legendResetLabelTimer);
+            }
+
+            button.textContent = nextLabel;
+            button.__legendResetLabelTimer = window.setTimeout(() => {
+                button.textContent = button.dataset.originalLabel || original;
+            }, 1100);
+        }
+
+        const bindWorkstationScriptButtons = () => {
+            if (window.__legendWorkstationScriptButtonsBound) return;
 
             document.addEventListener('click', async (event) => {
-                const button = event.target.closest('[data-send-script-selector]');
-                if (!button) return;
+                const copyButton = event.target.closest('[data-copy-script-selector]');
+                if (copyButton) {
+                    event.preventDefault();
+
+                    const selector = readString(copyButton.getAttribute('data-copy-script-selector'));
+                    if (!selector) return;
+
+                    const source = findScriptSource(copyButton, selector);
+                    if (!source) return;
+
+                    const message = extractScriptText(source);
+                    if (!message) return;
+
+                    const copied = await copyScriptTextMessage(message);
+                    if (copied) {
+                        flashScriptActionButton(copyButton, 'Copied');
+                    }
+                    return;
+                }
+
+                const textButton = event.target.closest('[data-send-script-selector]');
+                if (!textButton) return;
 
                 event.preventDefault();
 
-                const selector = readString(button.getAttribute('data-send-script-selector'));
+                const selector = readString(textButton.getAttribute('data-send-script-selector'));
                 if (!selector) return;
 
-                const source = document.querySelector(selector);
+                const source = findScriptSource(textButton, selector);
                 if (!source) return;
 
                 const message = extractScriptText(source);
@@ -1874,13 +1973,13 @@
                 await sendScriptTextMessage(message);
             });
 
-            window.__legendWorkstationTextButtonsBound = true;
+            window.__legendWorkstationScriptButtonsBound = true;
         };
 
         const bootWorkstationPlaceholderSync = () => {
             syncWorkstationPlaceholders();
             mountWorkstationPlaceholderObserver();
-            bindWorkstationTextButtons();
+            bindWorkstationScriptButtons();
         };
 
         window.addEventListener('leadbridge:currentLead', syncWorkstationPlaceholders);

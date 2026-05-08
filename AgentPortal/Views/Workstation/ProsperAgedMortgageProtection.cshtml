@@ -187,61 +187,7 @@ Is it the timing, the money side, or are you still not sure what this is meant t
                     </div>
                 </details>
 
-                <details class="section" data-step="2" data-flow="start" data-signal="warn" id="sec-texts">
-                    <summary>
-                        <div class="sum-left">
-                            <div class="chev">›</div>
-                            <div>
-                                <span class="title">Text Scripts</span>
-                                <span class="sub">Simple, direct, respectful.</span>
-                            </div>
-                        </div>
-                        <div class="sum-actions">
-                            <button class="btn-mini good" type="button" data-focus="#sec-texts">Focus</button>
-                        </div>
-                    </summary>
-
-                    <div class="body">
-                        <div class="callout warn">
-                            <div>
-                                <span class="cue warn">RULE</span> If they start asking detailed questions, move to a call.
-                                <div class="hint">Text should create direction, not a long back-and-forth.</div>
-                            </div>
-                        </div>
-
-                        <div class="keyline"><strong>TEXT (1)</strong> Light, simple callback text.</div>
-                        <div id="txt1" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> reaching out regarding the home on </span><span class="fill">&lt;ADDRESS&gt;</span><span class="say">. I just need to confirm one detail with you. Call me when you get a second at </span><span class="fill">&lt;OFFICE NUMBER&gt;</span><span class="say">. Thanks.</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txt1">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>TEXT (2)</strong> Soft re-engagement.</div>
-                        <div id="txt2" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, it’s </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. I’m the one assigned to walk through the household protection side tied to your home. Nothing complicated — I just need a quick conversation with you so I can point you the right way. What time today or tomorrow is best for a quick call?</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txt2">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>APPT CONFIRM</strong> Confirm clearly and get acknowledgement.</div>
-                        <div id="txtConfirm" class="script"><span class="say">Hey </span><span class="fill">&lt;NAME&gt;</span><span class="say">, </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> here. Confirming our call at </span><span class="fill">&lt;TIME&gt;</span><span class="say">. If anything changes, just let me know so I can adjust my schedule. Reply “yes” or send a thumbs up so I know you got this.</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txtConfirm">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>HAIL MARY</strong> Final nudge without sounding needy.</div>
-                        <div id="txtHail" class="script"><span class="say">Hey, just tried you for our scheduled time. No worries if the timing got away from you. Do you want to reconnect later today, or would tomorrow be easier? If this is no longer relevant for you, that’s okay too — just let me know where you want to leave it.</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txtHail">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="callout bad">
-                            <div>
-                                <span class="cue bad">STOP</span> If they reply “What is this?” do not send a paragraph.
-                                <div class="hint">Bring them to a quick call or use the short explanation step.</div>
-                            </div>
-                            <button class="btn-mini bad" type="button" data-jump="#sec-threeins">Go to Short Explanation</button>
-                        </div>
-                    </div>
-                </details>
+                @await Html.PartialAsync("_UnifiedTextScripts", "MortgageProtection")
 
                 <details class="section" open data-step="3" data-flow="verify" data-signal="good" id="sec-aged">
                     <summary>

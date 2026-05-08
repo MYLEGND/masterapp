@@ -163,71 +163,7 @@ Is it the price, the timing, or are you just unsure what this even is?</span></d
                     </div>
                 </details>
 
-                <details class="section" data-step="2" data-flow="start" data-signal="warn" id="sec-texts">
-                    <summary>
-                        <div class="sum-left">
-                            <div class="chev">›</div>
-                            <div>
-                                <span class="title">Text Scripts</span>
-                                <span class="sub">Direction only. No debate.</span>
-                            </div>
-                        </div>
-                        <div class="sum-actions">
-                            <button class="btn-mini good" type="button" data-focus="#sec-texts">Focus</button>
-                        </div>
-                    </summary>
-
-                    <div class="body">
-                        <div class="callout warn">
-                            <div>
-                                <span class="cue warn">RULE</span> If they respond with questions → move to call.
-                                <div class="hint">Text ends with “What time today works?”</div>
-                            </div>
-                        </div>
-
-                        <div class="keyline"><strong>TEXT (1)</strong> Quick “pending paperwork” text.</div>
-                        <div id="txt1" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> regarding the disability insurance request you submitted. Give me a call back when you get this, we have some pending paperwork to get out to you. The office number is </span><span class="fill">&lt;OFFICE NUMBER&gt;</span><span class="say">. Thanks.</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txt1">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>TEXT (2)</strong> Underwriter assigned + book a call.</div>
-                        <div id="txt2" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, it’s </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> following up with you on the request you filled out and mailed in to us regarding disability insurance coverage. This is the coverage that helps protect your income and keep the bills paid if you get hurt or can’t work.
-
-I'm the field underwriter assigned to help you take care of this for your family. What time are you available for me to give you a call today or tomorrow?</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txt2">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>APPT CONFIRM</strong> Set expectation + get acknowledgement.</div>
-                        <div id="txtConfirm" class="script"><span class="say">Hey </span><span class="fill">&lt;NAME&gt;</span><span class="say">, </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> here, medical underwriter. Confirming our appointment at </span><span class="fill">&lt;TIME&gt;</span><span class="say">. If there is any reason you can’t make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!
-
-Reply “Yes” or give me a “👍🏻” to let me know you received this message.</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txtConfirm">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>HAIL MARY</strong> Reschedule + last attempt language.</div>
-                        <div id="txtHail" class="script"><span class="say">Hey, just gave a call for our appointment. Do you need a few minutes?
-
-Just need to get this rescheduled — will later today or tomorrow work better for you?
-I have some availability this evening. If not, I can try to squeeze you in for tomorrow. I know this is important to you. Give me a call back when you get this.
-
-Tried to reach out a few times and haven't heard back…
-Where should we go from here?</span></div>
-                        <div style="display:flex;justify-content:flex-end;margin-top:8px;"><button class="btn-mini good" type="button" data-send-script-selector="#txtHail">Text</button></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="callout bad">
-                            <div>
-                                <span class="cue bad">STOP</span> If they reply “What is this?” → don’t type a paragraph.
-                                <div class="hint">Jump to the 3-insurance explanation and bring them to a call.</div>
-                            </div>
-                            <button class="btn-mini bad" type="button" data-jump="#sec-threeins">Go to “3 Insurances”</button>
-                        </div>
-                    </div>
-                </details>
+                @await Html.PartialAsync("_UnifiedTextScripts", "DisabilityInsurance")
 
                 <details class="section" open data-step="3" data-flow="verify" data-signal="good" id="sec-aged">
                     <summary>
