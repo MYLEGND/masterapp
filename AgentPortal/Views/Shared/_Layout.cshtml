@@ -1611,8 +1611,60 @@
             return normalizeStateName(lead?.state) || 'State';
         }
 
+        function normalizeScriptMessage(value) {
+            return String(value ?? '')
+                .replace(/\u00a0/g, ' ')
+                .replace(/\r/g, '')
+                .split('\n')
+                .map(line => line.trimEnd())
+                .join('\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+        }
+
+        function getLeadPhoneDigits() {
+            const lead = getLead();
+            const raw = readString(lead?.phone) || readString(lead?.phone2);
+            return raw.replace(/\D/g, '');
+        }
+
         function getAgentPhone() {
             return formatPhoneDisplay(profile?.phone);
+        }
+
+        function extractScriptText(source) {
+            if (!source) return '';
+            return normalizeScriptMessage(source.innerText || source.textContent || '');
+        }
+
+        async function openTextComposer(message) {
+            const normalized = normalizeScriptMessage(message);
+            if (!normalized) return false;
+
+            const digits = getLeadPhoneDigits();
+            if (!digits) {
+                window.alert('No phone number is available on the current contact card.');
+                return false;
+            }
+
+            try {
+                await navigator.clipboard.writeText(normalized);
+            } catch {}
+
+            window.location.href = `sms:${digits}?&body=${encodeURIComponent(normalized)}`;
+            return true;
+        }
+
+        async function sendScriptTextMessage(message) {
+            const normalized = normalizeScriptMessage(message);
+            if (!normalized) return false;
+
+            if (window.LeadBridge?.sendTextMessage) {
+                const sent = await window.LeadBridge.sendTextMessage({ message: normalized });
+                if (sent) return true;
+            }
+
+            return openTextComposer(normalized);
         }
 
         function replacePlaceholderVariants(source, token, value) {
@@ -1636,6 +1688,10 @@
             getLeadState,
             getPhone() {
                 return getAgentPhone();
+            },
+            extractScriptText,
+            sendTextMessage(message) {
+                return sendScriptTextMessage(message);
             },
             fillScriptPlaceholders(text) {
                 const agentFirstName = getFirstName();
@@ -1797,9 +1853,34 @@
             window.__legendWorkstationPlaceholderObserver = observer;
         };
 
+        const bindWorkstationTextButtons = () => {
+            if (window.__legendWorkstationTextButtonsBound) return;
+
+            document.addEventListener('click', async (event) => {
+                const button = event.target.closest('[data-send-script-selector]');
+                if (!button) return;
+
+                event.preventDefault();
+
+                const selector = readString(button.getAttribute('data-send-script-selector'));
+                if (!selector) return;
+
+                const source = document.querySelector(selector);
+                if (!source) return;
+
+                const message = extractScriptText(source);
+                if (!message) return;
+
+                await sendScriptTextMessage(message);
+            });
+
+            window.__legendWorkstationTextButtonsBound = true;
+        };
+
         const bootWorkstationPlaceholderSync = () => {
             syncWorkstationPlaceholders();
             mountWorkstationPlaceholderObserver();
+            bindWorkstationTextButtons();
         };
 
         window.addEventListener('leadbridge:currentLead', syncWorkstationPlaceholders);
