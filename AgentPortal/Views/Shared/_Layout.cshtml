@@ -1071,15 +1071,16 @@
                             @if (!isAssistant)
                             {
                                 <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index" target="_blank" rel="noopener">Dashboard</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index" target="_blank" rel="noopener">Framework</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Dashboard</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Framework</a></li>
                                 <li class="nav-item">
                                     <a class="nav-link @Active("Finance")"
                                        asp-controller="Finance"
                                        asp-action="Index"
                                        asp-route-clientUserId="@(string.IsNullOrWhiteSpace(layoutClientUserId) ? null : layoutClientUserId)"
                                        target="_blank"
-                                       rel="noopener">
+                                       rel="noopener"
+                                       data-refresh-current-link="1">
                                         Finance
                                     </a>
                                 </li>
@@ -1090,7 +1091,8 @@
                                            asp-controller="AgencyCommand"
                                            asp-action="Index"
                                            target="_blank"
-                                           rel="noopener">
+                                           rel="noopener"
+                                           data-refresh-current-link="1">
                                             Agency Command
                                         </a>
                                     </li>
@@ -1324,68 +1326,68 @@
 
         <div id="exploreList" class="explore-list">
             <div class="explore-group-label">Pages</div>
-            <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Agent Documents</span>
                 <small>Vault</small>
             </a>
 
             <div class="explore-group-label">CRM</div>
-            <a class="explore-item" data-tone="crm" asp-controller="Clients" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="crm" asp-controller="Clients" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>CLIENTS</span>
                 <small>CRM</small>
             </a>
-            <a class="explore-item" data-tone="crm" asp-controller="Leads" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="crm" asp-controller="Leads" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>LEADS</span>
                 <small>Lead CRM</small>
             </a>
 
             <div class="explore-group-label">Workstation</div>
-            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Workstation</span>
                 <small>Hustle</small>
             </a>
 
-            <a class="explore-item" data-tone="utility" asp-controller="AssistantPanel" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="utility" asp-controller="AssistantPanel" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Assistant Panel</span>
                 <small>Team</small>
             </a>
 
-            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="AdvancedMarkets" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="AdvancedMarkets" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Advanced Markets</span>
                 <small>Tax strategies</small>
             </a>
 
             <div class="explore-group-label">Operations</div>
-         <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index" target="_blank" rel="noopener">
+         <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Website Analytics</span>
                 <small>Ops</small>
             </a>
 
             @if (OnboardingGuard.IsOwner(User))
             {
-                <a class="explore-item" data-tone="ops" asp-controller="Onboarding" asp-action="Index" target="_blank" rel="noopener">
+                <a class="explore-item" data-tone="ops" asp-controller="Onboarding" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                     <span>Onboarding</span>
                     <small>Owner</small>
                 </a>
             }
 
-            <a class="explore-item" data-tone="network" asp-controller="Partners" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="network" asp-controller="Partners" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Partners</span>
                 <small>Network</small>
             </a>
 
             <div class="explore-group-label">Learning & Tools</div>
-            <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Resources</span>
                 <small>Library</small>
             </a>
 
-            <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Trainings</span>
                 <small>Growth</small>
             </a>
 
-            <a class="explore-item" data-tone="utility" asp-controller="Tools" asp-action="Index" target="_blank" rel="noopener">
+            <a class="explore-item" data-tone="utility" asp-controller="Tools" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Tools</span>
                 <small>Utility</small>
             </a>
@@ -2503,6 +2505,40 @@
         });
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+        });
+    })();
+
+    (function () {
+        function normalizeHref(value) {
+            try {
+                const url = new URL(value, window.location.href);
+                const params = Array.from(url.searchParams.entries())
+                    .sort((a, b) => {
+                        if (a[0] === b[0]) return a[1].localeCompare(b[1]);
+                        return a[0].localeCompare(b[0]);
+                    })
+                    .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`)
+                    .join('&');
+                const path = url.pathname.replace(/\/+$/, '') || '/';
+                return `${url.origin}${path}${params ? `?${params}` : ''}`;
+            } catch {
+                return '';
+            }
+        }
+
+        document.addEventListener('click', function (event) {
+            if (event.defaultPrevented || event.button !== 0) return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            const link = event.target.closest('a[data-refresh-current-link="1"]');
+            if (!link) return;
+
+            const targetHref = normalizeHref(link.href);
+            const currentHref = normalizeHref(window.location.href);
+            if (!targetHref || !currentHref || targetHref !== currentHref) return;
+
+            event.preventDefault();
+            window.location.reload();
         });
     })();
 </script>
