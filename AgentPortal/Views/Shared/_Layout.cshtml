@@ -1573,6 +1573,22 @@
             return 'Agent';
         }
 
+        function formatPhoneDisplay(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const digits = raw.replace(/\D/g, '');
+            if (digits.length === 10) {
+                return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+            }
+
+            if (digits.length === 11 && digits.startsWith('1')) {
+                return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+            }
+
+            return raw;
+        }
+
         function getLead() {
             const bridgeLead = window.LeadBridge?.getCurrentLead?.();
             if (bridgeLead && typeof bridgeLead === 'object') return bridgeLead;
@@ -1595,6 +1611,10 @@
             return normalizeStateName(lead?.state) || 'State';
         }
 
+        function getAgentPhone() {
+            return formatPhoneDisplay(profile?.phone);
+        }
+
         function replacePlaceholderVariants(source, token, value) {
             const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             return source
@@ -1603,7 +1623,7 @@
         }
 
         function hasSupportedPlaceholder(value) {
-            return /(?:<|&lt;)\s*(?:your full name|your name|agent first name|agent name|client first name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
+            return /(?:<|&lt;)\s*(?:your full name|your name|agent first name|agent name|your phone number|office number|office phone number|phone number|client first name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
         }
 
         const api = {
@@ -1615,10 +1635,11 @@
             getLeadFirstName,
             getLeadState,
             getPhone() {
-                return readString(profile?.phone);
+                return getAgentPhone();
             },
             fillScriptPlaceholders(text) {
                 const agentFirstName = getFirstName();
+                const agentPhone = getAgentPhone();
                 const leadFirstName = getLeadFirstName();
                 const leadState = getLeadState();
                 let rendered = String(text ?? '');
@@ -1632,6 +1653,12 @@
                 rendered = replacePlaceholderVariants(rendered, 'client', leadFirstName);
                 rendered = replacePlaceholderVariants(rendered, 'name', leadFirstName);
                 rendered = replacePlaceholderVariants(rendered, 'state', leadState);
+                if (agentPhone) {
+                    rendered = replacePlaceholderVariants(rendered, 'your phone number', agentPhone);
+                    rendered = replacePlaceholderVariants(rendered, 'office number', agentPhone);
+                    rendered = replacePlaceholderVariants(rendered, 'office phone number', agentPhone);
+                    rendered = replacePlaceholderVariants(rendered, 'phone number', agentPhone);
+                }
 
                 return rendered;
             },
