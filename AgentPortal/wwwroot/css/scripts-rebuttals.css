@@ -12431,3 +12431,310 @@ details.section{
     #rbShell .lb-filterbar [data-lb-slot="note"]{ order: 8; }
     #rbShell .lb-filterbar [data-lb-slot="crm"]{ order: 9; }
 }
+
+/* ========================================================================
+   Rebuttals center-panel refresh
+   ======================================================================== */
+#rbShell{
+    --rb-center-surface: linear-gradient(180deg, rgba(255,255,255,.985) 0%, rgba(247,239,221,.985) 100%);
+    --rb-center-surface-soft: linear-gradient(180deg, rgba(255,255,255,.97) 0%, rgba(252,246,232,.97) 100%);
+    --rb-center-border: rgba(166,128,35,.20);
+    --rb-center-line: rgba(15,23,42,.08);
+    --rb-center-ink: #142033;
+    --rb-center-muted: #5c6980;
+    --rb-center-shadow:
+        0 22px 44px rgba(15,23,42,.14),
+        0 10px 24px rgba(166,128,35,.10);
+}
+
+#rbShell .content-card{
+    position: relative;
+    border-radius: 28px !important;
+    overflow: hidden;
+    box-shadow:
+        0 28px 54px rgba(5,10,22,.28),
+        0 12px 28px rgba(166,128,35,.14),
+        0 0 0 1px rgba(255,255,255,.05) inset !important;
+}
+
+#rbShell .content-card .card-head{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 20px 22px 18px !important;
+    background:
+        linear-gradient(180deg, rgba(244,220,147,.22), rgba(22,33,52,.98) 26%, rgba(10,18,31,.99) 100%) !important;
+}
+
+#rbShell .content-card .card-head > div:first-child{
+    min-width: 0;
+}
+
+#rbShell .content-card .card-title{
+    font-size: 1.08rem;
+    letter-spacing: .02em;
+}
+
+#rbShell .content-card .card-sub{
+    max-width: 56ch;
+    font-size: .93rem;
+    line-height: 1.55;
+}
+
+#rbShell .content-card .count-pill{
+    flex: 0 0 auto;
+    margin-top: 2px;
+}
+
+#rbShell .content-card .content-body{
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px !important;
+    background:
+        radial-gradient(120% 120% at 0% 0%, rgba(255,255,255,.92) 0%, rgba(255,255,255,0) 48%),
+        linear-gradient(180deg, rgba(252,249,239,.98), rgba(242,234,216,.985)) !important;
+}
+
+#rbShell .content-empty{
+    min-height: 240px;
+    display: grid;
+    place-items: center;
+    padding: 32px 28px !important;
+    border: 1px dashed rgba(166,128,35,.34);
+    border-radius: 24px;
+    background: var(--rb-center-surface-soft);
+    color: var(--rb-center-muted) !important;
+    text-align: center;
+    font-size: .97rem;
+    line-height: 1.7;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 12px 26px rgba(15,23,42,.06);
+}
+
+#rbShell .content-empty.small{
+    min-height: 140px;
+    padding: 24px 20px !important;
+}
+
+#rbShell .section-head{
+    position: relative;
+    padding: 20px 22px 18px 26px !important;
+    border: 1px solid rgba(166,128,35,.18) !important;
+    border-radius: 24px !important;
+    background: var(--rb-center-surface-soft) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 16px 32px rgba(15,23,42,.08) !important;
+    overflow: hidden;
+}
+
+#rbShell .section-head::before{
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14px;
+    bottom: 14px;
+    width: 5px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f4dc93 0%, #d4a743 56%, #815a16 100%);
+}
+
+#rbShell .section-title{
+    margin: 0;
+    color: var(--rb-center-ink) !important;
+    font-size: 1.2rem;
+    font-weight: 950;
+    line-height: 1.18;
+    letter-spacing: -.02em;
+}
+
+#rbShell .section-copy{
+    margin-top: 8px;
+    color: var(--rb-center-muted) !important;
+    font-size: .95rem;
+    line-height: 1.65;
+}
+
+#rbShell .objection,
+#rbShell .prosper-stage{
+    --rb-script-accent: #2563eb;
+    --rb-script-accent-soft: rgba(37,99,235,.12);
+    position: relative;
+    border: 1px solid var(--rb-center-border) !important;
+    border-radius: 24px !important;
+    overflow: hidden;
+    background: var(--rb-center-surface) !important;
+    box-shadow: var(--rb-center-shadow) !important;
+}
+
+#rbShell .objection.good,
+#rbShell .prosper-stage.good{
+    --rb-script-accent: #16a34a;
+    --rb-script-accent-soft: rgba(22,163,74,.12);
+}
+
+#rbShell .objection.warn,
+#rbShell .prosper-stage.warn{
+    --rb-script-accent: #d97706;
+    --rb-script-accent-soft: rgba(217,119,6,.14);
+}
+
+#rbShell .objection.bad,
+#rbShell .prosper-stage.bad{
+    --rb-script-accent: #dc2626;
+    --rb-script-accent-soft: rgba(220,38,38,.13);
+}
+
+#rbShell .objection.info,
+#rbShell .prosper-stage.info{
+    --rb-script-accent: #2563eb;
+    --rb-script-accent-soft: rgba(37,99,235,.12);
+}
+
+#rbShell .objection::before,
+#rbShell .prosper-stage::before{
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 6px;
+    background: linear-gradient(180deg, var(--rb-script-accent), rgba(15,23,42,.18));
+}
+
+#rbShell .objection-head,
+#rbShell .prosper-stage-head{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px 14px 22px !important;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.96), var(--rb-script-accent-soft)) !important;
+    border-bottom: 1px solid var(--rb-center-line) !important;
+}
+
+#rbShell .objection-title,
+#rbShell .prosper-title{
+    margin: 0;
+    color: var(--rb-center-ink) !important;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.3;
+    letter-spacing: -.01em;
+}
+
+#rbShell .prosper-step{
+    margin: 0 0 8px;
+    color: var(--rb-script-accent) !important;
+    font-size: .74rem;
+    font-weight: 900;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+#rbShell .prosper-sub{
+    margin-top: 8px;
+    color: var(--rb-center-muted) !important;
+    font-size: .94rem;
+    line-height: 1.6;
+}
+
+#rbShell .mini-tag{
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+#rbShell .mini-tag.good{ background: rgba(22,163,74,.12) !important; color:#166534 !important; border-color: rgba(22,163,74,.22) !important; }
+#rbShell .mini-tag.warn{ background: rgba(217,119,6,.14) !important; color:#9a5808 !important; border-color: rgba(217,119,6,.24) !important; }
+#rbShell .mini-tag.bad{ background: rgba(220,38,38,.12) !important; color:#991b1b !important; border-color: rgba(220,38,38,.22) !important; }
+#rbShell .mini-tag.info{ background: rgba(37,99,235,.12) !important; color:#1d4ed8 !important; border-color: rgba(37,99,235,.22) !important; }
+
+#rbShell .objection-body,
+#rbShell .prosper-body{
+    padding: 18px 20px 20px 22px !important;
+    background: transparent !important;
+}
+
+#rbShell .prosper-body{
+    display: grid;
+    gap: 14px;
+}
+
+#rbShell pre.script,
+#rbShell .prosper-body .script{
+    margin: 0;
+    padding: 16px 18px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(15,23,42,.08) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(250,246,236,.99)) !important;
+    color: var(--rb-center-ink) !important;
+    font-size: .97rem;
+    line-height: 1.75;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 12px 20px rgba(15,23,42,.06) !important;
+}
+
+#rbShell pre.script mark.hit,
+#rbShell .prosper-body mark.hit{
+    background: rgba(250,204,21,.28);
+    color: inherit;
+    border-radius: 6px;
+    padding: .02em .22em;
+}
+
+#rbShell .prosper-body .keyline{
+    padding: 11px 13px;
+    border-radius: 14px;
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.52),
+        0 8px 16px rgba(120,53,15,.10) !important;
+}
+
+#rbShell .prosper-body .callout{
+    border-radius: 18px;
+    padding: 14px 15px;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.84),
+        0 10px 18px rgba(15,23,42,.06) !important;
+}
+
+#rbShell .prosper-body .text-script-actions{
+    justify-content: flex-start;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+@media (max-width: 1200px){
+    #rbShell .content-card .content-body{
+        padding: 18px !important;
+    }
+
+    #rbShell .content-card .card-head{
+        padding: 18px 18px 16px !important;
+    }
+
+    #rbShell .section-head,
+    #rbShell .objection-body,
+    #rbShell .prosper-body{
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+    }
+
+    #rbShell .objection-head,
+    #rbShell .prosper-stage-head{
+        padding: 17px 18px 13px 18px !important;
+    }
+}
