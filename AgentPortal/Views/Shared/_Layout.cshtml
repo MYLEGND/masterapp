@@ -1549,6 +1549,85 @@
             }, {})
         );
 
+        const US_STATE_CODE_BY_KEY = Object.freeze(
+            Object.entries(US_STATE_NAME_BY_CODE).reduce((acc, [code, name]) => {
+                acc[code] = code;
+                acc[name.toUpperCase().replace(/[^A-Z]/g, '')] = code;
+                return acc;
+            }, {})
+        );
+
+        const DEFAULT_TIME_ZONE_BY_STATE = Object.freeze({
+            AL: 'America/Chicago',
+            AK: 'America/Anchorage',
+            AZ: 'America/Phoenix',
+            AR: 'America/Chicago',
+            CA: 'America/Los_Angeles',
+            CO: 'America/Denver',
+            CT: 'America/New_York',
+            DE: 'America/New_York',
+            DC: 'America/New_York',
+            FL: 'America/New_York',
+            GA: 'America/New_York',
+            HI: 'Pacific/Honolulu',
+            IA: 'America/Chicago',
+            ID: 'America/Denver',
+            IL: 'America/Chicago',
+            IN: 'America/New_York',
+            KS: 'America/Chicago',
+            KY: 'America/New_York',
+            LA: 'America/Chicago',
+            MA: 'America/New_York',
+            MD: 'America/New_York',
+            ME: 'America/New_York',
+            MI: 'America/New_York',
+            MN: 'America/Chicago',
+            MO: 'America/Chicago',
+            MS: 'America/Chicago',
+            MT: 'America/Denver',
+            NC: 'America/New_York',
+            ND: 'America/Chicago',
+            NE: 'America/Chicago',
+            NH: 'America/New_York',
+            NJ: 'America/New_York',
+            NM: 'America/Denver',
+            NV: 'America/Los_Angeles',
+            NY: 'America/New_York',
+            OH: 'America/New_York',
+            OK: 'America/Chicago',
+            OR: 'America/Los_Angeles',
+            PA: 'America/New_York',
+            RI: 'America/New_York',
+            SC: 'America/New_York',
+            SD: 'America/Chicago',
+            TN: 'America/Chicago',
+            TX: 'America/Chicago',
+            UT: 'America/Denver',
+            VA: 'America/New_York',
+            VT: 'America/New_York',
+            WA: 'America/Los_Angeles',
+            WI: 'America/Chicago',
+            WV: 'America/New_York',
+            WY: 'America/Denver',
+            PR: 'America/Puerto_Rico',
+            GU: 'Pacific/Guam',
+            VI: 'America/St_Thomas',
+            AS: 'Pacific/Pago_Pago',
+            MP: 'Pacific/Saipan'
+        });
+
+        function normalizeLocationKey(value) {
+            return readString(value).toUpperCase().replace(/[^A-Z]/g, '');
+        }
+
+        function normalizeStateCode(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const key = raw.toUpperCase().replace(/[^A-Z]/g, '');
+            return US_STATE_CODE_BY_KEY[key] || '';
+        }
+
         function normalizeStateName(value) {
             const raw = readString(value);
             if (!raw) return '';
@@ -1610,6 +1689,109 @@
         function getLeadState() {
             const lead = getLead();
             return normalizeStateName(lead?.state) || 'State';
+        }
+
+        function resolveLeadTimeZone() {
+            const lead = getLead();
+            const stateCode = normalizeStateCode(lead?.state);
+            const cityKey = normalizeLocationKey(lead?.city);
+            const countyKey = normalizeLocationKey(lead?.county);
+
+            if (!stateCode) return '';
+
+            const matchesAny = (value, options) => options.includes(value);
+
+            switch (stateCode) {
+                case 'FL':
+                    if (matchesAny(countyKey, ['BAY', 'CALHOUN', 'ESCAMBIA', 'GULF', 'HOLMES', 'JACKSON', 'OKALOOSA', 'SANTAROSA', 'WALTON', 'WASHINGTON'])
+                        || matchesAny(cityKey, ['PENSACOLA', 'CRESTVIEW', 'DESTIN', 'FORTWALTONBEACH', 'MARIANNA', 'NAVARRE', 'NICEVILLE', 'PANAMACITY'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'ID':
+                    if (matchesAny(countyKey, ['BENEWAH', 'BONNER', 'BOUNDARY', 'CLEARWATER', 'IDAHO', 'LATAH', 'LEWIS', 'NEZPERCE', 'SHOSHONE'])
+                        || matchesAny(cityKey, ['COEURDALENE', 'HAYDEN', 'LEWISTON', 'MOSCOW', 'POSTFALLS', 'RATHDRUM', 'SANDPOINT'])) {
+                        return 'America/Los_Angeles';
+                    }
+                    break;
+                case 'IN':
+                    if (matchesAny(countyKey, ['DUBOIS', 'GIBSON', 'JASPER', 'KNOX', 'LAKE', 'LAPORTE', 'NEWTON', 'PERRY', 'PIKE', 'PORTER', 'POSEY', 'PULASKI', 'SPENCER', 'STARKE', 'VANDERBURGH', 'WARRICK'])
+                        || matchesAny(cityKey, ['EVANSVILLE', 'GARY', 'HAMMOND', 'JASPER', 'MERRILLVILLE', 'PORTAGE', 'TELLCITY', 'VALPARAISO', 'VINCENNES'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'KY':
+                    if (matchesAny(countyKey, ['ADAIR', 'ALLEN', 'BALLARD', 'BARREN', 'BRECKINRIDGE', 'BUTLER', 'CALDWELL', 'CALLOWAY', 'CARLISLE', 'CHRISTIAN', 'CLINTON', 'CRITTENDEN', 'CUMBERLAND', 'DAVIESS', 'EDMONSON', 'FULTON', 'GRAVES', 'GRAYSON', 'HANCOCK', 'HENDERSON', 'HICKMAN', 'HOPKINS', 'LIVINGSTON', 'LOGAN', 'LYON', 'MARSHALL', 'MCCRAKEN', 'MCLEAN', 'METCALFE', 'MONROE', 'MUHLENBERG', 'OHIO', 'SIMPSON', 'TODD', 'TRIGG', 'UNION', 'WARREN', 'WEBSTER'])
+                        || matchesAny(cityKey, ['BOWLINGGREEN', 'HENDERSON', 'HOPKINSVILLE', 'MADISONVILLE', 'MAYFIELD', 'MURRAY', 'OWENSBORO', 'PADUCAH'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'MI':
+                    if (matchesAny(countyKey, ['DICKINSON', 'GOGEBIC', 'IRON', 'MENOMINEE'])
+                        || matchesAny(cityKey, ['IRONMOUNTAIN', 'IRONWOOD', 'MENOMINEE'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'ND':
+                    if (matchesAny(countyKey, ['ADAMS', 'BILLINGS', 'BOWMAN', 'DUNN', 'GOLDENVALLEY', 'HETTINGER', 'MCKENZIE', 'SLOPE', 'STARK'])
+                        || matchesAny(cityKey, ['BEACH', 'BOWMAN', 'DICKINSON', 'HETTINGER', 'KILLDEER', 'MEDORA', 'WATFORDCITY', 'WILLISTON'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'NE':
+                    if (matchesAny(countyKey, ['BANNER', 'BOXBUTTE', 'CHEYENNE', 'DAWES', 'DEUEL', 'GARDEN', 'KIMBALL', 'MORRILL', 'SCOTTSBLUFF', 'SHERIDAN', 'SIOUX'])
+                        || matchesAny(cityKey, ['ALLIANCE', 'CHADRON', 'GERING', 'KIMBALL', 'OGALLALA', 'SCOTTSBLUFF', 'SIDNEY'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'OR':
+                    if (countyKey === 'MALHEUR' || matchesAny(cityKey, ['NYSSA', 'ONTARIO', 'VALE'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'SD':
+                    if (matchesAny(countyKey, ['BUTTE', 'CUSTER', 'FALLRIVER', 'HARDING', 'LAWRENCE', 'MEADE', 'PENNINGTON', 'PERKINS'])
+                        || matchesAny(cityKey, ['DEADWOOD', 'HOTSPRINGS', 'RAPIDCITY', 'SPEARFISH', 'STURGIS'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'TN':
+                    if (matchesAny(countyKey, ['ANDERSON', 'BLEDSOE', 'BLOUNT', 'BRADLEY', 'CAMPBELL', 'CARTER', 'CLAIBORNE', 'COCKE', 'GRAINGER', 'GREENE', 'HAMBLEN', 'HAMILTON', 'HANCOCK', 'HAWKINS', 'JEFFERSON', 'JOHNSON', 'KNOX', 'LOUDON', 'MCMINN', 'MEIGS', 'MONROE', 'MORGAN', 'POLK', 'RHEA', 'ROANE', 'SCOTT', 'SEQUATCHIE', 'SEVIER', 'SULLIVAN', 'UNICOI', 'UNION', 'WASHINGTON'])
+                        || matchesAny(cityKey, ['ATHENS', 'BRISTOL', 'CHATTANOOGA', 'CLEVELAND', 'GREENEVILLE', 'JOHNSONCITY', 'KINGSPORT', 'KNOXVILLE', 'MARYVILLE', 'MORRISTOWN', 'OAKRIDGE'])) {
+                        return 'America/New_York';
+                    }
+                    break;
+                case 'TX':
+                    if (matchesAny(countyKey, ['ELPASO', 'HUDSPETH']) || matchesAny(cityKey, ['ANTHONY', 'ELPASO', 'HORIZONCITY'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+            }
+
+            return DEFAULT_TIME_ZONE_BY_STATE[stateCode] || '';
+        }
+
+        function getLeadGreeting() {
+            const timeZone = resolveLeadTimeZone();
+            if (!timeZone) return 'Hello';
+
+            try {
+                const hour = Number(
+                    new Intl.DateTimeFormat('en-US', {
+                        hour: 'numeric',
+                        hour12: false,
+                        timeZone
+                    }).format(new Date())
+                );
+
+                if (Number.isFinite(hour)) {
+                    if (hour < 12) return 'Good morning';
+                    if (hour < 17) return 'Good afternoon';
+                    return 'Good evening';
+                }
+            } catch {}
+
+            return 'Hello';
         }
 
         function normalizeScriptMessage(value) {
@@ -1713,7 +1895,7 @@
         }
 
         function hasSupportedPlaceholder(value) {
-            return /(?:<|&lt;)\s*(?:your full name|your name|agent first name|agent name|your phone number|office number|office phone number|phone number|client first name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
+            return /(?:<|&lt;)\s*(?:greeting|your full name|your name|agent first name|agent name|your phone number|office number|office phone number|phone number|client first name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
         }
 
         const api = {
@@ -1724,6 +1906,8 @@
             getLead,
             getLeadFirstName,
             getLeadState,
+            getLeadTimeZone: resolveLeadTimeZone,
+            getLeadGreeting,
             getPhone() {
                 return getAgentPhone();
             },
@@ -1735,12 +1919,14 @@
                 return sendScriptTextMessage(message);
             },
             fillScriptPlaceholders(text) {
+                const leadGreeting = getLeadGreeting();
                 const agentFirstName = getFirstName();
                 const agentPhone = getAgentPhone();
                 const leadFirstName = getLeadFirstName();
                 const leadState = getLeadState();
                 let rendered = String(text ?? '');
 
+                rendered = replacePlaceholderVariants(rendered, 'greeting', leadGreeting);
                 rendered = replacePlaceholderVariants(rendered, 'your full name', agentFirstName);
                 rendered = replacePlaceholderVariants(rendered, 'your name', agentFirstName);
                 rendered = replacePlaceholderVariants(rendered, 'agent first name', agentFirstName);
@@ -1894,6 +2080,14 @@
             window.__legendWorkstationPlaceholderObserver = observer;
         };
 
+        const mountWorkstationTimeRefresh = () => {
+            if (window.__legendWorkstationTimeRefreshTimer) return;
+
+            window.__legendWorkstationTimeRefreshTimer = window.setInterval(() => {
+                syncWorkstationPlaceholders();
+            }, 60000);
+        };
+
         function findScriptSource(trigger, selector) {
             if (!trigger || !selector) return null;
 
@@ -1979,6 +2173,7 @@
         const bootWorkstationPlaceholderSync = () => {
             syncWorkstationPlaceholders();
             mountWorkstationPlaceholderObserver();
+            mountWorkstationTimeRefresh();
             bindWorkstationScriptButtons();
         };
 
