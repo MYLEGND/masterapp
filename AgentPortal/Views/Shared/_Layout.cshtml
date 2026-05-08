@@ -1071,13 +1071,15 @@
                             @if (!isAssistant)
                             {
                                 <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index">Dashboard</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index">Framework</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index" target="_blank" rel="noopener">Dashboard</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index" target="_blank" rel="noopener">Framework</a></li>
                                 <li class="nav-item">
                                     <a class="nav-link @Active("Finance")"
                                        asp-controller="Finance"
                                        asp-action="Index"
-                                       asp-route-clientUserId="@(string.IsNullOrWhiteSpace(layoutClientUserId) ? null : layoutClientUserId)">
+                                       asp-route-clientUserId="@(string.IsNullOrWhiteSpace(layoutClientUserId) ? null : layoutClientUserId)"
+                                       target="_blank"
+                                       rel="noopener">
                                         Finance
                                     </a>
                                 </li>
@@ -1086,7 +1088,9 @@
                                     <li class="nav-item">
                                         <a class="nav-link @Active("AgencyCommand")"
                                            asp-controller="AgencyCommand"
-                                           asp-action="Index">
+                                           asp-action="Index"
+                                           target="_blank"
+                                           rel="noopener">
                                             Agency Command
                                         </a>
                                     </li>
