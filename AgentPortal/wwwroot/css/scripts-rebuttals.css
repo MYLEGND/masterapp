@@ -11993,6 +11993,17 @@ details.section{
     transform: translateY(-1px);
 }
 
+/* Voicemail — cool indigo */
+#rbShell .lb-actions .lb-btn[data-outcome="Voicemail"] {
+    border-color: rgba(96,165,250,.58) !important;
+    color: #93c5fd !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="Voicemail"]:hover {
+    border-color: rgba(96,165,250,.9) !important;
+    color: #dbeafe !important;
+    transform: translateY(-1px);
+}
+
 /* AI Reception — violet */
 #rbShell .lb-actions .lb-btn[data-outcome="AIReception"] {
     border-color: rgba(139,92,246,.55) !important;

@@ -1139,6 +1139,7 @@ const pipelineLabels = {
   FollowUp: "Follow Up",
   NeedsDocs: "Needs Docs",
   PolicyPlaced: "Policy Placed",
+  Voicemail: "Voicemail",
   NotInterested: "Not Interested",
   Nurture: "Nurture",
   NoAnswer: "No Answer",
@@ -1169,6 +1170,7 @@ const pipelineStages = [
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
   { key: "NeedsDocs", label: "Needs Docs", tone: "info", className: "stage-applicationstarted", note: "Waiting on documents to proceed." },
+  { key: "Voicemail", label: "Voicemail", tone: "info", className: "stage-contacted", note: "Voicemail was left and needs callback tracking." },
   { key: "NotInterested", label: "Not Interested", tone: "bad", className: "stage-closedlost", note: "Lead not moving forward right now." },
   { key: "Nurture", label: "Nurture", tone: "warn", className: "stage-nurture", note: "Stay in touch over time." },
   { key: "NoAnswer", label: "No Answer", tone: "warn", className: "stage-nurture", note: "Could not reach lead yet." },
@@ -1188,6 +1190,9 @@ const pipelineAliases = {
   medicare: "MortgageProtection",
   medicareleads: "MortgageProtection",
   submitted: "PolicyPlaced",
+  voicemail: "Voicemail",
+  leftvm: "Voicemail",
+  leftvoicemail: "Voicemail",
   closedlost: "NotInterested",
   closedwon: "PolicyPlaced",
   noanswer: "NoAnswer",
@@ -3395,7 +3400,7 @@ async function openDrawerForRow(row){
   dStageAge.textContent = `Stage Age: ${stageAgeDays(row)}d`;
   dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
   dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
-  dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 7 non-lead buckets.";
+  dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 8 non-lead buckets.";
   refreshCalendarBusyPanel();
 
   renderPortalActions(row, null);
@@ -4563,6 +4568,7 @@ function renderCallTaskMode(){
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Contacted">Mark Contacted</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Booked">Booked Meeting</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:FollowUp">Follow Up</button>
+        <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Voicemail">Voicemail</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:NotInterested">Not Interested</button>
       </div>
     </div>
@@ -4610,6 +4616,7 @@ $$(".outcome-btn").forEach(btn => {
       FollowUp: "FollowUp",
       NeedsDocs: "NeedsDocs",
       PolicyPlaced: "PolicyPlaced",
+      Voicemail: "Voicemail",
       NotInterested: "NotInterested",
       Nurture: "Nurture"
     };

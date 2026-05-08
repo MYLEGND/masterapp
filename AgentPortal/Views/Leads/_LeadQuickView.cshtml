@@ -225,6 +225,7 @@
                                 <option value="FollowUp">Follow Up</option>
                                 <option value="NeedsDocs">Needs Docs</option>
                                 <option value="PolicyPlaced">Policy Placed</option>
+                                <option value="Voicemail">Voicemail</option>
                                 <option value="NotInterested">Not Interested</option>
                                 <option value="Nurture">Nurture</option>
                             </select>
@@ -291,6 +292,7 @@
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="FollowUp">Follow Up</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NeedsDocs">Needs Docs</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="PolicyPlaced">Policy Placed</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Voicemail">Voicemail</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NotInterested">Not Interested</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Nurture">Nurture</button>
                     </div>
@@ -1482,10 +1484,12 @@
     .lead-qv-shell .outcome-btn[data-outcome="Contacted"],
     .lead-qv-shell .outcome-btn[data-outcome="Spoke"],
     .lead-qv-shell .outcome-btn[data-outcome="NoAnswer"],
+    .lead-qv-shell .outcome-btn[data-outcome="Voicemail"],
     .lead-qv-shell .outcome-btn[data-outcome="LeftVM"],
     .client-qv-shell .outcome-btn[data-outcome="Contacted"],
     .client-qv-shell .outcome-btn[data-outcome="Spoke"],
     .client-qv-shell .outcome-btn[data-outcome="NoAnswer"],
+    .client-qv-shell .outcome-btn[data-outcome="Voicemail"],
     .client-qv-shell .outcome-btn[data-outcome="LeftVM"]{
         background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
         color:#eaf5ff !important;

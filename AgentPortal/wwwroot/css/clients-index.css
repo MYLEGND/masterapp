@@ -4785,6 +4785,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 
 .drawer.qv-theme-shell .outcome-btn[data-outcome="Spoke"],
 .drawer.qv-theme-shell .outcome-btn[data-outcome="Contacted"],
+.drawer.qv-theme-shell .outcome-btn[data-outcome="Voicemail"],
 .drawer.qv-theme-shell .outcome-btn[data-outcome="LeftVM"]{
     background: linear-gradient(180deg,#1e4a84,#153660) !important;
     border-color:#7cb0f1 !important;
