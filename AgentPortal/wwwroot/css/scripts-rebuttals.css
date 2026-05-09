@@ -13692,3 +13692,71 @@ details.section{
         0 0 0 3px rgba(244,220,147,.26),
         0 14px 24px rgba(15,23,42,.16) !important;
 }
+
+/* ========================================================================
+   Active rail state replaces pointer arrows
+   ======================================================================== */
+#rbShell .nav-rail-arrow,
+#rbShell #rbNavArrow,
+#rbShell #prosperNavArrow{
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+#rbShell #rbNav .cat-btn.active,
+#rbShell #prosperNav .cat-btn.active{
+    background: linear-gradient(180deg, #ffffff 0%, #fffaf1 100%) !important;
+    border-color: rgba(195,138,45,.92) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.98),
+        0 0 0 1px rgba(248,226,170,.90),
+        0 14px 26px rgba(137,93,24,.16),
+        0 6px 14px rgba(15,23,42,.12) !important;
+    transform: translateY(-1px);
+}
+
+#rbShell #rbNav .cat-btn.active.good,
+#rbShell #rbNav .cat-btn.active.warn,
+#rbShell #rbNav .cat-btn.active.bad,
+#rbShell #rbNav .cat-btn.active.info,
+#rbShell #prosperNav .cat-btn.active.good,
+#rbShell #prosperNav .cat-btn.active.warn,
+#rbShell #prosperNav .cat-btn.active.bad,
+#rbShell #prosperNav .cat-btn.active.info{
+    background: linear-gradient(180deg, #ffffff 0%, #fffaf1 100%) !important;
+    border-color: rgba(195,138,45,.92) !important;
+}
+
+#rbShell #rbNav .cat-btn.active::before,
+#rbShell #prosperNav .cat-btn.active::before{
+    width: 6px;
+    opacity: 1 !important;
+    background: linear-gradient(180deg, #f8e2aa 0%, #d8a640 52%, #895d18 100%) !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-name,
+#rbShell #rbNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn.active .cat-name,
+#rbShell #prosperNav .cat-btn.active .cat-top-single{
+    color: #122033 !important;
+    text-shadow: none !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn.active .cat-note{
+    color: rgba(18,32,51,.76) !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-rank,
+#rbShell #rbNav .cat-btn.active .cat-count,
+#rbShell #prosperNav .cat-btn.active .cat-rank,
+#rbShell #prosperNav .cat-btn.active .cat-count{
+    background: linear-gradient(180deg, #fff8e7 0%, #f4e6bf 100%) !important;
+    border-color: rgba(195,138,45,.46) !important;
+    color: #8b5e19 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        0 3px 8px rgba(166,128,35,.10) !important;
+}
