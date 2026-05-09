@@ -13566,10 +13566,9 @@ details.section{
     --ws-brand-ink: #122033;
 }
 
-#mpShell .btn,
-#rbShell .btn,
-.scripts-shell .btn,
-#rbShell .lb-btn{
+#mpShell .body .btn,
+#rbShell .prosper-body .btn,
+.scripts-shell .body .btn{
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -13583,9 +13582,9 @@ details.section{
     letter-spacing: .01em !important;
 }
 
-#mpShell .btn-mini,
+#mpShell .body .btn-mini,
 #rbShell .prosper-body .btn-mini,
-.scripts-shell .btn-mini{
+.scripts-shell .body .btn-mini{
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -13599,13 +13598,12 @@ details.section{
     letter-spacing: .01em !important;
 }
 
-#mpShell .btn:not(.gold):not(.dark),
-#rbShell .btn:not(.gold):not(.dark),
-.scripts-shell .btn:not(.gold):not(.dark),
-#rbShell .lb-btn.ghost,
-#mpShell .btn-mini:not(.gold):not(.good):not(.warn):not(.bad),
+#mpShell .body .btn:not(.gold):not(.dark),
+#rbShell .prosper-body .btn:not(.gold):not(.dark),
+.scripts-shell .body .btn:not(.gold):not(.dark),
+#mpShell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad),
 #rbShell .prosper-body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad),
-.scripts-shell .btn-mini:not(.gold):not(.good):not(.warn):not(.bad){
+.scripts-shell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad){
     background: linear-gradient(180deg, var(--ws-brand-ivory) 0%, var(--ws-brand-ivory-2) 100%) !important;
     border-color: rgba(166, 128, 35, .34) !important;
     color: var(--ws-brand-ink) !important;
@@ -13615,16 +13613,12 @@ details.section{
         0 3px 8px rgba(166,128,35,.08) !important;
 }
 
-#mpShell .btn.gold,
-#rbShell .btn.gold,
-#rbShell .lb-btn:not(.ghost):not(.next):not(.danger),
-.scripts-shell .btn.gold,
-#mpShell .btn-mini.gold,
+#mpShell .body .btn.gold,
+#rbShell .prosper-body .btn.gold,
+.scripts-shell .body .btn.gold,
+#mpShell .body .btn-mini.gold,
 #rbShell .prosper-body .btn-mini.gold,
-.scripts-shell .btn-mini.gold,
-#rbShell .rb-link-bar .btn,
-#rbShell .rb-link-bar .btn.gold,
-#rbShell .rb-link-bar .rb-link{
+.scripts-shell .body .btn-mini.gold{
     background: linear-gradient(180deg, var(--ws-brand-gold-100) 0%, var(--ws-brand-gold-300) 56%, var(--ws-brand-gold-500) 100%) !important;
     border-color: rgba(137, 93, 24, .58) !important;
     color: #0f172a !important;
@@ -13635,10 +13629,9 @@ details.section{
         0 14px 24px rgba(137,93,24,.18) !important;
 }
 
-#mpShell .btn.dark,
-#rbShell .btn.dark,
+#mpShell .body .btn.dark,
 #rbShell .prosper-body .btn.dark,
-.scripts-shell .btn.dark{
+.scripts-shell .body .btn.dark{
     background: linear-gradient(180deg, var(--ws-brand-navy-700) 0%, var(--ws-brand-navy-900) 100%) !important;
     border-color: rgba(244,220,147,.18) !important;
     color: #f8fafc !important;
@@ -13647,42 +13640,39 @@ details.section{
         0 14px 24px rgba(5,10,22,.22) !important;
 }
 
-#mpShell .btn-mini.good,
+#mpShell .body .btn-mini.good,
 #rbShell .prosper-body .btn-mini.good,
-.scripts-shell .btn-mini.good{
+.scripts-shell .body .btn-mini.good{
     background: linear-gradient(180deg, #f3fcf6 0%, #ddf5e5 100%) !important;
     border-color: rgba(22,101,52,.24) !important;
     color: #14532d !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 16px rgba(21,128,61,.10) !important;
 }
 
-#mpShell .btn-mini.warn,
+#mpShell .body .btn-mini.warn,
 #rbShell .prosper-body .btn-mini.warn,
-.scripts-shell .btn-mini.warn{
+.scripts-shell .body .btn-mini.warn{
     background: linear-gradient(180deg, #fff8ed 0%, #fde7c3 100%) !important;
     border-color: rgba(180,83,9,.26) !important;
     color: #9a3412 !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 16px rgba(217,119,6,.10) !important;
 }
 
-#mpShell .btn-mini.bad,
+#mpShell .body .btn-mini.bad,
 #rbShell .prosper-body .btn-mini.bad,
-.scripts-shell .btn-mini.bad{
+.scripts-shell .body .btn-mini.bad{
     background: linear-gradient(180deg, #fff6f6 0%, #fde0e0 100%) !important;
     border-color: rgba(185,28,28,.24) !important;
     color: #991b1b !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 8px 16px rgba(220,38,38,.10) !important;
 }
 
-#mpShell .btn:hover,
-#rbShell .btn:hover,
-.scripts-shell .btn:hover,
-#mpShell .btn-mini:hover,
+#mpShell .body .btn:hover,
+#rbShell .prosper-body .btn:hover,
+.scripts-shell .body .btn:hover,
+#mpShell .body .btn-mini:hover,
 #rbShell .prosper-body .btn-mini:hover,
-.scripts-shell .btn-mini:hover,
-#rbShell .lb-btn:hover,
-#rbShell .rb-link-bar .btn:hover,
-#rbShell .rb-link-bar .rb-link:hover{
+.scripts-shell .body .btn-mini:hover{
     transform: translateY(-1px);
     filter: saturate(1.03);
     box-shadow:
@@ -13691,160 +13681,14 @@ details.section{
         0 4px 10px rgba(166,128,35,.12) !important;
 }
 
-#mpShell .btn:focus-visible,
-#rbShell .btn:focus-visible,
-.scripts-shell .btn:focus-visible,
-#mpShell .btn-mini:focus-visible,
+#mpShell .body .btn:focus-visible,
+#rbShell .prosper-body .btn:focus-visible,
+.scripts-shell .body .btn:focus-visible,
+#mpShell .body .btn-mini:focus-visible,
 #rbShell .prosper-body .btn-mini:focus-visible,
-.scripts-shell .btn-mini:focus-visible,
-#rbShell .lb-btn:focus-visible,
-#rbShell .rb-link-bar .rb-link:focus-visible,
-#mpShell .flow-guide-action:focus-visible,
-#rbShell .flow-guide-action:focus-visible{
+.scripts-shell .body .btn-mini:focus-visible{
     outline: none;
     box-shadow:
         0 0 0 3px rgba(244,220,147,.26),
         0 14px 24px rgba(15,23,42,.16) !important;
-}
-
-#rbShell .cat-btn{
-    border-radius: 18px !important;
-    border: 1px solid rgba(212,167,67,.18) !important;
-    background:
-        linear-gradient(180deg, rgba(22,31,49,.98), rgba(9,14,25,.99)) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        inset 0 -1px 0 rgba(255,255,255,.02),
-        0 12px 22px rgba(5,10,22,.22) !important;
-}
-
-#rbShell .cat-btn.good{
-    background:
-        radial-gradient(circle at top right, rgba(74,222,128,.16), transparent 48%),
-        linear-gradient(180deg, rgba(17,34,31,.98), rgba(8,14,14,.99)) !important;
-    border-color: rgba(74,222,128,.22) !important;
-}
-
-#rbShell .cat-btn.warn{
-    background:
-        radial-gradient(circle at top right, rgba(251,191,36,.18), transparent 50%),
-        linear-gradient(180deg, rgba(42,27,12,.98), rgba(20,13,9,.99)) !important;
-    border-color: rgba(251,191,36,.24) !important;
-}
-
-#rbShell .cat-btn.bad{
-    background:
-        radial-gradient(circle at top right, rgba(248,113,113,.16), transparent 48%),
-        linear-gradient(180deg, rgba(41,19,22,.99), rgba(22,9,11,.99)) !important;
-    border-color: rgba(248,113,113,.22) !important;
-}
-
-#rbShell .cat-btn.info{
-    background:
-        radial-gradient(circle at top right, rgba(96,165,250,.18), transparent 50%),
-        linear-gradient(180deg, rgba(18,28,46,.98), rgba(8,12,24,.99)) !important;
-    border-color: rgba(96,165,250,.24) !important;
-}
-
-#rbShell .cat-btn:hover{
-    transform: translateY(-1px);
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.08),
-        0 18px 28px rgba(5,10,22,.28),
-        0 0 0 1px rgba(255,255,255,.04) inset !important;
-}
-
-#rbShell .cat-btn.active{
-    box-shadow:
-        0 0 0 1px rgba(255,255,255,.06) inset,
-        0 0 0 2px rgba(244,220,147,.28),
-        0 0 0 5px rgba(244,220,147,.08),
-        0 20px 32px rgba(5,10,22,.30) !important;
-}
-
-#rbShell .cat-rank,
-#rbShell .cat-count{
-    background: linear-gradient(180deg, rgba(255,255,255,.16), rgba(255,255,255,.07)) !important;
-    border-color: rgba(255,255,255,.10) !important;
-    color: #f8e7b5 !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.12) !important;
-}
-
-#rbShell .cat-name,
-#rbShell .cat-top-single{
-    color: #fcfaf4 !important;
-}
-
-#rbShell .cat-note{
-    color: rgba(240,229,201,.78) !important;
-}
-
-#rbShell .nav-rail-arrow{
-    width: 48px;
-    height: 48px;
-    border-radius: 16px;
-    border: 1px solid rgba(137,93,24,.58);
-    background: linear-gradient(180deg, #fff6d8 0%, #e8c56d 60%, #b37a24 100%);
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.74),
-        0 14px 24px rgba(15,23,42,.18),
-        0 0 0 4px rgba(244,220,147,.14);
-    animation: none;
-}
-
-#rbShell .nav-rail-arrow::before{
-    width: 11px;
-    height: 11px;
-    border-top: 3px solid #17233a;
-    border-right: 3px solid #17233a;
-}
-
-#mpShell .flow-guide-action,
-#rbShell .flow-guide-action{
-    padding: 7px 11px !important;
-    border-radius: 12px !important;
-    font-size: .77rem !important;
-    line-height: 1.12 !important;
-    font-weight: 800 !important;
-    color: #eff6ff !important;
-    background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03)) !important;
-    border-color: rgba(255,255,255,.12) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.09),
-        0 8px 16px rgba(2,6,23,.16) !important;
-}
-
-#mpShell .flow-guide-action.gold,
-#rbShell .flow-guide-action.gold{
-    color: #0f172a !important;
-    background: linear-gradient(180deg, #f8e8b7 0%, #d9ac4e 100%) !important;
-    border-color: rgba(244,220,147,.40) !important;
-}
-
-#mpShell .flow-guide-action.dark,
-#rbShell .flow-guide-action.dark{
-    color: #eff6ff !important;
-    background: linear-gradient(180deg, rgba(34,48,74,.92), rgba(15,23,42,.98)) !important;
-    border-color: rgba(148,163,184,.24) !important;
-}
-
-#mpShell .flow-guide-action.good,
-#rbShell .flow-guide-action.good{
-    color: #dcfce7 !important;
-    background: linear-gradient(180deg, rgba(22,163,74,.24), rgba(15,23,42,.34)) !important;
-    border-color: rgba(74,222,128,.34) !important;
-}
-
-#mpShell .flow-guide-action.warn,
-#rbShell .flow-guide-action.warn{
-    color: #fef3c7 !important;
-    background: linear-gradient(180deg, rgba(245,158,11,.24), rgba(15,23,42,.34)) !important;
-    border-color: rgba(251,191,36,.34) !important;
-}
-
-#mpShell .flow-guide-action.bad,
-#rbShell .flow-guide-action.bad{
-    color: #fee2e2 !important;
-    background: linear-gradient(180deg, rgba(239,68,68,.24), rgba(15,23,42,.34)) !important;
-    border-color: rgba(248,113,113,.34) !important;
 }
