@@ -1,4 +1,6 @@
 (function(){
+  const SHOW_CONVERSATION_GUIDE = false;
+
   const ROUTE_HINTS = Object.freeze({
     'sec-hub': {
       requiresChoice: true,
@@ -606,6 +608,11 @@
     }
 
     function renderFlowGuide(){
+      if (!SHOW_CONVERSATION_GUIDE){
+        shell.querySelector('[data-flow-guide]')?.remove();
+        return;
+      }
+
       const guide = ensureFlowGuide();
       const current = getCurrentSection();
       if (!guide || !current) return;
