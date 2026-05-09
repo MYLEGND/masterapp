@@ -435,6 +435,25 @@ public class LeadsController : Controller
         return digits;
     }
 
+    private static string ResolveLeadAge(DateTime? dob, string? existingAge, DateTime utcNow, TimeZoneInfo? timeZone = null)
+    {
+        if (!dob.HasValue)
+            return Clean(existingAge) ?? "";
+
+        var localToday = timeZone is null
+            ? utcNow.Date
+            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utcNow, DateTimeKind.Utc), timeZone).Date;
+
+        var dobDate = dob.Value.Date;
+        var age = localToday.Year - dobDate.Year;
+        if (dobDate > localToday.AddYears(-age))
+            age--;
+
+        return age >= 0
+            ? age.ToString(CultureInfo.InvariantCulture)
+            : (Clean(existingAge) ?? "");
+    }
+
     private static string NormalizeStateValue(string? state)
         => (state ?? "").Trim().ToUpperInvariant();
 
@@ -638,7 +657,7 @@ public class LeadsController : Controller
             x.DOB,
             DobFormatted = x.DOB?.ToString("MM-dd-yyyy"),
             x.Gender,
-            x.Age,
+            Age = ResolveLeadAge(x.DOB, x.Age, nowUtc, dialTimeZone),
             x.Btc,
             x.CreatedUtc,
             x.UpdatedUtc,
@@ -1137,7 +1156,7 @@ public class LeadsController : Controller
             zipCode = lead.ZipCode,
             mortgageLender = lead.MortgageLender,
             loanAmount = lead.LoanAmount,
-            age = lead.Age,
+            age = ResolveLeadAge(lead.DOB, lead.Age, effectiveUtcNow, dialTimeZone),
             btc = lead.Btc,
             crmStatus = lead.CrmStatus,
             crmPriority,
@@ -1200,6 +1219,7 @@ public class LeadsController : Controller
         try { agentId = GetAgentIdOrChallenge(); }
         catch { return Challenge(); }
 
+        var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
         var lead = await LoadCanonicalLeadAsync(agentId, req.clientUserId, "ApplyOutcome");
         if (lead == null) return NotFound();
 
@@ -1223,7 +1243,9 @@ public class LeadsController : Controller
         lead.ZipCode = req.zipCode ?? lead.ZipCode;
         lead.MortgageLender = req.mortgageLender ?? lead.MortgageLender;
         lead.LoanAmount = req.loanAmount ?? lead.LoanAmount;
-        lead.Age = string.IsNullOrWhiteSpace(req.age) ? lead.Age : req.age;
+        lead.Age = lead.DOB.HasValue
+            ? ResolveLeadAge(lead.DOB, string.IsNullOrWhiteSpace(req.age) ? lead.Age : req.age, DateTime.UtcNow, dialTimeZone)
+            : (string.IsNullOrWhiteSpace(req.age) ? lead.Age : req.age);
         lead.Btc = string.IsNullOrWhiteSpace(req.btc) ? lead.Btc : req.btc;
         lead.CrmStatus = req.crmStatus ?? lead.CrmStatus ?? "Lead";
         var allowedPriority = new[] { "Low", "Normal", "High", "Urgent" };
@@ -1302,7 +1324,6 @@ public class LeadsController : Controller
 
         await _db.SaveChangesAsync();
 
-        var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
         return Json(new { payload = LeadPayload(lead, dialTimeZone: dialTimeZone) });
     }
 
@@ -1752,9 +1773,11 @@ public class LeadsController : Controller
                     existing.ZipCode ??= zip;
                     existing.MortgageLender ??= lender;
                     existing.LoanAmount ??= loan;
-                    existing.Age ??= age;
                     existing.Btc ??= btc;
                     existing.DOB ??= dob;
+                    existing.Age = existing.DOB.HasValue
+                        ? ResolveLeadAge(existing.DOB, existing.Age ?? age, now)
+                        : (existing.Age ?? age);
                     existing.Gender ??= gender;
                     existing.Phone2 = string.IsNullOrWhiteSpace(existing.Phone2) ? phone2Key : existing.Phone2;
                     existing.AgentUserId = agentId;
@@ -1793,7 +1816,7 @@ public class LeadsController : Controller
                     ZipCode = zip,
                     MortgageLender = lender,
                     LoanAmount = loan,
-                    Age = age,
+                    Age = ResolveLeadAge(dob, age, now),
                     Btc = btc,
                     DOB = dob,
                     Gender = gender,

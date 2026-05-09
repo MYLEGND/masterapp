@@ -858,7 +858,6 @@
         const flowGuideHtml = renderProsperFlowGuide(activeSection);
 
         rbContent.innerHTML = `
-            ${flowGuideHtml}
             <div class="prosper-stage ${activeSection.signal}">
                 <div class="prosper-stage-head">
                     <div>
@@ -870,6 +869,7 @@
                 </div>
                 <div class="prosper-body">${activeSection.bodyHtml}</div>
             </div>
+            ${flowGuideHtml}
         `;
     }
 

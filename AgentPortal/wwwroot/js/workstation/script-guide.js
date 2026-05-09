@@ -545,12 +545,12 @@
         <div class="flow-guide-fallbacks" data-flow-fallbacks></div>
       `;
 
-      if (focusBanner?.nextElementSibling === card){
-        main.insertBefore(guide, card);
+      if (card){
+        card.insertAdjacentElement('afterend', guide);
       } else if (focusBanner){
         focusBanner.insertAdjacentElement('afterend', guide);
       } else {
-        main.insertBefore(guide, card);
+        main.appendChild(guide);
       }
 
       guide.addEventListener('click', event => {

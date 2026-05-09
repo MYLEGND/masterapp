@@ -103,6 +103,79 @@
     return Number.isFinite(age) ? age : null;
   }
 
+  function parseLeadDob(value){
+    if (!value) return null;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())){
+      return {
+        year: value.getFullYear(),
+        month: value.getMonth() + 1,
+        day: value.getDate()
+      };
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match){
+      const year = Number.parseInt(match[1], 10);
+      const month = Number.parseInt(match[2], 10);
+      const day = Number.parseInt(match[3], 10);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)){
+        return { year, month, day };
+      }
+    }
+
+    match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (match){
+      const month = Number.parseInt(match[1], 10);
+      const day = Number.parseInt(match[2], 10);
+      const year = Number.parseInt(match[3], 10);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)){
+        return { year, month, day };
+      }
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    return {
+      year: parsed.getFullYear(),
+      month: parsed.getMonth() + 1,
+      day: parsed.getDate()
+    };
+  }
+
+  function deriveLeadAgeFromDob(value){
+    const dob = parseLeadDob(value);
+    if (!dob) return null;
+
+    const today = new Date();
+    let age = today.getFullYear() - dob.year;
+    const monthDelta = (today.getMonth() + 1) - dob.month;
+    const hasHadBirthday =
+      monthDelta > 0 ||
+      (monthDelta === 0 && today.getDate() >= dob.day);
+
+    if (!hasHadBirthday) age -= 1;
+    return age >= 0 ? age : null;
+  }
+
+  function resolveLeadAgeNumber(lead){
+    const explicitAge = parseLeadAge(lead?.age);
+    if (explicitAge !== null) return explicitAge;
+    return deriveLeadAgeFromDob(lead?.dob);
+  }
+
+  function normalizeLeadAgeFromDob(lead){
+    if (!lead) return lead;
+    const derivedAge = deriveLeadAgeFromDob(lead.dob);
+    if (derivedAge === null) return lead;
+    lead.age = String(derivedAge);
+    return lead;
+  }
+
   function parseAgeRangeValue(value){
     const raw = (value || '').trim();
     if (!raw) return null;
@@ -118,7 +191,7 @@
     if (!rangeValue) return true;
     const range = parseAgeRangeValue(rangeValue);
     if (!range) return true;
-    const leadAge = parseLeadAge(lead?.age);
+    const leadAge = resolveLeadAgeNumber(lead);
     if (leadAge === null) return false;
     return leadAge >= range.min && leadAge < range.max;
   }
@@ -279,14 +352,12 @@
 
 
   function formatDob(value){
-    if (!value) return '—';
+    const dob = parseLeadDob(value);
+    if (!dob) return '—';
 
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
-
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyy = d.getFullYear();
+    const mm = String(dob.month).padStart(2, '0');
+    const dd = String(dob.day).padStart(2, '0');
+    const yyyy = dob.year;
 
     return `${mm}-${dd}-${yyyy}`;
   }
@@ -1231,6 +1302,7 @@
       target.attemptsLifetime = payload.attemptsLifetime ?? target.attemptsLifetime ?? target.callCount;
       target.dialsToday = payload.dialsToday ?? target.attemptsToday;
       target.dialsWeek = payload.dialsWeek ?? target.attemptsThisWeek;
+      normalizeLeadAgeFromDob(target);
       updateAgentWideDials(payload);
     }
 
@@ -1337,7 +1409,7 @@
       fields.loan.textContent = lead.loanAmount || '—';
       fields.phone.textContent = fmtPhone(lead.phone) || '—';
       fields.phone2.textContent = fmtPhone(lead.phone2) || '—';
-      fields.age.textContent = lead.age || '—';
+      fields.age.textContent = normalizeLeadAgeFromDob(lead)?.age || '—';
       fields.btc.textContent = lead.btc || '—';
       posEl.textContent = `Lead ${Math.min(index+1, total)} of ${total}`;
       setOrigin(lead);
@@ -1354,6 +1426,9 @@
       const res = await fetch(`/Leads/Leads`, withDialHeaders());
       if (!res.ok) throw new Error('Unable to load leads.');
       const data = await res.json();
+      if (Array.isArray(data)){
+        data.forEach(normalizeLeadAgeFromDob);
+      }
 
       updateAgentWideDials(Array.isArray(data) && data.length ? data[0] : null);
       data.sort((a,b)=>{
@@ -1528,7 +1603,7 @@
       if (ageFilter){
         const ageSet = new Set();
         source.forEach(l => {
-          const age = parseLeadAge(l?.age);
+          const age = resolveLeadAgeNumber(l);
           if (age !== null) ageSet.add(age);
         });
         const ages = Array.from(ageSet).sort((a, b) => a - b);
