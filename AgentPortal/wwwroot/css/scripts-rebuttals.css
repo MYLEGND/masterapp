@@ -11627,6 +11627,7 @@ details.section{
 }
 
 #mpShell .script,
+#rbShell pre.script,
 #rbShell .prosper-body .script,
 .scripts-shell .script{
     border: 1px solid rgba(15, 23, 42, .14) !important;
@@ -11636,6 +11637,7 @@ details.section{
     font-size: 1rem !important;
     line-height: 1.64 !important;
     letter-spacing: .008em !important;
+    font-weight: 700 !important;
 }
 
 #mpShell .script .say,
