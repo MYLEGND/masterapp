@@ -12770,11 +12770,17 @@ details.section{
     position: relative;
     padding: 11px 12px 10px !important;
     border-radius: 18px !important;
-    border: 1px solid rgba(255,255,255,.08) !important;
+    border: 1px solid rgba(255,255,255,.10) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.08),
-        0 12px 24px rgba(5,10,22,.20) !important;
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 10px 22px rgba(5,10,22,.18) !important;
     overflow: hidden;
+    transition:
+        transform .18s ease,
+        box-shadow .18s ease,
+        border-color .18s ease,
+        background .18s ease,
+        filter .18s ease;
 }
 
 #rbShell .cat-btn::before{
@@ -12792,30 +12798,31 @@ details.section{
 #rbShell .cat-btn.info::before{ background: linear-gradient(180deg, #93c5fd 0%, #2563eb 100%) !important; }
 
 #rbShell .cat-btn.good{
-    background: linear-gradient(180deg, rgba(19,78,45,.98), rgba(8,30,20,.99)) !important;
-    border-color: rgba(110,231,183,.38) !important;
+    background: linear-gradient(180deg, rgba(20,70,48,.97), rgba(10,26,20,.99)) !important;
+    border-color: rgba(110,231,183,.24) !important;
 }
 
 #rbShell .cat-btn.warn{
-    background: linear-gradient(180deg, rgba(137,75,6,.98), rgba(50,25,7,.99)) !important;
-    border-color: rgba(251,191,36,.42) !important;
+    background: linear-gradient(180deg, rgba(123,74,20,.97), rgba(54,31,11,.99)) !important;
+    border-color: rgba(251,191,36,.24) !important;
 }
 
 #rbShell .cat-btn.bad{
-    background: linear-gradient(180deg, rgba(127,29,29,.99), rgba(52,12,12,.99)) !important;
-    border-color: rgba(248,113,113,.40) !important;
+    background: linear-gradient(180deg, rgba(111,30,30,.98), rgba(47,14,14,.99)) !important;
+    border-color: rgba(248,113,113,.24) !important;
 }
 
 #rbShell .cat-btn.info{
-    background: linear-gradient(180deg, rgba(30,64,175,.98), rgba(15,23,68,.99)) !important;
-    border-color: rgba(96,165,250,.40) !important;
+    background: linear-gradient(180deg, rgba(28,67,147,.97), rgba(16,28,70,.99)) !important;
+    border-color: rgba(96,165,250,.24) !important;
 }
 
 #rbShell .cat-btn:hover{
     transform: translateY(-1px);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.10),
-        0 16px 28px rgba(5,10,22,.28) !important;
+        inset 0 1px 0 rgba(255,255,255,.12),
+        0 15px 26px rgba(5,10,22,.24) !important;
+    filter: saturate(1.03);
 }
 
 #rbShell .cat-btn.active{
@@ -13727,12 +13734,12 @@ details.section{
 #rbShell #prosperNav .cat-btn.active{
     border-color: rgba(227,187,99,.92) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.16),
-        0 0 0 1px rgba(255,244,211,.42),
-        0 0 0 3px rgba(227,187,99,.22),
-        0 14px 26px rgba(15,23,42,.30),
-        0 8px 18px rgba(137,93,24,.18) !important;
-    filter: saturate(1.05) brightness(1.04);
+        inset 0 1px 0 rgba(255,255,255,.98),
+        0 0 0 1px rgba(255,244,211,.92),
+        0 0 0 3px rgba(227,187,99,.24),
+        0 14px 26px rgba(15,23,42,.18),
+        0 8px 18px rgba(137,93,24,.12) !important;
+    filter: none;
     transform: translateY(-1px);
 }
 
@@ -13747,6 +13754,26 @@ details.section{
     border-color: rgba(227,187,99,.92) !important;
 }
 
+#rbShell #rbNav .cat-btn.active.good,
+#rbShell #prosperNav .cat-btn.active.good{
+    background: linear-gradient(180deg, #fffefd 0%, #f1f9f3 100%) !important;
+}
+
+#rbShell #rbNav .cat-btn.active.warn,
+#rbShell #prosperNav .cat-btn.active.warn{
+    background: linear-gradient(180deg, #fffefd 0%, #fdf6ee 100%) !important;
+}
+
+#rbShell #rbNav .cat-btn.active.bad,
+#rbShell #prosperNav .cat-btn.active.bad{
+    background: linear-gradient(180deg, #fffefd 0%, #fcf2f2 100%) !important;
+}
+
+#rbShell #rbNav .cat-btn.active.info,
+#rbShell #prosperNav .cat-btn.active.info{
+    background: linear-gradient(180deg, #fffefd 0%, #f2f6fc 100%) !important;
+}
+
 #rbShell #rbNav .cat-btn.active::before,
 #rbShell #prosperNav .cat-btn.active::before{
     width: 6px;
@@ -13759,14 +13786,27 @@ details.section{
     transform: scaleY(1);
 }
 
+#rbShell #rbNav .cat-btn.active .cat-name,
+#rbShell #rbNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn.active .cat-name,
+#rbShell #prosperNav .cat-btn.active .cat-top-single{
+    color: #162235 !important;
+    text-shadow: none !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn.active .cat-note{
+    color: rgba(22,34,53,.72) !important;
+}
+
 #rbShell #rbNav .cat-btn.active .cat-rank,
 #rbShell #rbNav .cat-btn.active .cat-count,
 #rbShell #prosperNav .cat-btn.active .cat-rank,
 #rbShell #prosperNav .cat-btn.active .cat-count{
-    background: linear-gradient(180deg, rgba(255,244,211,.28) 0%, rgba(227,187,99,.18) 100%) !important;
+    background: linear-gradient(180deg, #fff8e9 0%, #f7e7bf 100%) !important;
     border-color: rgba(227,187,99,.58) !important;
-    color: #fff4d3 !important;
+    color: #8b5d19 !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.18),
+        inset 0 1px 0 rgba(255,255,255,.96),
         0 3px 8px rgba(166,128,35,.14) !important;
 }
