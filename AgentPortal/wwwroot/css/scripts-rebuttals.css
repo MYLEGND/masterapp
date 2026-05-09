@@ -13705,15 +13705,34 @@ details.section{
     pointer-events: none !important;
 }
 
+#rbShell #rbNav .cat-btn::after,
+#rbShell #prosperNav .cat-btn::after{
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    right: 8px;
+    width: 4px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #fff4d3 0%, #e3bb63 52%, #895d18 100%) !important;
+    box-shadow:
+        0 0 0 1px rgba(255,244,211,.18),
+        0 4px 10px rgba(137,93,24,.22) !important;
+    opacity: 0;
+    transform: scaleY(.65);
+    transition: opacity .18s ease, transform .18s ease;
+}
+
 #rbShell #rbNav .cat-btn.active,
 #rbShell #prosperNav .cat-btn.active{
-    background: linear-gradient(180deg, #ffffff 0%, #fffaf1 100%) !important;
-    border-color: rgba(195,138,45,.92) !important;
+    border-color: rgba(227,187,99,.92) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.98),
-        0 0 0 1px rgba(248,226,170,.90),
-        0 14px 26px rgba(137,93,24,.16),
-        0 6px 14px rgba(15,23,42,.12) !important;
+        inset 0 1px 0 rgba(255,255,255,.16),
+        0 0 0 1px rgba(255,244,211,.42),
+        0 0 0 3px rgba(227,187,99,.22),
+        0 14px 26px rgba(15,23,42,.30),
+        0 8px 18px rgba(137,93,24,.18) !important;
+    filter: saturate(1.05) brightness(1.04);
     transform: translateY(-1px);
 }
 
@@ -13725,38 +13744,29 @@ details.section{
 #rbShell #prosperNav .cat-btn.active.warn,
 #rbShell #prosperNav .cat-btn.active.bad,
 #rbShell #prosperNav .cat-btn.active.info{
-    background: linear-gradient(180deg, #ffffff 0%, #fffaf1 100%) !important;
-    border-color: rgba(195,138,45,.92) !important;
+    border-color: rgba(227,187,99,.92) !important;
 }
 
 #rbShell #rbNav .cat-btn.active::before,
 #rbShell #prosperNav .cat-btn.active::before{
     width: 6px;
     opacity: 1 !important;
-    background: linear-gradient(180deg, #f8e2aa 0%, #d8a640 52%, #895d18 100%) !important;
 }
 
-#rbShell #rbNav .cat-btn.active .cat-name,
-#rbShell #rbNav .cat-btn.active .cat-top-single,
-#rbShell #prosperNav .cat-btn.active .cat-name,
-#rbShell #prosperNav .cat-btn.active .cat-top-single{
-    color: #122033 !important;
-    text-shadow: none !important;
-}
-
-#rbShell #rbNav .cat-btn.active .cat-note,
-#rbShell #prosperNav .cat-btn.active .cat-note{
-    color: rgba(18,32,51,.76) !important;
+#rbShell #rbNav .cat-btn.active::after,
+#rbShell #prosperNav .cat-btn.active::after{
+    opacity: 1;
+    transform: scaleY(1);
 }
 
 #rbShell #rbNav .cat-btn.active .cat-rank,
 #rbShell #rbNav .cat-btn.active .cat-count,
 #rbShell #prosperNav .cat-btn.active .cat-rank,
 #rbShell #prosperNav .cat-btn.active .cat-count{
-    background: linear-gradient(180deg, #fff8e7 0%, #f4e6bf 100%) !important;
-    border-color: rgba(195,138,45,.46) !important;
-    color: #8b5e19 !important;
+    background: linear-gradient(180deg, rgba(255,244,211,.28) 0%, rgba(227,187,99,.18) 100%) !important;
+    border-color: rgba(227,187,99,.58) !important;
+    color: #fff4d3 !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.96),
-        0 3px 8px rgba(166,128,35,.10) !important;
+        inset 0 1px 0 rgba(255,255,255,.18),
+        0 3px 8px rgba(166,128,35,.14) !important;
 }
