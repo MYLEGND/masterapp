@@ -832,9 +832,15 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
 
 <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
 <script src="~/js/zoom-quick-popup.js" asp-append-version="true"></script>
+<script src="~/js/workstation/script-guide.js" asp-append-version="true"></script>
 
 <script>
 (function(){
+    if (window.WorkstationScriptGuide?.initSharedGuide){
+        const initialized = window.WorkstationScriptGuide.initSharedGuide();
+        if (initialized) return;
+    }
+
     const shell = document.getElementById('mpShell');
     const card  = document.getElementById('mpCard');
     const search = document.getElementById('mpSearch');
