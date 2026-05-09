@@ -191,6 +191,7 @@
     </div>
 </div>
 
+<script src="~/js/workstation/script-guide.js" asp-append-version="true"></script>
 <script>
 (function(){
         const categories = [
@@ -515,6 +516,116 @@
         });
     }
 
+    function renderFlowActionButtons(options, variant){
+        if(!options?.length) return "";
+
+        return options.map(option => `
+            <button type="button" class="btn ${variant || ""} flow-guide-action ${option.signal || ""}" data-route="${escapeHtml(option.id)}" title="${escapeHtml(option.targetTitle || option.label || option.id)}">
+                ${escapeHtml(option.label || option.targetTitle || option.id)}
+            </button>
+        `).join("");
+    }
+
+    function renderProsperFlowGuide(section){
+        if(!section || !window.WorkstationScriptGuide?.getRouteSnapshot){
+            return "";
+        }
+
+        const snapshot = window.WorkstationScriptGuide.getRouteSnapshot(section.id, prosperSections, {
+            lastSectionId: defaultProsperId
+        });
+
+        if(!snapshot){
+            return "";
+        }
+
+        const hint = snapshot.hint || {};
+        const signalLabel = window.WorkstationScriptGuide.getSignalLabel
+            ? window.WorkstationScriptGuide.getSignalLabel(section.signal)
+            : getSignalLabel(section.signal);
+        const noteParts = [section.sub, hint.note].filter(Boolean);
+        const branchOptions = hint.requiresChoice
+            ? (snapshot.branches || [])
+            : (snapshot.branches || []).filter(option => option.id !== snapshot.primary?.id);
+
+        let primaryHtml = "";
+        if(hint.terminal){
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>Lane complete.</strong>
+                    <span>${escapeHtml(hint.note || "No automatic next step is expected here.")}</span>
+                </div>
+            `;
+        } else if(snapshot.primary){
+            primaryHtml = `
+                <div class="flow-guide-primary-card">
+                    <div class="flow-guide-primary-copy">
+                        <div class="flow-guide-primary-kicker">Most Likely Next</div>
+                        <div class="flow-guide-primary-title">${escapeHtml(snapshot.primary.targetTitle || snapshot.primary.label || "Next step")}</div>
+                    </div>
+                    ${renderFlowActionButtons([snapshot.primary], "gold")}
+                </div>
+            `;
+        } else if(hint.requiresChoice){
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>Pick the branch that matches the answer.</strong>
+                    <span>${escapeHtml(hint.note || "This step needs a branch choice before moving on.")}</span>
+                </div>
+            `;
+        } else {
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>No automatic next step.</strong>
+                    <span>Use the route buttons below if the call branches.</span>
+                </div>
+            `;
+        }
+
+        const branchesHtml = branchOptions.length
+            ? `
+                <div class="flow-guide-branches">
+                    <div class="flow-guide-block-label">Likely branches</div>
+                    <div class="flow-guide-button-row">
+                        ${renderFlowActionButtons(branchOptions, "")}
+                    </div>
+                </div>
+            `
+            : "";
+
+        const fallbackHtml = snapshot.fallbacks?.length
+            ? `
+                <div class="flow-guide-fallbacks">
+                    <div class="flow-guide-block-label">If the call slips</div>
+                    <div class="flow-guide-button-row compact">
+                        ${renderFlowActionButtons(snapshot.fallbacks, "dark")}
+                    </div>
+                </div>
+            `
+            : "";
+
+        return `
+            <section class="flow-guide-shell">
+                <div class="flow-guide-head">
+                    <div class="flow-guide-copy">
+                        <div class="flow-guide-kicker">Conversation Guide</div>
+                        <div class="flow-guide-title">Current lane: ${escapeHtml(section.title)}</div>
+                        <div class="flow-guide-note">${escapeHtml(noteParts.join(" "))}</div>
+                    </div>
+                    <div class="flow-guide-meta">
+                        <div class="flow-guide-step">${escapeHtml(section.stepLabel || `Step ${section.step || ""}`)}</div>
+                        <span class="mini-tag ${section.signal}">${escapeHtml(signalLabel)}</span>
+                    </div>
+                </div>
+                <div class="flow-guide-primary">
+                    ${primaryHtml}
+                </div>
+                ${branchesHtml}
+                ${fallbackHtml}
+            </section>
+        `;
+    }
+
     function ensureActiveSelection(){
         const filteredCategories = getFilteredCategories();
         const filteredProsper = getFilteredProsperSections();
@@ -603,7 +714,7 @@
         filteredProsper.forEach(section => {
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}`;
+            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}${section.isNested ? " is-nested" : ""}`;
             btn.innerHTML = `
                 <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
             `;
@@ -688,14 +799,17 @@
         rbCount.textContent = "1";
         contentCount.textContent = `Step ${activeSection.step}`;
         contentSub.textContent = "Disability Insurance Guide";
+        const searchVal = (rbSearch.value || "").trim();
+        const flowGuideHtml = renderProsperFlowGuide(activeSection);
 
         rbContent.innerHTML = `
+            ${flowGuideHtml}
             <div class="prosper-stage ${activeSection.signal}">
                 <div class="prosper-stage-head">
                     <div>
                         <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
-                        <h2 class="prosper-title">${highlightText(activeSection.title, (rbSearch.value || "").trim())}</h2>
-                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the disability insurance guide.", (rbSearch.value || "").trim())}</p>
+                        <h2 class="prosper-title">${highlightText(activeSection.title, searchVal)}</h2>
+                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the disability insurance guide.", searchVal)}</p>
                     </div>
                     <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
                 </div>
@@ -769,7 +883,7 @@
 
             const html = await response.text();
             const doc = new DOMParser().parseFromString(html, "text/html");
-            const nodes = Array.from(doc.querySelectorAll("#mpCard > details.section"));
+            const nodes = Array.from(doc.querySelectorAll("#mpCard details.section"));
 
             prosperSections = nodes.map((node, index) => {
                 const step = (node.getAttribute("data-step") || String(index + 1)).trim();
@@ -784,6 +898,7 @@
                     step,
                     stepLabel: `Step ${step}${flow ? " · " + flow.replace(/-/g, " ") : ""}`,
                     signal,
+                    isNested: !!node.parentElement.closest("details.section"),
                     flowLabel: flow ? flow.replace(/-/g, " ") : "",
                     title,
                     sub,
@@ -831,6 +946,19 @@
     }
 
     rbContent.addEventListener("click", function(event){
+        const routeBtn = event.target.closest("[data-route]");
+        if(routeBtn){
+            const targetId = routeBtn.getAttribute("data-route") || "";
+            if(!prosperSections.some(section => section.id === targetId)) return;
+
+            event.preventDefault();
+            activePane = "prosper";
+            activeProsperId = targetId;
+            rerenderAll();
+            rbContent.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
+
         const jumpBtn = event.target.closest("[data-jump]");
         if(!jumpBtn) return;
 

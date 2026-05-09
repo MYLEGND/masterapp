@@ -65,6 +65,129 @@
     }
   });
 
+  const SHARED_BRANCHES = Object.freeze({
+    'sec-hub': ['sec-aged', 'sec-verify', 'sec-options-choose'],
+    'sec-verify': ['sec-replace', 'sec-occ', 'sec-book'],
+    'sec-replace': ['sec-options-choose', 'sec-hub'],
+    'sec-occ': ['sec-threeins', 'sec-equity'],
+    'sec-equity': ['sec-living', 'sec-rop', 'sec-iul'],
+    'sec-living': ['sec-options-choose', 'sec-hub'],
+    'sec-rop': ['sec-options-choose', 'sec-hub'],
+    'sec-iul': ['sec-options-choose', 'sec-hub'],
+    'sec-options-choose': ['sec-eapp', 'sec-hub', 'sec-book'],
+    'sec-eapp': ['sec-closeout', 'sec-hub'],
+    'sec-closeout': ['sec-aged'],
+    'sec-book': ['sec-aged']
+  });
+
+  function sharedSignalLabel(signal){
+    const normalized = signalClass(signal);
+    if (normalized === 'good') return 'GO';
+    if (normalized === 'warn') return 'CLARIFY';
+    if (normalized === 'bad') return 'STOP';
+    return 'INFO';
+  }
+
+  function normalizeSectionRecord(section){
+    if (!section) return null;
+
+    if (section instanceof HTMLElement){
+      return {
+        id: section.id || '',
+        title: sectionTitle(section),
+        sub: sectionSubtitle(section),
+        signal: signalClass(section.getAttribute('data-signal')),
+        step: stepText(section),
+        stepLabel: flowText(section) ? `Step ${stepText(section)} · ${flowText(section)}` : `Step ${stepText(section)}`
+      };
+    }
+
+    const step = String(section.step || '').trim();
+    return {
+      id: String(section.id || '').trim(),
+      title: String(section.title || section.targetTitle || '').trim() || String(section.id || '').trim(),
+      sub: String(section.sub || '').trim(),
+      signal: signalClass(section.signal),
+      step,
+      stepLabel: String(section.stepLabel || (step ? `Step ${step}` : '')).trim()
+    };
+  }
+
+  function uniqueRouteOptions(options){
+    const seen = new Set();
+    return options.filter(option => {
+      if (!option?.id) return false;
+      if (seen.has(option.id)) return false;
+      seen.add(option.id);
+      return true;
+    });
+  }
+
+  function buildSharedOption(sectionMap, targetId, label){
+    const target = sectionMap.get(targetId);
+    if (!target?.id) return null;
+    return {
+      id: target.id,
+      selector: normalizeTarget(target.id),
+      label: label || target.title || target.id,
+      targetTitle: target.title || target.id,
+      signal: signalClass(target.signal)
+    };
+  }
+
+  function buildRouteSnapshot(sectionId, sections, extras = {}){
+    const sectionMap = new Map(
+      (Array.isArray(sections) ? sections : [])
+        .map(normalizeSectionRecord)
+        .filter(section => section?.id)
+        .map(section => [section.id, section])
+    );
+
+    const current = sectionMap.get(sectionId) || null;
+    const hint = ROUTE_HINTS[sectionId] || {};
+    const lastSectionId = extras.lastSectionId || '';
+
+    let primary = null;
+    if (hint.defaultNext === 'return' && lastSectionId && lastSectionId !== sectionId){
+      const lastSection = sectionMap.get(lastSectionId);
+      if (lastSection){
+        primary = buildSharedOption(sectionMap, lastSectionId, `Return to ${lastSection.title}`);
+      }
+    } else if (hint.defaultNext){
+      primary = buildSharedOption(sectionMap, hint.defaultNext);
+    }
+
+    const branches = (SHARED_BRANCHES[sectionId] || [])
+      .map(targetId => buildSharedOption(sectionMap, targetId))
+      .filter(Boolean);
+
+    const filteredBranches = hint.requiresChoice
+      ? uniqueRouteOptions(primary ? [primary, ...branches] : branches)
+      : uniqueRouteOptions(branches.filter(option => option.id !== primary?.id));
+
+    const fallbacks = [];
+    if (lastSectionId && lastSectionId !== sectionId){
+      const lastSection = sectionMap.get(lastSectionId);
+      if (lastSection){
+        fallbacks.push(buildSharedOption(sectionMap, lastSectionId, `Return to ${lastSection.title}`));
+      }
+    }
+    if (sectionId !== 'sec-hub'){
+      fallbacks.push(buildSharedOption(sectionMap, 'sec-hub', 'Objection hub'));
+    }
+    if (sectionId !== 'sec-aged'){
+      fallbacks.push(buildSharedOption(sectionMap, 'sec-aged', 'Restart opener'));
+    }
+
+    return {
+      current,
+      hint,
+      primary,
+      branches: filteredBranches,
+      fallbacks: uniqueRouteOptions(fallbacks.filter(Boolean))
+    };
+  }
+
   function escapeHtml(value){
     return String(value || '')
       .replace(/&/g, '&amp;')
@@ -893,4 +1016,6 @@
 
   window.WorkstationScriptGuide = window.WorkstationScriptGuide || {};
   window.WorkstationScriptGuide.initSharedGuide = initSharedGuide;
+  window.WorkstationScriptGuide.getRouteSnapshot = buildRouteSnapshot;
+  window.WorkstationScriptGuide.getSignalLabel = sharedSignalLabel;
 })();

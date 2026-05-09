@@ -12820,6 +12820,10 @@ details.section{
         0 18px 30px rgba(5,10,22,.30) !important;
 }
 
+#rbShell .cat-btn.is-nested{
+    margin-left: 14px;
+}
+
 #rbShell .cat-top{
     gap: 8px !important;
     margin-bottom: 6px;
@@ -13274,7 +13278,8 @@ details.section{
 /* ========================================================================
    Shared Workstation Flow Guide
    ======================================================================== */
-#mpShell .flow-guide-shell{
+#mpShell .flow-guide-shell,
+#rbShell .flow-guide-shell{
     display: grid;
     gap: 12px;
     margin: 14px 0 18px;
@@ -13287,20 +13292,23 @@ details.section{
     box-shadow: 0 18px 44px rgba(15, 23, 42, .18);
 }
 
-#mpShell .flow-guide-head{
+#mpShell .flow-guide-head,
+#rbShell .flow-guide-head{
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
 }
 
-#mpShell .flow-guide-copy{
+#mpShell .flow-guide-copy,
+#rbShell .flow-guide-copy{
     display: grid;
     gap: 4px;
     min-width: 0;
 }
 
-#mpShell .flow-guide-kicker{
+#mpShell .flow-guide-kicker,
+#rbShell .flow-guide-kicker{
     font-size: .72rem;
     line-height: 1;
     letter-spacing: .08em;
@@ -13309,28 +13317,32 @@ details.section{
     color: #fbbf24;
 }
 
-#mpShell .flow-guide-title{
+#mpShell .flow-guide-title,
+#rbShell .flow-guide-title{
     font-size: 1.08rem;
     line-height: 1.2;
     font-weight: 800;
     color: #f8fafc;
 }
 
-#mpShell .flow-guide-note{
+#mpShell .flow-guide-note,
+#rbShell .flow-guide-note{
     font-size: .92rem;
     line-height: 1.45;
     color: #cbd5e1;
     max-width: 72ch;
 }
 
-#mpShell .flow-guide-meta{
+#mpShell .flow-guide-meta,
+#rbShell .flow-guide-meta{
     display: grid;
     gap: 8px;
     justify-items: end;
     flex: 0 0 auto;
 }
 
-#mpShell .flow-guide-step{
+#mpShell .flow-guide-step,
+#rbShell .flow-guide-step{
     padding: 7px 11px;
     border-radius: 999px;
     background: rgba(255,255,255,.05);
@@ -13343,13 +13355,18 @@ details.section{
 
 #mpShell .flow-guide-primary,
 #mpShell .flow-guide-branches,
-#mpShell .flow-guide-fallbacks{
+#mpShell .flow-guide-fallbacks,
+#rbShell .flow-guide-primary,
+#rbShell .flow-guide-branches,
+#rbShell .flow-guide-fallbacks{
     display: grid;
     gap: 8px;
 }
 
 #mpShell .flow-guide-primary-card,
-#mpShell .flow-guide-terminal{
+#mpShell .flow-guide-terminal,
+#rbShell .flow-guide-primary-card,
+#rbShell .flow-guide-terminal{
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -13360,14 +13377,17 @@ details.section{
     border: 1px solid rgba(255,255,255,.07);
 }
 
-#mpShell .flow-guide-primary-copy{
+#mpShell .flow-guide-primary-copy,
+#rbShell .flow-guide-primary-copy{
     display: grid;
     gap: 4px;
     min-width: 0;
 }
 
 #mpShell .flow-guide-primary-kicker,
-#mpShell .flow-guide-block-label{
+#mpShell .flow-guide-block-label,
+#rbShell .flow-guide-primary-kicker,
+#rbShell .flow-guide-block-label{
     font-size: .72rem;
     line-height: 1;
     letter-spacing: .07em;
@@ -13376,97 +13396,118 @@ details.section{
     color: #94a3b8;
 }
 
-#mpShell .flow-guide-primary-title{
+#mpShell .flow-guide-primary-title,
+#rbShell .flow-guide-primary-title{
     font-size: .98rem;
     line-height: 1.25;
     font-weight: 800;
     color: #f8fafc;
 }
 
-#mpShell .flow-guide-terminal{
+#mpShell .flow-guide-terminal,
+#rbShell .flow-guide-terminal{
     flex-direction: column;
     align-items: flex-start;
 }
 
-#mpShell .flow-guide-terminal strong{
+#mpShell .flow-guide-terminal strong,
+#rbShell .flow-guide-terminal strong{
     color: #f8fafc;
 }
 
-#mpShell .flow-guide-terminal span{
+#mpShell .flow-guide-terminal span,
+#rbShell .flow-guide-terminal span{
     color: #cbd5e1;
     line-height: 1.4;
 }
 
-#mpShell .flow-guide-button-row{
+#mpShell .flow-guide-button-row,
+#rbShell .flow-guide-button-row{
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
 }
 
-#mpShell .flow-guide-button-row.compact{
+#mpShell .flow-guide-button-row.compact,
+#rbShell .flow-guide-button-row.compact{
     gap: 8px;
 }
 
-#mpShell .flow-guide-action{
+#mpShell .flow-guide-action,
+#rbShell .flow-guide-action{
     max-width: 100%;
 }
 
-#mpShell .flow-guide-action.good{
+#mpShell .flow-guide-action.good,
+#rbShell .flow-guide-action.good{
     border-color: rgba(34,197,94,.26);
 }
 
-#mpShell .flow-guide-action.warn{
+#mpShell .flow-guide-action.warn,
+#rbShell .flow-guide-action.warn{
     border-color: rgba(245,158,11,.28);
 }
 
-#mpShell .flow-guide-action.bad{
+#mpShell .flow-guide-action.bad,
+#rbShell .flow-guide-action.bad{
     border-color: rgba(239,68,68,.22);
 }
 
-#mpShell .nav-item.is-nested{
+#mpShell .nav-item.is-nested,
+#rbShell .nav-item.is-nested{
     margin-left: 18px;
 }
 
-#mpShell .nav-item.is-nested .nav-badge{
+#mpShell .nav-item.is-nested .nav-badge,
+#rbShell .nav-item.is-nested .nav-badge{
     opacity: .82;
 }
 
-#mpShell .nav-item.is-active{
+#mpShell .nav-item.is-active,
+#rbShell .nav-item.is-active{
     box-shadow: 0 0 0 1px rgba(166, 128, 35, .3) inset;
 }
 
-#mpShell .btn.is-choice{
+#mpShell .btn.is-choice,
+#rbShell .btn.is-choice{
     border-color: rgba(245,158,11,.34);
     color: #fbbf24;
 }
 
-#mpShell .btn.is-terminal{
+#mpShell .btn.is-terminal,
+#rbShell .btn.is-terminal{
     border-color: rgba(148,163,184,.26);
     color: #cbd5e1;
 }
 
 @media (max-width: 900px){
-    #mpShell .flow-guide-shell{
+    #mpShell .flow-guide-shell,
+    #rbShell .flow-guide-shell{
         padding: 14px;
         border-radius: 16px;
     }
 
     #mpShell .flow-guide-head,
-    #mpShell .flow-guide-primary-card{
+    #mpShell .flow-guide-primary-card,
+    #rbShell .flow-guide-head,
+    #rbShell .flow-guide-primary-card{
         grid-template-columns: 1fr;
         display: grid;
     }
 
-    #mpShell .flow-guide-meta{
+    #mpShell .flow-guide-meta,
+    #rbShell .flow-guide-meta{
         justify-items: start;
     }
 
-    #mpShell .flow-guide-button-row{
+    #mpShell .flow-guide-button-row,
+    #rbShell .flow-guide-button-row{
         display: grid;
         grid-template-columns: 1fr;
     }
 
-    #mpShell .nav-item.is-nested{
+    #mpShell .nav-item.is-nested,
+    #rbShell .nav-item.is-nested{
         margin-left: 10px;
     }
 }
