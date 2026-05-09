@@ -249,6 +249,34 @@
     return raw || '';
   }
 
+  function normalizeSearchDigits(value){
+    return (value || '').replace(/\D/g, '');
+  }
+
+  function leadMatchesBridgeSearch(lead, query){
+    const textQuery = (query || '').toLowerCase().trim();
+    if (!textQuery) return true;
+
+    const digitQuery = normalizeSearchDigits(query);
+    const hay = [
+      lead?.firstName || '',
+      lead?.lastName || '',
+      lead?.email || '',
+      lead?.phone || '',
+      lead?.phone2 || ''
+    ].join(' ').toLowerCase();
+
+    if (hay.includes(textQuery)) return true;
+    if (!digitQuery) return false;
+
+    const phoneDigits = [
+      normalizeSearchDigits(lead?.phone || ''),
+      normalizeSearchDigits(lead?.phone2 || '')
+    ].filter(Boolean);
+
+    return phoneDigits.some(value => value.includes(digitQuery));
+  }
+
 
   function formatDob(value){
     if (!value) return '—';
@@ -1593,13 +1621,19 @@
       const callsRaw = (calledFilter?.value || '').trim();
       const callsSel = callsRaw === '' ? null : parseInt(callsRaw, 10);
       const ageRaw = (ageFilter?.value || '').trim();
-      const q = (searchInput?.value || '').toLowerCase().trim();
+      const q = (searchInput?.value || '').trim();
+      const searchActive = !!q;
       const enforceDefaultBucket = false;
       const filtersActive = !!(stateSel || stageSel || callsRaw || ageRaw || q);
 
       const filtered = working.filter(l => {
         const leadTypeValue = leadOriginalLeadType(l);
         if (enforceDefaultBucket && defaultBucket && leadTypeValue !== defaultBucket) return false;
+
+        // Search intentionally bypasses all other filter dropdowns so callbacks
+        // can always be found by name, phone, or email regardless of UI state.
+        if (searchActive) return leadMatchesBridgeSearch(l, q);
+
         const leadState = normalizeStateOption(l?.state ?? l?.State ?? l?.crmState ?? l?.sState ?? '');
         if (stateSel && leadState !== stateSel) return false;
         if (stageSel && !matchesStageSelection(l, stageSel)) return false;
@@ -1612,10 +1646,6 @@
           if (calls !== callsSel) return false;
         }
         if (ageRaw && !leadMatchesAgeRange(l, ageRaw)) return false;
-        if (q){
-          const hay = `${l.firstName||''} ${l.lastName||''} ${l.email||''} ${l.phone||''}`.toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
         return true;
       });
 
