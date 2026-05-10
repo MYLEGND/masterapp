@@ -13810,3 +13810,165 @@ details.section{
         inset 0 1px 0 rgba(255,255,255,.96),
         0 3px 8px rgba(166,128,35,.14) !important;
 }
+
+/* ========================================================================
+   Rebuttals desktop size restore to match localhost reference
+   ======================================================================== */
+@media (min-width: 1181px){
+    #rbShell .rb-wrap{
+        padding: 12px 18px 60px 18px !important;
+    }
+
+    #rbShell .shell{
+        grid-template-columns: 370px minmax(980px, 1fr) 370px !important;
+        gap: 14px !important;
+    }
+
+    #rbShell .nav-card .nav-body,
+    #rbShell .prosper-nav-card .nav-body{
+        gap: 10px !important;
+        padding: 14px !important;
+    }
+
+    #rbShell .cat-btn{
+        padding: 11px 12px 10px !important;
+        border-radius: 18px !important;
+    }
+
+    #rbShell .cat-top{
+        margin-bottom: 6px !important;
+    }
+
+    #rbShell .cat-top,
+    #rbShell .cat-top > div:first-child{
+        gap: 8px !important;
+    }
+
+    #rbShell .cat-rank{
+        min-width: 30px !important;
+        width: 30px !important;
+        height: 30px !important;
+        border-radius: 10px !important;
+        font-size: .8rem !important;
+    }
+
+    #rbShell .cat-name,
+    #rbShell .cat-top-single{
+        font-size: .94rem !important;
+        line-height: 1.24 !important;
+    }
+
+    #rbShell .cat-note{
+        margin-left: 38px !important;
+        font-size: .8rem !important;
+        line-height: 1.34 !important;
+        -webkit-line-clamp: 2 !important;
+    }
+
+    #rbShell .cat-count{
+        min-width: 34px !important;
+        padding: 4px 8px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .content-card .content-body{
+        gap: 14px !important;
+        padding: 18px !important;
+    }
+
+    #rbShell .section-head{
+        padding: 16px 18px 14px 22px !important;
+        border-radius: 20px !important;
+    }
+
+    #rbShell .section-head::before{
+        top: 12px !important;
+        bottom: 12px !important;
+        width: 5px !important;
+    }
+
+    #rbShell .section-title{
+        font-size: 1.08rem !important;
+        line-height: 1.16 !important;
+    }
+
+    #rbShell .section-copy{
+        margin-top: 6px !important;
+        font-size: .88rem !important;
+        line-height: 1.48 !important;
+    }
+
+    #rbShell .objection,
+    #rbShell .prosper-stage{
+        border-radius: 20px !important;
+    }
+
+    #rbShell .objection-head,
+    #rbShell .prosper-stage-head{
+        gap: 14px !important;
+        padding: 16px 18px 12px 20px !important;
+    }
+
+    #rbShell .objection-title,
+    #rbShell .prosper-title{
+        font-size: 1.08rem !important;
+        line-height: 1.26 !important;
+    }
+
+    #rbShell .prosper-step{
+        margin: 0 0 5px !important;
+        font-size: .72rem !important;
+    }
+
+    #rbShell .prosper-sub{
+        margin-top: 6px !important;
+        font-size: .9rem !important;
+        line-height: 1.5 !important;
+    }
+
+    #rbShell .mini-tag{
+        padding: 5px 9px !important;
+        font-size: .68rem !important;
+    }
+
+    #rbShell .objection-body,
+    #rbShell .prosper-body{
+        padding: 15px 18px 18px 20px !important;
+    }
+
+    #rbShell .prosper-body{
+        gap: 12px !important;
+    }
+
+    #rbShell pre.script,
+    #rbShell .prosper-body .script{
+        padding: 15px 17px !important;
+        border-radius: 15px !important;
+        font-size: 1rem !important;
+        line-height: 1.62 !important;
+    }
+
+    #rbShell .prosper-body .keyline{
+        padding: 8px 10px !important;
+        border-radius: 12px !important;
+        font-size: .74rem !important;
+    }
+
+    #rbShell .prosper-body .callout{
+        padding: 11px 13px !important;
+        border-radius: 14px !important;
+    }
+}
+
+@media (min-width: 1560px) and (max-width: 1879px){
+    #rbShell .shell{
+        grid-template-columns: 350px minmax(920px, 1fr) 350px !important;
+    }
+}
+
+@media (min-width: 1181px) and (max-width: 1559px){
+    #rbShell .shell{
+        grid-template-columns: 320px minmax(0, 1fr) 320px !important;
+        gap: 12px !important;
+    }
+}
