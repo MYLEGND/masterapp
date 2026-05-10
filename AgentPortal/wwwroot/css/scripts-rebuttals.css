@@ -13983,3 +13983,187 @@ details.section{
         border-radius: 14px !important;
     }
 }
+
+/* ========================================================================
+   Mortgage Protection rebuttals unified command center
+   ======================================================================== */
+#rbShell.theme-mp .rebuttal-command-center{
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 10px;
+    border-radius: 24px;
+    border: 1px solid rgba(212,175,55,.55);
+    background: linear-gradient(180deg, rgba(5,14,22,.98), rgba(2,12,7,.98));
+    box-shadow: 0 20px 55px rgba(0,0,0,.38);
+}
+
+#rbShell.theme-mp .lead-contact-zone{
+    margin-bottom: 10px;
+    border-radius: 20px;
+    background: rgba(0,22,9,.92);
+    border: 1px solid rgba(212,175,55,.35);
+    padding: 10px 12px;
+}
+
+#rbShell.theme-mp .lead-contact-zone > .lead-bridge{
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 16px;
+    background: transparent;
+    box-shadow: none;
+}
+
+#rbShell.theme-mp .lead-contact-zone > .lead-bridge::before{
+    display: none;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-filterbar{
+    margin-bottom: 10px;
+    gap: 10px;
+    align-items: center;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-filterbar [data-lb-slot="search"]{
+    flex: 1 1 260px;
+    min-width: 240px;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-row{
+    margin-top: 10px;
+    gap: 10px;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-row.lb-row-fields{
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 10px;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-row.lb-row-actions{
+    gap: 10px;
+    align-items: start;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-actions{
+    gap: 8px;
+    align-content: flex-start;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-actions .btn{
+    margin: 0;
+}
+
+#rbShell.theme-mp .lead-contact-zone .lb-meta{
+    gap: 4px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid{
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    gap: 10px;
+    align-items: start;
+    position: relative;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .nav-card,
+#rbShell.theme-mp .rebuttal-workspace-grid .content-card{
+    border-radius: 20px;
+    border-color: rgba(212,175,55,.34);
+    box-shadow: 0 14px 34px rgba(0,0,0,.20);
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .card-head{
+    padding: 12px 14px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .nav-body{
+    padding: 12px;
+    gap: 10px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .content-body{
+    padding: 16px;
+    gap: 12px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .cat-btn{
+    padding: 10px 12px;
+    border-radius: 18px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .cat-top{
+    margin-bottom: 6px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .cat-name,
+#rbShell.theme-mp .rebuttal-workspace-grid .cat-top-single{
+    font-size: .94rem;
+    line-height: 1.24;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .cat-note{
+    font-size: .8rem;
+    line-height: 1.34;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .section-head{
+    padding: 16px 18px 14px 22px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .objection-head,
+#rbShell.theme-mp .rebuttal-workspace-grid .prosper-stage-head{
+    padding: 14px 16px 10px 18px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid .objection-body,
+#rbShell.theme-mp .rebuttal-workspace-grid .prosper-body{
+    padding: 14px 16px 16px 18px;
+}
+
+#rbShell.theme-mp .rebuttal-workspace-grid pre.script,
+#rbShell.theme-mp .rebuttal-workspace-grid .prosper-body .script{
+    line-height: 1.6;
+}
+
+@media (max-width: 1480px){
+    #rbShell.theme-mp .lead-contact-zone .lb-row.lb-row-fields{
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+
+    #rbShell.theme-mp .rebuttal-workspace-grid{
+        grid-template-columns: 280px minmax(0, 1fr);
+    }
+
+    #rbShell.theme-mp .rebuttal-workspace-grid .prosper-nav-card{
+        grid-column: 1 / -1;
+    }
+
+    #rbShell.theme-mp #prosperNavArrow{
+        display: none !important;
+    }
+}
+
+@media (max-width: 1180px){
+    #rbShell.theme-mp .rebuttal-command-center{
+        padding: 8px;
+        border-radius: 22px;
+    }
+
+    #rbShell.theme-mp .lead-contact-zone{
+        padding: 10px;
+    }
+
+    #rbShell.theme-mp .lead-contact-zone .lb-filterbar [data-lb-slot="search"]{
+        min-width: 100%;
+    }
+
+    #rbShell.theme-mp .rebuttal-workspace-grid{
+        grid-template-columns: 1fr;
+    }
+
+    #rbShell.theme-mp #rbNavArrow,
+    #rbShell.theme-mp #prosperNavArrow{
+        display: none !important;
+    }
+}
