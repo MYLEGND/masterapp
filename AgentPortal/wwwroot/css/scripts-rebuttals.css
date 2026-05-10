@@ -13933,10 +13933,10 @@ details.section{
 
     #rbShell pre.script,
     #rbShell .prosper-body .script{
-        padding: 14px 16px !important;
+        padding: 16px 18px !important;
         border-radius: 14px !important;
-        font-size: .96rem !important;
-        line-height: 1.6 !important;
+        font-size: 1.06rem !important;
+        line-height: 1.68 !important;
     }
 
     #rbShell .prosper-body .keyline{
