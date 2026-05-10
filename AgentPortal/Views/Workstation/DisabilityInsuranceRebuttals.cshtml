@@ -56,51 +56,55 @@
             <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
         </div>
 
-        @await Html.PartialAsync("_LeadBridge", "DisabilityInsurance")
+        <div class="rebuttal-command-center">
+            <div class="lead-contact-zone">
+                @await Html.PartialAsync("_LeadBridge", "DisabilityInsurance")
+            </div>
 
-        <div class="shell">
-            <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
-            <section class="nav-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Categories</p>
-                        <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+            <div class="shell rebuttal-workspace-grid">
+                <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
+                <section class="nav-card">
+                    <div class="card-head">
+                        <div>
+                            <p class="card-title">Categories</p>
+                            <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+                        </div>
+                        <div class="count-pill"><span id="catCount">0</span> groups</div>
                     </div>
-                    <div class="count-pill"><span id="catCount">0</span> groups</div>
-                </div>
-                <div class="nav-body" id="rbNav"></div>
-            </section>
+                    <div class="nav-body" id="rbNav"></div>
+                </section>
 
-            <section class="content-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Scripts</p>
-                        <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                <section class="content-card">
+                    <div class="card-head">
+                        <div>
+                            <p class="card-title">Scripts</p>
+                            <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                        </div>
+                        <div class="count-pill" id="contentCount">0 scripts</div>
                     </div>
-                    <div class="count-pill" id="contentCount">0 scripts</div>
-                </div>
-                <div class="content-body" id="rbContent">
-                    <div class="content-empty">
-                        Click a category on the left and all objections for that category will load here.
+                    <div class="content-body" id="rbContent">
+                        <div class="content-empty">
+                            Click a category on the left and all objections for that category will load here.
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="nav-card prosper-nav-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Disability Insurance Guide</p>
-                        <p class="card-sub">Mirror rail for the full disability insurance flow.</p>
+                <section class="nav-card prosper-nav-card">
+                    <div class="card-head">
+                        <div>
+                            <p class="card-title">Disability Insurance Guide</p>
+                            <p class="card-sub">Mirror rail for the full disability insurance flow.</p>
+                        </div>
+                        <div class="count-pill"><span id="prosperCount">0</span> steps</div>
                     </div>
-                    <div class="count-pill"><span id="prosperCount">0</span> steps</div>
-                </div>
-                <div class="nav-body" id="prosperNav">
-                    <div class="content-empty small">
-                        Loading Disability Insurance script steps…
+                    <div class="nav-body" id="prosperNav">
+                        <div class="content-empty small">
+                            Loading Disability Insurance script steps…
+                        </div>
                     </div>
-                </div>
-            </section>
-            <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+                </section>
+                <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+            </div>
         </div>
     </div>
 </div>
