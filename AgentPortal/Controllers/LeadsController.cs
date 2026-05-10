@@ -42,7 +42,6 @@ public class LeadsController : Controller
         "LifeInsurance",
         "FinalExpense",
         "DisabilityInsurance",
-        "CalledToday",
         "CallBack",
         "Contacted",
         "Booked",
@@ -83,7 +82,6 @@ public class LeadsController : Controller
         ["finalexpense"] = "FinalExpense",
         ["medicare"] = "MortgageProtection",
         ["disabilityinsurance"] = "DisabilityInsurance",
-        ["calledtoday"] = "CalledToday",
         ["callback"] = "CallBack",
         ["donotcall"] = "DoNotCallList",
         ["donotcalllist"] = "DoNotCallList",
@@ -119,7 +117,6 @@ public class LeadsController : Controller
         ["NoAnswer"] = "NoAnswer",
         ["Lost"] = "Lost",
         ["AIReception"] = "AIReception",
-        ["CalledToday"] = "CalledToday",
         ["CallBack"] = "CallBack",
         ["DoNotCallList"] = "DoNotCallList"
     };
@@ -128,6 +125,27 @@ public class LeadsController : Controller
         => NormalizeBucket(originalLeadType)
            ?? NormalizeBucket(currentBucket)
            ?? fallbackBucket;
+
+    private static bool IsDerivedPipelineFilterStage(string? stage)
+        => string.Equals(stage, "CalledToday", StringComparison.OrdinalIgnoreCase);
+
+    private static string ResolveEffectivePipelineStage(WorkstationLeadProfile lead, string? fallbackStage = null)
+    {
+        var bucketStage = NormalizePipelineStage(lead.Bucket);
+        if (!string.IsNullOrWhiteSpace(bucketStage) && !IsDerivedPipelineFilterStage(bucketStage))
+            return bucketStage;
+
+        var crmStage = NormalizePipelineStage(lead.CrmStage);
+        if (!string.IsNullOrWhiteSpace(crmStage) && !IsDerivedPipelineFilterStage(crmStage))
+            return crmStage;
+
+        if (IsDerivedPipelineFilterStage(lead.Bucket) || IsDerivedPipelineFilterStage(lead.CrmStage))
+            return ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket, fallbackStage) ?? fallbackStage ?? "MortgageProtection";
+
+        return fallbackStage
+            ?? ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket)
+            ?? "Contacted";
+    }
 
     private static void PreserveOriginalLeadType(WorkstationLeadProfile lead)
     {
@@ -362,7 +380,7 @@ public class LeadsController : Controller
             var vm = leads.Select(l =>
             {
                 var lead = l.Lead;
-                var stage = NormalizePipelineStage(lead.Bucket) ?? (string.IsNullOrWhiteSpace(lead.Bucket) ? "Contacted" : lead.Bucket);
+                var stage = ResolveEffectivePipelineStage(lead, "Contacted");
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket);
                 var crmMeta = ReadLeadMeta(lead);
@@ -637,6 +655,7 @@ public class LeadsController : Controller
         {
             var attempts = CrmAttemptTracking.GetLeadAttemptCounts(x, nowUtc, dialTimeZone);
             var originalLeadType = ResolveOriginalLeadType(x.OriginalLeadType, x.Bucket, normalizedBucket);
+            var stage = ResolveEffectivePipelineStage(x, originalLeadType ?? "Contacted");
             var state = ResolveLeadState(x, fallbackStatesByPhone);
             var crmMeta = ReadLeadMeta(x);
             return new
@@ -647,9 +666,9 @@ public class LeadsController : Controller
             x.Email,
             Phone = FormatPhoneDisplay(x.Phone),
             Phone2 = FormatPhoneDisplay(x.Phone2),
-            Bucket = NormalizePipelineStage(x.Bucket) ?? x.Bucket,
+            Bucket = stage,
             OriginalLeadType = originalLeadType,
-            x.CrmStage,
+            CrmStage = stage,
             x.CrmStatus,
             CrmPriority = crmMeta.CrmPriority ?? "Normal",
             CrmNextDate = crmMeta.CrmNextDate,
@@ -925,7 +944,7 @@ public class LeadsController : Controller
                     MortgageLender = l.MortgageLender,
                     LoanAmount = l.LoanAmount,
                     OriginalLeadType = originalLeadType,
-                    PipelineStage = NormalizePipelineStage(l.Bucket) ?? (string.IsNullOrWhiteSpace(l.Bucket) ? "Contacted" : l.Bucket),
+                    PipelineStage = ResolveEffectivePipelineStage(l, "Contacted"),
                     PipelineOrder = l.CrmOrder,
                     MeetingLocation = crmMeta.MeetingLocation,
                     ZoomJoinUrl = crmMeta.ZoomJoinUrl,
@@ -1142,6 +1161,7 @@ public class LeadsController : Controller
     {
         var effectiveUtcNow = utcNow ?? DateTime.UtcNow;
         var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, effectiveUtcNow, dialTimeZone);
+        var effectiveStage = ResolveEffectivePipelineStage(lead, ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket) ?? "Contacted");
         var crmMeta = ReadLeadMeta(lead);
         var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
         var crmPriority = string.IsNullOrWhiteSpace(crmMeta.CrmPriority) ? "Normal" : crmMeta.CrmPriority;
@@ -1178,8 +1198,8 @@ public class LeadsController : Controller
             crmTags = crmMeta.CrmTags ?? "",
             agentNotes = crmMeta.AgentNotes ?? "",
             crmNotes = crmMeta.AgentNotes ?? "",
-            pipelineStage = lead.Bucket,
-            bucket = lead.Bucket,
+            pipelineStage = effectiveStage,
+            bucket = effectiveStage,
             waitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
             meetingLocation = crmMeta.MeetingLocation ?? lead.AddressLine,
             zoomJoinUrl = crmMeta.ZoomJoinUrl ?? "",
@@ -1282,7 +1302,8 @@ public class LeadsController : Controller
         if (!normalizedNextDate.HasValue && !string.IsNullOrWhiteSpace(normalizedNextText))
             normalizedNextText = null;
 
-        var normalizedStage = NormalizePipelineStage(req.pipelineStage) ?? lead.Bucket;
+        var normalizedStage = NormalizePipelineStage(req.pipelineStage)
+            ?? ResolveEffectivePipelineStage(lead, ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket) ?? "Contacted");
         if (!string.Equals(lead.Bucket, normalizedStage, StringComparison.OrdinalIgnoreCase))
             meta.StageEnteredUtc = DateTime.UtcNow;
         lead.Bucket = normalizedStage;

@@ -14,7 +14,7 @@
     var lifeCount = CountStage("LifeInsurance");
     var feCount = CountStage("FinalExpense");
     var diCount = CountStage("DisabilityInsurance");
-    var calledTodayCount = CountStage("CalledToday");
+    var calledTodayCount = Model?.Count(x => x.AttemptsToday > 0) ?? 0;
     var callBackCount = CountStage("CallBack");
     var contactedCount = CountStage("Contacted");
     var bookedCount = CountStage("Booked");
