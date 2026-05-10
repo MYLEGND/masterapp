@@ -14079,41 +14079,54 @@ details.section{
 
 #rbShell .rebuttal-workspace-grid .content-head-copy{
     display: flex;
-    flex-direction: column;
-    gap: 2px;
+    align-items: center;
+    gap: 14px;
     min-width: 0;
+    flex: 1 1 auto;
+}
+
+#rbShell .rebuttal-workspace-grid .content-head-text{
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+    flex: 0 1 auto;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-leadmeta{
-    margin-top: 6px;
+    margin-top: 0;
     min-height: 0;
+    flex: 0 1 auto;
+    min-width: 0;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-leadmeta .lb-meta{
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 1px;
     align-items: flex-start;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-leadmeta .lb-pos{
-    font-size: .82rem;
+    font-size: .8rem;
     font-weight: 900;
-    line-height: 1.2;
+    line-height: 1.1;
     color: var(--rb-premium-ivory);
+    white-space: nowrap;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-leadmeta .lb-origin{
-    font-size: .76rem;
-    line-height: 1.2;
+    font-size: .72rem;
+    line-height: 1.1;
     color: var(--rb-premium-muted);
+    white-space: nowrap;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-controls{
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 10px;
+    gap: 8px;
     margin-left: auto;
     flex-wrap: wrap;
 }
@@ -14220,6 +14233,17 @@ details.section{
     #rbShell .rebuttal-workspace-grid .content-head-controls{
         width: 100%;
         justify-content: space-between;
+    }
+
+    #rbShell .rebuttal-workspace-grid .content-head-copy{
+        width: 100%;
+        align-items: flex-start;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    #rbShell .rebuttal-workspace-grid .content-head-text{
+        flex: 1 1 220px;
     }
 
     #rbShell .rebuttal-workspace-grid .content-head-leadmeta .lb-meta{
