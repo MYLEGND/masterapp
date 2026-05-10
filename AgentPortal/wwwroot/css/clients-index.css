@@ -725,6 +725,12 @@
     .stage-picker-detail.stage-closedlost{ --stage-a:#fda4af; --stage-b:#a53b47; --stage-ink:#3a0f16; }
     .stage-picker-open.stage-nurture,
     .stage-picker-detail.stage-nurture{ --stage-a:#f5d0fe; --stage-b:#9a4e8a; --stage-ink:#34152f; }
+    .stage-picker-open.stage-calledtoday,
+    .stage-picker-detail.stage-calledtoday{ --stage-a:#fdba74; --stage-b:#b45309; --stage-ink:#3b1d08; }
+    .stage-picker-open.stage-callback,
+    .stage-picker-detail.stage-callback{ --stage-a:#99f6e4; --stage-b:#0f766e; --stage-ink:#082a27; }
+    .stage-picker-open.stage-donotcall,
+    .stage-picker-detail.stage-donotcall{ --stage-a:#fca5a5; --stage-b:#991b1b; --stage-ink:#3b0a0a; }
 
     .ops-stack{
         display:grid;
@@ -1325,6 +1331,35 @@
     tbody tr.stage-submitted         td[data-col="name"] .name{ color:#2f7a24 !important; }
     tbody tr.stage-closedlost        td[data-col="name"] .name{ color:#a53b47 !important; }
     tbody tr.stage-nurture           td[data-col="name"] .name{ color:#9a4e8a !important; }
+    tbody tr.stage-calledtoday td,
+    tbody tr.stage-callback td,
+    tbody tr.stage-donotcall td{
+        background: linear-gradient(180deg, rgba(255,251,243,.98), rgba(255,255,255,.98));
+        border-top:1px solid rgba(166,128,35,.24);
+        border-bottom:1px solid rgba(166,128,35,.24);
+    }
+    tbody tr.stage-calledtoday td:first-child,
+    tbody tr.stage-callback td:first-child,
+    tbody tr.stage-donotcall td:first-child{
+        border-left:4px solid #a68023;
+        border-top-left-radius:14px;
+        border-bottom-left-radius:14px;
+    }
+    tbody tr.stage-calledtoday td:last-child,
+    tbody tr.stage-callback td:last-child,
+    tbody tr.stage-donotcall td:last-child{
+        border-right:4px solid #a68023;
+        border-top-right-radius:14px;
+        border-bottom-right-radius:14px;
+    }
+    tbody tr.stage-calledtoday:hover td,
+    tbody tr.stage-callback:hover td,
+    tbody tr.stage-donotcall:hover td{
+        background: linear-gradient(180deg, rgba(255,247,228,1), rgba(255,255,255,1));
+    }
+    tbody tr.stage-calledtoday td[data-col="name"] .name{ color:#b45309 !important; }
+    tbody tr.stage-callback td[data-col="name"] .name{ color:#0f766e !important; }
+    tbody tr.stage-donotcall td[data-col="name"] .name{ color:#991b1b !important; }
 
     .muted, .cc-sub{
         color:var(--muted) !important;
@@ -2623,6 +2658,21 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     .client-card.stage-nurture::before{ background: linear-gradient(180deg, #d86bb7, #f5a4db); }
     .pipeline-nav-btn.stage-nurture .pipeline-nav-name,
     .pipeline-lane.stage-nurture .pipeline-lane-title{ color:#9a4e8a; }
+    .pipeline-nav-btn.stage-calledtoday::before,
+    .pipeline-lane.stage-calledtoday::before,
+    .client-card.stage-calledtoday::before{ background: linear-gradient(180deg, #fdba74, #f59e0b); }
+    .pipeline-nav-btn.stage-calledtoday .pipeline-nav-name,
+    .pipeline-lane.stage-calledtoday .pipeline-lane-title{ color:#b45309; }
+    .pipeline-nav-btn.stage-callback::before,
+    .pipeline-lane.stage-callback::before,
+    .client-card.stage-callback::before{ background: linear-gradient(180deg, #67e8f9, #14b8a6); }
+    .pipeline-nav-btn.stage-callback .pipeline-nav-name,
+    .pipeline-lane.stage-callback .pipeline-lane-title{ color:#0f766e; }
+    .pipeline-nav-btn.stage-donotcall::before,
+    .pipeline-lane.stage-donotcall::before,
+    .client-card.stage-donotcall::before{ background: linear-gradient(180deg, #f87171, #b91c1c); }
+    .pipeline-nav-btn.stage-donotcall .pipeline-nav-name,
+    .pipeline-lane.stage-donotcall .pipeline-lane-title{ color:#991b1b; }
 
     .pipeline-lane.stage-newlead::before,
     .pipeline-lane.stage-opportunities::before,
@@ -2668,6 +2718,12 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     .badge.stage-closedlost .dot{ background:#e35d6a; }
     .badge.stage-nurture{ border-color: rgba(216,107,183,.28); background: rgba(216,107,183,.12); color:#934e7f; }
     .badge.stage-nurture .dot{ background:#d86bb7; }
+    .badge.stage-calledtoday{ border-color: rgba(245,158,11,.28); background: rgba(245,158,11,.12); color:#b45309; }
+    .badge.stage-calledtoday .dot{ background:#f59e0b; }
+    .badge.stage-callback{ border-color: rgba(20,184,166,.28); background: rgba(20,184,166,.12); color:#0f766e; }
+    .badge.stage-callback .dot{ background:#14b8a6; }
+    .badge.stage-donotcall{ border-color: rgba(220,38,38,.28); background: rgba(220,38,38,.12); color:#991b1b; }
+    .badge.stage-donotcall .dot{ background:#dc2626; }
 
     .pipeline-nav-top{
         display:flex;
@@ -2870,6 +2926,9 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     .client-card.stage-submitted{ border-color: #a68023; box-shadow: 0 12px 24px rgba(100,169,79,.14); background: linear-gradient(180deg,#ddece1,#cfe3d4); }
     .client-card.stage-closedlost{ border-color: #a68023; box-shadow: 0 12px 24px rgba(207,102,114,.14); background: linear-gradient(180deg,#f2e3e5,#e6d6d9); }
     .client-card.stage-nurture{ border-color: #a68023; box-shadow: 0 12px 24px rgba(183,116,176,.14); background: linear-gradient(180deg,#f0e5f4,#e3d7eb); }
+    .client-card.stage-calledtoday{ border-color: #a68023; box-shadow: 0 12px 24px rgba(245,158,11,.15); background: linear-gradient(180deg,#f2e5d6,#e7d2bb); }
+    .client-card.stage-callback{ border-color: #a68023; box-shadow: 0 12px 24px rgba(20,184,166,.15); background: linear-gradient(180deg,#dceceb,#c7dedb); }
+    .client-card.stage-donotcall{ border-color: #a68023; box-shadow: 0 12px 24px rgba(220,38,38,.14); background: linear-gradient(180deg,#f1e0e0,#e4cdcd); }
 
     .client-card-head{
         display:flex;
@@ -2907,6 +2966,9 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
     .client-card.stage-submitted .cc-name{ color:#2f7a24 !important; }
     .client-card.stage-closedlost .cc-name{ color:#913746 !important; }
     .client-card.stage-nurture .cc-name{ color:#8b3f7a !important; }
+    .client-card.stage-calledtoday .cc-name{ color:#b45309 !important; }
+    .client-card.stage-callback .cc-name{ color:#0f766e !important; }
+    .client-card.stage-donotcall .cc-name{ color:#991b1b !important; }
 
     .cc-sub{
         margin-top:4px;

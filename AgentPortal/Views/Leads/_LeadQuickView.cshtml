@@ -220,6 +220,8 @@
                                 <option value="LifeInsurance">Life Insurance</option>
                                 <option value="FinalExpense">Final Expense</option>
                                 <option value="DisabilityInsurance">Disability Insurance</option>
+                                <option value="CalledToday">Called Today</option>
+                                <option value="CallBack">Call Back</option>
                                 <option value="Contacted">Contacted</option>
                                 <option value="Booked">Booked</option>
                                 <option value="FollowUp">Follow Up</option>
@@ -228,6 +230,7 @@
                                 <option value="Voicemail">Voicemail</option>
                                 <option value="NotInterested">Not Interested</option>
                                 <option value="Nurture">Nurture</option>
+                                <option value="DoNotCallList">Do Not Call List</option>
                             </select>
                         </div>
                         <div class="f">
@@ -288,6 +291,8 @@
                     <h5>Outcome Console</h5>
                     <div class="outcome-grid">
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Contacted">Mark Contacted</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="CalledToday">Called Today</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="CallBack">Call Back</button>
                         <button type="button" class="btn btn-gold outcome-btn" data-outcome="Booked">Booked Meeting</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="FollowUp">Follow Up</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NeedsDocs">Needs Docs</button>
@@ -295,6 +300,7 @@
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Voicemail">Voicemail</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="NotInterested">Not Interested</button>
                         <button type="button" class="btn btn-ghost outcome-btn" data-outcome="Nurture">Nurture</button>
+                        <button type="button" class="btn btn-ghost outcome-btn" data-outcome="DoNotCallList">Do Not Call List</button>
                     </div>
                     <div class="tiny" id="dOutcomeSuggestion" style="margin-top:10px;">Use one-click outcomes to move leads into the correct non-lead buckets.</div>
                 </div>
@@ -1482,17 +1488,24 @@
         color:#ebfff5 !important;
     }
     .lead-qv-shell .outcome-btn[data-outcome="Contacted"],
+    .lead-qv-shell .outcome-btn[data-outcome="CalledToday"],
     .lead-qv-shell .outcome-btn[data-outcome="Spoke"],
     .lead-qv-shell .outcome-btn[data-outcome="NoAnswer"],
     .lead-qv-shell .outcome-btn[data-outcome="Voicemail"],
     .lead-qv-shell .outcome-btn[data-outcome="LeftVM"],
     .client-qv-shell .outcome-btn[data-outcome="Contacted"],
+    .client-qv-shell .outcome-btn[data-outcome="CalledToday"],
     .client-qv-shell .outcome-btn[data-outcome="Spoke"],
     .client-qv-shell .outcome-btn[data-outcome="NoAnswer"],
     .client-qv-shell .outcome-btn[data-outcome="Voicemail"],
     .client-qv-shell .outcome-btn[data-outcome="LeftVM"]{
         background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
         color:#eaf5ff !important;
+    }
+    .lead-qv-shell .outcome-btn[data-outcome="CallBack"],
+    .client-qv-shell .outcome-btn[data-outcome="CallBack"]{
+        background:linear-gradient(180deg,#167287,#0f5564) !important;
+        color:#e6fcff !important;
     }
     .lead-qv-shell .outcome-btn[data-outcome="FollowUp"],
     .lead-qv-shell .outcome-btn[data-outcome="Nurture"],
@@ -1506,9 +1519,11 @@
     .lead-qv-shell .outcome-btn[data-outcome="NotInterested"],
     .lead-qv-shell .outcome-btn[data-outcome="ClosedLost"],
     .lead-qv-shell .outcome-btn[data-outcome="Lost"],
+    .lead-qv-shell .outcome-btn[data-outcome="DoNotCallList"],
     .client-qv-shell .outcome-btn[data-outcome="NotInterested"],
     .client-qv-shell .outcome-btn[data-outcome="ClosedLost"],
-    .client-qv-shell .outcome-btn[data-outcome="Lost"]{
+    .client-qv-shell .outcome-btn[data-outcome="Lost"],
+    .client-qv-shell .outcome-btn[data-outcome="DoNotCallList"]{
         background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
         color:#fff !important;
     }

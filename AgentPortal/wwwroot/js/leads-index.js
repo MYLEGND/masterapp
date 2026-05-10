@@ -1134,6 +1134,8 @@ const pipelineLabels = {
   LifeInsurance: "LIFE INSURANCE LEADS",
   FinalExpense: "FINAL EXPENSE LEADS",
   DisabilityInsurance: "DISABILITY INSURANCE LEADS",
+  CalledToday: "Called Today",
+  CallBack: "Call Back",
   Contacted: "Contacted",
   Booked: "Booked",
   FollowUp: "Follow Up",
@@ -1144,7 +1146,8 @@ const pipelineLabels = {
   Nurture: "Nurture",
   NoAnswer: "No Answer",
   Lost: "Lost",
-  AIReception: "AI Reception"
+  AIReception: "AI Reception",
+  DoNotCallList: "Do Not Call List"
 };
 
 const statusLabels = {
@@ -1168,6 +1171,8 @@ const pipelineStages = [
   { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "Life Insurance leads ready for first touch." },
   { key: "FinalExpense", label: "FINAL EXPENSE LEADS", tone: "warn", className: "stage-contacted", note: "Final Expense leads queued for contact." },
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
+  { key: "CalledToday", label: "Called Today", tone: "info", className: "stage-calledtoday", note: "Touched today and ready for same-day follow-through." },
+  { key: "CallBack", label: "Call Back", tone: "info", className: "stage-callback", note: "Asked for a callback or needs a scheduled return touch." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
   { key: "NeedsDocs", label: "Needs Docs", tone: "info", className: "stage-applicationstarted", note: "Waiting on documents to proceed." },
   { key: "Voicemail", label: "Voicemail", tone: "info", className: "stage-contacted", note: "Voicemail was left and needs callback tracking." },
@@ -1175,7 +1180,8 @@ const pipelineStages = [
   { key: "Nurture", label: "Nurture", tone: "warn", className: "stage-nurture", note: "Stay in touch over time." },
   { key: "NoAnswer", label: "No Answer", tone: "warn", className: "stage-nurture", note: "Could not reach lead yet." },
   { key: "Lost", label: "Lost", tone: "bad", className: "stage-closedlost", note: "Opportunity was lost." },
-  { key: "AIReception", label: "AI Reception", tone: "info", className: "stage-contacted", note: "Handled by AI receptionist flow." }
+  { key: "AIReception", label: "AI Reception", tone: "info", className: "stage-contacted", note: "Handled by AI receptionist flow." },
+  { key: "DoNotCallList", label: "Do Not Call List", tone: "bad", className: "stage-donotcall", note: "No call or text activity should happen from the workstation." }
 ];
 
 const pipelineAliases = {
@@ -1190,6 +1196,11 @@ const pipelineAliases = {
   medicare: "MortgageProtection",
   medicareleads: "MortgageProtection",
   submitted: "PolicyPlaced",
+  calledtoday: "CalledToday",
+  callback: "CallBack",
+  donotcall: "DoNotCallList",
+  donotcalllist: "DoNotCallList",
+  dnc: "DoNotCallList",
   voicemail: "Voicemail",
   leftvm: "Voicemail",
   leftvoicemail: "Voicemail",
@@ -1204,6 +1215,8 @@ const pipelineAliases = {
   leftvm: "FollowUp",
   spoke: "Contacted"
 };
+
+const PIPELINE_STAGE_CLASSES = Array.from(new Set(pipelineStages.map(stage => stage.className).filter(Boolean)));
 
 function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   const value = norm(stage);
@@ -1574,20 +1587,7 @@ let meetingSuggestAbort = null;
 let quickViewOpenedFromUrl = false;
 let leadActionsLoadPromise = null;
 
-const STAGE_PICKER_TONES = [
-  "stage-newlead",
-  "stage-opportunities",
-  "stage-contacted",
-  "stage-qualified",
-  "stage-client",
-  "stage-businessclient",
-  "stage-meetingscheduled",
-  "stage-proposalsent",
-  "stage-applicationstarted",
-  "stage-submitted",
-  "stage-closedlost",
-  "stage-nurture"
-];
+const STAGE_PICKER_TONES = PIPELINE_STAGE_CLASSES.slice();
 
 function countRowsForStage(stageKey){
   if (!Array.isArray(rows) || !rows.length) return 0;
@@ -2126,18 +2126,10 @@ function hydrateRow(row){
   }
 
   if (pipelineText) pipelineText.textContent = pipelineLabel(pipeline);
-  row.classList.remove(
-    "stage-newlead","stage-contacted","stage-qualified","stage-client","stage-meetingscheduled",
-    "stage-proposalsent","stage-applicationstarted","stage-submitted",
-    "stage-closedwon","stage-closedlost","stage-nurture"
-  );
+  row.classList.remove(...PIPELINE_STAGE_CLASSES);
   row.classList.add(pipelineBadgeClass(pipeline));
   if (pipelineBadge){
-    pipelineBadge.classList.remove(
-      "stage-newlead","stage-contacted","stage-qualified","stage-client","stage-meetingscheduled",
-      "stage-proposalsent","stage-applicationstarted","stage-submitted",
-      "stage-closedwon","stage-closedlost","stage-nurture"
-    );
+    pipelineBadge.classList.remove(...PIPELINE_STAGE_CLASSES);
     pipelineBadge.classList.add(pipelineBadgeClass(pipeline));
   }
 
@@ -4612,13 +4604,16 @@ $$(".outcome-btn").forEach(btn => {
 
     const outcomeStageMap = {
       Contacted: "Contacted",
+      CalledToday: "CalledToday",
+      CallBack: "CallBack",
       Booked: "Booked",
       FollowUp: "FollowUp",
       NeedsDocs: "NeedsDocs",
       PolicyPlaced: "PolicyPlaced",
       Voicemail: "Voicemail",
       NotInterested: "NotInterested",
-      Nurture: "Nurture"
+      Nurture: "Nurture",
+      DoNotCallList: "DoNotCallList"
     };
 
     // If outcome targets a non-lead bucket, move it client-side without server ApplyOutcome.
