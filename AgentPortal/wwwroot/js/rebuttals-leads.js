@@ -559,8 +559,16 @@
       headerMetaHost.appendChild(metaWrap);
     }
 
-    if (headerNextHost && nextBtn && nextBtn.parentElement !== headerNextHost){
-      headerNextHost.appendChild(nextBtn);
+    if (headerNextHost){
+      if (callBtn && callBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(callBtn);
+      }
+      if (textBtn && textBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(textBtn);
+      }
+      if (nextBtn && nextBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(nextBtn);
+      }
     }
 
     function todayIsoDate(){
