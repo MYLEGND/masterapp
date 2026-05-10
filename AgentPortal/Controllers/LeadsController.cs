@@ -42,6 +42,8 @@ public class LeadsController : Controller
         "LifeInsurance",
         "FinalExpense",
         "DisabilityInsurance",
+        "CalledToday",
+        "CallBack",
         "Contacted",
         "Booked",
         "FollowUp",
@@ -52,7 +54,8 @@ public class LeadsController : Controller
         "Nurture",
         "NoAnswer",
         "Lost",
-        "AIReception"
+        "AIReception",
+        "DoNotCallList"
     };
 
     private static readonly IReadOnlyDictionary<string, string> BucketAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -80,6 +83,11 @@ public class LeadsController : Controller
         ["finalexpense"] = "FinalExpense",
         ["medicare"] = "MortgageProtection",
         ["disabilityinsurance"] = "DisabilityInsurance",
+        ["calledtoday"] = "CalledToday",
+        ["callback"] = "CallBack",
+        ["donotcall"] = "DoNotCallList",
+        ["donotcalllist"] = "DoNotCallList",
+        ["dnc"] = "DoNotCallList",
         ["contacted"] = "Contacted",
         ["booked"] = "Booked",
         ["followup"] = "FollowUp",
@@ -110,7 +118,10 @@ public class LeadsController : Controller
         ["Nurture"] = "Nurture",
         ["NoAnswer"] = "NoAnswer",
         ["Lost"] = "Lost",
-        ["AIReception"] = "AIReception"
+        ["AIReception"] = "AIReception",
+        ["CalledToday"] = "CalledToday",
+        ["CallBack"] = "CallBack",
+        ["DoNotCallList"] = "DoNotCallList"
     };
 
     private static string? ResolveOriginalLeadType(string? originalLeadType, string? currentBucket, string? fallbackBucket = null)

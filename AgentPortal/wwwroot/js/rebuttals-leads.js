@@ -8,6 +8,8 @@
     LifeInsurance: "Life Insurance",
     FinalExpense: "Final Expense",
     DisabilityInsurance: "Disability Insurance",
+    CalledToday: "Called Today",
+    CallBack: "Call Back",
     Contacted: "Contacted",
     Booked: "Booked",
     FollowUp: "Follow Up",
@@ -18,13 +20,16 @@
     Nurture: "Nurture",
     NoAnswer: "No Answer",
     Lost: "Lost",
-    AIReception: "AI Reception"
+    AIReception: "AI Reception",
+    DoNotCallList: "Do Not Call List"
   };
   const allStages = [
     "MortgageProtection",
     "LifeInsurance",
     "FinalExpense",
     "DisabilityInsurance",
+    "CalledToday",
+    "CallBack",
     "Contacted",
     "Booked",
     "FollowUp",
@@ -35,9 +40,11 @@
     "Nurture",
     "NoAnswer",
     "Lost",
-    "AIReception"
+    "AIReception",
+    "DoNotCallList"
   ];
   const noCallStages = new Set(["Booked", "FollowUp", "PolicyPlaced"]);
+  const doNotCallStages = new Set(["DoNotCallList"]);
   const productBuckets = new Set([
     "MortgageProtection",
     "LifeInsurance",
@@ -204,6 +211,13 @@
     if (!stage) return true;
     if (productBuckets.has(stage)) return leadOriginalLeadType(lead) === stage;
     return ((lead?.bucket || lead?.crmStage || '').trim()) === stage;
+  }
+
+  function normalizedStageKey(value){
+    return (value || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/[-_]/g, '');
   }
 
   function loadProfile(){
@@ -962,35 +976,68 @@
       }
     }
 
+    function leadStageKey(lead){
+      return normalizedStageKey(lead?.bucket || lead?.crmStage || '');
+    }
+
+    function isDoNotCallLead(lead){
+      const stage = leadStageKey(lead);
+      return doNotCallStages.has(stage) || stage.toLowerCase() === 'donotcalllist';
+    }
+
     function isCallBlockedForLead(lead){
       if (!lead) return false;
-      const rawStage = (lead.bucket || lead.crmStage || '').trim();
-      const stage = rawStage
-        .replace(/\s+/g, '')
-        .replace(/[-_]/g, '');
+      const stage = leadStageKey(lead);
+      if (isDoNotCallLead(lead)) return true;
       if (stage.toLowerCase() === 'followup') return true;
       if (stage.toLowerCase() === 'booked') return true;
       if (stage.toLowerCase() === 'policyplaced') return true;
       return noCallStages.has(stage);
     }
 
-    function updateCallAvailability(lead){
-      if (!callBtn) return;
+    function isTextBlockedForLead(lead){
+      return isDoNotCallLead(lead);
+    }
 
+    function updateCommunicationAvailability(lead){
       if (!lead){
-        callBtn.disabled = true;
-        callBtn.title = 'No lead selected';
+        if (callBtn){
+          callBtn.disabled = true;
+          callBtn.title = 'No lead selected';
+        }
+        if (textBtn){
+          textBtn.disabled = true;
+          textBtn.title = 'No lead selected';
+        }
         return;
       }
 
-      if (isCallBlockedForLead(lead)){
-        callBtn.disabled = true;
-        callBtn.title = 'Calling from Workstation is disabled for Booked, Follow Up, and Policy Placed leads.';
+      if (isDoNotCallLead(lead)){
+        if (callBtn){
+          callBtn.disabled = true;
+          callBtn.title = 'This lead is in Do Not Call List. Calling is disabled in Workstation.';
+        }
+        if (textBtn){
+          textBtn.disabled = true;
+          textBtn.title = 'This lead is in Do Not Call List. Texting is disabled in Workstation.';
+        }
         return;
       }
 
-      callBtn.disabled = false;
-      callBtn.title = '';
+      if (callBtn){
+        if (isCallBlockedForLead(lead)){
+          callBtn.disabled = true;
+          callBtn.title = 'Calling from Workstation is disabled for Booked, Follow Up, and Policy Placed leads.';
+        } else {
+          callBtn.disabled = false;
+          callBtn.title = '';
+        }
+      }
+
+      if (textBtn){
+        textBtn.disabled = false;
+        textBtn.title = '';
+      }
     }
 
   function getStatusHtml(lead){
@@ -1392,7 +1439,7 @@
         posEl.textContent = 'Lead 0 of 0';
         setOrigin(null);
         renderAgentWideDialCounters();
-        updateCallAvailability(null);
+        updateCommunicationAvailability(null);
         return;
       }
       fields.name.textContent = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || '—';
@@ -1416,7 +1463,7 @@
       setStatusHtml(getStatusHtml(lead));
       updateAgentWideDials(lead);
       renderAgentWideDialCounters();
-      updateCallAvailability(lead);
+      updateCommunicationAvailability(lead);
       if (noteOverlay && !noteOverlay.hidden) syncLeadField();
     }
 
@@ -1964,6 +2011,10 @@
     callBtn?.addEventListener('click', () => {
       const lead = resolveCurrentLead();
       if (!lead) return;
+      if (isDoNotCallLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
       if (isCallBlockedForLead(lead)){
         setStatusMessage('Calls are disabled in Workstation for Booked, Follow Up, and Policy Placed leads.', 'bad');
         return;
@@ -1986,6 +2037,10 @@
     textBtn?.addEventListener('click', () => {
       const lead = resolveCurrentLead();
       if (!lead) return;
+      if (isTextBlockedForLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
       const digits = (lead?.phone || '').replace(/\D/g,'');
       if (!digits){
         setStatusMessage('No phone on file', 'bad');
