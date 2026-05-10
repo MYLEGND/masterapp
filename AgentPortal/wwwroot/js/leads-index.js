@@ -1227,6 +1227,7 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
 }
 
 const productBuckets = new Set(["MortgageProtection","LifeInsurance","FinalExpense","DisabilityInsurance"]);
+const derivedPipelineFilterStages = new Set(["CalledToday"]);
 
 function normalizeOriginalLeadTypeValue(value){
   const normalized = normalizePipelineStageValue(value, "");
@@ -1250,6 +1251,15 @@ function resolveQuickViewLeadType(row, detail, stageOverride){
     || normalizeOriginalLeadTypeValue(detail?.pipelineStage)
     || normalizeOriginalLeadTypeValue(row?.dataset?.crmPipeline)
     || normalizeOriginalLeadTypeValue(row?.dataset?.sPipeline);
+}
+
+function isDerivedPipelineFilterStage(stage){
+  return derivedPipelineFilterStages.has(stage);
+}
+
+function isCalledTodayRow(row){
+  const today = parseInt(row?.dataset?.crmAttemptsToday || row?.dataset?.sAttemptstoday || "0", 10) || 0;
+  return today > 0;
 }
 
 function updateImportCsvHelp(bucket){
@@ -1293,6 +1303,7 @@ function applyQuickViewContactProfileLabels(row, detail, stageOverride){
 function matchesStageSelection(row, stage){
   if (!stage) return true;
   if (productBuckets.has(stage)) return rowOriginalLeadType(row) === stage;
+  if (isDerivedPipelineFilterStage(stage)) return isCalledTodayRow(row);
   return norm(row.dataset.crmPipeline) === stage;
 }
 
@@ -1589,12 +1600,20 @@ let leadActionsLoadPromise = null;
 
 const STAGE_PICKER_TONES = PIPELINE_STAGE_CLASSES.slice();
 
-function countRowsForStage(stageKey){
-  if (!Array.isArray(rows) || !rows.length) return 0;
+function rowsForStage(stageKey, sourceRows = rows){
+  const pool = Array.isArray(sourceRows) ? sourceRows : [];
+  if (!pool.length) return [];
   if (productBuckets.has(stageKey)){
-    return rows.filter(r => matchesStageSelection(r, stageKey)).length;
+    return pool.filter(r => matchesStageSelection(r, stageKey));
   }
-  return rows.filter(r => norm(r.dataset.crmPipeline) === stageKey).length;
+  if (isDerivedPipelineFilterStage(stageKey)){
+    return pool.filter(isCalledTodayRow);
+  }
+  return pool.filter(r => norm(r.dataset.crmPipeline) === stageKey);
+}
+
+function countRowsForStage(stageKey, sourceRows = rows){
+  return rowsForStage(stageKey, sourceRows).length;
 }
 
 function applyStagePickerTone(el, className){
@@ -2537,6 +2556,10 @@ async function deleteCurrentBucket(){
   const bucket = inferCurrentBucket();
   if (!bucket){
     toast("No bucket detected. Pick a bucket or filter first.");
+    return;
+  }
+  if (isDerivedPipelineFilterStage(bucket)){
+    toast("Called Today is a daily filter bucket, not a saved stage you can delete.");
     return;
   }
   const bucketLabel = pipelineLabel(bucket);
@@ -4604,7 +4627,6 @@ $$(".outcome-btn").forEach(btn => {
 
     const outcomeStageMap = {
       Contacted: "Contacted",
-      CalledToday: "CalledToday",
       CallBack: "CallBack",
       Booked: "Booked",
       FollowUp: "FollowUp",
@@ -4703,7 +4725,7 @@ function renderPipelineNav(filteredRows){
   if (!pipelineStageNav) return;
 
   const optionHtml = pipelineStages.map(stage => {
-    const count = filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key).length;
+    const count = countRowsForStage(stage.key, filteredRows);
     const selected = pipelineNavSelectedStage === stage.key ? "selected" : "";
     return `<option value="${safeHtml(stage.key)}" ${selected}>${safeHtml(stage.label)} (${count})</option>`;
   }).join("");
@@ -4815,7 +4837,7 @@ function renderCards(filteredRows){
   if (!pipelineBoard || !cardsView) return;
 
   const focusMeta = pipelineFocusStage ? pipelineMeta(pipelineFocusStage) : (pipelineNavSelectedStage ? pipelineMeta(pipelineNavSelectedStage) : null);
-  const lanes = focusMeta ? [focusMeta] : pipelineStages;
+  const lanes = focusMeta ? [focusMeta] : pipelineStages.filter(stage => !isDerivedPipelineFilterStage(stage.key));
 
   renderPipelineNav(filteredRows);
 
@@ -4838,7 +4860,7 @@ function renderCards(filteredRows){
   }
 
   pipelineBoard.innerHTML = lanes.map(stage => {
-    const stageRows = orderedStageRows(stage.key, filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key));
+    const stageRows = orderedStageRows(stage.key, rowsForStage(stage.key, filteredRows));
     return `
       <section class="pipeline-lane ${stage.className}" data-dropstage="${stage.key}">
         <div class="pipeline-lane-head">
@@ -5202,6 +5224,11 @@ pipelineBoard?.addEventListener("drop", async (e) => {
   if (!row) return;
 
   const sourceStage = norm(row.dataset.crmPipeline);
+  if (isDerivedPipelineFilterStage(targetStage)){
+    toast("Called Today is a daily filter bucket and cannot receive manual stage moves.");
+    renderAll();
+    return;
+  }
   // Prevent moving between lead buckets (product buckets cannot be moved into other lead buckets)
   if (productBuckets.has(sourceStage) && productBuckets.has(targetStage) && sourceStage !== targetStage){
     toast("Lead buckets cannot move into other lead buckets.");

@@ -207,9 +207,14 @@
     return normalizedOriginalLeadType(lead?.originalLeadType) || normalizedOriginalLeadType(lead?.bucket);
   }
 
+  function leadWasCalledToday(lead){
+    return Number(lead?.attemptsToday ?? lead?.dialsToday ?? 0) > 0;
+  }
+
   function matchesStageSelection(lead, stage){
     if (!stage) return true;
     if (productBuckets.has(stage)) return leadOriginalLeadType(lead) === stage;
+    if (stage === "CalledToday") return leadWasCalledToday(lead);
     return ((lead?.bucket || lead?.crmStage || '').trim()) === stage;
   }
 

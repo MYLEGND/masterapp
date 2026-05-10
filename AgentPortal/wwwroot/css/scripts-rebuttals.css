@@ -11954,17 +11954,6 @@ details.section{
     transform: translateY(-1px);
 }
 
-/* Called Today — warm amber */
-#rbShell .lb-actions .lb-btn[data-outcome="CalledToday"] {
-    border-color: rgba(245,158,11,.58) !important;
-    color: #f59e0b !important;
-}
-#rbShell .lb-actions .lb-btn[data-outcome="CalledToday"]:hover {
-    border-color: rgba(245,158,11,.92) !important;
-    color: #fcd34d !important;
-    transform: translateY(-1px);
-}
-
 /* Call Back — aqua teal */
 #rbShell .lb-actions .lb-btn[data-outcome="CallBack"] {
     border-color: rgba(20,184,166,.58) !important;
