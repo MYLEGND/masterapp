@@ -5887,3 +5887,12 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 .pipeline-board .client-card.stage-nurture{
     background: radial-gradient(760px 180px at 100% -24%, rgba(217,70,239,.2), transparent 54%), linear-gradient(180deg,#e9deef,#d4c6de) !important;
 }
+.pipeline-board .client-card.stage-calledtoday{
+    background: radial-gradient(760px 180px at 100% -24%, rgba(245,158,11,.2), transparent 54%), linear-gradient(180deg,#eadccf,#d8c2ad) !important;
+}
+.pipeline-board .client-card.stage-callback{
+    background: radial-gradient(760px 180px at 100% -24%, rgba(20,184,166,.2), transparent 54%), linear-gradient(180deg,#d9e8e6,#c3d6d3) !important;
+}
+.pipeline-board .client-card.stage-donotcall{
+    background: radial-gradient(760px 180px at 100% -24%, rgba(220,38,38,.2), transparent 54%), linear-gradient(180deg,#ead9db,#d7c3c6) !important;
+}

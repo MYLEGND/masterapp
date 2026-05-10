@@ -11954,6 +11954,28 @@ details.section{
     transform: translateY(-1px);
 }
 
+/* Called Today — warm amber */
+#rbShell .lb-actions .lb-btn[data-outcome="CalledToday"] {
+    border-color: rgba(245,158,11,.58) !important;
+    color: #f59e0b !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="CalledToday"]:hover {
+    border-color: rgba(245,158,11,.92) !important;
+    color: #fcd34d !important;
+    transform: translateY(-1px);
+}
+
+/* Call Back — aqua teal */
+#rbShell .lb-actions .lb-btn[data-outcome="CallBack"] {
+    border-color: rgba(20,184,166,.58) !important;
+    color: #14b8a6 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="CallBack"]:hover {
+    border-color: rgba(20,184,166,.92) !important;
+    color: #99f6e4 !important;
+    transform: translateY(-1px);
+}
+
 /* Follow Up — amber */
 #rbShell .lb-actions .lb-btn[data-outcome="FollowUp"] {
     border-color: rgba(251,191,36,.55) !important;
@@ -12050,6 +12072,17 @@ details.section{
 #rbShell .lb-actions .lb-btn[data-outcome="Lost"]:hover {
     border-color: rgba(220,38,38,.9) !important;
     color: #fca5a5 !important;
+    transform: translateY(-1px);
+}
+
+/* Do Not Call List — dark warning red */
+#rbShell .lb-actions .lb-btn[data-outcome="DoNotCallList"] {
+    border-color: rgba(239,68,68,.62) !important;
+    color: #f87171 !important;
+}
+#rbShell .lb-actions .lb-btn[data-outcome="DoNotCallList"]:hover {
+    border-color: rgba(239,68,68,.94) !important;
+    color: #fecaca !important;
     transform: translateY(-1px);
 }
 
