@@ -476,6 +476,7 @@
 
   bridges.forEach(async (bridge) => {
     const bucket = bridge.getAttribute('data-bucket') || '';
+    const shellRoot = bridge.closest('#rbShell') || document;
     const queueKey = bucket || '';
     const normalizedQueueKey = normalizeQueueKey(queueKey);
     const filterStoreKey = `leadbridge_filters_${normalizedQueueKey || 'all'}`;
@@ -487,7 +488,10 @@
     const statusEl = bridge.querySelector('[data-lb-status]');
     const posEl = bridge.querySelector('[data-lb-pos]');
     const originEl = bridge.querySelector('[data-lb-origin]');
+    const metaWrap = posEl?.closest('.lb-meta') || null;
     const nextBtn = bridge.querySelector('[data-lb-next]');
+    const headerMetaHost = shellRoot.querySelector('[data-lb-header-meta]');
+    const headerNextHost = shellRoot.querySelector('[data-lb-header-next]');
     const callBtn = bridge.querySelector('[data-lb-call]');
     const textBtn = bridge.querySelector('[data-lb-text]');
     const deleteBtn = bridge.querySelector('[data-lb-delete]');
@@ -550,6 +554,14 @@
     let serverStateOptions = [];
     let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
+
+    if (headerMetaHost && metaWrap && metaWrap.parentElement !== headerMetaHost){
+      headerMetaHost.appendChild(metaWrap);
+    }
+
+    if (headerNextHost && nextBtn && nextBtn.parentElement !== headerNextHost){
+      headerNextHost.appendChild(nextBtn);
+    }
 
     function todayIsoDate(){
       return new Date().toISOString().slice(0, 10);
