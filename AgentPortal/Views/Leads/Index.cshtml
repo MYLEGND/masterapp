@@ -14,6 +14,8 @@
     var lifeCount = CountStage("LifeInsurance");
     var feCount = CountStage("FinalExpense");
     var diCount = CountStage("DisabilityInsurance");
+    var calledTodayCount = CountStage("CalledToday");
+    var callBackCount = CountStage("CallBack");
     var contactedCount = CountStage("Contacted");
     var bookedCount = CountStage("Booked");
     var followUpCount = CountStage("FollowUp");
@@ -25,6 +27,7 @@
     var noAnswerCount = CountStage("NoAnswer");
     var lostCount = CountStage("Lost");
     var aiReceptionCount = CountStage("AIReception");
+    var doNotCallCount = CountStage("DoNotCallList");
     var prodTotals = ViewData["ProductionTotals"] as ProductionTotals ?? new ProductionTotals();
     // Personal revenue mirrors Paid (single-status per card enforced in ProductionService)
     var personalRevenueAmount = prodTotals.Personal;
@@ -220,6 +223,8 @@
                             <option value="LifeInsurance" data-count="@lifeCount" data-note="Life Insurance leads ready for first touch.">LIFE INSURANCE LEADS</option>
                             <option value="FinalExpense" data-count="@feCount" data-note="Final Expense leads queued for contact.">FINAL EXPENSE LEADS</option>
                             <option value="DisabilityInsurance" data-count="@diCount" data-note="Disability Insurance leads to qualify fast.">DISABILITY INSURANCE LEADS</option>
+                            <option value="CalledToday" data-count="@calledTodayCount" data-note="Touched today and ready for same-day follow-through.">CALLED TODAY</option>
+                            <option value="CallBack" data-count="@callBackCount" data-note="Asked for a callback or needs a scheduled return touch.">CALL BACK</option>
                             <option value="Contacted" data-count="@contactedCount" data-note="First touch happened. Keep momentum alive.">Contacted</option>
                             <option value="Booked" data-count="@bookedCount" data-note="Appointment set; prepare and confirm.">Booked</option>
                             <option value="FollowUp" data-count="@followUpCount" data-note="Needs follow-up after conversation.">Follow Up</option>
@@ -231,6 +236,7 @@
                             <option value="NoAnswer" data-count="@noAnswerCount" data-note="Could not reach lead yet.">No Answer</option>
                             <option value="Lost" data-count="@lostCount" data-note="Opportunity was lost.">Lost</option>
                             <option value="AIReception" data-count="@aiReceptionCount" data-note="Handled by AI receptionist flow.">AI Reception</option>
+                            <option value="DoNotCallList" data-count="@doNotCallCount" data-note="No call or text activity should happen from the workstation.">DO NOT CALL LIST</option>
                         </select>
                         <button type="button" class="btn btn-gold stage-picker-open" id="btnStagePickerOpen" data-stagejump="MortgageProtection">Open Bucket</button>
                     </div>
@@ -392,6 +398,8 @@
                     <option value="LifeInsurance">Life Insurance</option>
                     <option value="FinalExpense">Final Expense</option>
                     <option value="DisabilityInsurance">Disability Insurance</option>
+                    <option value="CalledToday">Called Today</option>
+                    <option value="CallBack">Call Back</option>
                     <option value="Contacted">Contacted</option>
                     <option value="NeedsDocs">Needs Docs</option>
                     <option value="Voicemail">Voicemail</option>
@@ -400,6 +408,7 @@
                     <option value="NoAnswer">No Answer</option>
                     <option value="Lost">Lost</option>
                     <option value="AIReception">AI Reception</option>
+                    <option value="DoNotCallList">Do Not Call List</option>
                 </select>
 
                 <select class="select" id="attentionFilter" title="Focus filters">
