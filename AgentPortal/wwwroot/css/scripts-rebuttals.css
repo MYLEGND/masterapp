@@ -15364,7 +15364,15 @@ details.section{
    Keep inactive colors by lane/guide, but unify the active state.
    ======================================================================== */
 #rbShell #rbNav .cat-btn.active,
+#rbShell #rbNav .cat-btn.active.good,
+#rbShell #rbNav .cat-btn.active.warn,
+#rbShell #rbNav .cat-btn.active.bad,
+#rbShell #rbNav .cat-btn.active.info,
 #rbShell #prosperNav .cat-btn.active,
+#rbShell #prosperNav .cat-btn.active.good,
+#rbShell #prosperNav .cat-btn.active.warn,
+#rbShell #prosperNav .cat-btn.active.bad,
+#rbShell #prosperNav .cat-btn.active.info,
 #rbShell #prosperNav .cat-btn[data-guide-id].active{
     background: linear-gradient(180deg, #1a273a 0%, #0f1a2b 100%) !important;
     border-color: rgba(227,187,99,.96) !important;
