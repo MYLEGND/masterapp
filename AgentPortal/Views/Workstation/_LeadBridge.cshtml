@@ -1,10 +1,117 @@
 @model string
 @{
     var bucket = Model ?? "";
+    var requestedProduct = (Model ?? string.Empty).Trim();
+
+    var productContexts = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LifeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "life insurance coverage",
+            ["ProductPurpose"] = "helps protect your family, replace income, and leave behind money if something happens",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["FinalExpense"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "final expense coverage",
+            ["ProductPurpose"] = "helps your family handle funeral costs, unpaid bills, and final expenses",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["MortgageProtection"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "mortgage protection coverage",
+            ["ProductPurpose"] = "helps protect the home and gives your family money for the mortgage and bills if something happens",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["DisabilityInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "disability income protection",
+            ["ProductPurpose"] = "helps protect your income if an injury or illness kept you from working",
+            ["AssignedRole"] = "field underwriter"
+        }
+    };
+
+    var productKey = productContexts.ContainsKey(requestedProduct) ? requestedProduct : "LifeInsurance";
+    var productContext = productContexts[productKey];
+
+    string ResolveTextTemplate(string template)
+    {
+        var runtimeTokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Greeting"] = "&lt;GREETING&gt;",
+            ["ClientFirstName"] = "&lt;CLIENT FIRST NAME&gt;",
+            ["ClientName"] = "&lt;CLIENT FIRST NAME&gt;",
+            ["AgentName"] = "&lt;YOUR NAME&gt;",
+            ["OfficeNumber"] = "&lt;OFFICE NUMBER&gt;",
+            ["AppointmentTime"] = "&lt;APPOINTMENT TIME&gt;"
+        };
+
+        foreach (var pair in productContext)
+        {
+            runtimeTokens[pair.Key] = pair.Value;
+        }
+
+        var rendered = template ?? string.Empty;
+        foreach (var pair in runtimeTokens)
+        {
+            rendered = rendered.Replace($"{{{{{pair.Key}}}}}", pair.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return rendered.Trim();
+    }
+
+    var textScriptCatalog = new[]
+    {
+        new
+        {
+            Key = "txtPreCall",
+            Title = "Pre Call Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, this is {{AgentName}} regarding the {{ProductName}} request you filled out. I'm reaching out to help you review the information and get the next step taken care of. Give me a call back when you get this. The office number is {{OfficeNumber}}. Thanks.")
+        },
+        new
+        {
+            Key = "txtNoAnswer",
+            Title = "No Answer After First Call",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, it's {{AgentName}}. I just tried reaching you regarding the {{ProductName}} request you filled out. This is the coverage that {{ProductPurpose}}. What time today works?")
+        },
+        new
+        {
+            Key = "txtQuestionResponse",
+            Title = "Question Response Rule",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, absolutely, I can walk you through that. It'll be easier to explain clearly over the phone. What time today works?")
+        },
+        new
+        {
+            Key = "txtConfirm",
+            Title = "Appointment Confirmation",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, {{AgentName}} here, {{AssignedRole}}. Confirming our appointment at {{AppointmentTime}}. If there is any reason you can't make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!\n\nReply \"Yes\" or send a thumbs up to let me know you received this message.")
+        },
+        new
+        {
+            Key = "txtMissedAppointment",
+            Title = "Missed Appointment Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, just gave you a call for our appointment. Do you need a few minutes?")
+        },
+        new
+        {
+            Key = "txtReschedule",
+            Title = "Reschedule Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, just need to get this rescheduled so we can help you review your {{ProductName}} request. Would later today or tomorrow work better?")
+        },
+        new
+        {
+            Key = "txtHailMary",
+            Title = "Hail Mary / Final Attempt",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, I've tried to reach out a few times regarding your {{ProductName}} request and haven't heard back. I don't want to keep bothering you if this is no longer important.\n\nWhere should we go from here?")
+        }
+    };
+
+    var textScriptCatalogJson = System.Text.Json.JsonSerializer.Serialize(textScriptCatalog);
 }
 
 <section class="lead-bridge" data-lead-bridge data-bucket="@bucket">
     @Html.AntiForgeryToken()
+    <script type="application/json" data-lb-text-templates>@Html.Raw(textScriptCatalogJson)</script>
     <div class="lb-filterbar">
         <div class="lb-filter" data-lb-slot="state">
             <select id="lbStateFilter" data-lb-state-filter>

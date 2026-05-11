@@ -50,6 +50,7 @@
         var runtimeTokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["Greeting"] = "&lt;GREETING&gt;",
+            ["ClientFirstName"] = "&lt;CLIENT FIRST NAME&gt;",
             ["ClientName"] = "&lt;CLIENT NAME&gt;",
             ["AgentName"] = "&lt;YOUR NAME&gt;",
             ["OfficeNumber"] = "&lt;OFFICE NUMBER&gt;",
@@ -77,49 +78,49 @@
             Id = "txtPreCall",
             Label = "PRE-CALL TEXT",
             Note = "Sent before the first call.",
-            Template = "{{Greeting}} {{ClientName}}, this is {{AgentName}} regarding the {{ProductName}} request you filled out. I'm reaching out to help you review the information and get the next step taken care of. Give me a call back when you get this. The office number is {{OfficeNumber}}. Thanks."
+            Template = "{{Greeting}} {{ClientFirstName}}, this is {{AgentName}} regarding the {{ProductName}} request you filled out. I'm reaching out to help you review the information and get the next step taken care of. Give me a call back when you get this. The office number is {{OfficeNumber}}. Thanks."
         },
         new
         {
             Id = "txtNoAnswer",
             Label = "NO ANSWER AFTER FIRST CALL",
             Note = "Sent right after the first missed call.",
-            Template = "{{Greeting}} {{ClientName}}, it's {{AgentName}}. I just tried reaching you regarding the {{ProductName}} request you filled out. This is the coverage that {{ProductPurpose}}. What time today works?"
+            Template = "{{Greeting}} {{ClientFirstName}}, it's {{AgentName}}. I just tried reaching you regarding the {{ProductName}} request you filled out. This is the coverage that {{ProductPurpose}}. What time today works?"
         },
         new
         {
             Id = "txtQuestionResponse",
             Label = "QUESTION RESPONSE RULE",
             Note = "If they respond with questions, move to call. Do not debate by text.",
-            Template = "{{Greeting}} {{ClientName}}, absolutely, I can walk you through that. It'll be easier to explain clearly over the phone. What time today works?"
+            Template = "{{Greeting}} {{ClientFirstName}}, absolutely, I can walk you through that. It'll be easier to explain clearly over the phone. What time today works?"
         },
         new
         {
             Id = "txtConfirm",
             Label = "APPOINTMENT CONFIRMATION",
             Note = "Set expectation and get acknowledgement.",
-            Template = "{{Greeting}} {{ClientName}}, {{AgentName}} here, {{AssignedRole}}. Confirming our appointment at {{AppointmentTime}}. If there is any reason you can't make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!\n\nReply \"Yes\" or send a thumbs up to let me know you received this message."
+            Template = "{{Greeting}} {{ClientFirstName}}, {{AgentName}} here, {{AssignedRole}}. Confirming our appointment at {{AppointmentTime}}. If there is any reason you can't make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!\n\nReply \"Yes\" or send a thumbs up to let me know you received this message."
         },
         new
         {
             Id = "txtMissedAppointment",
             Label = "MISSED APPOINTMENT TEXT",
             Note = "Send immediately after the appointment is missed.",
-            Template = "{{Greeting}} {{ClientName}}, just gave you a call for our appointment. Do you need a few minutes?"
+            Template = "{{Greeting}} {{ClientFirstName}}, just gave you a call for our appointment. Do you need a few minutes?"
         },
         new
         {
             Id = "txtReschedule",
             Label = "RESCHEDULE TEXT",
             Note = "Use if they miss the appointment and do not respond.",
-            Template = "{{Greeting}} {{ClientName}}, just need to get this rescheduled so we can help you review your {{ProductName}} request. Would later today or tomorrow work better?"
+            Template = "{{Greeting}} {{ClientFirstName}}, just need to get this rescheduled so we can help you review your {{ProductName}} request. Would later today or tomorrow work better?"
         },
         new
         {
             Id = "txtHailMary",
             Label = "HAIL MARY / FINAL ATTEMPT",
             Note = "Last respectful follow-up after multiple unanswered touches.",
-            Template = "{{Greeting}} {{ClientName}}, I've tried to reach out a few times regarding your {{ProductName}} request and haven't heard back. I don't want to keep bothering you if this is no longer important.\n\nWhere should we go from here?"
+            Template = "{{Greeting}} {{ClientFirstName}}, I've tried to reach out a few times regarding your {{ProductName}} request and haven't heard back. I don't want to keep bothering you if this is no longer important.\n\nWhere should we go from here?"
         }
     };
 }

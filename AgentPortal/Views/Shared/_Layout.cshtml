@@ -1864,6 +1864,13 @@
             return raw.replace(/\D/g, '');
         }
 
+        function buildSmsLaunchHref(rawDigits, message) {
+            const digits = readString(rawDigits).replace(/\D/g, '');
+            const recipient = digits.length === 10 ? `+1${digits}` : digits;
+            if (!recipient) return '';
+            return `sms:${recipient}&body=${encodeURIComponent(normalizeScriptMessage(message))}`;
+        }
+
         function getAgentPhone() {
             return formatPhoneDisplay(profile?.phone);
         }
@@ -1874,7 +1881,7 @@
         }
 
         async function copyScriptTextMessage(message) {
-            const resolved = resolveScriptRuntimeTokens(api.fillScriptPlaceholders(message));
+            const resolved = resolveScriptRuntimeTokens(api.fillTextMessagePlaceholders(message));
             if (!resolved) return false;
 
             try {
@@ -1899,12 +1906,14 @@
                 await navigator.clipboard.writeText(normalized);
             } catch {}
 
-            window.location.href = `sms:${digits}?&body=${encodeURIComponent(normalized)}`;
+            const smsHref = buildSmsLaunchHref(digits, normalized);
+            if (!smsHref) return false;
+            window.location.href = smsHref;
             return true;
         }
 
         async function sendScriptTextMessage(message) {
-            const normalized = resolveScriptRuntimeTokens(api.fillScriptPlaceholders(message));
+            const normalized = resolveScriptRuntimeTokens(api.fillTextMessagePlaceholders(message));
             if (!normalized) return false;
 
             if (window.LeadBridge?.sendTextMessage) {
@@ -1924,6 +1933,38 @@
 
         function hasSupportedPlaceholder(value) {
             return /(?:<|&lt;)\s*(?:greeting|your full name|your name|agent first name|agent name|your phone number|office number|office phone number|phone number|client first name|client full name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
+        }
+
+        function fillLeadPlaceholders(text, options = {}) {
+            const leadGreeting = getLeadGreeting();
+            const agentFirstName = getFirstName();
+            const agentPhone = getAgentPhone();
+            const leadFirstName = getLeadFirstName();
+            const leadFullName = getLeadFullName();
+            const leadState = getLeadState();
+            const preferFirstNameOnly = options.firstNameOnly === true;
+            const preferredLeadName = preferFirstNameOnly ? leadFirstName : leadFullName;
+            let rendered = String(text ?? '');
+
+            rendered = replacePlaceholderVariants(rendered, 'greeting', leadGreeting);
+            rendered = replacePlaceholderVariants(rendered, 'your full name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'your name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'agent first name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'agent name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'client first name', leadFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'client full name', preferFirstNameOnly ? leadFirstName : leadFullName);
+            rendered = replacePlaceholderVariants(rendered, 'client name', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'client', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'name', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'state', leadState);
+            if (agentPhone) {
+                rendered = replacePlaceholderVariants(rendered, 'your phone number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'office number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'office phone number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'phone number', agentPhone);
+            }
+
+            return rendered;
         }
 
         const api = {
@@ -1948,33 +1989,10 @@
                 return sendScriptTextMessage(message);
             },
             fillScriptPlaceholders(text) {
-                const leadGreeting = getLeadGreeting();
-                const agentFirstName = getFirstName();
-                const agentPhone = getAgentPhone();
-                const leadFirstName = getLeadFirstName();
-                const leadFullName = getLeadFullName();
-                const leadState = getLeadState();
-                let rendered = String(text ?? '');
-
-                rendered = replacePlaceholderVariants(rendered, 'greeting', leadGreeting);
-                rendered = replacePlaceholderVariants(rendered, 'your full name', agentFirstName);
-                rendered = replacePlaceholderVariants(rendered, 'your name', agentFirstName);
-                rendered = replacePlaceholderVariants(rendered, 'agent first name', agentFirstName);
-                rendered = replacePlaceholderVariants(rendered, 'agent name', agentFirstName);
-                rendered = replacePlaceholderVariants(rendered, 'client first name', leadFirstName);
-                rendered = replacePlaceholderVariants(rendered, 'client full name', leadFullName);
-                rendered = replacePlaceholderVariants(rendered, 'client name', leadFullName);
-                rendered = replacePlaceholderVariants(rendered, 'client', leadFullName);
-                rendered = replacePlaceholderVariants(rendered, 'name', leadFullName);
-                rendered = replacePlaceholderVariants(rendered, 'state', leadState);
-                if (agentPhone) {
-                    rendered = replacePlaceholderVariants(rendered, 'your phone number', agentPhone);
-                    rendered = replacePlaceholderVariants(rendered, 'office number', agentPhone);
-                    rendered = replacePlaceholderVariants(rendered, 'office phone number', agentPhone);
-                    rendered = replacePlaceholderVariants(rendered, 'phone number', agentPhone);
-                }
-
-                return rendered;
+                return fillLeadPlaceholders(text, { firstNameOnly: false });
+            },
+            fillTextMessagePlaceholders(text) {
+                return fillLeadPlaceholders(text, { firstNameOnly: true });
             },
             applyScriptTemplates(root) {
                 if (!root) return;
