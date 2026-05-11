@@ -4632,6 +4632,7 @@ $$(".outcome-btn").forEach(btn => {
       FollowUp: "FollowUp",
       NeedsDocs: "NeedsDocs",
       PolicyPlaced: "PolicyPlaced",
+      AIReception: "AIReception",
       Voicemail: "Voicemail",
       NotInterested: "NotInterested",
       Nurture: "Nurture",
