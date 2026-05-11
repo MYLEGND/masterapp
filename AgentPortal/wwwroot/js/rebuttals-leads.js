@@ -499,8 +499,12 @@
     const headerNextHost = shellRoot.querySelector('[data-lb-header-next]');
     const callBtn = bridge.querySelector('[data-lb-call]');
     const textBtn = bridge.querySelector('[data-lb-text]');
+    const actionHost = callBtn?.closest('.lb-actions') || null;
+    const dayDialsBtn = bridge.querySelector('[data-lb-dials-day]');
     const deleteBtn = bridge.querySelector('[data-lb-delete]');
     const outcomeButtons = Array.from(bridge.querySelectorAll('[data-outcome]'));
+    const firstOutcomeBtn = outcomeButtons[0] || null;
+    const originalMetaHost = metaWrap?.parentElement || null;
     const clearBtn = bridge.querySelector('[data-lb-clear]');
     const openCrmLink = bridge.querySelector('[data-lb-open-crm]');
     const stateFilter = bridge.querySelector('[data-lb-state-filter]');
@@ -560,11 +564,33 @@
     let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
 
-    if (headerMetaHost && metaWrap && metaWrap.parentElement !== headerMetaHost){
-      headerMetaHost.appendChild(metaWrap);
+    function restoreMobileLeadControls(){
+      if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
+        originalMetaHost.appendChild(metaWrap);
+      }
+
+      if (!actionHost) return;
+
+      if (callBtn && callBtn.parentElement !== actionHost){
+        actionHost.insertBefore(callBtn, actionHost.firstElementChild || null);
+      }
+
+      if (textBtn && textBtn.parentElement !== actionHost){
+        actionHost.insertBefore(textBtn, dayDialsBtn || firstOutcomeBtn || null);
+      }
+
+      if (nextBtn && nextBtn.parentElement !== actionHost){
+        actionHost.insertBefore(nextBtn, firstOutcomeBtn || null);
+      }
     }
 
-    if (headerNextHost){
+    function moveDesktopLeadControls(){
+      if (headerMetaHost && metaWrap && metaWrap.parentElement !== headerMetaHost){
+        headerMetaHost.appendChild(metaWrap);
+      }
+
+      if (!headerNextHost) return;
+
       if (callBtn && callBtn.parentElement !== headerNextHost){
         headerNextHost.appendChild(callBtn);
       }
@@ -575,6 +601,19 @@
         headerNextHost.appendChild(nextBtn);
       }
     }
+
+    function syncLeadBridgeHeaderPlacement(){
+      if (isMobileScreen()){
+        restoreMobileLeadControls();
+        return;
+      }
+
+      moveDesktopLeadControls();
+    }
+
+    syncLeadBridgeHeaderPlacement();
+    window.addEventListener('resize', syncLeadBridgeHeaderPlacement);
+    window.addEventListener('orientationchange', syncLeadBridgeHeaderPlacement);
 
     function todayIsoDate(){
       return new Date().toISOString().slice(0, 10);
