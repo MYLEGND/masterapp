@@ -1141,7 +1141,7 @@ const pipelineLabels = {
   FollowUp: "Follow Up",
   NeedsDocs: "Needs Docs",
   PolicyPlaced: "Policy Placed",
-  Voicemail: "Voicemail",
+  Voicemail: "Voicemail Left",
   NotInterested: "Not Interested",
   Nurture: "Nurture",
   NoAnswer: "No Answer",
@@ -1175,7 +1175,7 @@ const pipelineStages = [
   { key: "CallBack", label: "Call Back", tone: "info", className: "stage-callback", note: "Asked for a callback or needs a scheduled return touch." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
   { key: "NeedsDocs", label: "Needs Docs", tone: "info", className: "stage-applicationstarted", note: "Waiting on documents to proceed." },
-  { key: "Voicemail", label: "Voicemail", tone: "info", className: "stage-contacted", note: "Voicemail was left and needs callback tracking." },
+  { key: "Voicemail", label: "Voicemail Left", tone: "info", className: "stage-contacted", note: "Voicemail was left and needs callback tracking." },
   { key: "NotInterested", label: "Not Interested", tone: "bad", className: "stage-closedlost", note: "Lead not moving forward right now." },
   { key: "Nurture", label: "Nurture", tone: "warn", className: "stage-nurture", note: "Stay in touch over time." },
   { key: "NoAnswer", label: "No Answer", tone: "warn", className: "stage-nurture", note: "Could not reach lead yet." },
@@ -4583,7 +4583,7 @@ function renderCallTaskMode(){
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Contacted">Mark Contacted</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Booked">Booked Meeting</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:FollowUp">Follow Up</button>
-        <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Voicemail">Voicemail</button>
+        <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Voicemail">Voicemail Left</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:NotInterested">Not Interested</button>
       </div>
     </div>

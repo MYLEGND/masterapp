@@ -15,7 +15,7 @@
     FollowUp: "Follow Up",
     NeedsDocs: "Needs Docs",
     PolicyPlaced: "Policy Placed",
-    Voicemail: "Voicemail",
+    Voicemail: "Voicemail Left",
     NotInterested: "Not Interested",
     Nurture: "Nurture",
     NoAnswer: "No Answer",
@@ -1478,6 +1478,12 @@
       if (!lead) return;
       const digits = pendingAction.digits;
       const action = pendingAction.action;
+
+      if (action === 'call' && isDoNotCallLead(lead)){
+        resetPendingAction();
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
 
       resetPendingAction({ preserveStatus: true });
 
