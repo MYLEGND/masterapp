@@ -470,7 +470,16 @@
     try {
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed)
-        ? parsed.filter(item => item && typeof item.title === 'string' && typeof item.template === 'string')
+        ? parsed
+            .map(item => {
+              if (!item || typeof item !== 'object') return null;
+              const key = String(item.key || item.Key || '').trim();
+              const title = String(item.title || item.Title || '').trim();
+              const template = String(item.template || item.Template || '').trim();
+              if (!title || !template) return null;
+              return { key, title, template };
+            })
+            .filter(Boolean)
         : [];
     } catch {
       return [];
@@ -2236,7 +2245,7 @@
         setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
         return;
       }
-      const digits = (lead?.phone || '').replace(/\D/g,'');
+      const digits = String(lead?.phone || lead?.phone2 || '').replace(/\D/g,'');
       if (!digits){
         setStatusMessage('No phone on file', 'bad');
         return;
