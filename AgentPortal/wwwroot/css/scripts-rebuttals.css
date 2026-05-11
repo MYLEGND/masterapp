@@ -15808,3 +15808,393 @@ details.section{
         0 14px 24px rgba(5,10,22,.26),
         0 0 0 1px rgba(255,255,255,.04) !important;
 }
+
+/* ========================================================================
+   Final rail + helper brand lock
+   Darker inactive rails, gold selected state, and destination-matched helpers.
+   ======================================================================== */
+#rbShell #rbNav .cat-btn.good{
+    background: linear-gradient(180deg, rgba(28,81,60,.98) 0%, rgba(10,30,23,.99) 100%) !important;
+    border-color: rgba(104,213,156,.44) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.07),
+        0 12px 20px rgba(5,10,22,.24),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#rbShell #rbNav .cat-btn.warn{
+    background: linear-gradient(180deg, rgba(102,68,25,.98) 0%, rgba(39,24,9,.99) 100%) !important;
+    border-color: rgba(224,177,94,.44) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.07),
+        0 12px 20px rgba(5,10,22,.24),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#rbShell #rbNav .cat-btn.bad{
+    background: linear-gradient(180deg, rgba(101,39,39,.98) 0%, rgba(38,15,15,.99) 100%) !important;
+    border-color: rgba(219,133,133,.44) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.07),
+        0 12px 20px rgba(5,10,22,.24),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#rbShell #rbNav .cat-btn.info{
+    background: linear-gradient(180deg, rgba(45,61,115,.98) 0%, rgba(17,24,48,.99) 100%) !important;
+    border-color: rgba(141,169,234,.44) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.07),
+        0 12px 20px rgba(5,10,22,.24),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#rbShell #rbNav .cat-btn.good .cat-name,
+#rbShell #rbNav .cat-btn.good .cat-top-single,
+#rbShell #rbNav .cat-btn.warn .cat-name,
+#rbShell #rbNav .cat-btn.warn .cat-top-single,
+#rbShell #rbNav .cat-btn.bad .cat-name,
+#rbShell #rbNav .cat-btn.bad .cat-top-single,
+#rbShell #rbNav .cat-btn.info .cat-name,
+#rbShell #rbNav .cat-btn.info .cat-top-single{
+    color: #f5f7fb !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.18) !important;
+}
+
+#rbShell #rbNav .cat-btn.good .cat-note,
+#rbShell #rbNav .cat-btn.warn .cat-note,
+#rbShell #rbNav .cat-btn.bad .cat-note,
+#rbShell #rbNav .cat-btn.info .cat-note{
+    color: rgba(226,233,244,.78) !important;
+}
+
+#rbShell #rbNav .cat-btn.good .cat-rank,
+#rbShell #rbNav .cat-btn.good .cat-count,
+#rbShell #rbNav .cat-btn.warn .cat-rank,
+#rbShell #rbNav .cat-btn.warn .cat-count,
+#rbShell #rbNav .cat-btn.bad .cat-rank,
+#rbShell #rbNav .cat-btn.bad .cat-count,
+#rbShell #rbNav .cat-btn.info .cat-rank,
+#rbShell #rbNav .cat-btn.info .cat-count{
+    background: rgba(255,255,255,.08) !important;
+    border-color: rgba(255,255,255,.14) !important;
+    color: #f5f7fb !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+#rbShell #prosperNav .cat-btn[data-guide-id]{
+    background: linear-gradient(180deg, var(--guide-bg-top) 0%, var(--guide-bg-bottom) 100%) !important;
+    border-color: var(--guide-accent) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 12px 22px rgba(5,10,22,.26),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#rbShell #prosperNav .cat-btn[data-guide-id] .cat-top-single,
+#rbShell #prosperNav .cat-btn[data-guide-id] .cat-name{
+    color: #f5f7fb !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.18) !important;
+}
+
+#rbShell #prosperNav .cat-btn[data-guide-id]:hover,
+#rbShell #rbNav .cat-btn:hover{
+    filter: brightness(1.06) saturate(1.04) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 14px 24px rgba(5,10,22,.28),
+        0 0 0 1px rgba(255,255,255,.04) !important;
+}
+
+#rbShell #rbNav .cat-btn.active,
+#rbShell #rbNav .cat-btn.active.good,
+#rbShell #rbNav .cat-btn.active.warn,
+#rbShell #rbNav .cat-btn.active.bad,
+#rbShell #rbNav .cat-btn.active.info,
+#rbShell #prosperNav .cat-btn.active,
+#rbShell #prosperNav .cat-btn.active.good,
+#rbShell #prosperNav .cat-btn.active.warn,
+#rbShell #prosperNav .cat-btn.active.bad,
+#rbShell #prosperNav .cat-btn.active.info,
+#rbShell #prosperNav .cat-btn[data-guide-id].active{
+    background: linear-gradient(180deg, #f7e2a3 0%, #e7bf62 52%, #c8922b 100%) !important;
+    border-color: #142640 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.44),
+        0 0 0 1px rgba(20,38,64,.82),
+        0 0 0 4px rgba(227,187,99,.20),
+        0 16px 28px rgba(15,23,42,.18),
+        0 8px 18px rgba(166,128,35,.16) !important;
+}
+
+#rbShell #rbNav .cat-btn.active::after,
+#rbShell #prosperNav .cat-btn.active::after,
+#rbShell #prosperNav .cat-btn[data-guide-id].active::after{
+    background: linear-gradient(180deg, #203456 0%, #0f1a2b 100%) !important;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.10),
+        0 0 10px rgba(15,26,43,.18) !important;
+    opacity: 1 !important;
+}
+
+#rbShell #rbNav .cat-btn.active::before,
+#rbShell #prosperNav .cat-btn.active::before,
+#rbShell #prosperNav .cat-btn[data-guide-id].active::before{
+    opacity: .14 !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-name,
+#rbShell #rbNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn.active .cat-name,
+#rbShell #prosperNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-name,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-top-single{
+    color: #12233d !important;
+    text-shadow: none !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-note{
+    color: rgba(18,35,61,.76) !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-rank,
+#rbShell #rbNav .cat-btn.active .cat-count,
+#rbShell #prosperNav .cat-btn.active .cat-rank,
+#rbShell #prosperNav .cat-btn.active .cat-count,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-rank,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-count{
+    background: linear-gradient(180deg, rgba(20,38,64,.96) 0%, rgba(11,21,36,.98) 100%) !important;
+    border-color: rgba(20,38,64,.82) !important;
+    color: #f7e2a3 !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+
+#mpShell [data-jump="#sec-voicemail"],
+#rbShell .prosper-body [data-jump="#sec-voicemail"],
+.scripts-shell [data-jump="#sec-voicemail"]{
+    --route-accent: #3db57f;
+    --route-accent-lite: #b0e3c7;
+    --route-border: rgba(61,181,127,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(31,87,61,.98);
+    --route-bg-bottom: rgba(12,33,23,.99);
+}
+
+#mpShell [data-jump="#sec-texts"],
+#rbShell .prosper-body [data-jump="#sec-texts"],
+.scripts-shell [data-jump="#sec-texts"]{
+    --route-accent: #d2a148;
+    --route-accent-lite: #edd8aa;
+    --route-border: rgba(210,161,72,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(99,72,29,.98);
+    --route-bg-bottom: rgba(39,28,11,.99);
+}
+
+#mpShell [data-jump="#sec-aged"],
+#rbShell .prosper-body [data-jump="#sec-aged"],
+.scripts-shell [data-jump="#sec-aged"]{
+    --route-bg-top: rgba(31,82,80,.98);
+    --route-bg-bottom: rgba(12,31,30,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-verify"],
+#rbShell .prosper-body [data-jump="#sec-verify"],
+.scripts-shell [data-jump="#sec-verify"]{
+    --route-bg-top: rgba(36,66,115,.98);
+    --route-bg-bottom: rgba(13,24,44,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-replace"],
+#rbShell .prosper-body [data-jump="#sec-replace"],
+.scripts-shell [data-jump="#sec-replace"]{
+    --route-bg-top: rgba(31,88,48,.98);
+    --route-bg-bottom: rgba(12,33,18,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-book"],
+#rbShell .prosper-body [data-jump="#sec-book"],
+.scripts-shell [data-jump="#sec-book"]{
+    --route-accent: #8e72cb;
+    --route-accent-lite: #cdc0ea;
+    --route-border: rgba(142,114,203,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(60,45,100,.98);
+    --route-bg-bottom: rgba(23,17,39,.99);
+}
+
+#mpShell [data-jump="#sec-occ"],
+#rbShell .prosper-body [data-jump="#sec-occ"],
+.scripts-shell [data-jump="#sec-occ"]{
+    --route-bg-top: rgba(96,37,37,.98);
+    --route-bg-bottom: rgba(37,14,14,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-threeins"],
+#rbShell .prosper-body [data-jump="#sec-threeins"],
+.scripts-shell [data-jump="#sec-threeins"]{
+    --route-bg-top: rgba(30,76,94,.98);
+    --route-bg-bottom: rgba(11,29,37,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-equity"],
+#rbShell .prosper-body [data-jump="#sec-equity"],
+.scripts-shell [data-jump="#sec-equity"]{
+    --route-bg-top: rgba(25,83,69,.98);
+    --route-bg-bottom: rgba(10,31,26,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-living"],
+#rbShell .prosper-body [data-jump="#sec-living"],
+.scripts-shell [data-jump="#sec-living"]{
+    --route-accent: #c98845;
+    --route-accent-lite: #e8c7a2;
+    --route-border: rgba(201,136,69,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(101,61,29,.98);
+    --route-bg-bottom: rgba(39,23,11,.99);
+}
+
+#mpShell [data-jump="#sec-rop"],
+#rbShell .prosper-body [data-jump="#sec-rop"],
+.scripts-shell [data-jump="#sec-rop"]{
+    --route-accent: #a4b74b;
+    --route-accent-lite: #d9e2a5;
+    --route-border: rgba(164,183,75,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(74,85,28,.98);
+    --route-bg-bottom: rgba(29,33,11,.99);
+}
+
+#mpShell [data-jump="#sec-iul"],
+#rbShell .prosper-body [data-jump="#sec-iul"],
+.scripts-shell [data-jump="#sec-iul"]{
+    --route-accent: #bc74bb;
+    --route-accent-lite: #e0bee0;
+    --route-border: rgba(188,116,187,.42);
+    --route-ink: #f5f7fb;
+    --route-bg-top: rgba(81,41,81,.98);
+    --route-bg-bottom: rgba(31,16,31,.99);
+}
+
+#mpShell [data-jump="#sec-options-choose"],
+#rbShell .prosper-body [data-jump="#sec-options-choose"],
+.scripts-shell [data-jump="#sec-options-choose"]{
+    --route-bg-top: rgba(102,82,28,.98);
+    --route-bg-bottom: rgba(40,31,11,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-eapp"],
+#rbShell .prosper-body [data-jump="#sec-eapp"],
+.scripts-shell [data-jump="#sec-eapp"]{
+    --route-bg-top: rgba(24,86,67,.98);
+    --route-bg-bottom: rgba(9,32,25,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell [data-jump="#sec-closeout"],
+#rbShell .prosper-body [data-jump="#sec-closeout"],
+.scripts-shell [data-jump="#sec-closeout"]{
+    --route-bg-top: rgba(43,60,101,.98);
+    --route-bg-bottom: rgba(16,22,38,.99);
+    --route-ink: #f5f7fb;
+}
+
+#mpShell .body .btn[data-jump],
+#mpShell .body .btn-mini[data-jump],
+#rbShell .prosper-body .btn[data-jump],
+#rbShell .prosper-body .btn-mini[data-jump],
+.scripts-shell .body .btn[data-jump],
+.scripts-shell .body .btn-mini[data-jump]{
+    background: linear-gradient(180deg, var(--route-bg-top, rgba(31,82,80,.98)) 0%, var(--route-bg-bottom, rgba(12,31,30,.99)) 100%) !important;
+    border: 1px solid var(--route-accent, rgba(166,128,35,.50)) !important;
+    color: var(--route-ink, #f5f7fb) !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.18) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 18px rgba(5,10,22,.24),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#mpShell .body .btn[data-jump]:hover,
+#mpShell .body .btn-mini[data-jump]:hover,
+#rbShell .prosper-body .btn[data-jump]:hover,
+#rbShell .prosper-body .btn-mini[data-jump]:hover,
+.scripts-shell .body .btn[data-jump]:hover,
+.scripts-shell .body .btn-mini[data-jump]:hover{
+    filter: brightness(1.06) saturate(1.04) !important;
+    border-color: var(--route-accent, rgba(166,128,35,.60)) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 12px 22px rgba(5,10,22,.26),
+        0 0 0 1px rgba(255,255,255,.04) !important;
+}
+
+#mpShell details.section[id] .keyline,
+#rbShell .prosper-body[data-guide-id] .keyline,
+.scripts-shell details.section[id] .keyline{
+    background: linear-gradient(180deg, var(--guide-bg-top, rgba(31,82,80,.98)) 0%, var(--guide-bg-bottom, rgba(12,31,30,.99)) 100%) !important;
+    border-color: var(--guide-accent, rgba(166,128,35,.46)) !important;
+    border-left-color: var(--guide-accent, rgba(166,128,35,.86)) !important;
+    color: #f5f7fb !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 18px rgba(5,10,22,.20),
+        0 0 0 1px rgba(255,255,255,.03) !important;
+}
+
+#mpShell details.section[id] .keyline strong,
+#rbShell .prosper-body[data-guide-id] .keyline strong,
+.scripts-shell details.section[id] .keyline strong{
+    color: #ffffff !important;
+}
+
+#mpShell details.section[id] .script .note,
+#rbShell .prosper-body[data-guide-id] .script .note,
+.scripts-shell details.section[id] .script .note{
+    background: linear-gradient(180deg, var(--guide-bg-top, rgba(31,82,80,.98)) 0%, var(--guide-bg-bottom, rgba(12,31,30,.99)) 100%) !important;
+    border-color: var(--guide-accent, rgba(166,128,35,.46)) !important;
+    color: #f5f7fb !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 8px 15px rgba(5,10,22,.18) !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:first-of-type,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:first-of-type,
+.scripts-shell details.section#sec-verify .body > .keyline:first-of-type,
+#mpShell #prKnown .note,
+#rbShell .prosper-body #prKnown .note,
+.scripts-shell #prKnown .note{
+    background: linear-gradient(180deg, rgba(31,88,48,.98) 0%, rgba(12,33,18,.99) 100%) !important;
+    border-color: rgba(81,183,120,.46) !important;
+    border-left-color: #51b778 !important;
+    color: #f5f7fb !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 18px rgba(12,33,18,.22) !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:last-of-type,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:last-of-type,
+.scripts-shell details.section#sec-verify .body > .keyline:last-of-type,
+#mpShell #prUnknown .note,
+#rbShell .prosper-body #prUnknown .note,
+.scripts-shell #prUnknown .note{
+    background: linear-gradient(180deg, rgba(96,37,37,.98) 0%, rgba(37,14,14,.99) 100%) !important;
+    border-color: rgba(211,106,106,.46) !important;
+    border-left-color: #d36a6a !important;
+    color: #f5f7fb !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 18px rgba(37,14,14,.22) !important;
+}
