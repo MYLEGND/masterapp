@@ -464,6 +464,26 @@
     return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${bucket || 'policy'} - call or text me at ${agentPhone}.`;
   }
 
+  function parseTextScriptTemplates(node){
+    const raw = String(node?.textContent || '').trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter(item => item && typeof item.title === 'string' && typeof item.template === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function buildSmsLaunchHref(rawDigits, message){
+    const digits = String(rawDigits || '').replace(/\D/g, '');
+    const recipient = digits.length === 10 ? `+1${digits}` : digits;
+    if (!recipient) return '';
+    return `sms:${recipient}&body=${encodeURIComponent(String(message || '').trim())}`;
+  }
+
   // Only treat true phone-sized viewports as mobile (protect desktop/tablet).
   function isMobileScreen() {
     return Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 600;
@@ -522,6 +542,8 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
+    const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
+    const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
     const baseLabels = {
       call: (callBtn?.textContent || 'Call').trim() || 'Call',
       text: (textBtn?.textContent || 'Text').trim() || 'Text'
@@ -563,6 +585,7 @@
     let serverStateOptions = [];
     let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
+    let textMenuEl = null;
 
     function restoreMobileLeadControls(){
       if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
@@ -603,6 +626,7 @@
     }
 
     function syncLeadBridgeHeaderPlacement(){
+      closeTextMenu();
       if (isMobileScreen()){
         restoreMobileLeadControls();
         return;
@@ -1140,6 +1164,90 @@
       }
     }
 
+    function ensureTextMenu(){
+      if (textMenuEl) return textMenuEl;
+
+      textMenuEl = document.createElement('div');
+      textMenuEl.className = 'lb-text-menu';
+      textMenuEl.hidden = true;
+      textMenuEl.style.display = 'none';
+      textMenuEl.dataset.open = '0';
+      document.body.appendChild(textMenuEl);
+
+      textMenuEl.addEventListener('click', async (event) => {
+        const item = event.target.closest('[data-lb-text-template-index]');
+        if (!item) return;
+        event.preventDefault();
+
+        const templateIndex = Number.parseInt(item.getAttribute('data-lb-text-template-index') || '', 10);
+        const template = Number.isFinite(templateIndex) ? textScriptTemplates[templateIndex] : null;
+        closeTextMenu();
+        if (!template?.template) return;
+
+        if (typeof window.LegendAgentProfileApi?.sendTextMessage === 'function'){
+          await window.LegendAgentProfileApi.sendTextMessage(template.template);
+          return;
+        }
+
+        await sendCustomTextMessage(template.template);
+      });
+
+      return textMenuEl;
+    }
+
+    function closeTextMenu(){
+      if (!textMenuEl) return;
+      textMenuEl.hidden = true;
+      textMenuEl.style.display = 'none';
+      textMenuEl.dataset.open = '0';
+      textMenuEl.dataset.leadId = '';
+    }
+
+    function isTextMenuOpenForLead(leadId){
+      return !!textMenuEl && textMenuEl.dataset.open === '1' && textMenuEl.dataset.leadId === String(leadId || '');
+    }
+
+    function openTextMenu(anchorEl, lead){
+      if (!anchorEl || !lead) return;
+      if (!textScriptTemplates.length){
+        setStatusMessage('No text scripts available on this workstation view.', 'bad');
+        return;
+      }
+
+      const menu = ensureTextMenu();
+      menu.innerHTML = '';
+
+      textScriptTemplates.forEach((template, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'lb-text-menu-item';
+        button.setAttribute('data-lb-text-template-index', String(index));
+        button.textContent = template.title;
+        menu.appendChild(button);
+      });
+
+      const rect = anchorEl.getBoundingClientRect();
+      const preferredWidth = Math.max(rect.width, 220);
+      menu.style.minWidth = `${preferredWidth}px`;
+      menu.style.visibility = 'hidden';
+      menu.hidden = false;
+      menu.style.display = 'flex';
+
+      const menuWidth = menu.offsetWidth || preferredWidth;
+      const menuHeight = menu.offsetHeight || 0;
+      const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.left));
+      const preferredTop = rect.bottom + 8;
+      const top = preferredTop + menuHeight > window.innerHeight - 12
+        ? Math.max(12, rect.top - menuHeight - 8)
+        : preferredTop;
+
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+      menu.style.visibility = 'visible';
+      menu.dataset.open = '1';
+      menu.dataset.leadId = String(lead.leadId || '');
+    }
+
     function findLeadById(leadId){
       if (!leadId) return null;
       return leads.find(x => x.leadId === leadId)
@@ -1458,7 +1566,12 @@
       } catch {}
 
       setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
-      window.location.href = `sms:${digits}?&body=${encodeURIComponent(msg)}`;
+      const smsHref = buildSmsLaunchHref(digits, msg);
+      if (!smsHref){
+        setStatusMessage('No phone on file', 'bad');
+        return false;
+      }
+      window.location.href = smsHref;
       return true;
     }
 
@@ -1469,7 +1582,19 @@
         return false;
       }
 
-      return launchTextMessageForLead(lead, rawMessage);
+      if (isTextBlockedForLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return false;
+      }
+
+      let resolvedMessage = String(rawMessage || '');
+      if (typeof window.LegendAgentProfileApi?.fillTextMessagePlaceholders === 'function'){
+        resolvedMessage = window.LegendAgentProfileApi.fillTextMessagePlaceholders(resolvedMessage);
+      } else if (typeof window.LegendAgentProfileApi?.fillScriptPlaceholders === 'function'){
+        resolvedMessage = window.LegendAgentProfileApi.fillScriptPlaceholders(resolvedMessage);
+      }
+
+      return launchTextMessageForLead(lead, resolvedMessage);
     }
 
     async function authorizePendingAction(){
@@ -2116,11 +2241,15 @@
         setStatusMessage('No phone on file', 'bad');
         return;
       }
-      if (pendingAction && pendingAction.action === 'text' && pendingAction.leadId === lead.leadId){
-        authorizePendingAction();
+
+      resetPendingAction({ preserveStatus: true });
+
+      if (isTextMenuOpenForLead(lead.leadId)){
+        closeTextMenu();
         return;
       }
-      armPendingAction('text', lead, digits);
+
+      openTextMenu(textBtn, lead);
     });
 
     deleteBtn?.addEventListener('click', (event) => {
@@ -2211,10 +2340,13 @@
     }));
 
     document.addEventListener('click', (event) => {
-      if (!pendingAction) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (callBtn?.contains(target) || textBtn?.contains(target) || statusEl?.contains(target)) return;
+      if (textMenuEl && !textMenuEl.contains(target) && !textBtn?.contains(target)){
+        closeTextMenu();
+      }
+      if (!pendingAction) return;
+      if (callBtn?.contains(target) || textBtn?.contains(target) || statusEl?.contains(target) || textMenuEl?.contains(target)) return;
       resetPendingAction();
     }, true);
 
@@ -2224,6 +2356,7 @@
         closeNoteModal();
         return;
       }
+      closeTextMenu();
       if (!pendingAction) return;
       resetPendingAction();
     });
