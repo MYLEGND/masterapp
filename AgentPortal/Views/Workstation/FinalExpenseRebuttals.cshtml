@@ -946,7 +946,8 @@
 
             const html = await response.text();
             const doc = new DOMParser().parseFromString(html, "text/html");
-            const nodes = Array.from(doc.querySelectorAll("#mpCard details.section"));
+            const nodes = Array.from(doc.querySelectorAll("#mpCard details.section"))
+                .filter(node => node.id !== "sec-hub");
 
             prosperSections = nodes.map((node, index) => {
                 const step = (node.getAttribute("data-step") || String(index + 1)).trim();
@@ -954,7 +955,9 @@
                 const flow = (node.getAttribute("data-flow") || "").trim();
                 const title = (node.querySelector(".title")?.textContent || `Step ${step}`).trim();
                 const sub = (node.querySelector(".sub")?.textContent || "").trim();
-                const bodyHtml = node.querySelector(".body")?.innerHTML || "";
+                const bodyClone = node.querySelector(".body")?.cloneNode(true);
+                bodyClone?.querySelectorAll('[data-jump="#sec-hub"]').forEach(button => button.remove());
+                const bodyHtml = bodyClone?.innerHTML || "";
 
                 return {
                     id: node.id || `prosper-step-${index + 1}`,

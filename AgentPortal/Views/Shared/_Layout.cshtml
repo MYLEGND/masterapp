@@ -1114,19 +1114,6 @@
                                         Finance
                                     </a>
                                 </li>
-                                @if (isFounder)
-                                {
-                                    <li class="nav-item">
-                                        <a class="nav-link @Active("AgencyCommand")"
-                                           asp-controller="AgencyCommand"
-                                           asp-action="Index"
-                                           target="_blank"
-                                           rel="noopener"
-                                           data-refresh-current-link="1">
-                                            Agency Command
-                                        </a>
-                                    </li>
-                                }
                             }
 
                             @* EXPLORE REMOVED FROM TOP NAV — MOVED TO LEFT VERTICAL DRAWER *@
@@ -1376,6 +1363,14 @@
                 <span>Website Analytics</span>
                 <small>Ops</small>
             </a>
+
+            @if (isFounder)
+            {
+                <a class="explore-item" data-tone="ops" asp-controller="AgencyCommand" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
+                    <span>Agency Command</span>
+                    <small>Ops</small>
+                </a>
+            }
 
             @if (OnboardingGuard.IsOwner(User))
             {
