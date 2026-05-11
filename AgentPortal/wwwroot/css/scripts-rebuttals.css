@@ -16363,3 +16363,274 @@ details.section{
 #rbShell #prosperNav .cat-btn[data-guide-id]{
     border-radius: 16px !important;
 }
+
+/* ========================================================================
+   Final helper cleanup
+   Clean up STOP / ROUTE / GOAL / keyline helpers so they match the rest
+   of the workstation instead of looking like leftover utility blocks.
+   ======================================================================== */
+#mpShell .callout,
+#rbShell .prosper-body .callout,
+.scripts-shell .callout{
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 12px 14px 12px 18px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(15,23,42,.10) !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(248,250,252,.98) 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        0 10px 20px rgba(15,23,42,.06) !important;
+    overflow: hidden !important;
+}
+
+#mpShell .callout::before,
+#rbShell .prosper-body .callout::before,
+.scripts-shell .callout::before{
+    content: "" !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 5px !important;
+    background: #7c8aa3 !important;
+}
+
+#mpShell .callout > div:first-child,
+#rbShell .prosper-body .callout > div:first-child,
+.scripts-shell .callout > div:first-child{
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+}
+
+#mpShell .callout.good,
+#rbShell .prosper-body .callout.good,
+.scripts-shell .callout.good{
+    background: linear-gradient(180deg, rgba(239,250,244,.98) 0%, rgba(231,246,237,.98) 100%) !important;
+    border-color: rgba(47,138,99,.18) !important;
+}
+
+#mpShell .callout.good::before,
+#rbShell .prosper-body .callout.good::before,
+.scripts-shell .callout.good::before{
+    background: #2f8a63 !important;
+}
+
+#mpShell .callout.warn,
+#rbShell .prosper-body .callout.warn,
+.scripts-shell .callout.warn{
+    background: linear-gradient(180deg, rgba(255,249,233,.99) 0%, rgba(252,243,220,.99) 100%) !important;
+    border-color: rgba(176,114,24,.22) !important;
+}
+
+#mpShell .callout.warn::before,
+#rbShell .prosper-body .callout.warn::before,
+.scripts-shell .callout.warn::before{
+    background: #b07218 !important;
+}
+
+#mpShell .callout.bad,
+#rbShell .prosper-body .callout.bad,
+.scripts-shell .callout.bad{
+    background: linear-gradient(180deg, rgba(255,245,245,.99) 0%, rgba(252,236,236,.99) 100%) !important;
+    border-color: rgba(177,63,63,.22) !important;
+}
+
+#mpShell .callout.bad::before,
+#rbShell .prosper-body .callout.bad::before,
+.scripts-shell .callout.bad::before{
+    background: #b13f3f !important;
+}
+
+#mpShell .callout.info,
+#rbShell .prosper-body .callout.info,
+.scripts-shell .callout.info{
+    background: linear-gradient(180deg, rgba(241,247,255,.99) 0%, rgba(232,241,252,.99) 100%) !important;
+    border-color: rgba(46,97,173,.18) !important;
+}
+
+#mpShell .callout.info::before,
+#rbShell .prosper-body .callout.info::before,
+.scripts-shell .callout.info::before{
+    background: #2e61ad !important;
+}
+
+#mpShell .callout .cue,
+#rbShell .prosper-body .callout .cue,
+.scripts-shell .callout .cue{
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 24px !important;
+    padding: 3px 10px !important;
+    margin: 0 0 7px 0 !important;
+    border: 0 !important;
+    border-radius: 999px !important;
+    font-size: .66rem !important;
+    font-weight: 900 !important;
+    line-height: 1 !important;
+    letter-spacing: .14em !important;
+    text-transform: uppercase !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.18),
+        0 5px 10px rgba(15,23,42,.10) !important;
+}
+
+#mpShell .callout.good .cue,
+#rbShell .prosper-body .callout.good .cue,
+.scripts-shell .callout.good .cue{
+    background: linear-gradient(180deg, #2f8a63 0%, #205f45 100%) !important;
+    color: #f8fffb !important;
+}
+
+#mpShell .callout.warn .cue,
+#rbShell .prosper-body .callout.warn .cue,
+.scripts-shell .callout.warn .cue{
+    background: linear-gradient(180deg, #b07218 0%, #7a4b0c 100%) !important;
+    color: #fffaf1 !important;
+}
+
+#mpShell .callout.bad .cue,
+#rbShell .prosper-body .callout.bad .cue,
+.scripts-shell .callout.bad .cue{
+    background: linear-gradient(180deg, #b13f3f 0%, #7a2525 100%) !important;
+    color: #fff8f8 !important;
+}
+
+#mpShell .callout.info .cue,
+#rbShell .prosper-body .callout.info .cue,
+.scripts-shell .callout.info .cue{
+    background: linear-gradient(180deg, #2e61ad 0%, #1f4478 100%) !important;
+    color: #f8fbff !important;
+}
+
+#mpShell .callout .hint,
+#rbShell .prosper-body .callout .hint,
+.scripts-shell .callout .hint{
+    margin-top: 8px !important;
+    padding-top: 8px !important;
+    border-top: 1px solid rgba(15,23,42,.08) !important;
+    color: #475569 !important;
+    font-size: .82rem !important;
+    line-height: 1.35 !important;
+    font-weight: 800 !important;
+}
+
+#mpShell .callout .btn-mini,
+#rbShell .prosper-body .callout .btn-mini,
+.scripts-shell .callout .btn-mini{
+    flex: 0 0 auto !important;
+    align-self: center !important;
+    min-height: 34px !important;
+    padding: 7px 12px !important;
+    border-radius: 12px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.16),
+        0 8px 16px rgba(15,23,42,.12) !important;
+}
+
+#mpShell .keyline,
+#rbShell .prosper-body .keyline,
+.scripts-shell .keyline{
+    display: block !important;
+    padding: 10px 14px 10px 16px !important;
+    border: 1px solid rgba(197,153,45,.28) !important;
+    border-left: 5px solid rgba(197,153,45,.82) !important;
+    border-radius: 16px !important;
+    background: linear-gradient(180deg, rgba(255,252,244,.99) 0%, rgba(246,237,214,.98) 100%) !important;
+    color: #162235 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.94),
+        0 8px 16px rgba(15,23,42,.06) !important;
+}
+
+#mpShell .keyline strong,
+#rbShell .prosper-body .keyline strong,
+.scripts-shell .keyline strong{
+    color: #8c6012 !important;
+    letter-spacing: .12em !important;
+    font-size: .72rem !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:first-of-type,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:first-of-type,
+.scripts-shell details.section#sec-verify .body > .keyline:first-of-type{
+    background: linear-gradient(180deg, rgba(239,250,244,.99) 0%, rgba(231,246,237,.99) 100%) !important;
+    border-color: rgba(47,138,99,.20) !important;
+    border-left-color: #2f8a63 !important;
+    color: #163424 !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:first-of-type strong,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:first-of-type strong,
+.scripts-shell details.section#sec-verify .body > .keyline:first-of-type strong{
+    color: #1d5f43 !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:last-of-type,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:last-of-type,
+.scripts-shell details.section#sec-verify .body > .keyline:last-of-type{
+    background: linear-gradient(180deg, rgba(255,245,245,.99) 0%, rgba(252,236,236,.99) 100%) !important;
+    border-color: rgba(177,63,63,.20) !important;
+    border-left-color: #b13f3f !important;
+    color: #3c1a1a !important;
+}
+
+#mpShell details.section#sec-verify .body > .keyline:last-of-type strong,
+#rbShell .prosper-body[data-guide-id="sec-verify"] > .keyline:last-of-type strong,
+.scripts-shell details.section#sec-verify .body > .keyline:last-of-type strong{
+    color: #8a2d2d !important;
+}
+
+#mpShell .script .note,
+#rbShell .prosper-body .script .note,
+.scripts-shell .script .note{
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 5px 10px !important;
+    margin: 0 0 9px 0 !important;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, rgba(255,247,232,.99) 0%, rgba(255,236,209,.99) 100%) !important;
+    border: 1px solid rgba(191,111,35,.18) !important;
+    color: #8a4e0d !important;
+    font-size: .76rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        0 6px 12px rgba(15,23,42,.05) !important;
+}
+
+#mpShell #prKnown .note,
+#rbShell .prosper-body #prKnown .note,
+.scripts-shell #prKnown .note{
+    background: linear-gradient(180deg, rgba(239,250,244,.99) 0%, rgba(231,246,237,.99) 100%) !important;
+    border-color: rgba(47,138,99,.18) !important;
+    color: #1d5f43 !important;
+}
+
+#mpShell #prUnknown .note,
+#rbShell .prosper-body #prUnknown .note,
+.scripts-shell #prUnknown .note{
+    background: linear-gradient(180deg, rgba(255,245,245,.99) 0%, rgba(252,236,236,.99) 100%) !important;
+    border-color: rgba(177,63,63,.18) !important;
+    color: #8a2d2d !important;
+}
+
+@media (max-width: 820px){
+    #mpShell .callout,
+    #rbShell .prosper-body .callout,
+    .scripts-shell .callout{
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+
+    #mpShell .callout .btn-mini,
+    #rbShell .prosper-body .callout .btn-mini,
+    .scripts-shell .callout .btn-mini{
+        align-self: flex-start !important;
+    }
+}
