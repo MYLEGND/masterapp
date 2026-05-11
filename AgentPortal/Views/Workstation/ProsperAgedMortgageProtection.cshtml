@@ -421,7 +421,7 @@ I’ll present those various options to you. After we decide what option is the 
 
                         <div style="height:12px"></div>
 
-                        <details class="section" data-step="7A" data-flow="verify" data-signal="warn" id="sec-threeins">
+                        <details class="section quick-branch" data-step="7A" data-flow="verify" data-signal="warn" id="sec-threeins">
                             <summary>
                                 <div class="sum-left">
                                     <div class="chev">›</div>
@@ -432,7 +432,7 @@ I’ll present those various options to you. After we decide what option is the 
                                 </div>
                                 <div class="sum-actions">
                                     <button class="btn-mini bad" type="button" data-back>Back</button>
-                                    <button class="btn-mini gold" type="button" data-jump="#sec-options-choose">Go Options</button>
+                                    <button class="btn-mini branch-continue" type="button" data-branch-close>Continue → Start FI</button>
                                 </div>
                             </summary>
                             <div class="body">
@@ -451,6 +451,10 @@ So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when famil
 3. Final expense coverage — this is the most common type people your age ask about because it’s specifically designed to help the family handle funeral costs, unpaid bills, and final expenses so your loved ones aren’t scrambling when something happens. Make sense?</span>
 
 <span class="silent">BOOM — GO INTO THE FINANCIAL INVENTORY AND START FILLING IT OUT</span></div>
+
+                                <div class="quick-branch-actions">
+                                    <button class="btn branch-continue" type="button" data-branch-close>Continue → Start FI</button>
+                                </div>
                             </div>
                         </details>
                     </div>
@@ -1037,6 +1041,19 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             const prev = navStack.pop();
             if(prev) goTo(prev, false);
             else toast('No previous step.');
+        });
+    });
+
+    document.querySelectorAll('[data-branch-close]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            const branch = btn.closest('details.section');
+            if(!branch) return;
+            branch.open = false;
+            updateProgress();
+            updateCurrentState();
+            toast('Continue the financial inventory.');
         });
     });
 

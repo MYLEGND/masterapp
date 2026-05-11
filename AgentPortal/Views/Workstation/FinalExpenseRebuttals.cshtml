@@ -1009,6 +1009,28 @@
     }
 
     rbContent.addEventListener("click", function(event){
+        const branchCloseBtn = event.target.closest("[data-branch-close]");
+        if(branchCloseBtn){
+            const nestedSection = branchCloseBtn.closest("details.section");
+            if(nestedSection){
+                event.preventDefault();
+                event.stopPropagation();
+                nestedSection.open = false;
+            }
+            return;
+        }
+
+        const backBtn = event.target.closest("[data-back]");
+        if(backBtn){
+            const nestedSection = backBtn.closest("details.section");
+            if(nestedSection){
+                event.preventDefault();
+                event.stopPropagation();
+                nestedSection.open = false;
+            }
+            return;
+        }
+
         const routeBtn = event.target.closest("[data-route]");
         if(routeBtn){
             const targetId = routeBtn.getAttribute("data-route") || "";
