@@ -83,8 +83,11 @@
                             <div class="content-head-leadmeta" data-lb-header-meta></div>
                         </div>
                         <div class="content-head-controls">
-                            <div class="content-head-next" data-lb-header-next></div>
-                            <div class="count-pill" id="contentCount">0 scripts</div>
+                            <div class="content-head-primary">
+                                <div class="content-head-next" data-lb-header-next></div>
+                                <div class="count-pill" id="contentCount">0 scripts</div>
+                            </div>
+                            <div class="content-head-shortcuts" data-guide-shortcuts></div>
                         </div>
                     </div>
                     <div class="content-body" id="rbContent">
@@ -577,8 +580,10 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     const shellEl = document.querySelector("#rbShell .shell");
     const rbNavArrow = document.getElementById("rbNavArrow");
     const prosperNavArrow = document.getElementById("prosperNavArrow");
+    const guideShortcutHost = document.querySelector("[data-guide-shortcuts]");
     const prosperUrl = '@Url.Action("ProsperAgedMortgageProtection", "Workstation")';
     const defaultProsperId = "sec-aged";
+    const guideShortcutIds = new Set(["sec-voicemail", "sec-texts"]);
     const guideNavSequence = new Map([
         ["sec-aged", { number: 1, label: "START HERE" }],
         ["sec-verify", { number: 2 }],
@@ -619,6 +624,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     let prosperSections = [];
     let prosperLoaded = false;
     let prosperLoadFailed = false;
+    let lastGuideShortcutRailMode = false;
 
     function escapeHtml(v){
         return String(v || "")
@@ -666,6 +672,14 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     function getGuideNavOrderValue(section){
         if(!section) return 999;
         return guideNavOrder.get(section.id || "") ?? 90;
+    }
+
+    function shouldKeepGuideShortcutsInRail(){
+        return window.matchMedia("(max-width: 900px)").matches;
+    }
+
+    function shouldHideGuideShortcutFromRail(section){
+        return !shouldKeepGuideShortcutsInRail() && guideShortcutIds.has(section?.id || "");
     }
 
     function getFilteredCategories(){
@@ -893,7 +907,8 @@ So when you guys closed with <lender>, they had assigned us your case file in re
 
         const filteredProsper = getFilteredProsperSections()
             .slice()
-            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b));
+            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b))
+            .filter(section => !shouldHideGuideShortcutFromRail(section));
         prosperCount.textContent = String(filteredProsper.length);
 
         if(!filteredProsper.length){
@@ -917,6 +932,35 @@ So when you guys closed with <lender>, they had assigned us your case file in re
                 rerenderAll();
             });
             prosperNav.appendChild(btn);
+        });
+    }
+
+    function renderGuideShortcutButtons(){
+        if(!guideShortcutHost){
+            return;
+        }
+
+        if(shouldKeepGuideShortcutsInRail() || !prosperLoaded || prosperLoadFailed){
+            guideShortcutHost.innerHTML = "";
+            return;
+        }
+
+        const shortcutSections = getFilteredProsperSections()
+            .filter(section => guideShortcutIds.has(section.id || ""))
+            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b));
+
+        guideShortcutHost.innerHTML = shortcutSections.map(section => `
+            <button type="button" class="btn lb-btn ghost guide-shortcut-btn${activePane === "prosper" && activeProsperId === section.id ? " active" : ""}" data-guide-shortcut="${escapeHtml(section.id)}">
+                ${escapeHtml(section.title)}
+            </button>
+        `).join("");
+
+        guideShortcutHost.querySelectorAll("[data-guide-shortcut]").forEach(btn => {
+            btn.addEventListener("click", function(){
+                activePane = "prosper";
+                activeProsperId = btn.getAttribute("data-guide-shortcut") || activeProsperId;
+                rerenderAll();
+            });
         });
     }
 
@@ -1072,9 +1116,11 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     }
 
     function rerenderAll(){
+        lastGuideShortcutRailMode = shouldKeepGuideShortcutsInRail();
         ensureActiveSelection();
         renderNav();
         renderProsperNav();
+        renderGuideShortcutButtons();
         renderContent();
         updateRailArrows();
     }
@@ -1136,7 +1182,14 @@ So when you guys closed with <lender>, they had assigned us your case file in re
 
     // Toolbar removed; keep search/tone empty and still allow arrows to update.
     prosperNav.addEventListener("scroll", updateRailArrows);
-    window.addEventListener("resize", updateRailArrows);
+    window.addEventListener("resize", function(){
+        const nextMode = shouldKeepGuideShortcutsInRail();
+        if(nextMode !== lastGuideShortcutRailMode){
+            rerenderAll();
+            return;
+        }
+        updateRailArrows();
+    });
 
     // No clear button anymore.
 
