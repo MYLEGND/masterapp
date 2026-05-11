@@ -13977,7 +13977,7 @@ details.section{
    Shared rebuttals unified command center
    ======================================================================== */
 #rbShell .rb-wrap{
-    max-width: min(2060px, calc(100vw - 8px));
+    max-width: min(2120px, calc(100vw - 8px));
     padding: 12px 6px 56px 6px;
 }
 
@@ -14054,7 +14054,7 @@ details.section{
 
 #rbShell .rebuttal-workspace-grid{
     display: grid;
-    grid-template-columns: 260px minmax(0, 1fr) 260px;
+    grid-template-columns: 290px minmax(0, 1fr) 290px;
     gap: 10px;
     align-items: start;
     position: relative;
@@ -14211,7 +14211,7 @@ details.section{
     }
 
     #rbShell .rebuttal-workspace-grid{
-        grid-template-columns: 260px minmax(0, 1fr);
+        grid-template-columns: 290px minmax(0, 1fr);
     }
 
     #rbShell .rebuttal-workspace-grid .prosper-nav-card{
