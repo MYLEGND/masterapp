@@ -16198,3 +16198,55 @@ details.section{
         inset 0 1px 0 rgba(255,255,255,.08),
         0 10px 18px rgba(37,14,14,.22) !important;
 }
+
+/* ========================================================================
+   Final rail alignment lock
+   Keep both rails visually even with fixed button geometry.
+   ======================================================================== */
+#rbShell #rbNav .cat-btn,
+#rbShell #prosperNav .cat-btn{
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-self: stretch !important;
+}
+
+#rbShell #rbNav .cat-btn{
+    min-height: 84px !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+#rbShell #prosperNav .cat-btn{
+    min-height: 74px !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+}
+
+#rbShell #rbNav .cat-top{
+    min-height: 38px !important;
+    display: flex !important;
+    align-items: flex-start !important;
+}
+
+#rbShell #rbNav .cat-top > div:first-child{
+    min-height: 38px !important;
+    align-items: flex-start !important;
+}
+
+#rbShell #rbNav .cat-note{
+    min-height: 1.16em !important;
+}
+
+#rbShell #prosperNav .cat-top-single{
+    display: flex !important;
+    align-items: center !important;
+    min-height: 1.2em !important;
+    width: 100% !important;
+}
