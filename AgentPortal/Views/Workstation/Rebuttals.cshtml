@@ -919,7 +919,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
             rbContent.innerHTML = `<div class="content-empty">Loading Prosper mortgage protection steps…</div>`;
             rbCount.textContent = "0";
             contentCount.textContent = "0 steps";
-            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            contentSub.textContent = "Mortgage Protection Guide";
             return;
         }
 
@@ -927,7 +927,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
             rbContent.innerHTML = `<div class="content-empty">Prosper mortgage protection steps could not be loaded.</div>`;
             rbCount.textContent = "0";
             contentCount.textContent = "0 steps";
-            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            contentSub.textContent = "Mortgage Protection Guide";
             return;
         }
 
@@ -938,13 +938,13 @@ So when you guys closed with <lender>, they had assigned us your case file in re
             rbContent.innerHTML = `<div class="content-empty">Pick a Prosper step on the right to load it here.</div>`;
             rbCount.textContent = "0";
             contentCount.textContent = "0 steps";
-            contentSub.textContent = "Prosper Aged Mortgage Protection";
+            contentSub.textContent = "Mortgage Protection Guide";
             return;
         }
 
         rbCount.textContent = "1";
         contentCount.textContent = `Step ${activeSection.step}`;
-        contentSub.textContent = "Prosper Aged Mortgage Protection";
+        contentSub.textContent = "Mortgage Protection Guide";
         const searchVal = (rbSearch.value || "").trim();
         const flowGuideHtml = renderProsperFlowGuide(activeSection);
 

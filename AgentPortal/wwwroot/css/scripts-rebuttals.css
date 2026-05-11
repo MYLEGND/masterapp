@@ -13976,11 +13976,16 @@ details.section{
 /* ========================================================================
    Shared rebuttals unified command center
    ======================================================================== */
+#rbShell .rb-wrap{
+    max-width: min(2060px, calc(100vw - 8px));
+    padding: 12px 6px 56px 6px;
+}
+
 #rbShell .rebuttal-command-center{
     width: 100%;
-    max-width: 100%;
+    max-width: none;
     margin: 0 auto;
-    padding: 10px;
+    padding: 10px 8px;
     border-radius: 24px;
     border: 1px solid rgba(212,175,55,.55);
     background: linear-gradient(180deg, rgba(5,14,22,.98), rgba(2,12,7,.98));
@@ -14049,7 +14054,7 @@ details.section{
 
 #rbShell .rebuttal-workspace-grid{
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 280px;
+    grid-template-columns: 260px minmax(0, 1fr) 260px;
     gap: 10px;
     align-items: start;
     position: relative;
@@ -14157,7 +14162,7 @@ details.section{
 }
 
 #rbShell .rebuttal-workspace-grid .content-body{
-    padding: 16px;
+    padding: 14px;
     gap: 12px;
 }
 
@@ -14182,17 +14187,17 @@ details.section{
 }
 
 #rbShell .rebuttal-workspace-grid .section-head{
-    padding: 16px 18px 14px 22px;
+    padding: 14px 16px 12px 20px;
 }
 
 #rbShell .rebuttal-workspace-grid .objection-head,
 #rbShell .rebuttal-workspace-grid .prosper-stage-head{
-    padding: 14px 16px 10px 18px;
+    padding: 13px 15px 9px 17px;
 }
 
 #rbShell .rebuttal-workspace-grid .objection-body,
 #rbShell .rebuttal-workspace-grid .prosper-body{
-    padding: 14px 16px 16px 18px;
+    padding: 13px 15px 14px 17px;
 }
 
 #rbShell .rebuttal-workspace-grid pre.script,
@@ -14206,7 +14211,7 @@ details.section{
     }
 
     #rbShell .rebuttal-workspace-grid{
-        grid-template-columns: 280px minmax(0, 1fr);
+        grid-template-columns: 260px minmax(0, 1fr);
     }
 
     #rbShell .rebuttal-workspace-grid .prosper-nav-card{
