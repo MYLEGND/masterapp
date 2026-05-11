@@ -15575,10 +15575,19 @@ details.section{
 #mpShell details.section.quick-branch > summary,
 #rbShell .prosper-body details.section.quick-branch > summary,
 .scripts-shell details.section.quick-branch > summary{
+    list-style: none !important;
+    cursor: pointer !important;
+    display: block !important;
     padding: 12px 14px !important;
-    gap: 12px !important;
+    min-height: 0 !important;
     background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, var(--guide-accent-lite, #dceef5) 100%) !important;
     border-bottom: 1px solid var(--guide-border, rgba(83,168,197,.30)) !important;
+}
+
+#mpShell details.section.quick-branch > summary::-webkit-details-marker,
+#rbShell .prosper-body details.section.quick-branch > summary::-webkit-details-marker,
+.scripts-shell details.section.quick-branch > summary::-webkit-details-marker{
+    display: none !important;
 }
 
 #mpShell details.section.quick-branch > summary::before,
@@ -15592,6 +15601,18 @@ details.section{
 #rbShell .prosper-body details.section.quick-branch .sum-left,
 .scripts-shell details.section.quick-branch .sum-left{
     gap: 10px !important;
+    display: grid !important;
+    grid-template-columns: 28px minmax(0, 1fr);
+    align-items: center !important;
+    min-width: 0 !important;
+}
+
+#mpShell details.section.quick-branch .sum-left > div:last-child,
+#rbShell .prosper-body details.section.quick-branch .sum-left > div:last-child,
+.scripts-shell details.section.quick-branch .sum-left > div:last-child{
+    display: flex !important;
+    flex-direction: column !important;
+    min-width: 0 !important;
 }
 
 #mpShell details.section.quick-branch .chev,
@@ -15618,23 +15639,10 @@ details.section{
 #rbShell .prosper-body details.section.quick-branch .sub,
 .scripts-shell details.section.quick-branch .sub{
     display: block;
-    margin: 3px 0 0 0 !important;
+    margin: 2px 0 0 0 !important;
     font-size: .74rem !important;
     line-height: 1.2 !important;
     color: rgba(20,62,85,.76) !important;
-}
-
-#mpShell details.section.quick-branch .sum-actions,
-#rbShell .prosper-body details.section.quick-branch .sum-actions,
-.scripts-shell details.section.quick-branch .sum-actions{
-    gap: 8px !important;
-}
-
-#mpShell details.section.quick-branch .sum-actions .btn-mini,
-#rbShell .prosper-body details.section.quick-branch .sum-actions .btn-mini,
-.scripts-shell details.section.quick-branch .sum-actions .btn-mini{
-    padding: 7px 10px !important;
-    border-radius: 10px !important;
 }
 
 #mpShell details.section.quick-branch .branch-continue,
@@ -15691,7 +15699,10 @@ details.section{
 #rbShell .prosper-body .quick-branch-actions,
 .scripts-shell .quick-branch-actions{
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
     margin-top: 10px;
 }
 
@@ -15699,6 +15710,13 @@ details.section{
 #rbShell .prosper-body .quick-branch-actions .btn,
 .scripts-shell .quick-branch-actions .btn{
     min-width: 180px;
+}
+
+#mpShell .quick-branch-actions .btn-mini,
+#rbShell .prosper-body .quick-branch-actions .btn-mini,
+.scripts-shell .quick-branch-actions .btn-mini{
+    padding: 7px 11px !important;
+    border-radius: 10px !important;
 }
 
 /* ========================================================================
