@@ -777,6 +777,7 @@
             const btn = document.createElement("button");
             btn.type = "button";
             btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}${section.isNested ? " is-nested" : ""}`;
+            btn.setAttribute("data-guide-id", section.id);
             btn.innerHTML = `
                 <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
             `;
@@ -865,7 +866,7 @@
         const flowGuideHtml = renderProsperFlowGuide(activeSection);
 
         rbContent.innerHTML = `
-            <div class="prosper-stage ${activeSection.signal}">
+            <div class="prosper-stage ${activeSection.signal}" data-guide-id="${escapeHtml(activeSection.id)}">
                 <div class="prosper-stage-head">
                     <div>
                         <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
@@ -874,7 +875,7 @@
                     </div>
                     <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
                 </div>
-                <div class="prosper-body">${activeSection.bodyHtml}</div>
+                <div class="prosper-body" data-guide-id="${escapeHtml(activeSection.id)}">${activeSection.bodyHtml}</div>
             </div>
             ${flowGuideHtml}
         `;
