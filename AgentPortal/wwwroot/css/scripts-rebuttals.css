@@ -16190,11 +16190,13 @@ details.section{
 #rbShell .prosper-body .btn-mini[data-jump]:hover,
 .scripts-shell .body .btn[data-jump]:hover,
 .scripts-shell .body .btn-mini[data-jump]:hover{
-    filter: brightness(1.06) saturate(1.04) !important;
-    border-color: var(--route-accent, rgba(166,128,35,.60)) !important;
+    background: linear-gradient(180deg, var(--route-bg-top, rgba(31,82,80,.98)) 0%, var(--route-bg-bottom, rgba(12,31,30,.99)) 100%) !important;
+    border-color: var(--route-accent, rgba(166,128,35,.50)) !important;
+    color: var(--route-ink, #f5f7fb) !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.18) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.10),
-        0 12px 22px rgba(5,10,22,.26),
+        0 14px 24px rgba(5,10,22,.28),
         0 0 0 1px rgba(255,255,255,.04) !important;
 }
 
