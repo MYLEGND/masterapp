@@ -15428,11 +15428,11 @@ details.section{
    Left rail keeps clean signal coding while matching the premium system.
    ======================================================================== */
 #rbShell #rbNav .cat-btn.good{
-    background: linear-gradient(180deg, #fbfffc 0%, #dff3e7 100%) !important;
-    border-color: rgba(69,151,107,.40) !important;
+    background: linear-gradient(180deg, #f3fbf6 0%, #cde7d7 100%) !important;
+    border-color: rgba(57,127,89,.46) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.99),
-        0 10px 16px rgba(15,23,42,.07) !important;
+        0 10px 16px rgba(15,23,42,.08) !important;
 }
 
 #rbShell #rbNav .cat-btn.good::before{
@@ -15445,22 +15445,22 @@ details.section{
 }
 
 #rbShell #rbNav .cat-btn.good .cat-note{
-    color: rgba(24,79,55,.74) !important;
+    color: rgba(24,79,55,.80) !important;
 }
 
 #rbShell #rbNav .cat-btn.good .cat-rank,
 #rbShell #rbNav .cat-btn.good .cat-count{
-    background: linear-gradient(180deg, #ffffff 0%, #ecf8f0 100%) !important;
-    border-color: rgba(69,151,107,.28) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #dfeee5 100%) !important;
+    border-color: rgba(57,127,89,.32) !important;
     color: #2a6f4e !important;
 }
 
 #rbShell #rbNav .cat-btn.warn{
-    background: linear-gradient(180deg, #fffdfa 0%, #f6e7cd 100%) !important;
-    border-color: rgba(186,128,47,.42) !important;
+    background: linear-gradient(180deg, #fcf7ee 0%, #ead2a5 100%) !important;
+    border-color: rgba(161,104,27,.46) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.99),
-        0 10px 16px rgba(15,23,42,.07) !important;
+        0 10px 16px rgba(15,23,42,.08) !important;
 }
 
 #rbShell #rbNav .cat-btn.warn::before{
@@ -15473,22 +15473,22 @@ details.section{
 }
 
 #rbShell #rbNav .cat-btn.warn .cat-note{
-    color: rgba(111,67,16,.76) !important;
+    color: rgba(111,67,16,.82) !important;
 }
 
 #rbShell #rbNav .cat-btn.warn .cat-rank,
 #rbShell #rbNav .cat-btn.warn .cat-count{
-    background: linear-gradient(180deg, #ffffff 0%, #faefdb 100%) !important;
-    border-color: rgba(186,128,47,.28) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #f2dfbd 100%) !important;
+    border-color: rgba(161,104,27,.32) !important;
     color: #8a5917 !important;
 }
 
 #rbShell #rbNav .cat-btn.bad{
-    background: linear-gradient(180deg, #fffdfd 0%, #f2d8d8 100%) !important;
-    border-color: rgba(178,86,86,.42) !important;
+    background: linear-gradient(180deg, #fcf6f6 0%, #e5c0c0 100%) !important;
+    border-color: rgba(151,58,58,.46) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.99),
-        0 10px 16px rgba(15,23,42,.07) !important;
+        0 10px 16px rgba(15,23,42,.08) !important;
 }
 
 #rbShell #rbNav .cat-btn.bad::before{
@@ -15501,22 +15501,22 @@ details.section{
 }
 
 #rbShell #rbNav .cat-btn.bad .cat-note{
-    color: rgba(109,37,37,.76) !important;
+    color: rgba(109,37,37,.82) !important;
 }
 
 #rbShell #rbNav .cat-btn.bad .cat-rank,
 #rbShell #rbNav .cat-btn.bad .cat-count{
-    background: linear-gradient(180deg, #ffffff 0%, #f9e7e7 100%) !important;
-    border-color: rgba(178,86,86,.28) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #efd6d6 100%) !important;
+    border-color: rgba(151,58,58,.32) !important;
     color: #8d3737 !important;
 }
 
 #rbShell #rbNav .cat-btn.info{
-    background: linear-gradient(180deg, #fcfdff 0%, #dfe7f8 100%) !important;
-    border-color: rgba(87,116,184,.42) !important;
+    background: linear-gradient(180deg, #f5f8fe 0%, #ccd8ef 100%) !important;
+    border-color: rgba(65,91,153,.46) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.99),
-        0 10px 16px rgba(15,23,42,.07) !important;
+        0 10px 16px rgba(15,23,42,.08) !important;
 }
 
 #rbShell #rbNav .cat-btn.info::before{
@@ -15529,12 +15529,55 @@ details.section{
 }
 
 #rbShell #rbNav .cat-btn.info .cat-note{
-    color: rgba(36,60,116,.76) !important;
+    color: rgba(36,60,116,.82) !important;
 }
 
 #rbShell #rbNav .cat-btn.info .cat-rank,
 #rbShell #rbNav .cat-btn.info .cat-count{
-    background: linear-gradient(180deg, #ffffff 0%, #edf2fb 100%) !important;
-    border-color: rgba(87,116,184,.28) !important;
+    background: linear-gradient(180deg, #ffffff 0%, #dde6f7 100%) !important;
+    border-color: rgba(65,91,153,.32) !important;
     color: #415b99 !important;
+}
+
+/* ========================================================================
+   Final active rail lock
+   Ensure both rails use the same premium navy selected fill.
+   ======================================================================== */
+#rbShell #rbNav .cat-btn.active,
+#rbShell #prosperNav .cat-btn.active,
+#rbShell #prosperNav .cat-btn[data-guide-id].active{
+    background: linear-gradient(180deg, #1a273a 0%, #0f1a2b 100%) !important;
+    border-color: rgba(227,187,99,.96) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 0 0 1px rgba(255,247,221,.86),
+        0 0 0 3px rgba(227,187,99,.28),
+        0 14px 24px rgba(15,23,42,.14),
+        0 6px 18px rgba(166,128,35,.14) !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-name,
+#rbShell #rbNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn.active .cat-name,
+#rbShell #prosperNav .cat-btn.active .cat-top-single,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-name,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-top-single{
+    color: #f9fbff !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn.active .cat-note,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-note{
+    color: rgba(233,240,250,.78) !important;
+}
+
+#rbShell #rbNav .cat-btn.active .cat-rank,
+#rbShell #rbNav .cat-btn.active .cat-count,
+#rbShell #prosperNav .cat-btn.active .cat-rank,
+#rbShell #prosperNav .cat-btn.active .cat-count,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-rank,
+#rbShell #prosperNav .cat-btn[data-guide-id].active .cat-count{
+    background: linear-gradient(180deg, #ffffff 0%, #f3f7fd 100%) !important;
+    border-color: rgba(227,187,99,.58) !important;
+    color: #17263b !important;
 }
