@@ -16221,12 +16221,12 @@ details.section{
 }
 
 #rbShell #prosperNav .cat-btn{
-    min-height: 74px !important;
+    min-height: 62px !important;
     flex-direction: row !important;
     align-items: center !important;
     justify-content: flex-start !important;
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
+    padding-top: 7px !important;
+    padding-bottom: 7px !important;
 }
 
 #rbShell #rbNav .cat-top{
@@ -16283,6 +16283,22 @@ details.section{
 #rbShell #prosperNav .cat-top-single{
     display: flex !important;
     align-items: center !important;
-    min-height: 1.2em !important;
+    min-height: 0 !important;
     width: 100% !important;
+    font-size: .9rem !important;
+    line-height: 1.12 !important;
+}
+
+#rbShell .prosper-nav-card .nav-body{
+    gap: 8px !important;
+    padding: 10px 12px 12px !important;
+}
+
+#rbShell #prosperNav{
+    padding-left: 6px !important;
+    padding-right: 6px !important;
+}
+
+#rbShell #prosperNav .cat-btn[data-guide-id]{
+    border-radius: 16px !important;
 }

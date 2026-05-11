@@ -497,6 +497,38 @@
     const prosperNavArrow = document.getElementById("prosperNavArrow");
     const prosperUrl = '@Url.Action("FinalExpense", "Workstation")';
     const defaultProsperId = "sec-aged";
+    const guideNavSequence = new Map([
+        ["sec-aged", { number: 1, label: "START HERE" }],
+        ["sec-verify", { number: 2 }],
+        ["sec-replace", { number: 3 }],
+        ["sec-book", { number: 4 }],
+        ["sec-occ", { number: 5 }],
+        ["sec-threeins", { number: 6 }],
+        ["sec-equity", { number: 7 }],
+        ["sec-living", { number: 8 }],
+        ["sec-rop", { number: 9 }],
+        ["sec-iul", { number: 10 }],
+        ["sec-options-choose", { number: 11 }],
+        ["sec-eapp", { number: 12 }],
+        ["sec-closeout", { number: 13 }]
+    ]);
+    const guideNavOrder = new Map([
+        ["sec-aged", 1],
+        ["sec-verify", 2],
+        ["sec-replace", 3],
+        ["sec-book", 4],
+        ["sec-occ", 5],
+        ["sec-threeins", 6],
+        ["sec-equity", 7],
+        ["sec-living", 8],
+        ["sec-rop", 9],
+        ["sec-iul", 10],
+        ["sec-options-choose", 11],
+        ["sec-eapp", 12],
+        ["sec-closeout", 13],
+        ["sec-voicemail", 98],
+        ["sec-texts", 99]
+    ]);
 
     let activeCategoryKey = null;
     let activeProsperId = defaultProsperId;
@@ -540,6 +572,18 @@
         if(signal === "warn") return "CLARIFY";
         if(signal === "bad") return "STOP";
         return "INFO";
+    }
+
+    function getGuideNavTitle(section){
+        if(!section) return "";
+        const meta = guideNavSequence.get(section.id || "");
+        if(!meta) return section.title || "";
+        return `${meta.number}. ${meta.label || section.title || ""}`;
+    }
+
+    function getGuideNavOrderValue(section){
+        if(!section) return 999;
+        return guideNavOrder.get(section.id || "") ?? 90;
     }
 
     function getFilteredCategories(){
@@ -765,7 +809,9 @@
             return;
         }
 
-        const filteredProsper = getFilteredProsperSections();
+        const filteredProsper = getFilteredProsperSections()
+            .slice()
+            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b));
         prosperCount.textContent = String(filteredProsper.length);
 
         if(!filteredProsper.length){
@@ -779,7 +825,7 @@
             btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}${section.isNested ? " is-nested" : ""}`;
             btn.setAttribute("data-guide-id", section.id);
             btn.innerHTML = `
-                <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
+                <div class="cat-top-single">${highlightText(getGuideNavTitle(section), (rbSearch.value || "").trim())}</div>
             `;
             btn.addEventListener("click", function(){
                 activePane = "prosper";
