@@ -122,16 +122,6 @@
             margin: 0;
         }
 
-        .navbar-brand-stack{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: flex-start;
-            gap: 10px;
-            flex: 0 0 auto;
-            min-width: 0;
-        }
-
         header .navbar .container-fluid {
             display: grid !important;
             grid-template-columns: auto minmax(0, 1fr) auto;
@@ -604,38 +594,39 @@
         }
         .explore-overlay.open{ display:block; }
 
-        /* Explore trigger anchored inside nav under logo */
+        /* Explore trigger anchored inline with main nav */
         .explore-trigger{
             position: static;
             left: auto;
             top: auto;
             z-index: auto;
-            width: 54px;
-            height: 54px;
-            border-radius: 16px;
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
             border: 1.6px solid var(--legend-gold-deep);
             background: #0b1529;
             box-shadow:
-                0 16px 34px rgba(0,0,0,.26),
+                0 10px 20px rgba(0,0,0,.22),
                 inset 0 0 0 1px rgba(255,255,255,.10);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all .2s ease;
+            padding: 0;
         }
 
         .explore-trigger:hover{
-            transform: translateY(-2px) scale(1.01);
+            transform: translateY(-1px) scale(1.01);
             border-color: rgba(166,128,35,.94);
             box-shadow:
-                0 20px 42px rgba(0,0,0,.32),
+                0 14px 24px rgba(0,0,0,.26),
                 inset 0 0 0 1px rgba(255,255,255,.14);
         }
 
         .explore-bars{
-            width: 18px;
-            height: 14px;
+            width: 16px;
+            height: 12px;
             display: grid;
             gap: 3px;
         }
@@ -651,6 +642,12 @@
 
         .explore-trigger:hover .explore-bars span{
             background: linear-gradient(90deg, #f8fafc, #efc866);
+        }
+
+        .navbar-left .nav-item-explore{
+            display: flex;
+            align-items: center;
+            flex: 0 0 auto;
         }
 
         /* Drawer shell */
@@ -890,14 +887,9 @@
 
             .nav-toggle { display: inline-flex; }
 
-            .navbar-brand-stack{
-                align-items: flex-start;
-                gap: 8px;
-            }
-
-            .navbar-brand-stack .explore-trigger{
-                width: 48px;
-                height: 48px;
+            .navbar-left .nav-item-explore .explore-trigger{
+                width: 40px;
+                height: 40px;
             }
 
             .navbar-left,
@@ -1059,42 +1051,24 @@
     <nav class="navbar navbar-expand-sm navbar-light">
         <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
 
-            <div class="navbar-brand-stack">
-                @if (isOnboardingPublic)
-                {
-                    <span class="navbar-brand disabled-logo">
-                        <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
-                    </span>
-                }
-                else if (isAssistant)
-                {
-                    <a class="navbar-brand" asp-controller="Assistant" asp-action="Index">
-                        <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
-                    </a>
-                }
-                else
-                {
-                    <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                        <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
-                    </a>
-                }
-
-                @if (!isAssistant && !isOnboardingPublic)
-                {
-                    <button id="exploreTrigger"
-                            type="button"
-                            class="explore-trigger"
-                            aria-label="Open Explore"
-                            aria-controls="exploreDrawer"
-                            aria-expanded="false">
-                        <div class="explore-bars" aria-hidden="true">
-                            <span></span>
-                            <span></span>
-                            <span></span>
-                        </div>
-                    </button>
-                }
-            </div>
+            @if (isOnboardingPublic)
+            {
+                <span class="navbar-brand disabled-logo">
+                    <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
+                </span>
+            }
+            else if (isAssistant)
+            {
+                <a class="navbar-brand" asp-controller="Assistant" asp-action="Index">
+                    <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
+                </a>
+            }
+            else
+            {
+                <a class="navbar-brand" asp-controller="Home" asp-action="Index">
+                    <img src="~/images/company-icons/legend-transparent.png" asp-append-version="true" alt="Legend™" />
+                </a>
+            }
 
             <button class="nav-toggle" id="apNavToggle" aria-label="Toggle navigation" aria-expanded="false">
                 <span class="nav-toggle-bars"></span>
@@ -1107,6 +1081,20 @@
                         <ul class="navbar-nav nav-row">
                             @if (!isAssistant)
                             {
+                                <li class="nav-item nav-item-explore">
+                                    <button id="exploreTrigger"
+                                            type="button"
+                                            class="explore-trigger"
+                                            aria-label="Open Explore"
+                                            aria-controls="exploreDrawer"
+                                            aria-expanded="false">
+                                        <div class="explore-bars" aria-hidden="true">
+                                            <span></span>
+                                            <span></span>
+                                            <span></span>
+                                        </div>
+                                    </button>
+                                </li>
                                 <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                                 <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Dashboard</a></li>
                                 <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Framework</a></li>
