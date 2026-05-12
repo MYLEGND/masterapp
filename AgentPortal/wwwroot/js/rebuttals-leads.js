@@ -552,6 +552,34 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
+    const editOverlay = bridge.querySelector('[data-lb-edit-overlay]');
+    const editDrawer = bridge.querySelector('[data-lb-edit-drawer]');
+    const editTitleEl = bridge.querySelector('[data-lb-edit-title]');
+    const editStatusEl = bridge.querySelector('[data-lb-edit-status]');
+    const editSaveBtn = bridge.querySelector('[data-lb-edit-save]');
+    const editCloseButtons = Array.from(bridge.querySelectorAll('[data-lb-edit-close]'));
+    const editLenderField = bridge.querySelector('[data-lb-edit-field="lender"]');
+    const editLoanField = bridge.querySelector('[data-lb-edit-field="loan"]');
+    const editLenderLabel = bridge.querySelector('[data-lb-edit-label="lender"]');
+    const editLoanLabel = bridge.querySelector('[data-lb-edit-label="loan"]');
+    const editInputs = {
+      firstName: bridge.querySelector('[data-lb-edit-input="firstName"]'),
+      lastName: bridge.querySelector('[data-lb-edit-input="lastName"]'),
+      email: bridge.querySelector('[data-lb-edit-input="email"]'),
+      phone: bridge.querySelector('[data-lb-edit-input="phone"]'),
+      phone2: bridge.querySelector('[data-lb-edit-input="phone2"]'),
+      dob: bridge.querySelector('[data-lb-edit-input="dob"]'),
+      age: bridge.querySelector('[data-lb-edit-input="age"]'),
+      gender: bridge.querySelector('[data-lb-edit-input="gender"]'),
+      addressLine: bridge.querySelector('[data-lb-edit-input="addressLine"]'),
+      city: bridge.querySelector('[data-lb-edit-input="city"]'),
+      state: bridge.querySelector('[data-lb-edit-input="state"]'),
+      county: bridge.querySelector('[data-lb-edit-input="county"]'),
+      zipCode: bridge.querySelector('[data-lb-edit-input="zipCode"]'),
+      mortgageLender: bridge.querySelector('[data-lb-edit-input="mortgageLender"]'),
+      loanAmount: bridge.querySelector('[data-lb-edit-input="loanAmount"]'),
+      btc: bridge.querySelector('[data-lb-edit-input="btc"]')
+    };
     const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
     const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
     const baseLabels = {
@@ -596,6 +624,7 @@
     let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
     let textMenuEl = null;
+    let editDrawerOpen = false;
 
     function restoreMobileLeadControls(){
       if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
@@ -648,6 +677,190 @@
     syncLeadBridgeHeaderPlacement();
     window.addEventListener('resize', syncLeadBridgeHeaderPlacement);
     window.addEventListener('orientationchange', syncLeadBridgeHeaderPlacement);
+
+    function setEditStatus(message, tone){
+      if (!editStatusEl) return;
+      editStatusEl.textContent = message || 'Ready';
+      editStatusEl.dataset.tone = tone || '';
+    }
+
+    function editDrawerLeadType(lead){
+      return leadOriginalLeadType(lead)
+        || normalizedQueueKey
+        || normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '');
+    }
+
+    function applyEditDrawerLeadTypeDisplay(lead){
+      const leadType = editDrawerLeadType(lead);
+      const hideLender = isLifeOrFinal(leadType);
+
+      if (editLenderField){
+        editLenderField.style.display = hideLender ? 'none' : '';
+      }
+      if (editLenderLabel){
+        editLenderLabel.textContent = 'Lender';
+      }
+      if (editLoanLabel){
+        editLoanLabel.textContent = hideLender ? 'Requested' : 'Loan Amount';
+      }
+      if (editLoanField){
+        editLoanField.style.display = '';
+      }
+    }
+
+    function fillEditInput(name, value){
+      const input = editInputs[name];
+      if (!input) return;
+      input.value = value == null ? '' : String(value);
+    }
+
+    function populateEditDrawer(lead){
+      fillEditInput('firstName', lead?.firstName || '');
+      fillEditInput('lastName', lead?.lastName || '');
+      fillEditInput('email', lead?.email || '');
+      fillEditInput('phone', lead?.phone || '');
+      fillEditInput('phone2', lead?.phone2 || '');
+      fillEditInput('dob', lead?.dob || '');
+      fillEditInput('age', lead?.age || (resolveLeadAgeNumber(lead) ?? ''));
+      fillEditInput('gender', lead?.gender || '');
+      fillEditInput('addressLine', lead?.addressLine || '');
+      fillEditInput('city', lead?.city || '');
+      fillEditInput('state', lead?.state || '');
+      fillEditInput('county', lead?.county || '');
+      fillEditInput('zipCode', lead?.zipCode || '');
+      fillEditInput('mortgageLender', lead?.mortgageLender || '');
+      fillEditInput('loanAmount', lead?.loanAmount || '');
+      fillEditInput('btc', lead?.btc || '');
+
+      if (editTitleEl){
+        const displayName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Edit Client';
+        editTitleEl.textContent = displayName;
+      }
+
+      applyEditDrawerLeadTypeDisplay(lead);
+      setEditStatus('Ready');
+    }
+
+    function closeEditDrawer(){
+      if (!editOverlay) return;
+      editDrawerOpen = false;
+      editOverlay.dataset.open = '0';
+      window.setTimeout(() => {
+        if (!editDrawerOpen){
+          editOverlay.hidden = true;
+        }
+      }, 180);
+    }
+
+    function openEditDrawerShell(){
+      if (!editOverlay) return;
+      editDrawerOpen = true;
+      editOverlay.hidden = false;
+      window.requestAnimationFrame(() => {
+        editOverlay.dataset.open = '1';
+      });
+    }
+
+    async function openEditClientDrawer(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setStatusMessage('No lead selected', 'bad');
+        return;
+      }
+
+      openEditDrawerShell();
+      setEditStatus('Loading…');
+      if (editSaveBtn) editSaveBtn.disabled = true;
+
+      try {
+        const res = await fetch(`/Leads/Lead?id=${encodeURIComponent(lead.leadId || '')}`, withDialHeaders({
+          credentials: 'include',
+          cache: 'no-store'
+        }));
+        if (!res.ok) throw new Error('Lead not found');
+        const payload = await res.json();
+        populateEditDrawer({
+          ...lead,
+          ...payload,
+          zipCode: payload?.zipCode || payload?.zip || lead?.zipCode || ''
+        });
+      } catch (err){
+        console.error(err);
+        setEditStatus('Could not load this lead', 'bad');
+        return;
+      } finally {
+        if (editSaveBtn) editSaveBtn.disabled = false;
+      }
+    }
+
+    async function saveEditClientDrawer(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      if (editSaveBtn) editSaveBtn.disabled = true;
+      setEditStatus('Saving…');
+
+      const leadType = editDrawerLeadType(lead);
+      const hideLender = isLifeOrFinal(leadType);
+      const payload = {
+        clientUserId: lead.leadId || '',
+        firstName: editInputs.firstName?.value || '',
+        lastName: editInputs.lastName?.value || '',
+        email: editInputs.email?.value || '',
+        phone: editInputs.phone?.value || '',
+        phone2: editInputs.phone2?.value || '',
+        dob: editInputs.dob?.value || null,
+        age: editInputs.age?.value || '',
+        gender: editInputs.gender?.value || '',
+        addressLine: editInputs.addressLine?.value || '',
+        city: editInputs.city?.value || '',
+        state: editInputs.state?.value || '',
+        county: editInputs.county?.value || '',
+        zipCode: editInputs.zipCode?.value || '',
+        mortgageLender: hideLender ? '' : (editInputs.mortgageLender?.value || ''),
+        loanAmount: editInputs.loanAmount?.value || '',
+        btc: editInputs.btc?.value || '',
+        pipelineStage: lead.bucket || lead.crmStage || ''
+      };
+
+      try {
+        const res = await fetch('/Leads/SaveQuickView', withDialHeaders({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        }));
+        if (!res.ok){
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `Save failed: ${res.status}`);
+        }
+
+        const response = await res.json().catch(() => ({}));
+        const saved = response?.payload || response || {};
+        const patchLead = (item) => {
+          if (!item || item.leadId !== lead.leadId) return;
+          applyLeadPayload(item, saved);
+        };
+        baseLeads.forEach(patchLead);
+        leads.forEach(patchLead);
+        applyLeadPayload(lead, saved);
+        broadcastLeadUpdate(lead, saved);
+        populateEditDrawer(lead);
+        showCurrent({ lead });
+        setEditStatus('Saved ✔', 'good');
+      } catch (err){
+        console.error(err);
+        setEditStatus(err?.message || 'Save failed', 'bad');
+      } finally {
+        if (editSaveBtn) editSaveBtn.disabled = false;
+      }
+    }
 
     function todayIsoDate(){
       return new Date().toISOString().slice(0, 10);
@@ -2425,9 +2638,27 @@
 
     editClientBtn?.addEventListener('click', () => {
       if (editClientBtn.disabled) return;
-      const href = (editClientBtn.dataset.href || '').trim();
-      if (!href) return;
-      window.open(href, '_blank', 'noopener');
+      openEditClientDrawer();
+    });
+
+    editCloseButtons.forEach((btn) => {
+      btn.addEventListener('click', closeEditDrawer);
+    });
+
+    editOverlay?.addEventListener('click', (event) => {
+      if (event.target === editOverlay){
+        closeEditDrawer();
+      }
+    });
+
+    editSaveBtn?.addEventListener('click', () => {
+      saveEditClientDrawer();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && editDrawerOpen){
+        closeEditDrawer();
+      }
     });
 
     noteOpenBtn?.addEventListener('click', async () => {

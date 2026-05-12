@@ -207,6 +207,101 @@
         </div>
     </div>
 
+    <div class="lb-edit-overlay" data-lb-edit-overlay hidden>
+        <div class="lb-edit-drawer" data-lb-edit-drawer role="dialog" aria-modal="true" aria-labelledby="lbEditTitle">
+            <div class="lb-edit-head">
+                <div class="lb-edit-head-copy">
+                    <div class="lb-edit-kicker">Quick Edit</div>
+                    <h3 class="lb-edit-title" id="lbEditTitle" data-lb-edit-title>Edit Client</h3>
+                    <div class="lb-edit-sub">Update the lead profile without leaving Workstation.</div>
+                </div>
+                <button type="button" class="lb-edit-close" data-lb-edit-close aria-label="Close">×</button>
+            </div>
+
+            <div class="lb-edit-body">
+                <div class="lb-edit-grid">
+                    <label class="lb-edit-field">
+                        <span>First Name</span>
+                        <input type="text" data-lb-edit-input="firstName" autocomplete="given-name" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Last Name</span>
+                        <input type="text" data-lb-edit-input="lastName" autocomplete="family-name" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Email</span>
+                        <input type="email" data-lb-edit-input="email" autocomplete="email" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Phone</span>
+                        <input type="tel" data-lb-edit-input="phone" autocomplete="tel" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Phone #2</span>
+                        <input type="tel" data-lb-edit-input="phone2" autocomplete="tel-national" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>DOB</span>
+                        <input type="date" data-lb-edit-input="dob" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Age</span>
+                        <input type="text" data-lb-edit-input="age" inputmode="numeric" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>M / F</span>
+                        <select data-lb-edit-input="gender">
+                            <option value="">-</option>
+                            <option value="M">M</option>
+                            <option value="F">F</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </label>
+                    <label class="lb-edit-field lb-edit-field-span-2">
+                        <span>Street Address</span>
+                        <input type="text" data-lb-edit-input="addressLine" autocomplete="street-address" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>City</span>
+                        <input type="text" data-lb-edit-input="city" autocomplete="address-level2" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>State</span>
+                        <input type="text" data-lb-edit-input="state" autocomplete="address-level1" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>County</span>
+                        <input type="text" data-lb-edit-input="county" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>Zip Code</span>
+                        <input type="text" data-lb-edit-input="zipCode" autocomplete="postal-code" />
+                    </label>
+                    <label class="lb-edit-field" data-lb-edit-field="lender">
+                        <span data-lb-edit-label="lender">Lender</span>
+                        <input type="text" data-lb-edit-input="mortgageLender" />
+                    </label>
+                    <label class="lb-edit-field" data-lb-edit-field="loan">
+                        <span data-lb-edit-label="loan">Loan Amount</span>
+                        <input type="text" data-lb-edit-input="loanAmount" inputmode="decimal" />
+                    </label>
+                    <label class="lb-edit-field">
+                        <span>BTC</span>
+                        <input type="text" data-lb-edit-input="btc" />
+                    </label>
+                </div>
+            </div>
+
+            <div class="lb-edit-foot">
+                <div class="lb-edit-status" data-lb-edit-status>Ready</div>
+                <div class="lb-edit-actions">
+                    <button type="button" class="btn lb-btn ghost" data-lb-edit-close>Cancel</button>
+                    <button type="button" class="btn lb-btn next" data-lb-edit-save>Save Client</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="lb-row lb-row-fields">
         <div class="lead-field mobile-allowed" data-lf="name">
             <span class="lf-label">Name</span>
