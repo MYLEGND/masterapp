@@ -1,0 +1,184 @@
+<style>
+    .production-modal-dialog {
+        max-width: min(680px, calc(100vw - 2rem));
+    }
+    .production-modal-shell {
+        border: 1px solid rgba(148, 163, 184, .2);
+        border-radius: 24px;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at top right, rgba(59,130,246,.18), transparent 42%),
+            linear-gradient(180deg, rgba(8,15,28,.98), rgba(11,18,32,.98));
+        box-shadow: 0 30px 80px rgba(2,6,23,.45);
+        color: #fff;
+    }
+    .production-modal-shell .modal-header,
+    .production-modal-shell .modal-footer {
+        border-color: rgba(148,163,184,.14);
+        background: rgba(15,23,42,.75);
+    }
+    .production-modal-shell .modal-header {
+        padding: 1.1rem 1.25rem;
+        align-items: flex-start;
+    }
+    .production-modal-title {
+        display: flex;
+        flex-direction: column;
+        gap: .25rem;
+    }
+    .production-modal-title h5 {
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: .01em;
+    }
+    .production-modal-title span {
+        font-size: .88rem;
+        color: #cbd5e1;
+    }
+    .production-modal-shell .modal-body {
+        padding: 1.25rem;
+    }
+    .production-modal-hero {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1rem 1.1rem;
+        margin-bottom: 1rem;
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(30,41,59,.92), rgba(15,23,42,.78));
+        border: 1px solid rgba(96,165,250,.22);
+    }
+    .production-modal-hero-label {
+        font-size: .72rem;
+        text-transform: uppercase;
+        letter-spacing: .12em;
+        color: #93c5fd;
+        font-weight: 700;
+        margin-bottom: .2rem;
+    }
+    .production-modal-hero-name {
+        font-size: 1.12rem;
+        font-weight: 800;
+        color: #f8fafc;
+    }
+    .production-modal-badge {
+        padding: .42rem .8rem;
+        border-radius: 999px;
+        background: rgba(16,185,129,.18);
+        border: 1px solid rgba(16,185,129,.35);
+        color: #bbf7d0;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .production-field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+    .production-field {
+        display: flex;
+        flex-direction: column;
+        gap: .45rem;
+    }
+    .production-field-full {
+        grid-column: 1 / -1;
+    }
+    .production-field .form-label {
+        font-size: .8rem;
+        font-weight: 700;
+        color: #e2e8f0;
+        margin: 0;
+    }
+    .production-field .form-control,
+    .production-field .form-select {
+        border-radius: 14px;
+        border: 1px solid rgba(96,165,250,.22);
+        background: rgba(15,23,42,.72);
+        color: #fff;
+        padding: .85rem .95rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .production-field textarea.form-control { min-height: 92px; padding-top: .8rem; }
+    .production-field .form-control:focus,
+    .production-field .form-select:focus {
+        border-color: rgba(96,165,250,.65);
+        box-shadow: 0 0 0 .2rem rgba(59,130,246,.15);
+        background: rgba(15,23,42,.92);
+        color: #fff;
+    }
+    .production-field .form-text { color: #94a3b8 !important; font-size: .75rem; margin-top: .35rem; }
+    .production-modal-shell .btn { border-radius: 12px; font-weight: 700; padding: .72rem 1rem; }
+    .production-modal-shell .btn-secondary {
+        background: rgba(51,65,85,.72);
+        border-color: rgba(148,163,184,.18);
+        color: #e2e8f0;
+    }
+    .production-modal-shell .btn-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+        border-color: transparent;
+        box-shadow: 0 12px 28px rgba(16,185,129,.24);
+    }
+    @media (max-width: 640px) {
+        .production-field-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+<div class="modal fade" id="productionModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered production-modal-dialog">
+        <div class="modal-content production-modal-shell">
+            <div class="modal-header">
+                <div class="production-modal-title">
+                    <h5 class="modal-title">Add Lead Production</h5>
+                    <span>Capture one production event with a cleaner, focused workflow.</span>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-controller="Production" asp-action="AddLead" method="post">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="leadId" id="prodLeadId" />
+                <input type="hidden" name="returnUrl" value="@Url.Action("Index","Leads")" />
+                <div class="modal-body">
+                    <input type="hidden" name="id" />
+                    <div class="production-modal-hero">
+                        <div>
+                            <div class="production-modal-hero-label">Lead</div>
+                            <div id="prodLeadName" class="production-modal-hero-name"></div>
+                        </div>
+                        <div class="production-modal-badge">New Production</div>
+                    </div>
+                    <div class="production-field-grid">
+                        <div class="production-field">
+                            <label class="form-label">Amount</label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="amount" placeholder="0.00" required />
+                        </div>
+                        <div class="production-field">
+                            <label class="form-label">Status</label>
+                            <select class="form-select" name="status">
+                                <option value="0">Submitted</option>
+                                <option value="1">Issued</option>
+                                <option value="2">Paid</option>
+                            </select>
+                        </div>
+                        <div class="production-field production-field-full">
+                            <label class="form-label">Personal Revenue</label>
+                            <input type="number" step="0.01" min="0" class="form-control" name="personalAmount" placeholder="Optional" />
+                            <div class="form-text text-muted">Only add personal revenue when it applies to this production event.</div>
+                        </div>
+                        <div class="production-field production-field-full">
+                            <label class="form-label">Notes</label>
+                            <textarea class="form-control" name="notes" rows="2" placeholder="Optional notes"></textarea>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-success">Save Production</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

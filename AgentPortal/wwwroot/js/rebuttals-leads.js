@@ -639,6 +639,11 @@
     const editAddActivityBtn = document.getElementById('btnAddActivity');
     const editClearTimelineBtn = document.getElementById('btnClearTimeline');
     const editAddProductionBtn = document.getElementById('phAddFromDrawer');
+    editCloseButtons.forEach(btn => {
+      btn.textContent = '×';
+      btn.setAttribute('aria-label', 'Close');
+      btn.setAttribute('title', 'Close');
+    });
     const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
     const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
     const baseLabels = {
