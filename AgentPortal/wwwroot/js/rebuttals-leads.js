@@ -1136,6 +1136,17 @@
       return normalizedLines.join('\n').trim();
     }
 
+    function syncNoteTextareaTone(textarea){
+      if (!textarea) return;
+      const hasBody = !!extractNoteBodyText(textarea.value || '');
+      textarea.classList.toggle('note-self-has-body', hasBody);
+      textarea.classList.toggle('note-self-prefix-only', !hasBody);
+    }
+
+    function syncAllNoteTextareaTones(){
+      [noteWentWell, noteCouldBetter].forEach(syncNoteTextareaTone);
+    }
+
     function normalizeNoteBodyForDate(rawText, isoDate){
       const prefix = notePrefix(isoDate);
       const body = extractNoteBodyText(rawText);
@@ -1295,6 +1306,7 @@
         const payload = await res.json();
         noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || '', date);
         noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || '', date);
+        syncAllNoteTextareaTones();
         const loadedLeadName = (payload?.leadName || currentLeadContext().leadName || 'Lead').toString();
         if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(leadId, date);
         setNoteStatus(`Loaded ${loadedLeadName} — ${displayDate(date)}`);
@@ -1324,6 +1336,7 @@
 
         noteWentWell.value = normalizedWentWell;
         noteCouldBetter.value = normalizedCouldBetter;
+        syncAllNoteTextareaTones();
 
         const res = await fetch('/WorkstationNotes/Entry', withDialHeaders({
           method: 'POST',
@@ -1367,6 +1380,7 @@
         setNoteStatus('Select a lead first', true);
         if (noteWentWell) noteWentWell.value = '';
         if (noteCouldBetter) noteCouldBetter.value = '';
+        syncAllNoteTextareaTones();
         if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
         if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
         return;
@@ -3056,6 +3070,7 @@
       textarea.addEventListener('focus', () => {
         const date = (noteDateInput?.value || todayIsoDate()).trim();
         if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
+        syncNoteTextareaTone(textarea);
       });
 
       textarea.addEventListener('keydown', (event) => {
@@ -3081,14 +3096,17 @@
 
       textarea.addEventListener('input', () => {
         enforceCaretAfterPrefix(textarea);
+        syncNoteTextareaTone(textarea);
       });
 
       textarea.addEventListener('blur', () => {
         const date = (noteDateInput?.value || todayIsoDate()).trim();
         textarea.value = normalizeNoteBodyForDate(textarea.value || '', date);
         if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
+        syncNoteTextareaTone(textarea);
       });
     });
+    syncAllNoteTextareaTones();
     // Initialize SignalR and active state sync
     if (signalRAvailable){
       try {

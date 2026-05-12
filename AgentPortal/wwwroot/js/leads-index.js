@@ -3844,6 +3844,17 @@ function extractNoteBodyText(rawText){
   return normalizedLines.join("\n").trim();
 }
 
+function noteSyncTextareaTone(textarea){
+  if (!textarea) return;
+  const hasBody = !!extractNoteBodyText(textarea.value || "");
+  textarea.classList.toggle("note-self-has-body", hasBody);
+  textarea.classList.toggle("note-self-prefix-only", !hasBody);
+}
+
+function noteSyncAllTextareaTones(){
+  [noteWentWell, noteCouldBetter].forEach(noteSyncTextareaTone);
+}
+
 function normalizeNoteBodyForDate(rawText, isoDate){
   const prefix = notePrefix(isoDate);
   const body = extractNoteBodyText(rawText);
@@ -3978,6 +3989,7 @@ async function noteLoadForDate(dateValue, leadIdValue){
     const payload = await res.json();
     noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || "", date);
     noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || "", date);
+    noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(leadId, date);
     noteSetStatus(`Loaded ${payload?.leadName || noteCurrentLeadContext().leadName} — ${noteDisplayDate(date)}`);
   }catch{
@@ -4006,6 +4018,7 @@ async function noteSave(){
 
     noteWentWell.value = normalizedWentWell;
     noteCouldBetter.value = normalizedCouldBetter;
+    noteSyncAllTextareaTones();
 
     const token = getAntiForgeryToken();
     const res = await fetch("/WorkstationNotes/Entry", withDialHeaders({
@@ -4043,6 +4056,7 @@ async function openNoteModal(){
     noteSetStatus("Select a lead first", true);
     if (noteWentWell) noteWentWell.value = "";
     if (noteCouldBetter) noteCouldBetter.value = "";
+    noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
     if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
     return;
@@ -4092,9 +4106,12 @@ noteSaveBtn?.addEventListener("click", noteSave);
   });
   ta.addEventListener("click", () => enforceCaretAfterPrefix(ta));
   ta.addEventListener("keyup", () => enforceCaretAfterPrefix(ta));
+  ta.addEventListener("input", () => noteSyncTextareaTone(ta));
   ta.addEventListener("mouseup", () => enforceCaretAfterPrefix(ta));
   ta.addEventListener("paste", () => setTimeout(() => enforceCaretAfterPrefix(ta), 0));
 });
+
+noteSyncAllTextareaTones();
 
 function safeHtml(s){
   return (s || "").toString()
