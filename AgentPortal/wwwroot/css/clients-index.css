@@ -5196,26 +5196,6 @@ body.note-self-open{
     background: #0b1424;
 }
 
-.note-self-field input[data-note-self-date]{
-    color: #d1a034 !important;
-    -webkit-text-fill-color: #d1a034 !important;
-    caret-color: #d1a034;
-}
-
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit,
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit-fields-wrapper,
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit-text,
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit-month-field,
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit-day-field,
-.note-self-field input[data-note-self-date]::-webkit-datetime-edit-year-field{
-    color: #d1a034 !important;
-    -webkit-text-fill-color: #d1a034 !important;
-}
-
-.note-self-field input[data-note-self-date]::-webkit-calendar-picker-indicator{
-    filter: sepia(1) saturate(3.2) hue-rotate(355deg) brightness(1.04);
-}
-
 .note-self-doc{
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -5256,13 +5236,13 @@ body.note-self-open{
     padding: 14px;
     min-height: 300px;
     font: 600 14px/1.5 var(--body);
-    color: #c79a32;
+    color: #0f172a;
     background: #0b1528;
 }
 
 .note-self-col textarea.note-self-has-body{
-    color: #f5f7fb !important;
-    -webkit-text-fill-color: #f5f7fb !important;
+    color: #0f172a !important;
+    -webkit-text-fill-color: #0f172a !important;
 }
 
 .note-self-col textarea.note-self-prefix-only{
