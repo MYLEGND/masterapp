@@ -535,6 +535,7 @@
     const firstOutcomeBtn = outcomeButtons[0] || null;
     const originalMetaHost = metaWrap?.parentElement || null;
     const clearBtn = bridge.querySelector('[data-lb-clear]');
+    const editClientBtn = bridge.querySelector('[data-lb-edit-client]');
     const openCrmLink = bridge.querySelector('[data-lb-open-crm]');
     const stateFilter = bridge.querySelector('[data-lb-state-filter]');
     const stageFilter = bridge.querySelector('[data-lb-stage-filter]');
@@ -969,6 +970,11 @@
     if (openCrmLink){
       openCrmLink.href = "/Leads";
       openCrmLink.classList.remove("disabled");
+    }
+    if (editClientBtn){
+      editClientBtn.disabled = true;
+      editClientBtn.dataset.href = '';
+      editClientBtn.title = 'No lead selected';
     }
 
     function updateAgentWideDials(payload){
@@ -2026,6 +2032,18 @@
         }
         openCrmLink.classList.remove('disabled');
       }
+      if (editClientBtn){
+        const leadId = (lead?.leadId || '').trim();
+        if (leadId){
+          editClientBtn.disabled = false;
+          editClientBtn.dataset.href = `/Leads?open=${encodeURIComponent(leadId)}`;
+          editClientBtn.title = 'Open this lead in CRM Quick View';
+        } else {
+          editClientBtn.disabled = true;
+          editClientBtn.dataset.href = '';
+          editClientBtn.title = 'No lead selected';
+        }
+      }
       if (options.pushSelection){
         pushSelect(lead);
       }
@@ -2403,6 +2421,13 @@
       applyFilters();
       pushFilters();
       setStatusMessage('Filters cleared');
+    });
+
+    editClientBtn?.addEventListener('click', () => {
+      if (editClientBtn.disabled) return;
+      const href = (editClientBtn.dataset.href || '').trim();
+      if (!href) return;
+      window.open(href, '_blank', 'noopener');
     });
 
     noteOpenBtn?.addEventListener('click', async () => {

@@ -983,13 +983,17 @@ body.note-self-open{
     grid-column: 5 / span 2;
     grid-row: 2;
 }
+.lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="edit"]{
+    grid-column: 1 / span 2;
+    grid-row: 3;
+}
 .lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="zoom"]{
     display: block !important;
-    grid-column: 1 / span 3;
+    grid-column: 5 / span 2;
     grid-row: 3;
 }
 .lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="note"]{
-    grid-column: 4 / span 3;
+    grid-column: 3 / span 2;
     grid-row: 3;
 }
 .lead-bridge-mobile #rbShell .lb-filterbar [data-lb-slot="search"]{
@@ -12511,9 +12515,10 @@ details.section{
     #rbShell .lb-filterbar [data-lb-slot="age"]{ order: 4; }
     #rbShell .lb-filterbar [data-lb-slot="search"]{ order: 5; }
     #rbShell .lb-filterbar [data-lb-slot="clear"]{ order: 6; }
-    #rbShell .lb-filterbar [data-lb-slot="zoom"]{ order: 7; }
+    #rbShell .lb-filterbar [data-lb-slot="edit"]{ order: 7; }
     #rbShell .lb-filterbar [data-lb-slot="note"]{ order: 8; }
-    #rbShell .lb-filterbar [data-lb-slot="crm"]{ order: 9; }
+    #rbShell .lb-filterbar [data-lb-slot="zoom"]{ order: 9; }
+    #rbShell .lb-filterbar [data-lb-slot="crm"]{ order: 10; }
 }
 
 /* ========================================================================
