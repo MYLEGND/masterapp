@@ -14210,6 +14210,46 @@ details.section{
     gap: 12px 14px;
 }
 
+#rbShell .lb-edit-section{
+    margin-top: 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(212,175,55,.18);
+    background: rgba(255,255,255,.03);
+    overflow: hidden;
+}
+
+#rbShell .lb-edit-section > summary{
+    list-style: none;
+    cursor: pointer;
+    padding: 14px 16px;
+    font-size: .92rem;
+    font-weight: 900;
+    letter-spacing: .03em;
+    color: #f4d890;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+#rbShell .lb-edit-section > summary::-webkit-details-marker{
+    display: none;
+}
+
+#rbShell .lb-edit-section > summary::after{
+    content: '+';
+    font-size: 1.1rem;
+    line-height: 1;
+    color: #f8fafc;
+}
+
+#rbShell .lb-edit-section[open] > summary::after{
+    content: '−';
+}
+
+#rbShell .lb-edit-section-body{
+    padding: 0 16px 16px;
+}
+
 #rbShell .lb-edit-field{
     display: flex;
     flex-direction: column;
@@ -14230,7 +14270,8 @@ details.section{
 }
 
 #rbShell .lb-edit-field input,
-#rbShell .lb-edit-field select{
+#rbShell .lb-edit-field select,
+#rbShell .lb-edit-field textarea{
     width: 100%;
     min-width: 0;
     min-height: 44px;
@@ -14244,11 +14285,39 @@ details.section{
     box-shadow: inset 0 1px 0 rgba(255,255,255,.82);
 }
 
+#rbShell .lb-edit-field textarea{
+    min-height: 96px;
+    resize: vertical;
+    font-weight: 600;
+}
+
 #rbShell .lb-edit-field input:focus,
-#rbShell .lb-edit-field select:focus{
+#rbShell .lb-edit-field select:focus,
+#rbShell .lb-edit-field textarea:focus{
     outline: none;
     border-color: rgba(212,175,55,.7);
     box-shadow: 0 0 0 3px rgba(212,175,55,.12);
+}
+
+#rbShell .lb-edit-checks{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 10px 14px;
+}
+
+#rbShell .lb-edit-checks label{
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    font-size: .92rem;
+    font-weight: 700;
+    color: #e5edf8;
+}
+
+#rbShell .lb-edit-checks input[type="checkbox"]{
+    width: 18px;
+    height: 18px;
+    accent-color: #d4af37;
 }
 
 #rbShell .lb-edit-foot{

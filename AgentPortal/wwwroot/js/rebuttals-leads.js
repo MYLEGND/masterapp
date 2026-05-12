@@ -578,7 +578,24 @@
       zipCode: bridge.querySelector('[data-lb-edit-input="zipCode"]'),
       mortgageLender: bridge.querySelector('[data-lb-edit-input="mortgageLender"]'),
       loanAmount: bridge.querySelector('[data-lb-edit-input="loanAmount"]'),
-      btc: bridge.querySelector('[data-lb-edit-input="btc"]')
+      btc: bridge.querySelector('[data-lb-edit-input="btc"]'),
+      crmStatus: bridge.querySelector('[data-lb-edit-input="crmStatus"]'),
+      pipelineStage: bridge.querySelector('[data-lb-edit-input="pipelineStage"]'),
+      waitingOn: bridge.querySelector('[data-lb-edit-input="waitingOn"]'),
+      crmLastTouch: bridge.querySelector('[data-lb-edit-input="crmLastTouch"]'),
+      crmNextDate: bridge.querySelector('[data-lb-edit-input="crmNextDate"]'),
+      crmPriority: bridge.querySelector('[data-lb-edit-input="crmPriority"]'),
+      crmNextText: bridge.querySelector('[data-lb-edit-input="crmNextText"]'),
+      pinnedBrief: bridge.querySelector('[data-lb-edit-input="pinnedBrief"]'),
+      crmTags: bridge.querySelector('[data-lb-edit-input="crmTags"]'),
+      agentNotes: bridge.querySelector('[data-lb-edit-input="agentNotes"]'),
+      docIdReceived: bridge.querySelector('[data-lb-edit-input="docIdReceived"]'),
+      docAppSent: bridge.querySelector('[data-lb-edit-input="docAppSent"]'),
+      docAppSigned: bridge.querySelector('[data-lb-edit-input="docAppSigned"]'),
+      docPolicyDelivered: bridge.querySelector('[data-lb-edit-input="docPolicyDelivered"]'),
+      docReviewBooked: bridge.querySelector('[data-lb-edit-input="docReviewBooked"]'),
+      watchers: bridge.querySelector('[data-lb-edit-input="watchers"]'),
+      mentionNote: bridge.querySelector('[data-lb-edit-input="mentionNote"]')
     };
     const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
     const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
@@ -711,6 +728,10 @@
     function fillEditInput(name, value){
       const input = editInputs[name];
       if (!input) return;
+      if (input.type === 'checkbox'){
+        input.checked = !!value;
+        return;
+      }
       input.value = value == null ? '' : String(value);
     }
 
@@ -731,9 +752,26 @@
       fillEditInput('mortgageLender', lead?.mortgageLender || '');
       fillEditInput('loanAmount', lead?.loanAmount || '');
       fillEditInput('btc', lead?.btc || '');
+      fillEditInput('crmStatus', lead?.crmStatus || 'Lead');
+      fillEditInput('pipelineStage', lead?.bucket || lead?.pipelineStage || lead?.crmStage || '');
+      fillEditInput('waitingOn', lead?.waitingOn || 'WaitingOnAgent');
+      fillEditInput('crmLastTouch', lead?.crmLastTouch || '');
+      fillEditInput('crmNextDate', lead?.crmNextDate || '');
+      fillEditInput('crmPriority', lead?.crmPriority || 'Normal');
+      fillEditInput('crmNextText', lead?.crmNextText || '');
+      fillEditInput('pinnedBrief', lead?.pinnedBrief || '');
+      fillEditInput('crmTags', lead?.crmTags || '');
+      fillEditInput('agentNotes', lead?.agentNotes || lead?.crmNotes || '');
+      fillEditInput('docIdReceived', lead?.docChecklist?.idReceived || false);
+      fillEditInput('docAppSent', lead?.docChecklist?.appSent || false);
+      fillEditInput('docAppSigned', lead?.docChecklist?.appSigned || false);
+      fillEditInput('docPolicyDelivered', lead?.docChecklist?.policyDelivered || false);
+      fillEditInput('docReviewBooked', lead?.docChecklist?.reviewBooked || false);
+      fillEditInput('watchers', Array.isArray(lead?.collaboration?.watchers) ? lead.collaboration.watchers.join(', ') : (lead?.watchers || ''));
+      fillEditInput('mentionNote', '');
 
       if (editTitleEl){
-        const displayName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Edit Client';
+        const displayName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Edit Lead';
         editTitleEl.textContent = displayName;
       }
 
@@ -823,7 +861,23 @@
         mortgageLender: hideLender ? '' : (editInputs.mortgageLender?.value || ''),
         loanAmount: editInputs.loanAmount?.value || '',
         btc: editInputs.btc?.value || '',
-        pipelineStage: lead.bucket || lead.crmStage || ''
+        crmStatus: editInputs.crmStatus?.value || 'Lead',
+        crmPriority: editInputs.crmPriority?.value || 'Normal',
+        crmLastTouch: editInputs.crmLastTouch?.value || null,
+        crmNextDate: editInputs.crmNextDate?.value || null,
+        crmNextText: editInputs.crmNextText?.value || '',
+        crmTags: editInputs.crmTags?.value || '',
+        agentNotes: editInputs.agentNotes?.value || '',
+        pipelineStage: editInputs.pipelineStage?.value || lead.bucket || lead.crmStage || '',
+        waitingOn: editInputs.waitingOn?.value || 'WaitingOnAgent',
+        pinnedBrief: editInputs.pinnedBrief?.value || '',
+        docIdReceived: !!editInputs.docIdReceived?.checked,
+        docAppSent: !!editInputs.docAppSent?.checked,
+        docAppSigned: !!editInputs.docAppSigned?.checked,
+        docPolicyDelivered: !!editInputs.docPolicyDelivered?.checked,
+        docReviewBooked: !!editInputs.docReviewBooked?.checked,
+        watchers: editInputs.watchers?.value || '',
+        mentionNote: editInputs.mentionNote?.value || ''
       };
 
       try {
@@ -1735,6 +1789,16 @@
       target.age = payload.age ?? target.age;
       target.btc = payload.btc ?? target.btc;
       target.crmStatus = payload.crmStatus ?? target.crmStatus;
+      target.crmPriority = payload.crmPriority ?? target.crmPriority;
+      target.crmLastTouch = payload.crmLastTouch ?? payload.updatedUtc ?? target.crmLastTouch;
+      target.crmNextDate = payload.crmNextDate ?? target.crmNextDate;
+      target.crmNextText = payload.crmNextText ?? target.crmNextText;
+      target.crmTags = payload.crmTags ?? target.crmTags;
+      target.agentNotes = payload.agentNotes ?? payload.crmNotes ?? target.agentNotes;
+      target.waitingOn = payload.waitingOn ?? target.waitingOn;
+      target.pinnedBrief = payload.pinnedBrief ?? target.pinnedBrief;
+      target.docChecklist = payload.docChecklist ?? target.docChecklist;
+      target.collaboration = payload.collaboration ?? target.collaboration;
       target.crmNotes = payload.crmNotes ?? payload.agentNotes ?? payload.crmNextText ?? target.crmNotes;
       target.bucket = payload.bucket ?? payload.pipelineStage ?? target.bucket;
       target.crmStage = payload.pipelineStage ?? target.crmStage;
