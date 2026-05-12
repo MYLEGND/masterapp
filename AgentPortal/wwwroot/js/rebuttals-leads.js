@@ -531,8 +531,10 @@
     const actionHost = callBtn?.closest('.lb-actions') || null;
     const dayDialsBtn = bridge.querySelector('[data-lb-dials-day]');
     const deleteBtn = bridge.querySelector('[data-lb-delete]');
-    const outcomeButtons = Array.from(bridge.querySelectorAll('[data-outcome]'));
-    const firstOutcomeBtn = outcomeButtons[0] || null;
+    const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
+    const drawerOutcomeButtons = Array.from(bridge.querySelectorAll('#drawer .outcome-btn[data-outcome]'));
+    const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
+    const firstOutcomeBtn = cardOutcomeButtons[0] || null;
     const originalMetaHost = metaWrap?.parentElement || null;
     const clearBtn = bridge.querySelector('[data-lb-clear]');
     const editClientBtn = bridge.querySelector('[data-lb-edit-client]');
@@ -552,50 +554,67 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
-    const editOverlay = bridge.querySelector('[data-lb-edit-overlay]');
-    const editDrawer = bridge.querySelector('[data-lb-edit-drawer]');
-    const editTitleEl = bridge.querySelector('[data-lb-edit-title]');
-    const editStatusEl = bridge.querySelector('[data-lb-edit-status]');
-    const editSaveBtn = bridge.querySelector('[data-lb-edit-save]');
-    const editCloseButtons = Array.from(bridge.querySelectorAll('[data-lb-edit-close]'));
-    const editLenderField = bridge.querySelector('[data-lb-edit-field="lender"]');
-    const editLoanField = bridge.querySelector('[data-lb-edit-field="loan"]');
-    const editLenderLabel = bridge.querySelector('[data-lb-edit-label="lender"]');
-    const editLoanLabel = bridge.querySelector('[data-lb-edit-label="loan"]');
+    const editOverlay = bridge.querySelector('#drawerBackdrop');
+    const editDrawer = bridge.querySelector('#drawer');
+    const editTitleEl = bridge.querySelector('#dName');
+    const editHeaderEmailEl = bridge.querySelector('#dEmail');
+    const editHeaderPhoneEl = bridge.querySelector('#dPhone');
+    const editStageAgeEl = bridge.querySelector('#dStageAge');
+    const editAttemptsEl = bridge.querySelector('#dAttempts');
+    const editWaitingPillEl = bridge.querySelector('#dWaitingOnPill');
+    const editOutcomeSuggestion = bridge.querySelector('#dOutcomeSuggestion');
+    const editPortalWrap = bridge.querySelector('#dPortalWrap');
+    const editStatusEl = bridge.querySelector('#dSaved');
+    const editSaveBtn = bridge.querySelector('#btnSaveLocal');
+    const editResetBtn = bridge.querySelector('#btnResetLocal');
+    const editDeleteBtn = bridge.querySelector('#btnDeleteClient');
+    const editMarkTodayBtn = bridge.querySelector('#btnMarkToday');
+    const editNextTodayBtn = bridge.querySelector('#btnSetNextToday');
+    const editCopyContactBtn = bridge.querySelector('#btnCopyContact');
+    const editMailBtn = bridge.querySelector('#btnMail');
+    const editCallBtn = bridge.querySelector('#btnCall');
+    const editActionsShortcutBtn = bridge.querySelector('#leadQuickActionsShortcut');
+    const editOpenQueueBtn = bridge.querySelector('#btnOpenQueue');
+    const editCloseButtons = Array.from(bridge.querySelectorAll('#btnCloseDrawer'));
+    const editLenderField = bridge.querySelector('#dLenderField');
+    const editLoanField = bridge.querySelector('#dLoanField');
+    const editLenderLabel = bridge.querySelector('#dLenderLabel');
+    const editLoanLabel = bridge.querySelector('#dLoanLabel');
     const editInputs = {
-      firstName: bridge.querySelector('[data-lb-edit-input="firstName"]'),
-      lastName: bridge.querySelector('[data-lb-edit-input="lastName"]'),
-      email: bridge.querySelector('[data-lb-edit-input="email"]'),
-      phone: bridge.querySelector('[data-lb-edit-input="phone"]'),
-      phone2: bridge.querySelector('[data-lb-edit-input="phone2"]'),
-      dob: bridge.querySelector('[data-lb-edit-input="dob"]'),
-      age: bridge.querySelector('[data-lb-edit-input="age"]'),
-      gender: bridge.querySelector('[data-lb-edit-input="gender"]'),
-      addressLine: bridge.querySelector('[data-lb-edit-input="addressLine"]'),
-      city: bridge.querySelector('[data-lb-edit-input="city"]'),
-      state: bridge.querySelector('[data-lb-edit-input="state"]'),
-      county: bridge.querySelector('[data-lb-edit-input="county"]'),
-      zipCode: bridge.querySelector('[data-lb-edit-input="zipCode"]'),
-      mortgageLender: bridge.querySelector('[data-lb-edit-input="mortgageLender"]'),
-      loanAmount: bridge.querySelector('[data-lb-edit-input="loanAmount"]'),
-      btc: bridge.querySelector('[data-lb-edit-input="btc"]'),
-      crmStatus: bridge.querySelector('[data-lb-edit-input="crmStatus"]'),
-      pipelineStage: bridge.querySelector('[data-lb-edit-input="pipelineStage"]'),
-      waitingOn: bridge.querySelector('[data-lb-edit-input="waitingOn"]'),
-      crmLastTouch: bridge.querySelector('[data-lb-edit-input="crmLastTouch"]'),
-      crmNextDate: bridge.querySelector('[data-lb-edit-input="crmNextDate"]'),
-      crmPriority: bridge.querySelector('[data-lb-edit-input="crmPriority"]'),
-      crmNextText: bridge.querySelector('[data-lb-edit-input="crmNextText"]'),
-      pinnedBrief: bridge.querySelector('[data-lb-edit-input="pinnedBrief"]'),
-      crmTags: bridge.querySelector('[data-lb-edit-input="crmTags"]'),
-      agentNotes: bridge.querySelector('[data-lb-edit-input="agentNotes"]'),
-      docIdReceived: bridge.querySelector('[data-lb-edit-input="docIdReceived"]'),
-      docAppSent: bridge.querySelector('[data-lb-edit-input="docAppSent"]'),
-      docAppSigned: bridge.querySelector('[data-lb-edit-input="docAppSigned"]'),
-      docPolicyDelivered: bridge.querySelector('[data-lb-edit-input="docPolicyDelivered"]'),
-      docReviewBooked: bridge.querySelector('[data-lb-edit-input="docReviewBooked"]'),
-      watchers: bridge.querySelector('[data-lb-edit-input="watchers"]'),
-      mentionNote: bridge.querySelector('[data-lb-edit-input="mentionNote"]')
+      firstName: bridge.querySelector('#dFirst'),
+      lastName: bridge.querySelector('#dLast'),
+      email: bridge.querySelector('#dEmailInput'),
+      phone: bridge.querySelector('#dPhoneInput'),
+      phone2: bridge.querySelector('#dPhone2Input'),
+      dob: bridge.querySelector('#dDob'),
+      age: bridge.querySelector('#dAge'),
+      gender: bridge.querySelector('#dGender'),
+      addressLine: bridge.querySelector('#dAddress'),
+      city: bridge.querySelector('#dCity'),
+      state: bridge.querySelector('#dState'),
+      county: bridge.querySelector('#dCounty'),
+      zipCode: bridge.querySelector('#dZip'),
+      mortgageLender: bridge.querySelector('#dLender'),
+      loanAmount: bridge.querySelector('#dLoanAmount'),
+      btc: bridge.querySelector('#dBtc'),
+      crmStatus: bridge.querySelector('#dStatus'),
+      pipelineStage: bridge.querySelector('#dPipelineStage'),
+      waitingOn: bridge.querySelector('#dWaitingOn'),
+      crmLastTouch: bridge.querySelector('#dLastTouch'),
+      crmNextDate: bridge.querySelector('#dNextDate'),
+      crmPriority: bridge.querySelector('#dPriority'),
+      crmNextText: bridge.querySelector('#dNextText'),
+      pinnedBrief: bridge.querySelector('#dPinnedBrief'),
+      crmTags: bridge.querySelector('#dTags'),
+      agentNotes: bridge.querySelector('#dNotes'),
+      docIdReceived: bridge.querySelector('#dDocIdReceived'),
+      docAppSent: bridge.querySelector('#dDocAppSent'),
+      docAppSigned: bridge.querySelector('#dDocAppSigned'),
+      docPolicyDelivered: bridge.querySelector('#dDocPolicyDelivered'),
+      docReviewBooked: bridge.querySelector('#dDocReviewBooked'),
+      assignedOwner: bridge.querySelector('#dAssignedOwner'),
+      watchers: bridge.querySelector('#dWatchers'),
+      mentionNote: bridge.querySelector('#dMentionNote')
     };
     const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
     const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
@@ -708,20 +727,81 @@
     }
 
     function applyEditDrawerLeadTypeDisplay(lead){
-      const leadType = editDrawerLeadType(lead);
+      const leadType = normalizeQueueKey(editInputs.pipelineStage?.value || '') || editDrawerLeadType(lead);
       const hideLender = isLifeOrFinal(leadType);
 
       if (editLenderField){
         editLenderField.style.display = hideLender ? 'none' : '';
       }
       if (editLenderLabel){
-        editLenderLabel.textContent = 'Lender';
+        editLenderLabel.textContent = 'Mortgage Lender';
       }
       if (editLoanLabel){
         editLoanLabel.textContent = hideLender ? 'Requested' : 'Loan Amount';
       }
       if (editLoanField){
         editLoanField.style.display = '';
+      }
+    }
+
+    function formatEditDrawerName(lead){
+      return `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead';
+    }
+
+    function formatEditDrawerStageAge(lead){
+      const explicit = Number.parseInt(lead?.stageAgeDays, 10);
+      if (Number.isFinite(explicit) && explicit >= 0){
+        return explicit;
+      }
+
+      const raw = lead?.createdUtc || lead?.updatedUtc || '';
+      const parsed = raw ? new Date(raw) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())){
+        return 0;
+      }
+
+      const now = new Date();
+      const ms = now.getTime() - parsed.getTime();
+      return ms > 0 ? Math.floor(ms / 86400000) : 0;
+    }
+
+    function syncEditDrawerHeader(lead){
+      if (editTitleEl){
+        editTitleEl.textContent = formatEditDrawerName(lead);
+      }
+      if (editHeaderEmailEl){
+        editHeaderEmailEl.textContent = (lead?.email || '').trim() || '-';
+      }
+      if (editHeaderPhoneEl){
+        editHeaderPhoneEl.textContent = fmtPhone(lead?.phone || lead?.phone2 || '') || 'No phone';
+      }
+      if (editStageAgeEl){
+        editStageAgeEl.textContent = `Stage Age: ${formatEditDrawerStageAge(lead)}d`;
+      }
+      if (editAttemptsEl){
+        editAttemptsEl.textContent = `Attempts: ${Number(lead?.attemptsToday ?? lead?.dialsToday ?? 0) || 0} today • ${Number(lead?.attemptsThisWeek ?? lead?.dialsWeek ?? 0) || 0} week • ${Number(lead?.attemptsLifetime ?? lead?.callCount ?? 0) || 0} total`;
+      }
+      if (editWaitingPillEl){
+        editWaitingPillEl.textContent = waitingOnLabel(lead?.waitingOn || 'WaitingOnAgent');
+      }
+      if (editOutcomeSuggestion){
+        editOutcomeSuggestion.textContent = 'Use one-click outcomes to move leads into the correct non-lead buckets.';
+      }
+      if (editMailBtn){
+        const email = (lead?.email || '').trim();
+        editMailBtn.href = email ? `mailto:${email}` : '#';
+        editMailBtn.classList.toggle('disabled', !email);
+      }
+      if (editCallBtn){
+        const phone = normalizeSearchDigits(lead?.phone || lead?.phone2 || '');
+        editCallBtn.href = phone ? `tel:${phone}` : '#';
+        editCallBtn.classList.toggle('disabled', !phone);
+      }
+      if (editPortalWrap){
+        const leadId = (lead?.leadId || '').trim();
+        editPortalWrap.innerHTML = leadId
+          ? `<a class="btn btn-ghost" href="/Leads?open=${encodeURIComponent(leadId)}" target="_blank" rel="noopener">Open in CRM</a>`
+          : '-';
       }
     }
 
@@ -767,36 +847,29 @@
       fillEditInput('docAppSigned', lead?.docChecklist?.appSigned || false);
       fillEditInput('docPolicyDelivered', lead?.docChecklist?.policyDelivered || false);
       fillEditInput('docReviewBooked', lead?.docChecklist?.reviewBooked || false);
+      fillEditInput('assignedOwner', lead?.collaboration?.owner || '');
       fillEditInput('watchers', Array.isArray(lead?.collaboration?.watchers) ? lead.collaboration.watchers.join(', ') : (lead?.watchers || ''));
       fillEditInput('mentionNote', '');
 
-      if (editTitleEl){
-        const displayName = `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Edit Lead';
-        editTitleEl.textContent = displayName;
-      }
-
       applyEditDrawerLeadTypeDisplay(lead);
+      syncEditDrawerHeader(lead);
       setEditStatus('Ready');
     }
 
     function closeEditDrawer(){
       if (!editOverlay) return;
       editDrawerOpen = false;
-      editOverlay.dataset.open = '0';
-      window.setTimeout(() => {
-        if (!editDrawerOpen){
-          editOverlay.hidden = true;
-        }
-      }, 180);
+      editOverlay.classList.remove('open');
+      editDrawer?.classList.remove('open');
+      editDrawer?.setAttribute('aria-hidden', 'true');
     }
 
     function openEditDrawerShell(){
       if (!editOverlay) return;
       editDrawerOpen = true;
-      editOverlay.hidden = false;
-      window.requestAnimationFrame(() => {
-        editOverlay.dataset.open = '1';
-      });
+      editOverlay.classList.add('open');
+      editDrawer?.classList.add('open');
+      editDrawer?.setAttribute('aria-hidden', 'false');
     }
 
     async function openEditClientDrawer(){
@@ -905,7 +978,11 @@
         leads.forEach(patchLead);
         applyLeadPayload(lead, saved);
         broadcastLeadUpdate(lead, saved);
-        populateEditDrawer(lead);
+        populateEditDrawer({
+          ...lead,
+          ...saved,
+          zipCode: saved?.zipCode || lead?.zipCode || ''
+        });
         showCurrent({ lead });
         setEditStatus('Saved ✔', 'good');
       } catch (err){
@@ -2717,6 +2794,94 @@
 
     editSaveBtn?.addEventListener('click', () => {
       saveEditClientDrawer();
+    });
+
+    editInputs.pipelineStage?.addEventListener('change', () => {
+      const lead = resolveCurrentLead() || {};
+      applyEditDrawerLeadTypeDisplay({
+        ...lead,
+        bucket: editInputs.pipelineStage?.value || lead.bucket || lead.crmStage || '',
+        crmStage: editInputs.pipelineStage?.value || lead.crmStage || lead.bucket || ''
+      });
+    });
+
+    [editInputs.firstName, editInputs.lastName, editInputs.email, editInputs.phone].forEach((input) => {
+      input?.addEventListener('input', () => {
+        syncEditDrawerHeader({
+          ...resolveCurrentLead(),
+          firstName: editInputs.firstName?.value || '',
+          lastName: editInputs.lastName?.value || '',
+          email: editInputs.email?.value || '',
+          phone: editInputs.phone?.value || '',
+          phone2: editInputs.phone2?.value || ''
+        });
+      });
+    });
+
+    editResetBtn?.addEventListener('click', () => {
+      if (!resolveCurrentLead()) return;
+      openEditClientDrawer();
+    });
+
+    editMarkTodayBtn?.addEventListener('click', () => {
+      fillEditInput('crmLastTouch', todayIsoDate());
+      setEditStatus('Touched today — saving…');
+      saveEditClientDrawer();
+    });
+
+    editNextTodayBtn?.addEventListener('click', () => {
+      fillEditInput('crmNextDate', todayIsoDate());
+      if (!String(editInputs.crmNextText?.value || '').trim()){
+        fillEditInput('crmNextText', 'Follow up today');
+      }
+      setEditStatus('Next action set — saving…');
+      saveEditClientDrawer();
+    });
+
+    editCopyContactBtn?.addEventListener('click', async () => {
+      const lead = resolveCurrentLead();
+      if (!lead) return;
+      const value = `${formatEditDrawerName(lead)}\n${(lead.email || '').trim()}\n${fmtPhone(lead.phone || lead.phone2 || '')}`.trim();
+      try {
+        await navigator.clipboard.writeText(value);
+        setEditStatus('Contact copied', 'good');
+      } catch {
+        setEditStatus('Copy failed', 'bad');
+      }
+    });
+
+    editDeleteBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const leadId = resolveCurrentLead()?.leadId || '';
+      if (!leadId) return;
+      await deleteCurrentLead();
+      if (!findLeadById(leadId)){
+        closeEditDrawer();
+      }
+    });
+
+    editActionsShortcutBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      const target = bridge.querySelector('#leadActionsContainer') || bridge.querySelector('#timeline');
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    editCallBtn?.addEventListener('click', (event) => {
+      const lead = resolveCurrentLead();
+      const phone = normalizeSearchDigits(lead?.phone || lead?.phone2 || '');
+      if (!phone){
+        event.preventDefault();
+        setEditStatus('No phone for this lead', 'bad');
+      }
+    });
+
+    editOpenQueueBtn?.addEventListener('click', (event) => {
+      const leadId = resolveCurrentLead()?.leadId || '';
+      if (!leadId) return;
+      editOpenQueueBtn.href = `/Leads?open=${encodeURIComponent(leadId)}`;
+      editOpenQueueBtn.target = '_blank';
+      editOpenQueueBtn.rel = 'noopener';
+      event.stopPropagation();
     });
 
     document.addEventListener('keydown', (event) => {
