@@ -14440,6 +14440,362 @@ details.section{
     }
 }
 
+/* Re-assert the real Leads Quick View styling inside workstation.
+   The rebuttals shell has broader #rbShell rules that would otherwise override
+   the shared lead quick-view theme. */
+#rbShell #drawer.lead-qv-shell{
+    background:
+        radial-gradient(1100px 520px at 14% -8%, rgba(168,85,247,.18), transparent 48%),
+        radial-gradient(900px 420px at 110% 12%, rgba(56,189,248,.16), transparent 46%),
+        linear-gradient(180deg,#09111f 0%, #0d1728 38%, #0a1323 100%) !important;
+    border: 1px solid rgba(244,208,121,.52) !important;
+    box-shadow: 0 32px 72px rgba(2,6,23,.62), 0 10px 26px rgba(139,92,246,.12), inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .dhead{
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 14px 15px 13px !important;
+    border-bottom: 1px solid rgba(244,208,121,.2) !important;
+    background: linear-gradient(180deg, rgba(8,15,28,.96), rgba(11,19,35,.88)) !important;
+    backdrop-filter: blur(18px) saturate(120%);
+    box-shadow: 0 16px 36px rgba(2,6,23,.32) !important;
+    color: #f8fafc !important;
+}
+
+#rbShell #drawer.lead-qv-shell .dtitle{
+    font-size: 1.14rem;
+    letter-spacing: .015em;
+}
+
+#rbShell #drawer.lead-qv-shell #dName{
+    font-weight: 1000;
+    color: #f8fafc !important;
+    text-shadow: 0 1px 16px rgba(148,163,184,.16);
+}
+
+#rbShell #drawer.lead-qv-shell .dsub{
+    margin-top: 7px;
+    color: #d9e4f3 !important;
+    font-weight: 760;
+    font-size: .87rem;
+}
+
+#rbShell #drawer.lead-qv-shell .crm-email-display{
+    color: #fde68a !important;
+}
+
+#rbShell #drawer.lead-qv-shell .drawer-statbar{
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+#rbShell #drawer.lead-qv-shell .pill,
+#rbShell #drawer.lead-qv-shell #dPortalWrap{
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.04));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 26px rgba(2,6,23,.22);
+    color: #e8edf7 !important;
+    font-weight: 800;
+    font-size: .78rem;
+}
+
+#rbShell #drawer.lead-qv-shell #dStageAge{ border-color: rgba(56,189,248,.28); color: #bae6fd !important; }
+#rbShell #drawer.lead-qv-shell #dAttempts{ border-color: rgba(244,208,121,.24); color: #fef3c7 !important; }
+#rbShell #drawer.lead-qv-shell #dWaitingOnPill{ border-color: rgba(168,85,247,.24); color: #e9d5ff !important; }
+
+#rbShell #drawer.lead-qv-shell .drawer-top-actions{
+    gap: 10px;
+    margin-top: 12px;
+}
+
+#rbShell #drawer.lead-qv-shell .btn,
+#rbShell #drawer.lead-qv-shell a.btn{
+    border-radius: 14px !important;
+    min-height: 40px !important;
+    padding: 9px 13px !important;
+    font-weight: 900 !important;
+    font-size: .87rem !important;
+    letter-spacing: .01em;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease, color .16s ease !important;
+}
+
+#rbShell #drawer.lead-qv-shell .btn:hover,
+#rbShell #drawer.lead-qv-shell .btn:focus{
+    transform: translateY(-1px);
+}
+
+#rbShell #drawer.lead-qv-shell .btn-gold{
+    background: linear-gradient(135deg,#fff1bc 0%, #f0cf7a 34%, #d6a84a 68%, #9f6f16 100%) !important;
+    color: #251607 !important;
+    border: 1px solid rgba(244,208,121,.9) !important;
+    box-shadow: 0 12px 26px rgba(217,179,90,.24), inset 0 1px 0 rgba(255,255,255,.42) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .btn-gold:hover,
+#rbShell #drawer.lead-qv-shell .btn-gold:focus{
+    box-shadow: 0 15px 30px rgba(217,179,90,.28), inset 0 1px 0 rgba(255,255,255,.5) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .btn-ghost,
+#rbShell #drawer.lead-qv-shell a.btn-ghost,
+#rbShell #drawer.lead-qv-shell .lb-btn{
+    background: linear-gradient(180deg, rgba(20,31,52,.96), rgba(12,19,33,.96)) !important;
+    color: #eef4ff !important;
+    border: 1px solid rgba(148,163,184,.22) !important;
+    box-shadow: 0 10px 20px rgba(2,6,23,.24), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .btn-ghost:hover,
+#rbShell #drawer.lead-qv-shell a.btn-ghost:hover,
+#rbShell #drawer.lead-qv-shell .lb-btn:hover,
+#rbShell #drawer.lead-qv-shell .btn-ghost:focus,
+#rbShell #drawer.lead-qv-shell a.btn-ghost:focus,
+#rbShell #drawer.lead-qv-shell .lb-btn:focus{
+    border-color: rgba(244,208,121,.34) !important;
+    color: #fff7dd !important;
+    box-shadow: 0 12px 24px rgba(2,6,23,.3), 0 0 0 1px rgba(244,208,121,.16) !important;
+}
+
+#rbShell #drawer.lead-qv-shell #btnCloseDrawer{
+    min-width: 88px;
+}
+
+#rbShell #drawer.lead-qv-shell .dbody{
+    padding: 14px 15px 20px !important;
+    background:
+        radial-gradient(720px 300px at 100% 0%, rgba(56,189,248,.06), transparent 54%),
+        radial-gradient(660px 260px at 0% 18%, rgba(168,85,247,.08), transparent 52%),
+        linear-gradient(180deg,#0b1424,#0a1321 100%) !important;
+    color: #dbe7f3 !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section{
+    border: 1px solid rgba(148,163,184,.18) !important;
+    border-radius: 20px !important;
+    padding: 14px !important;
+    margin-bottom: 13px !important;
+    background: linear-gradient(180deg, rgba(14,22,37,.94), rgba(9,15,28,.94)) !important;
+    box-shadow: 0 14px 30px rgba(2,6,23,.26), inset 0 1px 0 rgba(255,255,255,.04) !important;
+    overflow: hidden !important;
+    color: #dbe7f3 !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-teal.qv-contact-card{
+    border-color: rgba(56,189,248,.24) !important;
+    background:
+        radial-gradient(520px 200px at 0% 0%, rgba(56,189,248,.12), transparent 55%),
+        linear-gradient(180deg, rgba(10,28,44,.96), rgba(9,19,34,.96)) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-gold{
+    border-color: rgba(244,208,121,.22) !important;
+    background:
+        radial-gradient(520px 220px at 100% 0%, rgba(244,208,121,.1), transparent 55%),
+        linear-gradient(180deg, rgba(33,24,9,.96), rgba(19,14,8,.96)) !important;
+    color: #fde7af !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-relationship{
+    border: 1px solid rgba(167,139,250,.28) !important;
+    background:
+        radial-gradient(520px 220px at 100% 0%, rgba(167,139,250,.12), transparent 55%),
+        linear-gradient(180deg, rgba(25,22,45,.96), rgba(13,16,34,.96)) !important;
+    color: #ddd6fe !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-green{
+    border-color: rgba(74,222,128,.24) !important;
+    background:
+        radial-gradient(420px 180px at 0% 0%, rgba(74,222,128,.1), transparent 56%),
+        linear-gradient(180deg, rgba(12,31,23,.96), rgba(9,21,18,.96)) !important;
+    color: #bbf7d0 !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-violet{
+    border-color: rgba(192,132,252,.24) !important;
+    background:
+        radial-gradient(420px 180px at 100% 0%, rgba(192,132,252,.1), transparent 56%),
+        linear-gradient(180deg, rgba(28,17,45,.96), rgba(17,11,31,.96)) !important;
+    color: #e9d5ff !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section.section-red{
+    border-color: rgba(248,113,113,.28) !important;
+    background:
+        radial-gradient(420px 180px at 0% 0%, rgba(248,113,113,.1), transparent 56%),
+        linear-gradient(180deg, rgba(42,16,21,.96), rgba(25,10,14,.96)) !important;
+    color: #fecaca !important;
+}
+
+#rbShell #drawer.lead-qv-shell .section h4,
+#rbShell #drawer.lead-qv-shell .qv-subsection h5,
+#rbShell #drawer.lead-qv-shell .section.section-relationship h5{
+    color: #f8fafc !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-contact-card > div:first-child{
+    margin-bottom: 10px;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-contact-card h4{
+    margin: 0;
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    font-size: .92rem !important;
+    letter-spacing: .075em;
+    text-transform: uppercase;
+    color: #eef7ff !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-subsection{
+    padding: 11px 11px 10px !important;
+    border-radius: 15px !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)) !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-section-title{
+    font-size: .88rem;
+    font-weight: 950;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #f8fafc !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-section-copy{
+    font-size: .76rem;
+    color: #b7c4d9 !important;
+    font-weight: 750;
+    line-height: 1.35;
+}
+
+#rbShell #drawer.lead-qv-shell .f label,
+#rbShell #drawer.lead-qv-shell .drawer label,
+#rbShell #drawer.lead-qv-shell .cc-label{
+    color: #cfdbed !important;
+    font-size: .68rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .1em !important;
+    text-transform: uppercase !important;
+}
+
+#rbShell #drawer.lead-qv-shell input,
+#rbShell #drawer.lead-qv-shell select,
+#rbShell #drawer.lead-qv-shell textarea{
+    width: 100%;
+    border-radius: 13px !important;
+    border: 1px solid rgba(148,163,184,.22) !important;
+    background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(233,239,247,.96)) !important;
+    color: #0f172a !important;
+    box-shadow: 0 8px 18px rgba(2,6,23,.11), inset 0 1px 0 rgba(255,255,255,.7) !important;
+    font-weight: 700 !important;
+    font-size: .92rem !important;
+    padding: 10px 12px !important;
+}
+
+#rbShell #drawer.lead-qv-shell textarea{
+    min-height: 104px;
+}
+
+#rbShell #drawer.lead-qv-shell input:focus,
+#rbShell #drawer.lead-qv-shell select:focus,
+#rbShell #drawer.lead-qv-shell textarea:focus{
+    border-color: rgba(244,208,121,.58) !important;
+    box-shadow: 0 0 0 3px rgba(244,208,121,.14), 0 10px 20px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.75) !important;
+    outline: none;
+}
+
+#rbShell #drawer.lead-qv-shell input::placeholder,
+#rbShell #drawer.lead-qv-shell textarea::placeholder{
+    color: #64748b !important;
+}
+
+#rbShell #drawer.lead-qv-shell .tiny,
+#rbShell #drawer.lead-qv-shell .muted{
+    color: #b9c8da !important;
+}
+
+#rbShell #drawer.lead-qv-shell .preset-chip{
+    border: 1px solid rgba(148,163,184,.18) !important;
+    background: linear-gradient(180deg, rgba(19,30,49,.96), rgba(12,19,33,.96)) !important;
+    color: #edf4ff !important;
+    box-shadow: 0 8px 16px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.04) !important;
+    padding: 8px 12px !important;
+    font-size: .76rem !important;
+}
+
+#rbShell #drawer.lead-qv-shell .preset-chip.active,
+#rbShell #drawer.lead-qv-shell .preset-chip:hover{
+    border-color: rgba(244,208,121,.34) !important;
+    color: #fff5cf !important;
+    box-shadow: 0 10px 20px rgba(2,6,23,.22), 0 0 0 1px rgba(244,208,121,.14) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .outcome-grid{
+    gap: 12px;
+}
+
+#rbShell #drawer.lead-qv-shell .outcome-grid .btn{
+    min-height: 42px !important;
+    padding: 9px 12px !important;
+    border-radius: 14px !important;
+    box-shadow: 0 10px 20px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .doc-grid{
+    gap: 12px;
+}
+
+#rbShell #drawer.lead-qv-shell .doc-grid label{
+    border: 1px solid rgba(255,255,255,.08) !important;
+    border-radius: 14px !important;
+    padding: 10px 12px !important;
+    background: linear-gradient(180deg, rgba(16,26,39,.96), rgba(12,18,30,.96)) !important;
+    color: #e8f2ea !important;
+    box-shadow: 0 8px 18px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.04) !important;
+    font-size: .88rem !important;
+}
+
+#rbShell #drawer.lead-qv-shell .doc-grid input[type="checkbox"]{
+    accent-color: #34d399;
+    transform: scale(1.08);
+}
+
+#rbShell #drawer.lead-qv-shell #leadActionsContainer,
+#rbShell #drawer.lead-qv-shell #leadCommitmentsContainer,
+#rbShell #drawer.lead-qv-shell .timeline,
+#rbShell #drawer.lead-qv-shell .mention-list{
+    border-radius: 14px !important;
+    border: 1px solid rgba(255,255,255,.08) !important;
+    background: linear-gradient(180deg, rgba(13,21,35,.96), rgba(9,15,27,.96)) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 10px 22px rgba(2,6,23,.18) !important;
+    color: #e7edf7 !important;
+}
+
+#rbShell #drawer.lead-qv-shell #leadActionsContainer,
+#rbShell #drawer.lead-qv-shell #leadCommitmentsContainer{
+    padding: 11px 12px !important;
+}
+
+#rbShell #drawer.lead-qv-shell #dSaved{
+    color: #fde68a !important;
+    font-weight: 900 !important;
+    letter-spacing: .03em !important;
+}
+
 #rbShell .rebuttal-workspace-grid{
     display: grid;
     grid-template-columns: 290px minmax(0, 1fr) 290px;
