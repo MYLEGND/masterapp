@@ -531,10 +531,6 @@
     const actionHost = callBtn?.closest('.lb-actions') || null;
     const dayDialsBtn = bridge.querySelector('[data-lb-dials-day]');
     const deleteBtn = bridge.querySelector('[data-lb-delete]');
-    const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
-    const drawerOutcomeButtons = Array.from(bridge.querySelectorAll('#drawer .outcome-btn[data-outcome]'));
-    const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
-    const firstOutcomeBtn = cardOutcomeButtons[0] || null;
     const originalMetaHost = metaWrap?.parentElement || null;
     const clearBtn = bridge.querySelector('[data-lb-clear]');
     const editClientBtn = bridge.querySelector('[data-lb-edit-client]');
@@ -554,68 +550,95 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
-    const editOverlay = bridge.querySelector('#drawerBackdrop');
-    const editDrawer = bridge.querySelector('#drawer');
-    const editTitleEl = bridge.querySelector('#dName');
-    const editHeaderEmailEl = bridge.querySelector('#dEmail');
-    const editHeaderPhoneEl = bridge.querySelector('#dPhone');
-    const editStageAgeEl = bridge.querySelector('#dStageAge');
-    const editAttemptsEl = bridge.querySelector('#dAttempts');
-    const editWaitingPillEl = bridge.querySelector('#dWaitingOnPill');
-    const editOutcomeSuggestion = bridge.querySelector('#dOutcomeSuggestion');
-    const editPortalWrap = bridge.querySelector('#dPortalWrap');
-    const editStatusEl = bridge.querySelector('#dSaved');
-    const editSaveBtn = bridge.querySelector('#btnSaveLocal');
-    const editResetBtn = bridge.querySelector('#btnResetLocal');
-    const editDeleteBtn = bridge.querySelector('#btnDeleteClient');
-    const editMarkTodayBtn = bridge.querySelector('#btnMarkToday');
-    const editNextTodayBtn = bridge.querySelector('#btnSetNextToday');
-    const editCopyContactBtn = bridge.querySelector('#btnCopyContact');
-    const editMailBtn = bridge.querySelector('#btnMail');
-    const editCallBtn = bridge.querySelector('#btnCall');
-    const editActionsShortcutBtn = bridge.querySelector('#leadQuickActionsShortcut');
-    const editOpenQueueBtn = bridge.querySelector('#btnOpenQueue');
-    const editCloseButtons = Array.from(bridge.querySelectorAll('#btnCloseDrawer'));
-    const editLenderField = bridge.querySelector('#dLenderField');
-    const editLoanField = bridge.querySelector('#dLoanField');
-    const editLenderLabel = bridge.querySelector('#dLenderLabel');
-    const editLoanLabel = bridge.querySelector('#dLoanLabel');
-    const editInputs = {
-      firstName: bridge.querySelector('#dFirst'),
-      lastName: bridge.querySelector('#dLast'),
-      email: bridge.querySelector('#dEmailInput'),
-      phone: bridge.querySelector('#dPhoneInput'),
-      phone2: bridge.querySelector('#dPhone2Input'),
-      dob: bridge.querySelector('#dDob'),
-      age: bridge.querySelector('#dAge'),
-      gender: bridge.querySelector('#dGender'),
-      addressLine: bridge.querySelector('#dAddress'),
-      city: bridge.querySelector('#dCity'),
-      state: bridge.querySelector('#dState'),
-      county: bridge.querySelector('#dCounty'),
-      zipCode: bridge.querySelector('#dZip'),
-      mortgageLender: bridge.querySelector('#dLender'),
-      loanAmount: bridge.querySelector('#dLoanAmount'),
-      btc: bridge.querySelector('#dBtc'),
-      crmStatus: bridge.querySelector('#dStatus'),
-      pipelineStage: bridge.querySelector('#dPipelineStage'),
-      waitingOn: bridge.querySelector('#dWaitingOn'),
-      crmLastTouch: bridge.querySelector('#dLastTouch'),
-      crmNextDate: bridge.querySelector('#dNextDate'),
-      crmPriority: bridge.querySelector('#dPriority'),
-      crmNextText: bridge.querySelector('#dNextText'),
-      pinnedBrief: bridge.querySelector('#dPinnedBrief'),
-      crmTags: bridge.querySelector('#dTags'),
-      agentNotes: bridge.querySelector('#dNotes'),
-      docIdReceived: bridge.querySelector('#dDocIdReceived'),
-      docAppSent: bridge.querySelector('#dDocAppSent'),
-      docAppSigned: bridge.querySelector('#dDocAppSigned'),
-      docPolicyDelivered: bridge.querySelector('#dDocPolicyDelivered'),
-      docReviewBooked: bridge.querySelector('#dDocReviewBooked'),
-      assignedOwner: bridge.querySelector('#dAssignedOwner'),
-      watchers: bridge.querySelector('#dWatchers'),
-      mentionNote: bridge.querySelector('#dMentionNote')
+    const drawerNoteOpenBtn = document.getElementById('noteSelfOpen');
+    const globalizeQuickViewNode = (node) => {
+      if (!node) return null;
+      if (node.dataset.workstationDrawer !== '1'){
+        node.dataset.workstationDrawer = '1';
+      }
+      if (node.parentElement !== document.body){
+        document.body.appendChild(node);
+      }
+      return node;
     };
+    const editOverlay = globalizeQuickViewNode(bridge.querySelector('#drawerBackdrop'));
+    const editDrawer = globalizeQuickViewNode(bridge.querySelector('#drawer'));
+    globalizeQuickViewNode(bridge.querySelector('#noteSelfOverlay'));
+    const editTitleEl = document.getElementById('dName');
+    const editHeaderEmailEl = document.getElementById('dEmail');
+    const editHeaderPhoneEl = document.getElementById('dPhone');
+    const editStageAgeEl = document.getElementById('dStageAge');
+    const editAttemptsEl = document.getElementById('dAttempts');
+    const editWaitingPillEl = document.getElementById('dWaitingOnPill');
+    const editOutcomeSuggestion = document.getElementById('dOutcomeSuggestion');
+    const editPortalWrap = document.getElementById('dPortalWrap');
+    const editStatusEl = document.getElementById('dSaved');
+    const editSaveBtn = document.getElementById('btnSaveLocal');
+    const editResetBtn = document.getElementById('btnResetLocal');
+    const editDeleteBtn = document.getElementById('btnDeleteClient');
+    const editMarkTodayBtn = document.getElementById('btnMarkToday');
+    const editNextTodayBtn = document.getElementById('btnSetNextToday');
+    const editCopyContactBtn = document.getElementById('btnCopyContact');
+    const editMailBtn = document.getElementById('btnMail');
+    const editCallBtn = document.getElementById('btnCall');
+    const editActionsShortcutBtn = document.getElementById('leadQuickActionsShortcut');
+    const editOpenQueueBtn = document.getElementById('btnOpenQueue');
+    const editCloseButtons = Array.from(document.querySelectorAll('#btnCloseDrawer'));
+    const editLenderField = document.getElementById('dLenderField');
+    const editLoanField = document.getElementById('dLoanField');
+    const editLenderLabel = document.getElementById('dLenderLabel');
+    const editLoanLabel = document.getElementById('dLoanLabel');
+    const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
+    const drawerOutcomeButtons = Array.from(editDrawer?.querySelectorAll('.outcome-btn[data-outcome]') || []);
+    const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
+    const firstOutcomeBtn = cardOutcomeButtons[0] || null;
+    const editInputs = {
+      firstName: document.getElementById('dFirst'),
+      lastName: document.getElementById('dLast'),
+      email: document.getElementById('dEmailInput'),
+      phone: document.getElementById('dPhoneInput'),
+      phone2: document.getElementById('dPhone2Input'),
+      dob: document.getElementById('dDob'),
+      age: document.getElementById('dAge'),
+      gender: document.getElementById('dGender'),
+      addressLine: document.getElementById('dAddress'),
+      city: document.getElementById('dCity'),
+      state: document.getElementById('dState'),
+      county: document.getElementById('dCounty'),
+      zipCode: document.getElementById('dZip'),
+      mortgageLender: document.getElementById('dLender'),
+      loanAmount: document.getElementById('dLoanAmount'),
+      btc: document.getElementById('dBtc'),
+      crmStatus: document.getElementById('dStatus'),
+      pipelineStage: document.getElementById('dPipelineStage'),
+      waitingOn: document.getElementById('dWaitingOn'),
+      crmLastTouch: document.getElementById('dLastTouch'),
+      crmNextDate: document.getElementById('dNextDate'),
+      crmPriority: document.getElementById('dPriority'),
+      crmNextText: document.getElementById('dNextText'),
+      pinnedBrief: document.getElementById('dPinnedBrief'),
+      crmTags: document.getElementById('dTags'),
+      agentNotes: document.getElementById('dNotes'),
+      docIdReceived: document.getElementById('dDocIdReceived'),
+      docAppSent: document.getElementById('dDocAppSent'),
+      docAppSigned: document.getElementById('dDocAppSigned'),
+      docPolicyDelivered: document.getElementById('dDocPolicyDelivered'),
+      docReviewBooked: document.getElementById('dDocReviewBooked'),
+      assignedOwner: document.getElementById('dAssignedOwner'),
+      watchers: document.getElementById('dWatchers'),
+      mentionNote: document.getElementById('dMentionNote')
+    };
+    const editActionsModal = document.getElementById('leadActionsHubModal');
+    const editLeadActionsContainer = document.getElementById('leadActionsContainer');
+    const editLeadCommitmentsContainer = document.getElementById('leadCommitmentsContainer');
+    const editTimeline = document.getElementById('timeline');
+    const editTimelineFilters = document.getElementById('timelineFilters');
+    const editActivityTypeInput = document.getElementById('dActType');
+    const editActivityDateInput = document.getElementById('dActDate');
+    const editActivityNoteInput = document.getElementById('dActNote');
+    const editAddActivityBtn = document.getElementById('btnAddActivity');
+    const editClearTimelineBtn = document.getElementById('btnClearTimeline');
+    const editAddProductionBtn = document.getElementById('phAddFromDrawer');
     const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
     const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
     const baseLabels = {
@@ -661,6 +684,7 @@
     let dialTotalsRefreshInFlight = false;
     let textMenuEl = null;
     let editDrawerOpen = false;
+    let editTimelineFilter = 'all';
 
     function restoreMobileLeadControls(){
       if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
@@ -799,9 +823,13 @@
       }
       if (editPortalWrap){
         const leadId = (lead?.leadId || '').trim();
-        editPortalWrap.innerHTML = leadId
-          ? `<a class="btn btn-ghost" href="/Leads?open=${encodeURIComponent(leadId)}" target="_blank" rel="noopener">Open in CRM</a>`
-          : '-';
+        if (leadId){
+          editPortalWrap.hidden = false;
+          editPortalWrap.innerHTML = `<a class="btn btn-ghost" href="/Leads?open=${encodeURIComponent(leadId)}" target="_blank" rel="noopener">Open in CRM</a>`;
+        } else {
+          editPortalWrap.innerHTML = '';
+          editPortalWrap.hidden = true;
+        }
       }
     }
 
@@ -853,12 +881,90 @@
 
       applyEditDrawerLeadTypeDisplay(lead);
       syncEditDrawerHeader(lead);
+      renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
       setEditStatus('Ready');
+    }
+
+    function renderEditTimeline(items){
+      if (!editTimeline) return;
+
+      let timelineItems = Array.isArray(items) ? items.slice() : [];
+      if (editTimelineFilter === 'calls'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'call');
+      } else if (editTimelineFilter === 'meetings'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'meeting');
+      } else if (editTimelineFilter === 'notes'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'note');
+      } else if (editTimelineFilter === 'system'){
+        timelineItems = timelineItems.filter(item => !!item?.isSystem);
+      }
+
+      if (!timelineItems.length){
+        editTimeline.innerHTML = '<div class="tiny">No activity yet. Log the first touchpoint.</div>';
+        return;
+      }
+
+      editTimeline.innerHTML = timelineItems.slice().reverse().map(item => {
+        const location = item?.location ? `<div class="meta">Location: ${escapeHtml(item.location)}</div>` : '';
+        const meetingLink = item?.meetingLink ? `<div class="meta"><a class="link" href="${escapeHtml(item.meetingLink)}" target="_blank" rel="noopener">Open Meeting Link</a></div>` : '';
+        const calendarLink = item?.calendarWebLink ? `<div class="meta"><a class="link" href="${escapeHtml(item.calendarWebLink)}" target="_blank" rel="noopener">Open Outlook Event</a></div>` : '';
+        return `
+          <div class="event">
+            <div class="top">
+              <div class="type">${escapeHtml(item?.type || 'Note')}</div>
+              <div class="meta">${escapeHtml(item?.date || '')}</div>
+            </div>
+            <div class="note">${escapeHtml(item?.note || '')}</div>
+            ${location}${meetingLink}${calendarLink}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function loadEditDrawerActionsPlaceholders(){
+      if (editLeadActionsContainer){
+        editLeadActionsContainer.innerHTML = '<div class="text-muted">Open this lead in CRM for full action management, or use the one-click lead outcomes here in Workstation.</div>';
+      }
+      if (editLeadCommitmentsContainer){
+        editLeadCommitmentsContainer.innerHTML = '<div class="text-muted">Open this lead in CRM for commitments and advanced workflow items.</div>';
+      }
+    }
+
+    function openEditActionsHub(){
+      if (!editActionsModal){
+        setEditStatus('Actions hub is unavailable on this page', 'bad');
+        return;
+      }
+
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      if (editActivityDateInput && !String(editActivityDateInput.value || '').trim()){
+        editActivityDateInput.value = todayIsoDate();
+      }
+
+      renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
+      loadEditDrawerActionsPlaceholders();
+
+      if (window.bootstrap?.Modal){
+        window.bootstrap.Modal.getOrCreateInstance(editActionsModal).show();
+      } else {
+        editActionsModal.classList.add('show');
+        editActionsModal.style.display = 'block';
+        editActionsModal.removeAttribute('aria-hidden');
+      }
     }
 
     function closeEditDrawer(){
       if (!editOverlay) return;
       editDrawerOpen = false;
+      if (window.bootstrap?.Modal && editActionsModal){
+        const modal = window.bootstrap.Modal.getInstance(editActionsModal);
+        modal?.hide();
+      }
       editOverlay.classList.remove('open');
       editDrawer?.classList.remove('open');
       editDrawer?.setAttribute('aria-hidden', 'true');
@@ -880,6 +986,9 @@
       }
 
       openEditDrawerShell();
+      if (editDrawer){
+        editDrawer.dataset.clientId = lead.leadId || '';
+      }
       setEditStatus('Loading…');
       if (editSaveBtn) editSaveBtn.disabled = true;
 
@@ -2862,8 +2971,7 @@
 
     editActionsShortcutBtn?.addEventListener('click', (event) => {
       event.preventDefault();
-      const target = bridge.querySelector('#leadActionsContainer') || bridge.querySelector('#timeline');
-      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      openEditActionsHub();
     });
 
     editCallBtn?.addEventListener('click', (event) => {
@@ -2876,12 +2984,33 @@
     });
 
     editOpenQueueBtn?.addEventListener('click', (event) => {
-      const leadId = resolveCurrentLead()?.leadId || '';
-      if (!leadId) return;
-      editOpenQueueBtn.href = `/Leads?open=${encodeURIComponent(leadId)}`;
-      editOpenQueueBtn.target = '_blank';
-      editOpenQueueBtn.rel = 'noopener';
-      event.stopPropagation();
+      event.preventDefault();
+      setEditStatus('Client queues are disabled in Leads quick view.', 'bad');
+    });
+
+    editAddProductionBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Use Open in CRM for production history updates.', 'bad');
+    });
+
+    editAddActivityBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Timeline activity is disabled in Leads-only mode.', 'bad');
+    });
+
+    editClearTimelineBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Timeline clear is disabled in Leads-only mode.', 'bad');
+    });
+
+    editTimelineFilters?.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-timelinefilter]');
+      if (!btn) return;
+      editTimelineFilter = btn.getAttribute('data-timelinefilter') || 'all';
+      Array.from(editTimelineFilters.querySelectorAll('[data-timelinefilter]')).forEach(item => {
+        item.classList.toggle('active', item === btn);
+      });
+      renderEditTimeline(Array.isArray(resolveCurrentLead()?.activities) ? resolveCurrentLead().activities : []);
     });
 
     document.addEventListener('keydown', (event) => {
@@ -2891,6 +3020,9 @@
     });
 
     noteOpenBtn?.addEventListener('click', async () => {
+      await openNoteModal();
+    });
+    drawerNoteOpenBtn?.addEventListener('click', async () => {
       await openNoteModal();
     });
     noteCloseBtn?.addEventListener('click', () => {

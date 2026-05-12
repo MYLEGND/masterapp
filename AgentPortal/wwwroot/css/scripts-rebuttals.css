@@ -14387,7 +14387,7 @@ details.section{
     }
 }
 
-#rbShell #drawerBackdrop.backdrop{
+#drawerBackdrop.backdrop[data-workstation-drawer="1"]{
     position: fixed !important;
     inset: 0 !important;
     background: rgba(3, 10, 24, .42) !important;
@@ -14396,11 +14396,11 @@ details.section{
     z-index: 2200 !important;
 }
 
-#rbShell #drawerBackdrop.backdrop.open{
+#drawerBackdrop.backdrop[data-workstation-drawer="1"].open{
     display: block !important;
 }
 
-#rbShell #drawer.drawer{
+#drawer.drawer[data-workstation-drawer="1"]{
     position: fixed !important;
     top: 0 !important;
     right: 0 !important;
@@ -14422,18 +14422,22 @@ details.section{
     z-index: 2201 !important;
 }
 
-#rbShell #drawer.drawer.open{
+#drawer.drawer[data-workstation-drawer="1"].open{
     transform: translateX(0) !important;
     pointer-events: auto !important;
 }
 
-#rbShell #drawer .dbody{
+#drawer.drawer[data-workstation-drawer="1"] .dbody{
     overflow-y: auto;
     overscroll-behavior: contain;
 }
 
+#drawer.drawer[data-workstation-drawer="1"] #dPortalWrap[hidden]{
+    display: none !important;
+}
+
 @media (max-width: 900px){
-    #rbShell #drawer.drawer{
+    #drawer.drawer[data-workstation-drawer="1"]{
         width: 100vw !important;
         max-width: 100vw !important;
         border-radius: 0 !important;
@@ -14657,6 +14661,61 @@ details.section{
     letter-spacing: .075em;
     text-transform: uppercase;
     color: #eef7ff !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-disclosure > summary{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    padding: 0 0 11px !important;
+    list-style: none !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+    color: inherit !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::-webkit-details-marker{
+    display: none !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::marker{
+    content: "" !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::after{
+    content: "" !important;
+    width: 30px !important;
+    height: 30px !important;
+    flex: 0 0 30px !important;
+    border-radius: 999px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.04)) !important;
+    border: 1px solid rgba(255,255,255,.1) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-disclosure[open] > .qv-section-body{
+    padding-top: 11px !important;
+    border-top: 1px solid rgba(255,255,255,.08) !important;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-section-header{
+    position: relative;
+}
+
+#rbShell #drawer.lead-qv-shell .qv-section-header::after{
+    content: "" !important;
+    display: block !important;
+    width: 88px !important;
+    height: 2px !important;
+    margin-top: 7px !important;
+    border-radius: 999px !important;
+    background: linear-gradient(90deg, rgba(230,194,110,.9), rgba(230,194,110,0)) !important;
 }
 
 #rbShell #drawer.lead-qv-shell .qv-subsection{
