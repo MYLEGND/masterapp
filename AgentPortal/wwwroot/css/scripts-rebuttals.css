@@ -15123,6 +15123,10 @@ details.section{
         0 8px 16px rgba(15,23,42,.14) !important;
 }
 
+#rbShell .rebuttal-workspace-grid .content-head-shortcuts .objections-toggle-btn{
+    margin: 0;
+}
+
 #rbShell .rebuttal-workspace-grid .nav-body{
     padding: 12px;
     gap: 10px;
@@ -15131,6 +15135,51 @@ details.section{
 #rbShell .rebuttal-workspace-grid .content-body{
     padding: 14px;
     gap: 12px;
+}
+
+#rbShell .rebuttal-workspace-grid.objections-hidden .objections-card,
+#rbShell .rebuttal-workspace-grid.objections-hidden #rbNavArrow{
+    display: none;
+}
+
+#rbShell .rebuttal-workspace-grid.objections-hidden .scripts-card,
+#rbShell .rebuttal-workspace-grid.objections-hidden .guide-card{
+    min-width: 0;
+}
+
+@media (min-width: 1481px){
+    #rbShell .rebuttal-workspace-grid.objections-hidden{
+        grid-template-columns: minmax(0, 1fr) 290px;
+    }
+
+    #rbShell .rebuttal-workspace-grid.objections-hidden .scripts-card{
+        grid-column: 1;
+    }
+
+    #rbShell .rebuttal-workspace-grid.objections-hidden .guide-card{
+        grid-column: 2;
+    }
+}
+
+@media (min-width: 1181px) and (max-width: 1480px){
+    #rbShell .rebuttal-workspace-grid.objections-hidden{
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #rbShell .rebuttal-workspace-grid.objections-hidden .scripts-card{
+        grid-column: 1;
+    }
+
+    #rbShell .rebuttal-workspace-grid.objections-hidden .guide-card{
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 1180px){
+    #rbShell .rebuttal-workspace-grid.objections-hidden .scripts-card,
+    #rbShell .rebuttal-workspace-grid.objections-hidden .guide-card{
+        grid-column: 1;
+    }
 }
 
 #rbShell .rebuttal-workspace-grid .cat-btn{

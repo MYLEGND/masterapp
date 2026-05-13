@@ -62,9 +62,9 @@
                 @await Html.PartialAsync("_LeadBridge", "MortgageProtection")
             </div>
 
-            <div class="shell rebuttal-workspace-grid">
+            <div class="shell rebuttal-workspace-grid" id="rebuttalWorkspaceGrid">
                 <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
-                <section class="nav-card">
+                <section class="nav-card objections-card">
                     <div class="card-head">
                         <div>
                             <p class="card-title">Objections / Rebuttals</p>
@@ -74,7 +74,7 @@
                     <div class="nav-body" id="rbNav"></div>
                 </section>
 
-                <section class="content-card">
+                <section class="content-card scripts-card">
                     <div class="card-head">
                         <div class="content-head-copy">
                             <div class="content-head-text">
@@ -98,7 +98,7 @@
                     </div>
                 </section>
 
-                <section class="nav-card prosper-nav-card">
+                <section class="nav-card prosper-nav-card guide-card">
                     <div class="card-head">
                         <div>
                             <p class="card-title">Prosper Guide</p>
@@ -582,6 +582,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     const rbNavArrow = document.getElementById("rbNavArrow");
     const prosperNavArrow = document.getElementById("prosperNavArrow");
     const guideShortcutHost = document.querySelector("[data-guide-shortcuts]");
+    const objectionsStorageKey = "legend:scripts:objectionsHidden";
     const prosperUrl = '@Url.Action("ProsperAgedMortgageProtection", "Workstation")';
     const defaultProsperId = "sec-aged";
     const guideShortcutIds = new Set(["sec-voicemail", "sec-texts"]);
@@ -626,6 +627,13 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     let prosperLoaded = false;
     let prosperLoadFailed = false;
     let lastGuideShortcutRailMode = false;
+    let objectionsHidden = false;
+
+    try{
+        objectionsHidden = window.localStorage.getItem(objectionsStorageKey) === "true";
+    } catch {
+        objectionsHidden = false;
+    }
 
     function escapeHtml(v){
         return String(v || "")
@@ -681,6 +689,28 @@ So when you guys closed with <lender>, they had assigned us your case file in re
 
     function shouldHideGuideShortcutFromRail(section){
         return !shouldKeepGuideShortcutsInRail() && guideShortcutIds.has(section?.id || "");
+    }
+
+    function applyObjectionsVisibility(){
+        if(!shellEl){
+            return;
+        }
+
+        shellEl.classList.toggle("objections-hidden", objectionsHidden);
+    }
+
+    function setObjectionsHidden(nextValue){
+        objectionsHidden = !!nextValue;
+
+        try{
+            window.localStorage.setItem(objectionsStorageKey, objectionsHidden ? "true" : "false");
+        } catch {
+            // Ignore storage failures.
+        }
+
+        applyObjectionsVisibility();
+        renderGuideShortcutButtons();
+        updateRailArrows();
     }
 
     function getFilteredCategories(){
@@ -950,11 +980,24 @@ So when you guys closed with <lender>, they had assigned us your case file in re
             .filter(section => guideShortcutIds.has(section.id || ""))
             .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b));
 
-        guideShortcutHost.innerHTML = shortcutSections.map(section => `
+        const toggleButtonHtml = `
+            <button type="button" class="btn lb-btn ghost objections-toggle-btn" data-objections-toggle>
+                ${objectionsHidden ? "Show Objections" : "Hide Objections"}
+            </button>
+        `;
+
+        guideShortcutHost.innerHTML = toggleButtonHtml + shortcutSections.map(section => `
             <button type="button" class="btn lb-btn ghost guide-shortcut-btn${activePane === "prosper" && activeProsperId === section.id ? " active" : ""}" data-guide-shortcut="${escapeHtml(section.id)}">
                 ${escapeHtml(section.title)}
             </button>
         `).join("");
+
+        const toggleBtn = guideShortcutHost.querySelector("[data-objections-toggle]");
+        if(toggleBtn){
+            toggleBtn.addEventListener("click", function(){
+                setObjectionsHidden(!objectionsHidden);
+            });
+        }
 
         guideShortcutHost.querySelectorAll("[data-guide-shortcut]").forEach(btn => {
             btn.addEventListener("click", function(){
@@ -1118,6 +1161,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
 
     function rerenderAll(){
         lastGuideShortcutRailMode = shouldKeepGuideShortcutsInRail();
+        applyObjectionsVisibility();
         ensureActiveSelection();
         renderNav();
         renderProsperNav();
@@ -1182,6 +1226,7 @@ So when you guys closed with <lender>, they had assigned us your case file in re
     }
 
     // Toolbar removed; keep search/tone empty and still allow arrows to update.
+    applyObjectionsVisibility();
     prosperNav.addEventListener("scroll", updateRailArrows);
     window.addEventListener("resize", function(){
         const nextMode = shouldKeepGuideShortcutsInRail();
