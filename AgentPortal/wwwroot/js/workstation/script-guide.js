@@ -27,16 +27,16 @@
       note: 'After review, force the choice moment instead of letting them drift.'
     },
     'sec-termwhole': {
-      defaultNext: 'sec-occ',
-      note: 'Use this only when they need product clarity, then move straight back into the one-call-close lane.'
+      defaultNext: 'sec-equity',
+      note: 'Use this only when they need product clarity, then move straight into the meaning and protection bridge.'
     },
     'sec-book': {
       terminal: true,
       note: 'This lane usually ends with a scheduled appointment unless the objection reopens.'
     },
     'sec-occ': {
-      defaultNext: 'sec-equity',
-      note: 'Once the OCC frame lands, move into emotional meaning before presenting numbers.'
+      defaultNext: 'sec-termwhole',
+      note: 'Once the OCC frame lands, go straight into the term-vs-whole clarification before moving into emotional meaning.'
     },
     'sec-threeins': {
       note: 'Keep this short. Answer the confusion, then move right back into the sales lane.'
@@ -73,10 +73,10 @@
 
   const SHARED_BRANCHES = Object.freeze({
     'sec-hub': ['sec-aged', 'sec-verify', 'sec-options-choose'],
-    'sec-verify': ['sec-replace', 'sec-termwhole', 'sec-occ', 'sec-book'],
+    'sec-verify': ['sec-replace', 'sec-occ', 'sec-book'],
     'sec-replace': ['sec-options-choose', 'sec-hub'],
-    'sec-termwhole': ['sec-occ', 'sec-hub'],
-    'sec-occ': ['sec-threeins', 'sec-equity'],
+    'sec-occ': ['sec-threeins', 'sec-termwhole', 'sec-equity'],
+    'sec-termwhole': ['sec-equity', 'sec-hub'],
     'sec-equity': ['sec-living', 'sec-rop', 'sec-iul'],
     'sec-living': ['sec-options-choose', 'sec-hub'],
     'sec-rop': ['sec-options-choose', 'sec-hub'],
