@@ -304,6 +304,73 @@ body.note-self-open{
 
 @media (max-width: 900px){
     .note-self-overlay,
+
+/* ========================================================================
+   Term vs Whole special treatment
+   ======================================================================== */
+
+#mpShell .body .btn.termwhole-jump,
+#rbShell .prosper-body .btn.termwhole-jump,
+.scripts-shell .body .btn.termwhole-jump,
+#mpShell .body .btn.termwhole-continue,
+#rbShell .prosper-body .btn.termwhole-continue,
+.scripts-shell .body .btn.termwhole-continue,
+#mpShell .body .btn-mini.termwhole-focus,
+#rbShell .prosper-body .btn-mini.termwhole-focus,
+.scripts-shell .body .btn-mini.termwhole-focus{
+    background: linear-gradient(180deg, #eff6ff 0%, #dbeafe 48%, #bfdbfe 100%) !important;
+    border: 1px solid rgba(37,99,235,.42) !important;
+    color: #123b86 !important;
+    text-shadow: 0 1px 0 rgba(255,255,255,.52) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.96),
+        inset 0 -1px 0 rgba(37,99,235,.08),
+        0 12px 22px rgba(37,99,235,.18) !important;
+}
+
+#mpShell .body .btn.termwhole-jump:hover,
+#rbShell .prosper-body .btn.termwhole-jump:hover,
+.scripts-shell .body .btn.termwhole-jump:hover,
+#mpShell .body .btn.termwhole-continue:hover,
+#rbShell .prosper-body .btn.termwhole-continue:hover,
+.scripts-shell .body .btn.termwhole-continue:hover,
+#mpShell .body .btn-mini.termwhole-focus:hover,
+#rbShell .prosper-body .btn-mini.termwhole-focus:hover,
+.scripts-shell .body .btn-mini.termwhole-focus:hover{
+    background: linear-gradient(180deg, #f8fbff 0%, #e2eeff 52%, #c9e0ff 100%) !important;
+    border-color: rgba(29,78,216,.56) !important;
+    color: #0f2f6d !important;
+}
+
+#mpShell details.section.termwhole-step > summary,
+.scripts-shell details.section.termwhole-step > summary{
+    background: linear-gradient(180deg, rgba(219,234,254,.88) 0%, rgba(255,255,255,.98) 100%) !important;
+    border-bottom-color: rgba(37,99,235,.18) !important;
+}
+
+#mpShell details.section.termwhole-step > summary::before,
+.scripts-shell details.section.termwhole-step > summary::before{
+    background: linear-gradient(180deg, rgba(59,130,246,.98), rgba(29,78,216,.72)) !important;
+}
+
+#mpShell details.section.termwhole-step .body,
+.scripts-shell details.section.termwhole-step .body{
+    background: linear-gradient(180deg, rgba(248,251,255,.98) 0%, rgba(239,246,255,.94) 100%) !important;
+}
+
+#mpShell #sideNav .nav-item[data-target="#sec-termwhole"]{
+    border-color: rgba(37,99,235,.34) !important;
+    background: linear-gradient(180deg, rgba(59,130,246,.10), rgba(255,255,255,.98)) !important;
+}
+
+#mpShell #sideNav .nav-item[data-target="#sec-termwhole"]::before{
+    background: linear-gradient(180deg, rgba(59,130,246,.98), rgba(29,78,216,.68)) !important;
+}
+
+#mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-title,
+#mpShell #sideNav .nav-item[data-target="#sec-termwhole"] .nav-badge{
+    color: #1d4ed8 !important;
+}
     .uw-overlay,
     .proposal-overlay{
         align-items: center;
