@@ -1147,6 +1147,17 @@
       [noteWentWell, noteCouldBetter].forEach(syncNoteTextareaTone);
     }
 
+    function syncNotePrefixVisual(dateValue){
+      const date = (dateValue || noteDateInput?.value || todayIsoDate()).trim();
+      const prefix = notePrefix(date);
+      [noteWentWell, noteCouldBetter].forEach((textarea) => {
+        const col = textarea?.closest('.note-self-col');
+        if (!col) return;
+        col.dataset.notePrefix = prefix;
+        col.classList.toggle('has-note-prefix', !!prefix);
+      });
+    }
+
     function normalizeNoteBodyForDate(rawText, isoDate){
       const prefix = notePrefix(isoDate);
       const body = extractNoteBodyText(rawText);
@@ -1304,8 +1315,9 @@
         const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: 'include' }));
         if (!res.ok) throw new Error('failed');
         const payload = await res.json();
-        noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || '', date);
-        noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || '', date);
+        noteWentWell.value = extractNoteBodyText(payload?.wentWell || '');
+        noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || '');
+        syncNotePrefixVisual(date);
         syncAllNoteTextareaTones();
         const loadedLeadName = (payload?.leadName || currentLeadContext().leadName || 'Lead').toString();
         if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(leadId, date);
@@ -1334,8 +1346,9 @@
         const wentWellBody = extractNoteBodyText(normalizedWentWell);
         const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
 
-        noteWentWell.value = normalizedWentWell;
-        noteCouldBetter.value = normalizedCouldBetter;
+        noteWentWell.value = wentWellBody;
+        noteCouldBetter.value = couldBetterBody;
+        syncNotePrefixVisual(date);
         syncAllNoteTextareaTones();
 
         const res = await fetch('/WorkstationNotes/Entry', withDialHeaders({
@@ -1380,12 +1393,14 @@
         setNoteStatus('Select a lead first', true);
         if (noteWentWell) noteWentWell.value = '';
         if (noteCouldBetter) noteCouldBetter.value = '';
+        syncNotePrefixVisual();
         syncAllNoteTextareaTones();
         if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
         if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
         return;
       }
       if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
+      syncNotePrefixVisual();
       const list = await loadNoteDates(ctx.leadId);
       if (Array.isArray(list) && list.length){
         const newestDate = (list[0]?.noteDate || '').toString();
@@ -3052,6 +3067,7 @@
       closeNoteModal();
     });
     noteDateInput?.addEventListener('change', async () => {
+      syncNotePrefixVisual(noteDateInput.value);
       await loadNoteForDate(noteDateInput.value, currentLeadContext().leadId);
     });
     noteDatesSelect?.addEventListener('change', async () => {
@@ -3068,8 +3084,6 @@
       if (!textarea) return;
 
       textarea.addEventListener('focus', () => {
-        const date = (noteDateInput?.value || todayIsoDate()).trim();
-        if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
         syncNoteTextareaTone(textarea);
       });
 
@@ -3100,13 +3114,11 @@
       });
 
       textarea.addEventListener('blur', () => {
-        const date = (noteDateInput?.value || todayIsoDate()).trim();
-        textarea.value = normalizeNoteBodyForDate(textarea.value || '', date);
-        if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
         syncNoteTextareaTone(textarea);
       });
     });
     syncAllNoteTextareaTones();
+    syncNotePrefixVisual();
     // Initialize SignalR and active state sync
     if (signalRAvailable){
       try {

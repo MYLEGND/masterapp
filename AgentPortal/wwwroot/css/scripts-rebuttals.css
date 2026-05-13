@@ -210,6 +210,26 @@ body.note-self-open{
     display: flex;
     flex-direction: column;
     min-height: 0;
+    position: relative;
+}
+
+.note-self-col::before{
+    content: attr(data-note-prefix);
+    position: absolute;
+    top: 52px;
+    left: 14px;
+    z-index: 1;
+    pointer-events: none;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.2;
+    letter-spacing: .01em;
+    color: #d1a034;
+    opacity: 0;
+}
+
+.note-self-col.has-note-prefix::before{
+    opacity: 1;
 }
 
 .note-self-col h4{
@@ -234,7 +254,7 @@ body.note-self-open{
     border: 0;
     border-top: 1px solid #2a354d;
     resize: none;
-    padding: 14px;
+    padding: 38px 14px 14px;
     min-height: 300px;
     font: 600 14px/1.5 var(--body);
     color: #0f172a;

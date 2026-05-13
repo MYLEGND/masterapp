@@ -3855,6 +3855,17 @@ function noteSyncAllTextareaTones(){
   [noteWentWell, noteCouldBetter].forEach(noteSyncTextareaTone);
 }
 
+function noteSyncPrefixVisual(dateValue){
+  const date = (dateValue || noteDateInput?.value || noteTodayISO()).trim();
+  const prefix = notePrefix(date);
+  [noteWentWell, noteCouldBetter].forEach((textarea) => {
+    const col = textarea?.closest(".note-self-col");
+    if (!col) return;
+    col.dataset.notePrefix = prefix;
+    col.classList.toggle("has-note-prefix", !!prefix);
+  });
+}
+
 function normalizeNoteBodyForDate(rawText, isoDate){
   const prefix = notePrefix(isoDate);
   const body = extractNoteBodyText(rawText);
@@ -3987,8 +3998,9 @@ async function noteLoadForDate(dateValue, leadIdValue){
     const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: "include" }));
     if (!res.ok) throw new Error("fail");
     const payload = await res.json();
-    noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || "", date);
-    noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || "", date);
+    noteWentWell.value = extractNoteBodyText(payload?.wentWell || "");
+    noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || "");
+    noteSyncPrefixVisual(date);
     noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(leadId, date);
     noteSetStatus(`Loaded ${payload?.leadName || noteCurrentLeadContext().leadName} — ${noteDisplayDate(date)}`);
@@ -4016,8 +4028,9 @@ async function noteSave(){
     const wentWellBody = extractNoteBodyText(normalizedWentWell);
     const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
 
-    noteWentWell.value = normalizedWentWell;
-    noteCouldBetter.value = normalizedCouldBetter;
+    noteWentWell.value = wentWellBody;
+    noteCouldBetter.value = couldBetterBody;
+    noteSyncPrefixVisual(date);
     noteSyncAllTextareaTones();
 
     const token = getAntiForgeryToken();
@@ -4056,6 +4069,7 @@ async function openNoteModal(){
     noteSetStatus("Select a lead first", true);
     if (noteWentWell) noteWentWell.value = "";
     if (noteCouldBetter) noteCouldBetter.value = "";
+    noteSyncPrefixVisual();
     noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
     if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
@@ -4063,6 +4077,7 @@ async function openNoteModal(){
   }
 
   if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
+  noteSyncPrefixVisual();
 
   const list = await noteLoadDates(ctx.leadId);
   if (Array.isArray(list) && list.length){
@@ -4095,6 +4110,7 @@ noteDatesSelect?.addEventListener("change", (e) => {
   noteLoadForDate(decoded.noteDate, decoded.leadId);
 });
 noteDateInput?.addEventListener("change", () => {
+  noteSyncPrefixVisual(noteDateInput.value);
   noteLoadForDate(noteDateInput.value, noteCurrentLeadContext().leadId);
 });
 noteSaveBtn?.addEventListener("click", noteSave);
@@ -4112,6 +4128,7 @@ noteSaveBtn?.addEventListener("click", noteSave);
 });
 
 noteSyncAllTextareaTones();
+noteSyncPrefixVisual();
 
 function safeHtml(s){
   return (s || "").toString()
