@@ -13708,12 +13708,12 @@ details.section{
     letter-spacing: .01em !important;
 }
 
-#mpShell .body .btn:not(.gold):not(.dark),
-#rbShell .prosper-body .btn:not(.gold):not(.dark),
-.scripts-shell .body .btn:not(.gold):not(.dark),
-#mpShell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad),
-#rbShell .prosper-body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad),
-.scripts-shell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad){
+#mpShell .body .btn:not(.gold):not(.dark):not(.info),
+#rbShell .prosper-body .btn:not(.gold):not(.dark):not(.info),
+.scripts-shell .body .btn:not(.gold):not(.dark):not(.info),
+#mpShell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad):not(.info),
+#rbShell .prosper-body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad):not(.info),
+.scripts-shell .body .btn-mini:not(.gold):not(.good):not(.warn):not(.bad):not(.info){
     background: linear-gradient(180deg, var(--ws-brand-ivory) 0%, var(--ws-brand-ivory-2) 100%) !important;
     border-color: rgba(166, 128, 35, .34) !important;
     color: var(--ws-brand-ink) !important;
@@ -13749,6 +13749,22 @@ details.section{
         inset 0 1px 0 rgba(255,255,255,.08),
         0 14px 24px rgba(5,10,22,.22) !important;
 }
+
+    #mpShell .body .btn.info,
+    #rbShell .prosper-body .btn.info,
+    .scripts-shell .body .btn.info,
+    #mpShell .body .btn-mini.info,
+    #rbShell .prosper-body .btn-mini.info,
+    .scripts-shell .body .btn-mini.info{
+        background: linear-gradient(180deg, #eef6ff 0%, #d8e8ff 52%, #bfd9ff 100%) !important;
+        border-color: rgba(37,99,235,.30) !important;
+        color: #123b86 !important;
+        text-shadow: 0 1px 0 rgba(255,255,255,.40);
+        box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        inset 0 -1px 0 rgba(37,99,235,.10),
+        0 12px 22px rgba(37,99,235,.14) !important;
+    }
 
 #mpShell .body .btn-mini.good,
 #rbShell .prosper-body .btn-mini.good,

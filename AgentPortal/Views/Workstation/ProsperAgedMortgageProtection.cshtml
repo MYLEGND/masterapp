@@ -286,6 +286,9 @@ If yes: Okay perfect, I’m the senior underwriter, like I said, and it’s my j
 
                         <div style="height:10px"></div>
                         <button class="btn gold" type="button" data-jump="#sec-occ">➡️ Jump to One Call Close</button>
+
+                        <div style="height:10px"></div>
+                        <button class="btn info" type="button" data-jump="#sec-termwhole">➡️ Jump to Term Life Vs. Whole Life</button>
                     </div>
                 </details>
 
@@ -335,7 +338,47 @@ Now, what my job is today is to take a look at the policies you currently have a
                     </div>
                 </details>
 
-                <details class="section" data-step="6" data-flow="start" data-signal="warn" id="sec-book">
+                <details class="section" data-step="6" data-flow="close" data-signal="info" id="sec-termwhole">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Term Life Vs. Whole Life</span>
+                                <span class="sub">Temporary vs. permanent protection.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini info" type="button" data-focus="#sec-termwhole">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">CLARIFY</span> Use this when they need the difference explained without making it feel complicated.
+                                <div class="hint">Educate clearly, then bring them back to the protection their family can truly depend on.</div>
+                            </div>
+                        </div>
+
+                        <div id="termWhole" class="script"><span class="note">Term Life Insurance</span>
+<span class="say">Term life insurance is temporary coverage designed to protect your family during your highest financial responsibility years, usually for 10, 20, or 30 years. It is typically the most affordable option upfront because it provides a large amount of coverage for a lower monthly payment. Term is commonly used to help cover temporary needs like mortgage protection, income replacement, young children, or outstanding debt. The main downside is that the coverage eventually expires, and if you still need insurance later in life, you may have to requalify at an older age with higher premiums or possible health complications.</span>
+
+<span class="note">Whole Life Insurance</span>
+<span class="say">Whole life insurance is permanent coverage designed to stay in force for your entire life as long as premiums are paid. Unlike term insurance, whole life does not expire after a certain number of years, which means your family is guaranteed to receive a tax-free death benefit whenever that day eventually comes. Whole life policies can build cash value over time, allowing the policy owner to borrow against or access funds while living if needed. Premiums are typically fixed and do not increase due to age or declining health. Many whole life policies can include living benefits riders for serious illnesses as well. The main tradeoff is that whole life costs more monthly than term initially because it is designed to provide lifelong protection and long-term value rather than temporary coverage.</span>
+
+<span class="note">Comparing the Two</span>
+<span class="say">The biggest difference between term and whole life insurance is temporary protection versus permanent protection. Term life makes the most sense when someone is trying to protect a temporary responsibility like a mortgage, young children, or income during working years while keeping monthly costs lower. Whole life makes more sense when someone wants lifelong protection, guaranteed payout certainty, final expense protection, cash value growth, and coverage that will not expire later in life. The reality is that death itself is permanent, which is why many families prefer having at least some form of permanent protection in place rather than risking outliving temporary coverage. The goal is not choosing the “most expensive” policy — it is choosing protection your family can actually depend on when they need it most.</span>
+
+<span class="silent">USE THIS TO EDUCATE, THEN TRANSITION BACK INTO THE BEST-FIT PROTECTION OPTION.</span></div>
+
+                        <div class="quick-branch-actions">
+                            <button class="btn-mini bad" type="button" data-jump="#sec-verify">Back to Verify Lane</button>
+                            <button class="btn info branch-continue" type="button" data-jump="#sec-occ">Continue → Start One Call Close</button>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="section" data-step="7" data-flow="start" data-signal="warn" id="sec-book">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -379,7 +422,7 @@ If tomorrow, is morning, afternoon, or evening best for you?</span>
                     </div>
                 </details>
 
-                <details class="section" data-step="7" data-flow="close" data-signal="good" id="sec-occ">
+                <details class="section" data-step="8" data-flow="close" data-signal="good" id="sec-occ">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -422,7 +465,7 @@ I’ll present those various options to you. After we decide what option is the 
 
                         <div style="height:12px"></div>
 
-                        <details class="section quick-branch" data-step="7A" data-flow="verify" data-signal="warn" id="sec-threeins">
+                        <details class="section quick-branch" data-step="8A" data-flow="verify" data-signal="warn" id="sec-threeins">
                             <summary>
                                 <div class="sum-left">
                                     <div class="chev">›</div>
@@ -455,46 +498,6 @@ So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when famil
                                 </div>
                             </div>
                         </details>
-                    </div>
-                </details>
-
-                <details class="section" data-step="8" data-flow="close" data-signal="warn" id="sec-termwhole">
-                    <summary>
-                        <div class="sum-left">
-                            <div class="chev">›</div>
-                            <div>
-                                <span class="title">Term Life Vs. Whole Life</span>
-                                <span class="sub">Temporary vs. permanent protection.</span>
-                            </div>
-                        </div>
-                        <div class="sum-actions">
-                            <button class="btn-mini good" type="button" data-focus="#sec-termwhole">Focus</button>
-                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
-                        </div>
-                    </summary>
-                    <div class="body">
-                        <div class="callout warn">
-                            <div>
-                                <span class="cue warn">CLARIFY</span> Use this when they need the difference explained without making it feel complicated.
-                                <div class="hint">Educate clearly, then bring them back to the protection their family can truly depend on.</div>
-                            </div>
-                        </div>
-
-                        <div id="termWhole" class="script"><span class="note">Term Life Insurance</span>
-<span class="say">Term life insurance is temporary coverage designed to protect your family during your highest financial responsibility years, usually for 10, 20, or 30 years. It is typically the most affordable option upfront because it provides a large amount of coverage for a lower monthly payment. Term is commonly used to help cover temporary needs like mortgage protection, income replacement, young children, or outstanding debt. The main downside is that the coverage eventually expires, and if you still need insurance later in life, you may have to requalify at an older age with higher premiums or possible health complications.</span>
-
-<span class="note">Whole Life Insurance</span>
-<span class="say">Whole life insurance is permanent coverage designed to stay in force for your entire life as long as premiums are paid. Unlike term insurance, whole life does not expire after a certain number of years, which means your family is guaranteed to receive a tax-free death benefit whenever that day eventually comes. Whole life policies can build cash value over time, allowing the policy owner to borrow against or access funds while living if needed. Premiums are typically fixed and do not increase due to age or declining health. Many whole life policies can include living benefits riders for serious illnesses as well. The main tradeoff is that whole life costs more monthly than term initially because it is designed to provide lifelong protection and long-term value rather than temporary coverage.</span>
-
-<span class="note">Comparing the Two</span>
-<span class="say">The biggest difference between term and whole life insurance is temporary protection versus permanent protection. Term life makes the most sense when someone is trying to protect a temporary responsibility like a mortgage, young children, or income during working years while keeping monthly costs lower. Whole life makes more sense when someone wants lifelong protection, guaranteed payout certainty, final expense protection, cash value growth, and coverage that will not expire later in life. The reality is that death itself is permanent, which is why many families prefer having at least some form of permanent protection in place rather than risking outliving temporary coverage. The goal is not choosing the “most expensive” policy — it is choosing protection your family can actually depend on when they need it most.</span>
-
-<span class="silent">USE THIS TO EDUCATE, THEN TRANSITION BACK INTO THE BEST-FIT PROTECTION OPTION.</span></div>
-
-                        <div class="quick-branch-actions">
-                            <button class="btn-mini bad" type="button" data-jump="#sec-occ">Back to One Call Close</button>
-                            <button class="btn branch-continue" type="button" data-jump="#sec-equity">Continue → Equity Protection</button>
-                        </div>
                     </div>
                 </details>
 
@@ -947,6 +950,13 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
         });
     }
 
+    function scrollBehaviorFor(targetOrSelector){
+        const id = typeof targetOrSelector === 'string'
+            ? targetOrSelector
+            : targetOrSelector?.id ? ('#' + targetOrSelector.id) : '';
+        return id === '#sec-termwhole' ? 'auto' : 'smooth';
+    }
+
     function focusSection(id){
         sections.forEach(s => s.classList.remove('is-focus'));
         const target = document.querySelector(id);
@@ -954,7 +964,7 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
         target.classList.add('is-focus');
         target.open = true;
         shell.classList.add('focus-on');
-        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        target.scrollIntoView({ behavior: scrollBehaviorFor(id), block:'start' });
         updateProgress();
         updateCurrentState();
     }
@@ -1002,7 +1012,7 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             next.classList.add('is-focus');
         }
 
-        next.scrollIntoView({ behavior:'smooth', block:'start' });
+        next.scrollIntoView({ behavior: scrollBehaviorFor(next), block:'start' });
         updateProgress();
         updateCurrentState();
     }
@@ -1067,7 +1077,7 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             }
         }
 
-        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        target.scrollIntoView({ behavior: scrollBehaviorFor(selector), block:'start' });
         updateProgress();
         updateCurrentState();
     }
