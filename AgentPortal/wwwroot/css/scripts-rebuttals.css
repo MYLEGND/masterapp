@@ -8557,8 +8557,8 @@ details.section{
     display:-webkit-box;
     line-clamp:2;
     -webkit-line-clamp:2;
-    box-orient: vertical;
     -webkit-box-orient:vertical;
+    box-orient: vertical;
 
     overflow:hidden;
 }
@@ -11147,11 +11147,6 @@ details.section{
 
     display: -webkit-box;
     line-clamp: 1;
-    line-clamp: 1;
-    line-clamp: 1;
-    line-clamp: 1;
-    line-clamp: 1;
-    line-clamp: 1;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;
 
@@ -13126,6 +13121,7 @@ details.section{
     margin-left: 30px;
     font-size: .71rem;
     line-height: 1.16;
+    line-clamp: 1;
     -webkit-line-clamp: 1;
 }
 
