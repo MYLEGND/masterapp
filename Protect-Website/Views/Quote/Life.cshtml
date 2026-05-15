@@ -106,7 +106,13 @@
     var agentSlug = !string.IsNullOrWhiteSpace(agentTrustProfile?.AgentSlug)
         ? agentTrustProfile.AgentSlug
         : (!isFounderPath ? trackedSlug : string.Empty);
-    var showAgentTrustCard = agentTrustProfile != null && !string.IsNullOrWhiteSpace(agentSlug);
+    var showAgentTrustCard = agentTrustProfile != null;
+    var agentDisplayName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
+        ? agentTrustProfile!.DisplayName!.Trim()
+        : "Your licensed agent";
+    var agentGreetingName = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
+        ? agentTrustProfile!.FirstName!.Trim()
+        : agentDisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "there";
     var finalStepHeading = showAgentTrustCard
         ? "You're almost done, I'll help you understand what may fit."
         : "You're almost done, we'll help you understand what may fit.";
@@ -115,7 +121,7 @@
         : "Share the best way to reach you and we'll walk through what may fit your situation.";
     var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
         ? agentTrustProfile!.ShortBio!.Trim()
-        : $"{(string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName) ? "I" : agentTrustProfile!.FirstName)} personally review requests to help families understand their protection options clearly.";
+        : $"{agentGreetingName} personally review requests to help families understand their protection options clearly — without pressure or confusion.";
 }
 
 <style>
@@ -643,6 +649,14 @@ body.life-landing header .navbar .nav-link:focus {
     font-weight: 900;
     margin-bottom: 3px;
 }
+.lq-agent-display-name {
+    color: rgba(248,250,252,0.8);
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
 .lq-agent-bio {
     color: rgba(248,250,252,0.82);
     font-size: .9rem;
@@ -728,6 +742,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-handoff { gap: 10px; margin-bottom: 10px; padding: 12px; }
     .lq-agent-avatar { width: 60px; height: 60px; }
     .lq-agent-name { font-size: 1rem; }
+    .lq-agent-display-name { font-size: .75rem; margin-bottom: 5px; }
     .lq-agent-bio { font-size: .86rem; }
     .lq-agent-trust-list { gap: 7px; }
     .lq-agent-trust-item { font-size: .81rem; padding: 7px 9px; }
@@ -789,6 +804,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-avatar { width: 56px; height: 56px; }
     .lq-agent-overline { font-size: .68rem; }
     .lq-agent-name { font-size: .96rem !important; }
+    .lq-agent-display-name { font-size: .72rem; }
     .lq-agent-bio { font-size: .82rem; }
     .lq-agent-trust-item { font-size: .8rem; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
@@ -907,6 +923,7 @@ body.life-landing header .navbar .nav-link:focus {
         height: 58px !important;
     }
     body.life-landing .lq-agent-name { font-size: .98rem !important; }
+    body.life-landing .lq-agent-display-name { font-size: .73rem !important; }
     body.life-landing .lq-agent-bio { font-size: .84rem !important; }
     body.life-landing .lq-agent-trust-item {
         font-size: .8rem !important;
@@ -1192,7 +1209,8 @@ body.life-landing header .navbar .nav-link:focus {
                                     </div>
                                     <div>
                                         <div class="lq-agent-overline">Your agent handoff</div>
-                                        <div class="lq-agent-name">Hi, I'm @agentTrustProfile!.FirstName.</div>
+                                        <div class="lq-agent-name">Hi, I'm @agentGreetingName.</div>
+                                        <div class="lq-agent-display-name">@agentDisplayName</div>
                                         <div class="lq-agent-bio">@agentTrustBio</div>
                                     </div>
                                 </div>
