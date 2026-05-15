@@ -162,7 +162,9 @@ document.addEventListener("DOMContentLoaded", () => {
             if (!raw) return null;
 
             const parsed = JSON.parse(raw);
-            const items = Array.isArray(parsed?.items) ? parsed.items : [];
+            const items = Array.isArray(parsed?.items)
+                ? parsed.items
+                : (Array.isArray(parsed?.payload?.items) ? parsed.payload.items : []);
             return {
                 updatedAt: asTrimmed(parsed?.updatedAt),
                 items,
