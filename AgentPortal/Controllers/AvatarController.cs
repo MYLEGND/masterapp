@@ -1,13 +1,16 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 using AgentPortal.Services.Tracking;
+using Infrastructure.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace AgentPortal.Controllers
@@ -16,6 +19,7 @@ namespace AgentPortal.Controllers
     [EnableRateLimiting("anon-public")]
     public class AvatarController : Controller
     {
+        private readonly MasterAppDbContext _db;
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<AvatarController> _logger;
         private readonly AgentTrackingResolver _trackingResolver;
@@ -25,10 +29,12 @@ namespace AgentPortal.Controllers
         private static string? _loggedFallbackRoot;
 
         public AvatarController(
+            MasterAppDbContext db,
             IWebHostEnvironment env,
             ILogger<AvatarController> logger,
             AgentTrackingResolver trackingResolver)
         {
+            _db = db;
             _env = env;
             _logger = logger;
             _trackingResolver = trackingResolver;
@@ -141,6 +147,15 @@ namespace AgentPortal.Controllers
                 ?? user.Identity?.Name;
         }
 
+        private string? GetUserUpn()
+        {
+            var user = User;
+            return user.FindFirst("preferred_username")?.Value
+                ?? user.FindFirst("upn")?.Value
+                ?? user.FindFirst(ClaimTypes.Email)?.Value
+                ?? user.Identity?.Name;
+        }
+
         private bool TryResolveAvatarFile(string userId, out string? path, out string mime)
         {
             path = null;
@@ -183,6 +198,73 @@ namespace AgentPortal.Controllers
             }
 
             return NotFound();
+        }
+
+        private async Task<(string? Path, string Mime, string? UserId)> ResolveAvatarFileAsync(string? primaryUserId, string? agentUpn, CancellationToken ct)
+        {
+            var candidates = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AddCandidate(string? userId)
+            {
+                var trimmed = userId?.Trim();
+                if (string.IsNullOrWhiteSpace(trimmed) || !seen.Add(trimmed))
+                {
+                    return;
+                }
+
+                candidates.Add(trimmed);
+            }
+
+            AddCandidate(primaryUserId);
+
+            var resolvedUpn = agentUpn?.Trim();
+            if (string.IsNullOrWhiteSpace(resolvedUpn) && !string.IsNullOrWhiteSpace(primaryUserId))
+            {
+                var userKey = primaryUserId.Trim().ToLowerInvariant();
+                resolvedUpn = await _db.AgentProfiles.AsNoTracking()
+                    .Where(x => x.AgentUserId != null && x.AgentUserId.ToLower() == userKey)
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .Select(x => x.AgentUpn)
+                    .FirstOrDefaultAsync(ct);
+            }
+
+            if (!string.IsNullOrWhiteSpace(resolvedUpn))
+            {
+                var sameProfileUpnIds = await _db.AgentProfiles.AsNoTracking()
+                    .Where(x => x.AgentUpn == resolvedUpn)
+                    .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
+                    .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.Title))
+                    .ThenByDescending(x => x.UpdatedUtc)
+                    .Select(x => x.AgentUserId)
+                    .ToListAsync(ct);
+
+                foreach (var candidate in sameProfileUpnIds)
+                {
+                    AddCandidate(candidate);
+                }
+
+                var sameTrackingUpnIds = await _db.AgentTrackingProfiles.AsNoTracking()
+                    .Where(x => x.AgentUpn == resolvedUpn)
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .Select(x => x.AgentUserId)
+                    .ToListAsync(ct);
+
+                foreach (var candidate in sameTrackingUpnIds)
+                {
+                    AddCandidate(candidate);
+                }
+            }
+
+            foreach (var candidate in candidates)
+            {
+                if (TryResolveAvatarFile(candidate, out var path, out var mime) && path != null)
+                {
+                    return (path, mime, candidate);
+                }
+            }
+
+            return (null, "image/jpeg", null);
         }
 
         [HttpGet]
@@ -270,12 +352,14 @@ namespace AgentPortal.Controllers
         [HttpGet("avatar/current")]
         [AllowAnonymous]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Current()
+        public async Task<IActionResult> Current()
         {
             var userId = GetUserId();
-            if (TryResolveAvatarFile(userId ?? string.Empty, out var path, out var mime) && path != null)
+            var upn = GetUserUpn();
+            var resolved = await ResolveAvatarFileAsync(userId, upn, HttpContext.RequestAborted);
+            if (resolved.Path != null)
             {
-                return PhysicalFile(path, mime);
+                return PhysicalFile(resolved.Path, resolved.Mime);
             }
 
             return DefaultAvatarResult();
@@ -297,9 +381,10 @@ namespace AgentPortal.Controllers
                 return DefaultAvatarResult();
             }
 
-            if (TryResolveAvatarFile(resolved.Profile.AgentUserId, out var path, out var mime) && path != null)
+            var avatar = await ResolveAvatarFileAsync(resolved.Profile.AgentUserId, resolved.Profile.AgentUpn, HttpContext.RequestAborted);
+            if (avatar.Path != null)
             {
-                return PhysicalFile(path, mime);
+                return PhysicalFile(avatar.Path, avatar.Mime);
             }
 
             return DefaultAvatarResult();
