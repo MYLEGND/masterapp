@@ -15845,6 +15845,20 @@ details.section{
     --guide-ink: #295a9f;
 }
 
+#rbShell #prosperNav .cat-btn[data-guide-id="sec-termwhole"],
+#mpShell details.section#sec-termwhole,
+#rbShell .prosper-stage[data-guide-id="sec-termwhole"],
+#rbShell .prosper-body[data-guide-id="sec-termwhole"]{
+    --guide-accent: #4f8df2;
+    --guide-accent-lite: #c9ddff;
+    --guide-bg-top: rgba(41, 79, 150, .96);
+    --guide-bg-bottom: rgba(14, 29, 59, .99);
+    --guide-border: rgba(79, 141, 242, .36);
+    --guide-glow: rgba(79, 141, 242, .16);
+    --guide-active-soft: rgba(79, 141, 242, .12);
+    --guide-ink: #1d4f9e;
+}
+
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-replace"],
 #mpShell details.section#sec-replace,
 #rbShell .prosper-stage[data-guide-id="sec-replace"],
@@ -16812,6 +16826,7 @@ details.section{
    Core script path should read darker and more dominant than the rest.
    ======================================================================== */
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-aged"]:not(.active),
+#rbShell #prosperNav .cat-btn[data-guide-id="sec-termwhole"]:not(.active),
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-verify"]:not(.active),
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-replace"]:not(.active),
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-book"]:not(.active),
@@ -16825,6 +16840,7 @@ details.section{
 }
 
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-aged"]:not(.active) .cat-top-single,
+#rbShell #prosperNav .cat-btn[data-guide-id="sec-termwhole"]:not(.active) .cat-top-single,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-verify"]:not(.active) .cat-top-single,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-replace"]:not(.active) .cat-top-single,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-book"]:not(.active) .cat-top-single,
@@ -16835,6 +16851,7 @@ details.section{
 }
 
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-aged"]:not(.active):hover,
+#rbShell #prosperNav .cat-btn[data-guide-id="sec-termwhole"]:not(.active):hover,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-verify"]:not(.active):hover,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-replace"]:not(.active):hover,
 #rbShell #prosperNav .cat-btn[data-guide-id="sec-book"]:not(.active):hover,
