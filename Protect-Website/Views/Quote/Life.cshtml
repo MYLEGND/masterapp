@@ -661,32 +661,6 @@ body.life-landing header .navbar .nav-link:focus {
     font-size: .9rem;
     line-height: 1.45;
 }
-.lq-agent-trust-list {
-    display: grid;
-    gap: 8px;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-.lq-agent-trust-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    color: #f8fafc;
-    font-size: .78rem;
-    font-weight: 800;
-    line-height: 1.3;
-    padding: 9px 10px;
-    border-radius: 10px;
-    border: 1px solid rgba(199,153,49,0.24);
-    background: rgba(16,30,52,0.72);
-}
-.lq-agent-trust-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: linear-gradient(180deg, #efc86f 0%, #c08b21 100%);
-    box-shadow: 0 0 10px rgba(239,200,111,0.42);
-    flex-shrink: 0;
-}
 .lq-error, .lq-success {
     font-weight: 800;
     margin-top: 10px;
@@ -745,8 +719,6 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-name { font-size: 1rem; }
     .lq-agent-display-name { font-size: .75rem; }
     .lq-agent-bio { font-size: .86rem; }
-    .lq-agent-trust-list { gap: 7px; }
-    .lq-agent-trust-item { font-size: .74rem; padding: 7px 8px; }
     .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
     .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
     .lq-submit-row { margin-top: 8px; }
@@ -807,7 +779,6 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-name { font-size: .96rem !important; }
     .lq-agent-display-name { font-size: .72rem; }
     .lq-agent-bio { font-size: .82rem; }
-    .lq-agent-trust-item { font-size: .7rem; padding: 7px; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
@@ -927,10 +898,6 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-agent-name { font-size: .98rem !important; }
     body.life-landing .lq-agent-display-name { font-size: .73rem !important; }
     body.life-landing .lq-agent-bio { font-size: .84rem !important; }
-    body.life-landing .lq-agent-trust-item {
-        font-size: .72rem !important;
-        padding: 7px 8px !important;
-    }
     body.life-landing .form-control,
     body.life-landing .form-select {
         padding: 8px 10px !important;
@@ -1217,10 +1184,6 @@ body.life-landing header .navbar .nav-link:focus {
                                         <div class="lq-agent-bio">@agentTrustBio</div>
                                     </div>
                                 </div>
-                                <div class="lq-agent-trust-list" aria-label="Trust details">
-                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>Simple review</div>
-                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>You decide what happens next</div>
-                                </div>
                             </div>
                         }
                         <div class="lq-field-row two full">
@@ -1314,7 +1277,7 @@ body.life-landing header .navbar .nav-link:focus {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">Quick review • No pressure • Just clarity</div>
+                            <div class="lq-trust-note">Simple review • You decide what happens next</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
