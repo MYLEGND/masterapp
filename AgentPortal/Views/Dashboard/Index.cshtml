@@ -4,6 +4,8 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
+<link rel="stylesheet" href="~/css/dashboard-carrier-settings.css" asp-append-version="true" />
+
 <div class="home-container">
 
     <!-- HERO -->
@@ -17,9 +19,23 @@
 
     <!-- SEARCH BAR -->
     <div class="text-center mb-5 search-container">
-        <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
-        <button id="clearSearch" class="btn-clear-search">Clear Search</button>
-        <div id="autocompleteList" class="autocomplete-list"></div>
+        <div class="dashboard-search-shell">
+            <div class="search-input-wrap">
+                <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+                <div id="autocompleteList" class="autocomplete-list"></div>
+            </div>
+            <div class="search-actions">
+                <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
+                <button
+                    id="openCarrierSettings"
+                    class="btn-carrier-settings"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#carrierSettingsModal">
+                    Carrier Numbers &amp; Commissions
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- EXECUTION SNAPSHOT (Command Center) -->
@@ -165,6 +181,35 @@
           </div>
           <div class="modal-body" id="modalBlockersBody">
             <div class="text-muted">Loading…</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Carrier Settings Modal -->
+    <div class="modal fade legend-modal carrier-settings-modal" id="carrierSettingsModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+                <h5 class="modal-title mb-1">Agent / Producer Numbers &amp; Commission Settings</h5>
+                <div class="carrier-settings-statusbar">
+                    <span class="carrier-settings-count" id="carrierSettingsCount">Pulling live rows…</span>
+                    <span class="carrier-settings-status" id="carrierSettingsStatus">Ready</span>
+                </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="carrierSettingsBody">
+            <div class="carrier-settings-loading">
+                Pulling your current dashboard sections and saved carrier data…
+            </div>
+          </div>
+          <div class="modal-footer">
+            <div class="carrier-settings-footer-note me-auto">
+                Changes save automatically for the current agent profile.
+            </div>
+            <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
@@ -820,3 +865,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 <script src="~/js/dashboard-execution.js" asp-append-version="true"></script>
+<script src="~/js/dashboard-carrier-settings.js" asp-append-version="true"></script>

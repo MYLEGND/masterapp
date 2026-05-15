@@ -8,6 +8,8 @@ using Domain.Enums;
 using Infrastructure.Data;
 using AgentPortal.Services.Analytics;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
+using System.Text.Json;
 
 namespace AgentPortal.Controllers;
 
@@ -15,6 +17,9 @@ namespace AgentPortal.Controllers;
 [AssistantBlock]
 public class DashboardController : Controller
 {
+    private const string CarrierSettingsToolId = "DashboardCarrierSettings";
+    private static readonly JsonSerializerOptions CarrierSettingsJsonOptions = new(JsonSerializerDefaults.Web);
+
     private readonly IExecutionEngine _execution;
     private readonly IBlockerService _blockers;
     private readonly MasterAppDbContext _db;
@@ -43,6 +48,67 @@ public class DashboardController : Controller
         return Json(new { today = today.Count, overdue = overdue.Count, blockers = blockers.Count });
     }
 
+    [HttpGet]
+    public async Task<IActionResult> CarrierSettings()
+    {
+        var ownerId = NormalizeOwnerKey(CurrentUserId());
+        if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
+
+        var row = await _db.AgentFinanceToolStates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.AgentUserId == ownerId && x.ToolId == CarrierSettingsToolId);
+
+        if (row == null || string.IsNullOrWhiteSpace(row.JsonState))
+            return Json(new DashboardCarrierSettingsDto());
+
+        try
+        {
+            var dto = JsonSerializer.Deserialize<DashboardCarrierSettingsDto>(row.JsonState, CarrierSettingsJsonOptions)
+                ?? new DashboardCarrierSettingsDto();
+            dto.SavedUtc = row.UpdatedUtc;
+            return Json(dto);
+        }
+        catch (JsonException)
+        {
+            return Json(new DashboardCarrierSettingsDto());
+        }
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> SaveCarrierSettings([FromBody] DashboardCarrierSettingsDto request)
+    {
+        var ownerId = NormalizeOwnerKey(CurrentUserId());
+        if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
+
+        var normalized = NormalizeCarrierSettings(request);
+        var jsonState = JsonSerializer.Serialize(normalized, CarrierSettingsJsonOptions);
+
+        var row = await _db.AgentFinanceToolStates
+            .FirstOrDefaultAsync(x => x.AgentUserId == ownerId && x.ToolId == CarrierSettingsToolId);
+
+        if (row == null)
+        {
+            row = new Domain.Entities.AgentFinanceToolState
+            {
+                AgentUserId = ownerId,
+                ToolId = CarrierSettingsToolId,
+                JsonState = jsonState,
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow,
+            };
+            _db.AgentFinanceToolStates.Add(row);
+        }
+        else
+        {
+            row.JsonState = jsonState;
+            row.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        await _db.SaveChangesAsync();
+
+        return Json(new { success = true, savedUtc = row.UpdatedUtc });
+    }
+
     private string CurrentUserId()
     {
         var effective = _agentContext.EffectiveAgentOid;
@@ -50,6 +116,9 @@ public class DashboardController : Controller
             return effective.Trim().ToLowerInvariant();
         return User.GetStableUserId();
     }
+
+    private static string NormalizeOwnerKey(string? value)
+        => (value ?? string.Empty).Trim().ToLowerInvariant();
 
     // GET: /Dashboard  (and /Dashboard/Index)
     [HttpGet]
@@ -180,5 +249,109 @@ public class DashboardController : Controller
         }
 
         return result;
+    }
+
+    private static DashboardCarrierSettingsDto NormalizeCarrierSettings(DashboardCarrierSettingsDto? request)
+    {
+        var result = new DashboardCarrierSettingsDto();
+        if (request?.Items == null || request.Items.Count == 0)
+            return result;
+
+        foreach (var item in request.Items)
+        {
+            var categoryName = Limit(item.CategoryName, 120);
+            var categoryKey = Limit(ChooseKey(item.CategoryKey, categoryName), 160);
+            var carrierName = Limit(item.CarrierName, 160);
+            var carrierKey = Limit(ChooseKey(item.CarrierKey, carrierName), 160);
+            var entryKey = Limit(ChooseKey(item.EntryKey, $"{categoryKey}::{carrierKey}"), 320);
+
+            var normalizedLines = (item.CompensationLines ?? new List<DashboardCarrierCompensationLineDto>())
+                .Select(line => new DashboardCarrierCompensationLineDto
+                {
+                    ProductLine = Limit(line.ProductLine, 160),
+                    CommissionPercent = Limit(line.CommissionPercent, 60),
+                    EligibilityNotes = Limit(line.EligibilityNotes, 240),
+                })
+                .Where(line =>
+                    !string.IsNullOrWhiteSpace(line.ProductLine) ||
+                    !string.IsNullOrWhiteSpace(line.CommissionPercent) ||
+                    !string.IsNullOrWhiteSpace(line.EligibilityNotes))
+                .Take(20)
+                .ToList();
+
+            var normalizedItem = new DashboardCarrierSettingItemDto
+            {
+                EntryKey = entryKey,
+                CategoryKey = categoryKey,
+                CategoryName = categoryName,
+                CarrierKey = carrierKey,
+                CarrierName = carrierName,
+                AgentNumber = Limit(item.AgentNumber, 120),
+                ProducerNumber = Limit(item.ProducerNumber, 120),
+                Notes = Limit(item.Notes, 2000),
+                CompensationLines = normalizedLines,
+            };
+
+            var hasMeaningfulData =
+                !string.IsNullOrWhiteSpace(normalizedItem.AgentNumber) ||
+                !string.IsNullOrWhiteSpace(normalizedItem.ProducerNumber) ||
+                !string.IsNullOrWhiteSpace(normalizedItem.Notes) ||
+                normalizedItem.CompensationLines.Count > 0;
+
+            if (!hasMeaningfulData || string.IsNullOrWhiteSpace(normalizedItem.EntryKey))
+                continue;
+
+            result.Items.Add(normalizedItem);
+        }
+
+        result.Items = result.Items
+            .GroupBy(x => x.EntryKey, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.Last())
+            .OrderBy(x => x.CategoryName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(x => x.CarrierName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return result;
+    }
+
+    private static string Limit(string? value, int maxLength)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        if (trimmed.Length <= maxLength) return trimmed;
+        return trimmed[..maxLength].Trim();
+    }
+
+    private static string ChooseKey(string? preferred, string fallback)
+    {
+        var candidate = Limit(preferred, 320);
+        if (!string.IsNullOrWhiteSpace(candidate))
+            return candidate;
+        return Slugify(fallback);
+    }
+
+    private static string Slugify(string? value)
+    {
+        var input = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(input)) return string.Empty;
+
+        var sb = new StringBuilder(input.Length);
+        var pendingDash = false;
+
+        foreach (var ch in input)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                if (pendingDash && sb.Length > 0)
+                    sb.Append('-');
+                sb.Append(ch);
+                pendingDash = false;
+            }
+            else if (sb.Length > 0)
+            {
+                pendingDash = true;
+            }
+        }
+
+        return sb.ToString();
     }
 }
