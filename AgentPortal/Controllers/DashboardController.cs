@@ -287,14 +287,14 @@ public class DashboardController : Controller
                 CarrierKey = carrierKey,
                 CarrierName = carrierName,
                 AgentNumber = Limit(item.AgentNumber, 120),
-                ProducerNumber = Limit(item.ProducerNumber, 120),
+                EntityNumber = Limit(item.EntityNumber, 120),
                 Notes = Limit(item.Notes, 2000),
                 CompensationLines = normalizedLines,
             };
 
             var hasMeaningfulData =
                 !string.IsNullOrWhiteSpace(normalizedItem.AgentNumber) ||
-                !string.IsNullOrWhiteSpace(normalizedItem.ProducerNumber) ||
+                !string.IsNullOrWhiteSpace(normalizedItem.EntityNumber) ||
                 !string.IsNullOrWhiteSpace(normalizedItem.Notes) ||
                 normalizedItem.CompensationLines.Count > 0;
 

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace AgentPortal.Models;
 
 public sealed class DashboardCarrierSettingsDto
@@ -21,7 +23,19 @@ public sealed class DashboardCarrierSettingItemDto
 
     public string AgentNumber { get; set; } = string.Empty;
 
-    public string ProducerNumber { get; set; } = string.Empty;
+    public string EntityNumber { get; set; } = string.Empty;
+
+    [JsonPropertyName("producerNumber")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ProducerNumberLegacy
+    {
+        get => null;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(EntityNumber))
+                EntityNumber = value ?? string.Empty;
+        }
+    }
 
     public string Notes { get; set; } = string.Empty;
 

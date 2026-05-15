@@ -52,7 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
             carrierKey: meta.carrierKey,
             carrierName: meta.carrierName,
             agentNumber: "",
-            producerNumber: "",
+            entityNumber: "",
             notes: "",
             compensationLines: [],
         };
@@ -75,7 +75,7 @@ document.addEventListener("DOMContentLoaded", () => {
             carrierKey: asTrimmed(item?.carrierKey) || fallback.carrierKey || "",
             carrierName: asTrimmed(item?.carrierName) || fallback.carrierName || "",
             agentNumber: asTrimmed(item?.agentNumber),
-            producerNumber: asTrimmed(item?.producerNumber),
+            entityNumber: asTrimmed(item?.entityNumber || item?.producerNumber),
             notes: asTrimmed(item?.notes),
             compensationLines: Array.isArray(item?.compensationLines)
                 ? item.compensationLines.map(normalizeLine)
@@ -90,7 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
     function itemHasData(item) {
         return !!(
             asTrimmed(item?.agentNumber) ||
-            asTrimmed(item?.producerNumber) ||
+            asTrimmed(item?.entityNumber) ||
             asTrimmed(item?.notes) ||
             (Array.isArray(item?.compensationLines) && item.compensationLines.some(lineHasData))
         );
@@ -105,7 +105,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 carrierKey: item.carrierKey,
                 carrierName: item.carrierName,
                 agentNumber: item.agentNumber,
-                producerNumber: item.producerNumber,
+                entityNumber: item.entityNumber,
                 notes: item.notes,
                 compensationLines: (item.compensationLines || []).filter(lineHasData).map(normalizeLine),
             }))
@@ -330,12 +330,12 @@ document.addEventListener("DOMContentLoaded", () => {
                         />
                     </label>
                     <label class="carrier-inline-field">
-                        <span>Producer #</span>
+                        <span>Entity #</span>
                         <input
                             type="text"
-                            data-field="producerNumber"
-                            value="${escapeAttr(item.producerNumber)}"
-                            placeholder="Producer number"
+                            data-field="entityNumber"
+                            value="${escapeAttr(item.entityNumber)}"
+                            placeholder="Entity number"
                         />
                     </label>
                     <div class="carrier-editor-summary">
@@ -411,7 +411,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="carrier-settings-intro">
                 <h6>Auto-pulled from your live dashboard</h6>
                 <p>Every category here is pulled from the current dashboard sections, so when you add a new carrier or partner tile later, it shows up here automatically without a second hardcoded list.</p>
-                <p>Use the top row for quick agent and producer numbers, then open commission details only when you need more depth. Changes save automatically for the current agent profile.</p>
+                <p>Use the top row for quick agent and entity numbers, then open commission details only when you need more depth. Changes save automatically for the current agent profile.</p>
             </div>
             <div class="carrier-settings-categories">
                 ${categoriesHtml}
