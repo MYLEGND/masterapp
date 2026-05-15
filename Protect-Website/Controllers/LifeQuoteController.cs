@@ -745,6 +745,7 @@ namespace Protect_Website.Controllers
                 AgentSlug = agentSlug,
                 DisplayName = displayName,
                 FirstName = ResolveAgentFirstName(displayName),
+                Npn = string.IsNullOrWhiteSpace(agentProfile?.Npn) ? null : agentProfile.Npn.Trim(),
                 ShortBio = string.IsNullOrWhiteSpace(agentProfile?.ShortBio) ? null : agentProfile.ShortBio.Trim(),
                 ProfileImageUrl = BuildAgentAvatarUrl(agentSlug)
             };

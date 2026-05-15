@@ -120,6 +120,9 @@
     var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
         ? agentTrustProfile!.ShortBio!.Trim()
         : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
+    var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
+        ? agentTrustProfile!.Npn!.Trim()
+        : null;
     var finalSubmitButtonText = showAgentTrustCard
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
@@ -662,6 +665,13 @@ body.life-landing header .navbar .nav-link:focus {
     font-size: .9rem;
     line-height: 1.45;
 }
+.lq-agent-license {
+    color: rgba(248,250,252,0.56);
+    font-size: .74rem;
+    font-weight: 700;
+    line-height: 1.35;
+    margin-top: 8px;
+}
 .lq-error, .lq-success {
     font-weight: 800;
     margin-top: 10px;
@@ -720,6 +730,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-name { font-size: 1rem; }
     .lq-agent-display-name { font-size: .75rem; }
     .lq-agent-bio { font-size: .86rem; }
+    .lq-agent-license { font-size: .7rem; margin-top: 7px; }
     .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
     .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
     .lq-submit-row { margin-top: 8px; }
@@ -780,6 +791,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-name { font-size: .96rem !important; }
     .lq-agent-display-name { font-size: .72rem; }
     .lq-agent-bio { font-size: .82rem; }
+    .lq-agent-license { font-size: .68rem; margin-top: 6px; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
@@ -899,6 +911,7 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-agent-name { font-size: .98rem !important; }
     body.life-landing .lq-agent-display-name { font-size: .73rem !important; }
     body.life-landing .lq-agent-bio { font-size: .84rem !important; }
+    body.life-landing .lq-agent-license { font-size: .69rem !important; }
     body.life-landing .form-control,
     body.life-landing .form-select {
         padding: 8px 10px !important;
@@ -1186,6 +1199,10 @@ body.life-landing header .navbar .nav-link:focus {
                                     <div>
                                         <div class="lq-agent-name">Hi, I'm @agentGreetingName.</div>
                                         <div class="lq-agent-bio">@agentTrustBio</div>
+                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                                        {
+                                            <div class="lq-agent-license">Licensed Insurance Professional • NPN: @agentTrustNpn</div>
+                                        }
                                     </div>
                                 </div>
                             </div>
