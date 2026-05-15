@@ -521,10 +521,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!store.inventory.length) {
             bodyEl.innerHTML = `
-                <div class="carrier-settings-intro">
-                    <h6>How this works</h6>
-                    <p>This editor mirrors the carrier and partner tools currently shown on your dashboard, then saves your agent numbers and compensation notes automatically.</p>
-                </div>
                 <div class="carrier-settings-empty">
                     No dashboard categories were found to pull from right now.
                 </div>
@@ -547,11 +543,6 @@ document.addEventListener("DOMContentLoaded", () => {
         `).join("");
 
         bodyEl.innerHTML = `
-            <div class="carrier-settings-intro">
-                <h6>Auto-pulled from your live dashboard</h6>
-                <p>Every category here is pulled from the current dashboard sections, so when you add a new carrier or partner tile later, it shows up here automatically without a second hardcoded list.</p>
-                <p>Use the top row for quick agent and entity numbers, then open commission details only when you need more depth. Changes save automatically to the server for the current agent profile.</p>
-            </div>
             <div class="carrier-settings-categories">
                 ${categoriesHtml}
             </div>
