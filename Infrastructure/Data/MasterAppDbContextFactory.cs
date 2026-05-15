@@ -7,23 +7,18 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
 {
     public MasterAppDbContext CreateDbContext(string[] args)
     {
-        // Design-time EF runs outside AgentPortal host, so we honor the same env var
-        // and auto-detect provider (SQL Server vs SQLite).
-        var cs = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
+        var cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb")
+              ?? Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb")
+              ?? Environment.GetEnvironmentVariable("MasterAppDb");
+
         if (string.IsNullOrWhiteSpace(cs))
         {
-            Directory.CreateDirectory("App_Data");
-            cs = "Data Source=App_Data/masterapp.db";
+            throw new InvalidOperationException("Missing MasterAppDb connection string for EF design-time factory.");
         }
 
         var opts = new DbContextOptionsBuilder<MasterAppDbContext>();
         opts.UseSqlServer(cs);
 
-        opts.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
-
         return new MasterAppDbContext(opts.Options);
     }
-
-    private static bool IsSqlite(string? cs) =>
-        !string.IsNullOrWhiteSpace(cs) && cs.Trim().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase);
 }
