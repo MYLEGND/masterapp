@@ -52,34 +52,33 @@ public sealed class MigrationHealthHostedService : IHostedService
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    private async Task<bool> TableExistsAsync(MasterAppDbContext db, string table, CancellationToken ct)
+    private async Task<bool> TableExistsAsync(
+        MasterAppDbContext db,
+        string table,
+        CancellationToken ct)
     {
         try
         {
-            await using var conn = db.Database.GetDbConnection();
+            var conn = db.Database.GetDbConnection();
+
             if (conn.State != System.Data.ConnectionState.Open)
                 await conn.OpenAsync(ct);
 
             await using var cmd = conn.CreateCommand();
-            if (db.Database.IsSqlite())
-            {
-                cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name=@name";
-                var p = cmd.CreateParameter();
-                p.ParameterName = "@name";
-                p.Value = table;
-                cmd.Parameters.Add(p);
-            }
-            else
-            {
-                cmd.CommandText = "SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @name";
-                var p = cmd.CreateParameter();
-                p.ParameterName = "@name";
-                p.Value = table;
-                cmd.Parameters.Add(p);
-            }
+
+            cmd.CommandText = @"
+SELECT COUNT(*)
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_NAME = @table";
+
+            var param = cmd.CreateParameter();
+            param.ParameterName = "@table";
+            param.Value = table;
+            cmd.Parameters.Add(param);
 
             var result = await cmd.ExecuteScalarAsync(ct);
-            return result != null && result != DBNull.Value;
+
+            return Convert.ToInt32(result) > 0;
         }
         catch (Exception ex)
         {
@@ -87,4 +86,5 @@ public sealed class MigrationHealthHostedService : IHostedService
             return false;
         }
     }
+
 }
