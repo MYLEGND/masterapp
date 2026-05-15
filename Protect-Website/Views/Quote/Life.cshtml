@@ -611,6 +611,15 @@ body.life-landing header .navbar .nav-link:focus {
     align-items: center;
     gap: 12px;
 }
+.lq-agent-identity {
+    display: grid;
+    justify-items: center;
+    align-content: start;
+    gap: 8px;
+    flex-shrink: 0;
+    min-width: 92px;
+    text-align: center;
+}
 .lq-agent-avatar {
     width: 68px;
     height: 68px;
@@ -645,9 +654,7 @@ body.life-landing header .navbar .nav-link:focus {
     color: rgba(248,250,252,0.8);
     font-size: .8rem;
     font-weight: 800;
-    letter-spacing: .03em;
-    text-transform: uppercase;
-    margin-bottom: 6px;
+    line-height: 1.2;
 }
 .lq-agent-bio {
     color: rgba(248,250,252,0.82);
@@ -733,9 +740,10 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-field label { font-size: .85rem; }
     .lq-field-help { font-size: .76rem; margin-top: -1px; }
     .lq-agent-handoff { gap: 10px; margin-bottom: 10px; padding: 12px; }
+    .lq-agent-identity { min-width: 84px; gap: 7px; }
     .lq-agent-avatar { width: 60px; height: 60px; }
     .lq-agent-name { font-size: 1rem; }
-    .lq-agent-display-name { font-size: .75rem; margin-bottom: 5px; }
+    .lq-agent-display-name { font-size: .75rem; }
     .lq-agent-bio { font-size: .86rem; }
     .lq-agent-trust-list { gap: 7px; }
     .lq-agent-trust-item { font-size: .74rem; padding: 7px 8px; }
@@ -794,6 +802,7 @@ body.life-landing header .navbar .nav-link:focus {
 
     /* Contact step fields */
     .lq-agent-handoff-head { align-items: flex-start; }
+    .lq-agent-identity { min-width: 76px; gap: 6px; }
     .lq-agent-avatar { width: 56px; height: 56px; }
     .lq-agent-name { font-size: .96rem !important; }
     .lq-agent-display-name { font-size: .72rem; }
@@ -910,6 +919,7 @@ body.life-landing header .navbar .nav-link:focus {
         margin-bottom: 10px !important;
         padding: 12px !important;
     }
+    body.life-landing .lq-agent-identity { min-width: 80px !important; }
     body.life-landing .lq-agent-avatar {
         width: 58px !important;
         height: 58px !important;
@@ -1192,22 +1202,23 @@ body.life-landing header .navbar .nav-link:focus {
                         {
                             <div class="lq-agent-handoff full">
                                 <div class="lq-agent-handoff-head">
-                                    <div class="lq-agent-avatar" aria-hidden="true">
-                                        @if (!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl))
-                                        {
-                                            <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentTrustProfile.DisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                        }
-                                        <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
+                                    <div class="lq-agent-identity">
+                                        <div class="lq-agent-avatar" aria-hidden="true">
+                                            @if (!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl))
+                                            {
+                                                <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentTrustProfile.DisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                            }
+                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
+                                        </div>
+                                        <div class="lq-agent-display-name">@agentDisplayName</div>
                                     </div>
                                     <div>
                                         <div class="lq-agent-name">Hi, I'm @agentGreetingName.</div>
-                                        <div class="lq-agent-display-name">@agentDisplayName</div>
                                         <div class="lq-agent-bio">@agentTrustBio</div>
                                     </div>
                                 </div>
                                 <div class="lq-agent-trust-list" aria-label="Trust details">
                                     <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>Simple review</div>
-                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>No pressure</div>
                                     <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>You decide what happens next</div>
                                 </div>
                             </div>
