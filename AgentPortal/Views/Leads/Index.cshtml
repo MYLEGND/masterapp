@@ -44,7 +44,7 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 <style>
-    .production-rollup{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:14px 0;}
+    .production-rollup{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:0 0 14px;}
     .prod-card{padding:14px;border-radius:14px;box-shadow:0 12px 30px rgba(0,0,0,.28);border:1px solid rgba(0,0,0,.16);position:relative;}
     .prod-card .label{font-weight:800;letter-spacing:.04em;color:#0b0f18;text-transform:uppercase;font-size:0.8rem;}
     .prod-card .value{font-weight:900;font-size:1.6rem;color:#0b0f18;}
@@ -74,132 +74,168 @@
     </div>
 </div>
 
-<div class="production-rollup">
 @{
     bool submittedActive = personalRevenueAmount != 0 || prodTotals.Submitted != 0 || prodTotals.CountSubmitted != 0;
     bool issuedActive = prodTotals.Issued != 0 || prodTotals.CountIssued != 0;
     bool paidActive = prodTotals.Paid != 0 || prodTotals.CountPaid != 0;
     bool personalActive = personalRevenueAmount != 0 || personalRevenueCount != 0;
 }
-    <div class="prod-card submitted @(submittedActive ? "has-value" : "")" style="background:#f5d770;border:1px solid #b6892b;color:#0b0f18;">
-        <span class="badge-live">Active</span>
-        <div class="label" style="color:#0b0f18;">Submitted</div>
-        <div class="value" id="tileSubmittedTotal" style="color:#7a5a00;">@prodTotals.Submitted.ToString("C0")</div>
-        <div class="note" style="color:#4b3a0f;"><span id="tileSubmittedCount">@prodTotals.CountSubmitted</span> deals</div>
+
+<section class="insight-shell insight-shell-performance" id="performanceShell">
+    <div class="insight-shell-head">
+        <div>
+            <div class="insight-shell-kicker">Performance Snapshot</div>
+            <h3 class="insight-shell-title">Revenue + Activity</h3>
+            <p class="insight-shell-sub">Keep submitted, issued, paid, personal revenue, KPI pressure, and call volume close by without letting them crowd the page.</p>
+        </div>
+        <div class="insight-shell-actions">
+            <div class="insight-preview">
+                <span class="insight-preview-pill is-paid">Paid <strong id="perfPreviewPaid">@prodTotals.Paid.ToString("C0")</strong></span>
+                <span class="insight-preview-pill is-personal">Personal <strong id="perfPreviewPersonal">@personalRevenueAmount.ToString("C0")</strong></span>
+                <span class="insight-preview-pill is-calls">Calls Today <strong id="perfPreviewCalls">0</strong></span>
+                <span class="insight-preview-pill is-overdue">Overdue <strong id="perfPreviewOverdue">0</strong></span>
+            </div>
+            <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnTogglePerformance" data-show-label="Show Snapshot" data-hide-label="Hide Snapshot" aria-expanded="false" aria-controls="performanceBody">
+                <span data-panel-label>Show Snapshot</span>
+            </button>
+        </div>
     </div>
-    <div class="prod-card issued @(issuedActive ? "has-value" : "")" style="background:#b6c9ff;border:1px solid #6d8ed8;color:#0b0f18;">
-        <span class="badge-live">Active</span>
-        <div class="label" style="color:#0b0f18;">Issued</div>
-        <div class="value" id="tileIssuedTotal" style="color:#1f3f8c;">@prodTotals.Issued.ToString("C0")</div>
-        <div class="note" style="color:#304870;"><span id="tileIssuedCount">@prodTotals.CountIssued</span> deals</div>
+    <div class="insight-shell-body" id="performanceBody" hidden>
+        <div class="production-rollup">
+            <div class="prod-card submitted @(submittedActive ? "has-value" : "")" style="background:#f5d770;border:1px solid #b6892b;color:#0b0f18;">
+                <span class="badge-live">Active</span>
+                <div class="label" style="color:#0b0f18;">Submitted</div>
+                <div class="value" id="tileSubmittedTotal" style="color:#7a5a00;">@prodTotals.Submitted.ToString("C0")</div>
+                <div class="note" style="color:#4b3a0f;"><span id="tileSubmittedCount">@prodTotals.CountSubmitted</span> deals</div>
+            </div>
+            <div class="prod-card issued @(issuedActive ? "has-value" : "")" style="background:#b6c9ff;border:1px solid #6d8ed8;color:#0b0f18;">
+                <span class="badge-live">Active</span>
+                <div class="label" style="color:#0b0f18;">Issued</div>
+                <div class="value" id="tileIssuedTotal" style="color:#1f3f8c;">@prodTotals.Issued.ToString("C0")</div>
+                <div class="note" style="color:#304870;"><span id="tileIssuedCount">@prodTotals.CountIssued</span> deals</div>
+            </div>
+            <div class="prod-card paid @(paidActive ? "has-value" : "")" style="background:#a2e6c1;border:1px solid #4aa36a;color:#0b0f18;">
+                <span class="badge-live">Active</span>
+                <div class="label" style="color:#0b0f18;">Paid</div>
+                <div class="value" id="tilePaidTotal" style="color:#0f5d36;">@prodTotals.Paid.ToString("C0")</div>
+                <div class="note" style="color:#1f4d37;"><span id="tilePaidCount">@prodTotals.CountPaid</span> deals</div>
+            </div>
+            <div class="prod-card personal @(personalActive ? "has-value" : "")" style="background:#e0d5ff;border:1px solid #8b6fd8;color:#0b0f18;">
+                <span class="badge-live">Active</span>
+                <div class="label" style="color:#0b0f18;">Personal Revenue</div>
+                <div class="value" id="tilePersonalTotal" style="color:#3c2c78;">@personalRevenueAmount.ToString("C0")</div>
+                <div class="note" style="color:#524070;"><span id="tilePersonalCount">@personalRevenueCount</span> deals</div>
+            </div>
+        </div>
+
+        <div class="kpis" id="kpiGrid" style="display:none;">
+            <div class="kpi"><div class="l">Total</div><div class="v" id="kTotal">0</div><div class="h">All client profiles</div></div>
+            <div class="kpi"><div class="l">Needs Attention</div><div class="v" id="kNeeds">0</div><div class="h">Follow-up / missing</div></div>
+            <div class="kpi"><div class="l">Overdue</div><div class="v" id="kOverdue">0</div><div class="h">Next action missed</div></div>
+            <div class="kpi"><div class="l">Due Today</div><div class="v" id="kToday">0</div><div class="h">Execute now</div></div>
+            <div class="kpi"><div class="l">Touched 14d</div><div class="v" id="kTouched">0</div><div class="h">Recent connection</div></div>
+            <div class="kpi"><div class="l">Broken IDs</div><div class="v" id="kBroken">0</div><div class="h">Portal link issue</div></div>
+        </div>
+
+        <section class="call-metrics" id="callMetrics">
+            <div class="cm-card cm-today">
+                <div class="cm-label">Calls Today</div>
+                <div class="cm-value" id="cmToday">0</div>
+                <div class="cm-note">Logged today</div>
+            </div>
+            <div class="cm-card cm-week">
+                <div class="cm-label">Calls This Week</div>
+                <div class="cm-value" id="cmWeek">0</div>
+                <div class="cm-note">Sun–Sat</div>
+            </div>
+            <div class="cm-card cm-month">
+                <div class="cm-label">Calls This Month</div>
+                <div class="cm-value" id="cmMonth">0</div>
+                <div class="cm-note">Month-to-date</div>
+            </div>
+            <button type="button" class="btn btn-gold cm-review" id="btnDialYear">Dial Tracker — YTD <span id="cmYearBtn">0</span></button>
+        </section>
     </div>
-    <div class="prod-card paid @(paidActive ? "has-value" : "")" style="background:#a2e6c1;border:1px solid #4aa36a;color:#0b0f18;">
-        <span class="badge-live">Active</span>
-        <div class="label" style="color:#0b0f18;">Paid</div>
-        <div class="value" id="tilePaidTotal" style="color:#0f5d36;">@prodTotals.Paid.ToString("C0")</div>
-        <div class="note" style="color:#1f4d37;"><span id="tilePaidCount">@prodTotals.CountPaid</span> deals</div>
-    </div>
-    <div class="prod-card personal @(personalActive ? "has-value" : "")" style="background:#e0d5ff;border:1px solid #8b6fd8;color:#0b0f18;">
-        <span class="badge-live">Active</span>
-        <div class="label" style="color:#0b0f18;">Personal Revenue</div>
-        <div class="value" id="tilePersonalTotal" style="color:#3c2c78;">@personalRevenueAmount.ToString("C0")</div>
-        <div class="note" style="color:#524070;"><span id="tilePersonalCount">@personalRevenueCount</span> deals</div>
-    </div>
-</div>
+</section>
 
 @if (TempData["Created"] != null)
 {
     <div class="flash">@TempData["Created"]</div>
 }
 
-<div class="kpis" id="kpiGrid" style="display:none;">
-    <div class="kpi"><div class="l">Total</div><div class="v" id="kTotal">0</div><div class="h">All client profiles</div></div>
-    <div class="kpi"><div class="l">Needs Attention</div><div class="v" id="kNeeds">0</div><div class="h">Follow-up / missing</div></div>
-    <div class="kpi"><div class="l">Overdue</div><div class="v" id="kOverdue">0</div><div class="h">Next action missed</div></div>
-    <div class="kpi"><div class="l">Due Today</div><div class="v" id="kToday">0</div><div class="h">Execute now</div></div>
-    <div class="kpi"><div class="l">Touched 14d</div><div class="v" id="kTouched">0</div><div class="h">Recent connection</div></div>
-    <div class="kpi"><div class="l">Broken IDs</div><div class="v" id="kBroken">0</div><div class="h">Portal link issue</div></div>
-</div>
-
-<section class="call-metrics" id="callMetrics">
-    <div class="cm-card cm-today">
-        <div class="cm-label">Calls Today</div>
-        <div class="cm-value" id="cmToday">0</div>
-        <div class="cm-note">Logged today</div>
-    </div>
-    <div class="cm-card cm-week">
-        <div class="cm-label">Calls This Week</div>
-        <div class="cm-value" id="cmWeek">0</div>
-        <div class="cm-note">Sun–Sat</div>
-    </div>
-    <div class="cm-card cm-month">
-        <div class="cm-label">Calls This Month</div>
-        <div class="cm-value" id="cmMonth">0</div>
-        <div class="cm-note">Month-to-date</div>
-    </div>
-    <button type="button" class="btn btn-gold cm-review" id="btnDialYear">Dial Tracker — YTD <span id="cmYearBtn">0</span></button>
-</section>
-
-<section class="myday navy-shell" id="myDayQueue">
+<section class="myday navy-shell insight-shell insight-shell-myday" id="myDayQueue">
     <div class="myday-head">
         <div>
             <h3 class="myday-title">My Day</h3>
             <p class="myday-sub">Start with the work that should happen right now. These queues are live off persisted CRM data.</p>
         </div>
-        <div class="myday-actions">
-            <button type="button" class="btn btn-gold" id="btnCallTaskMode">Call Task Mode</button>
+        <div class="myday-head-side">
+            <div class="myday-preview-row">
+                <span class="myday-preview-pill is-callsnow">Calls Now <strong id="qCallsNowPreview">0</strong></span>
+                <span class="myday-preview-pill is-today">Due Today <strong id="qDueTodayPreview">0</strong></span>
+                <span class="myday-preview-pill is-overdue">Overdue <strong id="qOverduePreview">0</strong></span>
+                <span class="myday-preview-pill is-meetings">Meetings <strong id="qMeetingsPreview">0</strong></span>
+            </div>
+            <div class="myday-actions">
+                <button type="button" class="btn btn-gold" id="btnCallTaskMode">Call Task Mode</button>
+                <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnToggleMyDay" data-show-label="Show Queues" data-hide-label="Hide Queues" aria-expanded="false" aria-controls="myDayBody">
+                    <span data-panel-label>Show Queues</span>
+                </button>
+            </div>
         </div>
     </div>
-    <div class="myday-grid">
-        <button type="button" class="myday-tile" data-queue="callsnow">
-            <span class="myday-k">Calls Now</span>
-            <strong class="myday-v" id="qCallsNow">0</strong>
-            <span class="myday-h">Priority follow-up calls that should happen immediately.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-        <button type="button" class="myday-tile" data-queue="today">
-            <span class="myday-k">Due Today</span>
-            <strong class="myday-v" id="qDueToday">0</strong>
-            <span class="myday-h">Touches due today and ready for execution.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-        <button type="button" class="myday-tile" data-queue="overdue">
-            <span class="myday-k">Overdue</span>
-            <strong class="myday-v" id="qOverdue">0</strong>
-            <span class="myday-h">Rescue this list before it gets stale.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-        <button type="button" class="myday-tile" data-queue="meetings">
-            <span class="myday-k">Meetings</span>
-            <strong class="myday-v" id="qMeetings">0</strong>
-            <span class="myday-h">Meeting-stage clients with event execution pressure.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-        <button type="button" class="myday-tile" data-queue="waitingclient">
-            <span class="myday-k">Waiting On Client</span>
-            <strong class="myday-v" id="qWaitingClient">0</strong>
-            <span class="myday-h">Clients who owe the next move back to you.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-        <button type="button" class="myday-tile" data-queue="waitingcarrier">
-            <span class="myday-k">Waiting On Carrier</span>
-            <strong class="myday-v" id="qWaitingCarrier">0</strong>
-            <span class="myday-h">Cases blocked externally and needing visibility.</span>
-            <span class="myday-cta">Open Queue →</span>
-        </button>
-    </div>
-    <div class="myday-focus" id="mydayFocus">
-        <button type="button" class="btn btn-ghost" id="btnMyDayBack">← Back To Leads</button>
-        <div class="myday-focus-copy">
-            <div class="myday-focus-title" id="mydayFocusTitle">Queue</div>
-            <div class="myday-focus-sub" id="mydayFocusSub">Work this queue, edit records in Quick View, then return to the full clients page.</div>
+    <div class="insight-shell-body myday-body" id="myDayBody" hidden>
+        <div class="myday-grid">
+            <button type="button" class="myday-tile" data-queue="callsnow">
+                <span class="myday-k">Calls Now</span>
+                <strong class="myday-v" id="qCallsNow">0</strong>
+                <span class="myday-h">Priority follow-up calls that should happen immediately.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
+            <button type="button" class="myday-tile" data-queue="today">
+                <span class="myday-k">Due Today</span>
+                <strong class="myday-v" id="qDueToday">0</strong>
+                <span class="myday-h">Touches due today and ready for execution.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
+            <button type="button" class="myday-tile" data-queue="overdue">
+                <span class="myday-k">Overdue</span>
+                <strong class="myday-v" id="qOverdue">0</strong>
+                <span class="myday-h">Rescue this list before it gets stale.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
+            <button type="button" class="myday-tile" data-queue="meetings">
+                <span class="myday-k">Meetings</span>
+                <strong class="myday-v" id="qMeetings">0</strong>
+                <span class="myday-h">Meeting-stage clients with event execution pressure.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
+            <button type="button" class="myday-tile" data-queue="waitingclient">
+                <span class="myday-k">Waiting On Client</span>
+                <strong class="myday-v" id="qWaitingClient">0</strong>
+                <span class="myday-h">Clients who owe the next move back to you.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
+            <button type="button" class="myday-tile" data-queue="waitingcarrier">
+                <span class="myday-k">Waiting On Carrier</span>
+                <strong class="myday-v" id="qWaitingCarrier">0</strong>
+                <span class="myday-h">Cases blocked externally and needing visibility.</span>
+                <span class="myday-cta">Open Queue →</span>
+            </button>
         </div>
-        <div class="myday-focus-actions">
-            <span class="pill" id="mydayFocusCount">0 records</span>
-            <button type="button" class="btn btn-gold" id="btnMyDayCallTask">Open Call Task Mode</button>
+        <div class="myday-focus" id="mydayFocus">
+            <button type="button" class="btn btn-ghost" id="btnMyDayBack">← Back To Leads</button>
+            <div class="myday-focus-copy">
+                <div class="myday-focus-title" id="mydayFocusTitle">Queue</div>
+                <div class="myday-focus-sub" id="mydayFocusSub">Work this queue, edit records in Quick View, then return to the full clients page.</div>
+            </div>
+            <div class="myday-focus-actions">
+                <span class="pill" id="mydayFocusCount">0 records</span>
+                <button type="button" class="btn btn-gold" id="btnMyDayCallTask">Open Call Task Mode</button>
+            </div>
         </div>
+        <div class="saved-views" id="savedViewsBar"></div>
     </div>
-    <div class="saved-views" id="savedViewsBar"></div>
 </section>
 
 <section class="crm-deck">

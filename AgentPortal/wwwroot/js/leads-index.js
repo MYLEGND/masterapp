@@ -4771,6 +4771,7 @@ function renderPipelineNav(filteredRows){
   const boardFocusNote = activeMeta
     ? activeMeta.note
     : "Choose a bucket for a tighter work lane, or stay wide and manage the full board.";
+  const canDeleteBucket = !!activeMeta && !isDerivedPipelineFilterStage(activeMeta.key);
   const shellClass = activeMeta ? `pipeline-nav-shell ${activeMeta.className}` : "pipeline-nav-shell";
   const optionHtml = pipelineStages.map(stage => {
     const count = countRowsForStage(stage.key, filteredRows);
@@ -4806,6 +4807,7 @@ function renderPipelineNav(filteredRows){
           </select>
           </label>
           <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>Full Pipeline</button>
+          <button type="button" class="btn btn-red pipeline-nav-danger" id="pipelineNavDeleteBucket" ${canDeleteBucket ? "" : "disabled"}>Delete Bucket</button>
         </div>
       </div>
     </div>
@@ -4826,6 +4828,11 @@ function renderPipelineNav(filteredRows){
     pipelineNavSearchTerm = "";
     pipelineFocusStage = "";
     renderAll();
+  });
+
+  const navDeleteBucket = pipelineStageNav.querySelector("#pipelineNavDeleteBucket");
+  navDeleteBucket?.addEventListener("click", () => {
+    deleteCurrentBucket();
   });
 }
 
