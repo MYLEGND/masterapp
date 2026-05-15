@@ -4783,10 +4783,10 @@ function renderPipelineNav(filteredRows){
             <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>--SELECT--</option>
             ${optionHtml}
           </select>
-          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>All Buckets</button>
+          <button type="button" class="btn btn-stage-tone pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>All Buckets</button>
         </div>
       </div>
-      <div class="pipeline-nav-note">Use the dropdown to jump into a bucket. Click the back button in the board to return.</div>
+      <div class="pipeline-nav-note">Jump into a bucket fast, or reset back to the full board.</div>
     </div>
   `;
 

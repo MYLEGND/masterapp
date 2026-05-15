@@ -14,16 +14,16 @@
                 <p class="pipeline-sub">Stage-focused CRM workspace — drag to move, reorder by priority, drop to update instantly.</p>
             </div>
             <div class="pipeline-head-actions">
-                <span class="pill" id="pipelineBoardCount">0 active cards</span>
-                <button type="button" class="btn btn-ghost" id="btnPipelineRefresh">Refresh</button>
-                <button type="button" class="btn btn-ghost" id="btnPipelineAll">All Buckets</button>
-                <button type="button" class="btn btn-ghost" id="btnPipelineCallTask">Call Task Mode</button>
+                <span class="pill pipeline-summary-pill" id="pipelineBoardCount">0 active cards</span>
+                <button type="button" class="btn btn-ghost pipeline-head-btn pipeline-head-btn-refresh" id="btnPipelineRefresh">Refresh</button>
+                <button type="button" class="btn btn-stage-tone pipeline-head-btn pipeline-head-btn-buckets" id="btnPipelineAll">All Buckets</button>
+                <button type="button" class="btn btn-green pipeline-head-btn pipeline-head-btn-call" id="btnPipelineCallTask">Call Task Mode</button>
             </div>
         </div>
         <div class="pipeline-interact">
             <div class="pipeline-metrics">
-                <span class="pill" id="pipelineTotalCards">0 cards</span>
-                <span class="pill pill-soft" id="pipelineFocusPill">All buckets</span>
+                <span class="pill pipeline-metric-ghost" id="pipelineTotalCards" hidden>0 cards</span>
+                <span class="pill pill-soft pipeline-focus-pill" id="pipelineFocusPill">All buckets</span>
             </div>
             <div class="pipeline-quick">
                 <button type="button" class="chip chip-red" id="btnPipeOverdue">🔥 Overdue</button>
