@@ -13,6 +13,7 @@ const LS_VIEWS = "legend_saved_views_v1";
 const LS_PIPELINE_ORDER = "legend_pipeline_order_v1";
 const LS_PROD_DRAFT_CLIENT = "legend_prod_draft_client_v1";
 const LS_ADVANCED_MARKETS_DRAFTS = "legend_adv_markets_drafts_v1";
+const LS_PANELS = "legend_clients_panels_v1";
 const liveSync = window.liveSync;
 
 const $  = (sel, root=document) => root.querySelector(sel);
@@ -1960,6 +1961,13 @@ const bar = $("#legendBar");
 
 const rows = $$(".client-row");
 const kpiGrid = $("#kpiGrid");
+const performanceShell = $("#performanceShell");
+const performanceBody = $("#performanceBody");
+const btnTogglePerformance = $("#btnTogglePerformance");
+const perfPreviewPaid = $("#perfPreviewPaid");
+const perfPreviewPersonal = $("#perfPreviewPersonal");
+const perfPreviewCalls = $("#perfPreviewCalls");
+const perfPreviewOverdue = $("#perfPreviewOverdue");
 const cmToday = $("#cmToday");
 const cmWeek = $("#cmWeek");
 const cmMonth = $("#cmMonth");
@@ -1983,6 +1991,12 @@ const btnBulkEdit = $("#btnBulkEdit");
 const savedViewsBar = $("#savedViewsBar");
 const btnCallTaskMode = $("#btnCallTaskMode");
 const myDayQueue = $("#myDayQueue");
+const myDayBody = $("#myDayBody");
+const btnToggleMyDay = $("#btnToggleMyDay");
+const qCallsNowPreview = $("#qCallsNowPreview");
+const qDueTodayPreview = $("#qDueTodayPreview");
+const qOverduePreview = $("#qOverduePreview");
+const qMeetingsPreview = $("#qMeetingsPreview");
 const mydayFocus = $("#mydayFocus");
 const btnMyDayBack = $("#btnMyDayBack");
 const btnMyDayCallTask = $("#btnMyDayCallTask");
@@ -2013,6 +2027,58 @@ const btnPipeMeetings = $("#btnPipeMeetings");
 const btnPipeReset = $("#btnPipeReset");
 const pipelineFocusBar = $("#pipelineFocusBar");
 const pipelineFocusTitle = $("#pipelineFocusTitle");
+
+function panelPrefs(){
+  return loadJSON(LS_PANELS, {});
+}
+
+function savePanelPref(key, isOpen){
+  saveJSON(LS_PANELS, { ...panelPrefs(), [key]: !!isOpen });
+}
+
+function applyCollapsiblePanelState(shell, button, body, isOpen){
+  if (!shell || !button || !body) return;
+
+  shell.classList.toggle("is-open", !!isOpen);
+  body.hidden = !isOpen;
+  button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+
+  const label = $("[data-panel-label]", button);
+  const showLabel = button.dataset.showLabel || "Show";
+  const hideLabel = button.dataset.hideLabel || "Hide";
+  if (label) label.textContent = isOpen ? hideLabel : showLabel;
+}
+
+function initCollapsiblePanel(key, shell, button, body, defaultOpen = false){
+  if (!shell || !button || !body) return null;
+
+  const prefs = panelPrefs();
+  let isOpen = typeof prefs[key] === "boolean" ? prefs[key] : defaultOpen;
+
+  const setOpen = (nextOpen, { persist = true } = {}) => {
+    isOpen = !!nextOpen;
+    applyCollapsiblePanelState(shell, button, body, isOpen);
+    if (persist) savePanelPref(key, isOpen);
+  };
+
+  button.addEventListener("click", () => setOpen(!isOpen));
+  setOpen(isOpen, { persist: false });
+
+  return {
+    open(options){ setOpen(true, options); },
+    close(options){ setOpen(false, options); },
+    toggle(options){ setOpen(!isOpen, options); },
+    isOpen(){ return isOpen; }
+  };
+}
+
+let performancePanelController = null;
+let myDayPanelController = null;
+
+function initCollapsiblePanels(){
+  performancePanelController = initCollapsiblePanel("performance", performanceShell, btnTogglePerformance, performanceBody, false);
+  myDayPanelController = initCollapsiblePanel("myDay", myDayQueue, btnToggleMyDay, myDayBody, false);
+}
 const pipelineFocusSub = $("#pipelineFocusSub");
 const btnBoardBack = $("#btnBoardBack");
 
@@ -2813,6 +2879,8 @@ async function refreshClientProductionTiles(){
     if (tileClientIssuedCount) tileClientIssuedCount.textContent = data.countIssued ?? 0;
     if (tileClientPaidCount) tileClientPaidCount.textContent = data.countPaid ?? 0;
     if (tileClientPersonalCount) tileClientPersonalCount.textContent = data.countPersonal ?? 0;
+    if (perfPreviewPaid) perfPreviewPaid.textContent = fmt(data.paid);
+    if (perfPreviewPersonal) perfPreviewPersonal.textContent = fmt(data.personal);
   }catch(err){
     console.warn("Client production tile refresh failed", err);
   }
@@ -2829,6 +2897,7 @@ function updateCallMetrics(){
   cmToday.textContent = day.toLocaleString();
   cmWeek.textContent = week.toLocaleString();
   cmMonth.textContent = month.toLocaleString();
+  if (perfPreviewCalls) perfPreviewCalls.textContent = day.toLocaleString();
 }
 rows.forEach(hydrateRow);
 updateCallMetrics();
@@ -3334,6 +3403,7 @@ function refreshKPIs(){
   $("#kTouched").textContent = touched;
   $("#kOverdue").textContent = overdue;
   $("#kToday").textContent = today;
+  if (perfPreviewOverdue) perfPreviewOverdue.textContent = overdue.toLocaleString();
 
   kpiGrid.style.display = "";
 }
@@ -3413,6 +3483,7 @@ function renderMyDayFocus(){
   mydayFocus.classList.toggle("active", !!meta);
   $$(".myday-tile").forEach(tile => tile.classList.toggle("active", tile.getAttribute("data-queue") === activeMyDayQueue));
   if (!meta) return;
+  myDayPanelController?.open();
   if (mydayFocusTitle) mydayFocusTitle.textContent = meta.title;
   if (mydayFocusSub) mydayFocusSub.textContent = `${meta.sub} Open a record to edit it in Quick View.`;
   if (mydayFocusCount) mydayFocusCount.textContent = `${meta.count} record${meta.count === 1 ? "" : "s"}`;
@@ -3420,21 +3491,28 @@ function renderMyDayFocus(){
 }
 
 function refreshMyDay(){
-  $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length));
-  $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? queueRows("today").length));
-  $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? queueRows("overdue").length));
-  $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? queueRows("meetings").length));
-  $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length));
-  $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length));
+  const syncQueueCount = (selector, previewEl, value) => {
+    const text = String(value);
+    const el = $(selector);
+    if (el) el.textContent = text;
+    if (previewEl) previewEl.textContent = text;
+  };
+
+  syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length);
+  syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? queueRows("today").length);
+  syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? queueRows("overdue").length);
+  syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? queueRows("meetings").length);
+  syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length);
+  syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length);
   renderMyDayFocus();
 
   loadMyDaySnapshot().then(() => {
-    $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? 0));
-    $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? 0));
-    $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? 0));
-    $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? 0));
-    $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? 0));
-    $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? 0));
+    syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? 0);
+    syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? 0);
+    syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? 0);
+    syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? 0);
+    syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? 0);
+    syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? 0);
     renderMyDayFocus();
   }).catch(() => {});
 }
@@ -6729,6 +6807,7 @@ async function boot(){
   syncBarHeight();
   applyColumnPrefs();
   applyDensityClass();
+  initCollapsiblePanels();
   renderSavedViews();
   ensureModalInBody('clientQuickCreateActionModal');
   bindQuickViewTabs();
