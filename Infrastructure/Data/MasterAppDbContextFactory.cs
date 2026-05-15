@@ -17,8 +17,7 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         }
 
         var opts = new DbContextOptionsBuilder<MasterAppDbContext>();
-        if (IsSqlite(cs)) opts.UseSqlite(cs);
-        else opts.UseSqlServer(cs);
+        opts.UseSqlServer(cs);
 
         opts.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 
