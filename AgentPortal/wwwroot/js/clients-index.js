@@ -1973,6 +1973,7 @@ const sortBy = $("#sortBy");
 const pageSize = $("#pageSize");
 const viewMode = $("#viewMode");
 const density = $("#density");
+const PIPELINE_ONLY_VIEW = "pipeline";
 
 const btnCopyEmails = $("#btnCopyEmails");
 const btnExportCsv = $("#btnExportCsv");
@@ -2009,7 +2010,6 @@ const pipelineFocusPill = $("#pipelineFocusPill");
 const btnPipeOverdue = $("#btnPipeOverdue");
 const btnPipeNeeds = $("#btnPipeNeeds");
 const btnPipeMeetings = $("#btnPipeMeetings");
-const btnPipeTable = $("#btnPipeTable");
 const btnPipeReset = $("#btnPipeReset");
 const pipelineFocusBar = $("#pipelineFocusBar");
 const pipelineFocusTitle = $("#pipelineFocusTitle");
@@ -3288,17 +3288,19 @@ function applyPreset(name){
 }
 
 function applyViewMode(){
-  const mode = viewMode.value || "pipeline";
-  const isPipeline = mode === "pipeline";
-  const isTable = mode === "table";
-  const isHybrid = mode === "hybrid";
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
 
-  legendWrap?.classList.toggle("pipeline-mode", isPipeline);
-  legendWrap?.classList.toggle("table-mode", isTable);
-  legendWrap?.classList.toggle("hybrid-mode", isHybrid);
+  legendWrap?.classList.add("pipeline-mode");
+  legendWrap?.classList.remove("table-mode", "hybrid-mode");
 
-  if (tableView) tableView.style.display = isPipeline ? "none" : "block";
-  if (cardsView) cardsView.style.display = isTable ? "none" : "block";
+  if (tableView) {
+    tableView.style.display = "none";
+    tableView.setAttribute("aria-hidden", "true");
+  }
+  if (cardsView) {
+    cardsView.style.display = "block";
+    cardsView.removeAttribute("aria-hidden");
+  }
 }
 
 density?.addEventListener("change", () => {
@@ -3307,7 +3309,8 @@ density?.addEventListener("change", () => {
 });
 
 viewMode?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: viewMode.value });
+  viewMode.value = PIPELINE_ONLY_VIEW;
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: PIPELINE_ONLY_VIEW });
   applyViewMode();
   renderAll();
 });
@@ -3481,7 +3484,7 @@ function saveCurrentView(){
     stage: norm(stageFilter.value),
     attention: norm(attentionFilter.value),
     sort: norm(sortBy.value),
-    view: norm(viewMode.value)
+    view: PIPELINE_ONLY_VIEW
   });
   saveJSON(LS_VIEWS, views.slice(-8));
   renderSavedViews();
@@ -3496,7 +3499,7 @@ function applySavedView(index){
   stageFilter.value = view.stage || "";
   attentionFilter.value = view.attention || "";
   sortBy.value = view.sort || "name_asc";
-  viewMode.value = view.view || "pipeline";
+  viewMode.value = PIPELINE_ONLY_VIEW;
   applyViewMode();
   currentPage = 1;
   renderAll();
@@ -5410,12 +5413,6 @@ btnPipeMeetings?.addEventListener("click", () => {
   applyPreset("meetingstoday");
 });
 
-btnPipeTable?.addEventListener("click", () => {
-  if (viewMode) viewMode.value = "table";
-  applyViewMode();
-  renderAll();
-});
-
 btnPipeReset?.addEventListener("click", () => {
   resetFilters();
   if (viewMode) viewMode.value = "pipeline";
@@ -5834,8 +5831,8 @@ function runCommand(text){
   else if (t.includes("copy")) btnCopyEmails?.click();
   else if (t.includes("reminders")) openRemindersModal();
   else if (t.includes("enable reminders")) enableReminders();
-  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = "pipeline"; viewMode.dispatchEvent(new Event("change")); }
-  else if (t.includes("view table")) { viewMode.value = "table"; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view table") || t.includes("view hybrid")) { toast("Pipeline CRM is the only available view."); }
   else if (t.includes("filter overdue")) { attentionFilter.value = "overdue"; attentionFilter.dispatchEvent(new Event("change")); }
   else if (t.includes("filter needs")) { attentionFilter.value = "needs"; attentionFilter.dispatchEvent(new Event("change")); }
   else if (t.includes("density compact")) { density.value = "compact"; density.dispatchEvent(new Event("change")); }
@@ -6426,7 +6423,7 @@ async function createCalendarEventFromDrawer(){
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
   const prefs = loadJSON(LS_PREFS, {});
-  viewMode.value = "pipeline";
+  viewMode.value = PIPELINE_ONLY_VIEW;
   if (prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
