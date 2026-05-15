@@ -53,7 +53,7 @@
 
         <div class="rb-link-bar">
             <a class="btn gold rb-link" href="https://hq-whl.us.auth0.com/login?state=hKFo2SAtbGV5NkRzX1BpSW1MaE52Qy1uOTdidkNuMm5MXzV0MqFupWxvZ2luo3RpZNkgODF2NXpTdHBMeGcxU0VmSVF5Y1ppOVhwWGhOTlo0SzajY2lk2SBjQ3FEb2dNbHNoUlhQWEpvck1EWmdLZEFRUGVCczlJSA&amp;client=cCqDogMlshRXPXJorMDZgKdAQPeBs9IH&amp;protocol=oauth2&amp;audience=http%3A%2F%2Fapi-whl.quility.com&amp;redirect_uri=https%3A%2F%2Fb2b-hq.quility.com&amp;scope=openid%20profile%20email&amp;response_type=code&amp;response_mode=query&amp;nonce=MGhlT1ZOcXVQcC44UlNRZER5NWFUNU1lMEgwfkR2MzlHTXVqeGpkZGlXWA%3D%3D&amp;code_challenge=mmd1hG_9XoAkIByduyMmB1n6fai45wDlZghr5abcNYw&amp;code_challenge_method=S256&amp;auth0Client=eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjIuNiJ9" target="_blank" rel="noopener noreferrer">Quility</a>
-            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">Integrity Marketing</a>
+            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard?quick-quote-initiated=true" target="_blank" rel="noopener noreferrer">GET A QUOTE</a>
             <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
         </div>
 
@@ -506,11 +506,11 @@
     const guideShortcutIds = new Set(["sec-voicemail", "sec-texts"]);
     const guideNavSequence = new Map([
         ["sec-aged", { number: 1, label: "START HERE" }],
-        ["sec-termwhole", { number: 2 }],
-        ["sec-verify", { number: 3 }],
-        ["sec-replace", { number: 4 }],
-        ["sec-book", { number: 5 }],
-        ["sec-occ", { number: 6 }],
+        ["sec-verify", { number: 2 }],
+        ["sec-occ", { number: 3 }],
+        ["sec-termwhole", { number: 4 }],
+        ["sec-replace", { number: 5 }],
+        ["sec-book", { number: 6 }],
         ["sec-threeins", { number: 7 }],
         ["sec-equity", { number: 8 }],
         ["sec-living", { number: 9 }],
@@ -522,11 +522,11 @@
     ]);
     const guideNavOrder = new Map([
         ["sec-aged", 1],
-        ["sec-termwhole", 2],
-        ["sec-verify", 3],
-        ["sec-replace", 4],
-        ["sec-book", 5],
-        ["sec-occ", 6],
+        ["sec-verify", 2],
+        ["sec-occ", 3],
+        ["sec-termwhole", 4],
+        ["sec-replace", 5],
+        ["sec-book", 6],
         ["sec-threeins", 7],
         ["sec-equity", 8],
         ["sec-living", 9],
