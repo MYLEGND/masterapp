@@ -677,6 +677,30 @@ namespace Protect_Website.Controllers
             return $"{trackingApiBase}/avatar/agent/{safeSlug}";
         }
 
+        private async Task<AgentProfile?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken ct)
+        {
+            var hasAgentUserId = !string.IsNullOrWhiteSpace(trackingProfile.AgentUserId);
+            var hasAgentUpn = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn);
+            var normalizedUpn = hasAgentUpn ? trackingProfile.AgentUpn.Trim().ToUpperInvariant() : string.Empty;
+
+            if (!hasAgentUserId && !hasAgentUpn)
+            {
+                return null;
+            }
+
+            return await _db.AgentProfiles.AsNoTracking()
+                .Where(x =>
+                    (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
+                    (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
+                .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Npn))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.ShortBio))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.Title))
+                .ThenByDescending(x => hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId)
+                .ThenByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync(ct);
+        }
+
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
         {
             if (!HasExplicitAgentContext())
@@ -720,22 +744,7 @@ namespace Protect_Website.Controllers
                 return null;
             }
 
-            AgentProfile? agentProfile = null;
-
-            if (!string.IsNullOrWhiteSpace(trackingProfile.AgentUserId))
-            {
-                agentProfile = await _db.AgentProfiles.AsNoTracking()
-                    .FirstOrDefaultAsync(x => x.AgentUserId == trackingProfile.AgentUserId, ct);
-            }
-
-            if (agentProfile == null && !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
-            {
-                var normalizedUpn = trackingProfile.AgentUpn.Trim().ToUpperInvariant();
-                agentProfile = await _db.AgentProfiles.AsNoTracking()
-                    .FirstOrDefaultAsync(
-                        x => x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn,
-                        ct);
-            }
+            var agentProfile = await ResolveAgentProfileAsync(trackingProfile, ct);
 
             var displayName = ResolveAgentDisplayName(agentProfile, trackingProfile);
 
