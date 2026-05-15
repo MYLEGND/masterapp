@@ -21,6 +21,10 @@ namespace AgentPortal.Models
         [MaxLength(30)]
         public string? Phone { get; set; }
 
+        [Display(Name = "Short bio")]
+        [MaxLength(280)]
+        public string? ShortBio { get; set; }
+
         [Display(Name = "NPN")]
         [MaxLength(30)]
         public string? Npn { get; set; }

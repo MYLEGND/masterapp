@@ -100,9 +100,22 @@
         !string.IsNullOrWhiteSpace(form.Email) ||
         !string.IsNullOrWhiteSpace(form.State);
     var showContactStepByDefault = !ViewData.ModelState.IsValid || hasContactInput;
-    var path = requestPath;
-    var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-    var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : string.Empty;
+    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var agentTrustProfile = Model.AgentTrustProfile;
+    var agentSlug = !string.IsNullOrWhiteSpace(agentTrustProfile?.AgentSlug)
+        ? agentTrustProfile.AgentSlug
+        : (!isFounderPath ? trackedSlug : string.Empty);
+    var showAgentTrustCard = agentTrustProfile != null && !string.IsNullOrWhiteSpace(agentSlug);
+    var finalStepHeading = showAgentTrustCard
+        ? "You're almost done, I'll help you understand what may fit."
+        : "You're almost done, we'll help you understand what may fit.";
+    var finalStepHelper = showAgentTrustCard
+        ? "Share the best way to reach you and I'll personally review what may fit your situation."
+        : "Share the best way to reach you and we'll walk through what may fit your situation.";
+    var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
+        ? agentTrustProfile!.ShortBio!.Trim()
+        : $"{(string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName) ? "I" : agentTrustProfile!.FirstName)} personally review requests to help families understand their protection options clearly.";
 }
 
 <style>
@@ -573,6 +586,93 @@ body.life-landing header .navbar .nav-link:focus {
     display: none;
 }
 .lq-field-err.visible{ display:block; }
+.lq-agent-handoff {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding: 14px;
+    border-radius: 14px;
+    border: 1.4px solid rgba(199,153,49,0.38);
+    background:
+        radial-gradient(circle at top right, rgba(199,153,49,0.16), transparent 38%),
+        rgba(11,22,39,0.92);
+    box-shadow:
+        0 16px 28px rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.lq-agent-handoff-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.lq-agent-avatar {
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border: 2px solid rgba(239,200,111,0.92);
+    background: linear-gradient(180deg, #13233f 0%, #0b1529 100%);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.28);
+}
+.lq-agent-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.lq-agent-avatar-fallback {
+    color: #f3d78f;
+    font-size: 1.2rem;
+    font-weight: 900;
+    letter-spacing: .02em;
+}
+.lq-agent-overline {
+    color: rgba(248,250,252,0.6);
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+.lq-agent-name {
+    color: #f3d78f;
+    font-size: 1.08rem;
+    font-weight: 900;
+    margin-bottom: 3px;
+}
+.lq-agent-bio {
+    color: rgba(248,250,252,0.82);
+    font-size: .9rem;
+    line-height: 1.45;
+}
+.lq-agent-trust-list {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr;
+}
+.lq-agent-trust-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #f8fafc;
+    font-size: .86rem;
+    font-weight: 800;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background: rgba(16,30,52,0.72);
+}
+.lq-agent-trust-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: linear-gradient(180deg, #efc86f 0%, #c08b21 100%);
+    box-shadow: 0 0 10px rgba(239,200,111,0.42);
+    flex-shrink: 0;
+}
 .lq-error, .lq-success {
     font-weight: 800;
     margin-top: 10px;
@@ -625,6 +725,12 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-field { gap: 4px; }
     .lq-field label { font-size: .85rem; }
     .lq-field-help { font-size: .76rem; margin-top: -1px; }
+    .lq-agent-handoff { gap: 10px; margin-bottom: 10px; padding: 12px; }
+    .lq-agent-avatar { width: 60px; height: 60px; }
+    .lq-agent-name { font-size: 1rem; }
+    .lq-agent-bio { font-size: .86rem; }
+    .lq-agent-trust-list { gap: 7px; }
+    .lq-agent-trust-item { font-size: .81rem; padding: 7px 9px; }
     .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
     .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
     .lq-submit-row { margin-top: 8px; }
@@ -679,6 +785,12 @@ body.life-landing header .navbar .nav-link:focus {
     #step2BackBtn { min-width: 108px; margin-top: 8px; }
 
     /* Contact step fields */
+    .lq-agent-handoff-head { align-items: flex-start; }
+    .lq-agent-avatar { width: 56px; height: 56px; }
+    .lq-agent-overline { font-size: .68rem; }
+    .lq-agent-name { font-size: .96rem !important; }
+    .lq-agent-bio { font-size: .82rem; }
+    .lq-agent-trust-item { font-size: .8rem; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
@@ -785,6 +897,21 @@ body.life-landing header .navbar .nav-link:focus {
 
     body.life-landing .lq-contact-grid { gap: 8px !important; }
     body.life-landing .lq-field-row { gap: 10px !important; }
+    body.life-landing .lq-agent-handoff {
+        gap: 10px !important;
+        margin-bottom: 10px !important;
+        padding: 12px !important;
+    }
+    body.life-landing .lq-agent-avatar {
+        width: 58px !important;
+        height: 58px !important;
+    }
+    body.life-landing .lq-agent-name { font-size: .98rem !important; }
+    body.life-landing .lq-agent-bio { font-size: .84rem !important; }
+    body.life-landing .lq-agent-trust-item {
+        font-size: .8rem !important;
+        padding: 7px 9px !important;
+    }
     body.life-landing .form-control,
     body.life-landing .form-select {
         padding: 8px 10px !important;
@@ -1049,9 +1176,33 @@ body.life-landing header .navbar .nav-link:focus {
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
-                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">Let’s break this down clearly for your situation</div>
-                <div class="lq-step-helper">What it looks like, what it costs, and what actually makes sense — no guesswork.</div>
+                <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
+                <div class="lq-step-helper">@finalStepHelper</div>
                     <div class="lq-contact-grid">
+                        @if (showAgentTrustCard)
+                        {
+                            <div class="lq-agent-handoff full">
+                                <div class="lq-agent-handoff-head">
+                                    <div class="lq-agent-avatar" aria-hidden="true">
+                                        @if (!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl))
+                                        {
+                                            <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentTrustProfile.DisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                        }
+                                        <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
+                                    </div>
+                                    <div>
+                                        <div class="lq-agent-overline">Your agent handoff</div>
+                                        <div class="lq-agent-name">Hi, I'm @agentTrustProfile!.FirstName.</div>
+                                        <div class="lq-agent-bio">@agentTrustBio</div>
+                                    </div>
+                                </div>
+                                <div class="lq-agent-trust-list" aria-label="Trust details">
+                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>Simple review</div>
+                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>No pressure</div>
+                                    <div class="lq-agent-trust-item"><span class="lq-agent-trust-dot" aria-hidden="true"></span>You decide what happens next</div>
+                                </div>
+                            </div>
+                        }
                         <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
@@ -1064,12 +1215,18 @@ body.life-landing header .navbar .nav-link:focus {
                                 <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
-                        <div class="lq-field-row full">
+                        <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                 <div class="lq-field-help">We’ll walk through your options with you — clear and simple.</div>
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                            </div>
+                            <div class="lq-field">
+                                <label for="Email">Email <span style="color:#f87171">*</span></label>
+                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                <div class="lq-field-help">We’ll send your review summary here too.</div>
+                                <div class="lq-field-err" id="err-Email">Please enter your email.</div>
                             </div>
                         </div>
                         @if (!usesLeanContactFields)
@@ -1187,10 +1344,16 @@ body.life-landing header .navbar .nav-link:focus {
   const submitEvent = '@cfg.SubmitEvent';
   const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
+  const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
+  const agentTrackingSlug = '@agentSlug';
+  const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
   const ageRangeInputs = Array.from(form.querySelectorAll('input[name="AgeBracket"]'));
+  const requiredContactFields = usesLeanContactFields
+    ? ['FirstName', 'LastName', 'Phone', 'Email']
+    : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
   const AGE_RANGE_TO_NUMERIC = Object.freeze({
     '18-24': 21,
     '25-34': 30,
@@ -1211,6 +1374,22 @@ body.life-landing header .navbar .nav-link:focus {
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
   }
+
+  requiredContactFields.forEach((name) => {
+    const el = form.querySelector(`[name="${name}"]`);
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+      return;
+    }
+
+    const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
+    el.addEventListener(eventName, () => {
+      clearFieldError(name);
+      const lifeError = document.getElementById('lifeError');
+      if (lifeError) {
+        lifeError.style.display = 'none';
+      }
+    });
+  });
 
   // ── Product content config ────────────────────────────────────────────────
   // 5 core recommendation buckets: term, wholelife, finalexpense, mortgage, iul
@@ -1369,7 +1548,15 @@ body.life-landing header .navbar .nav-link:focus {
       EventType: eventType,
       PageKey: pageKey,
       Offer: '@cfg.OfferKey',
-      MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname, ...metadata })
+      MetadataJson: JSON.stringify({
+        pageVariant,
+        pageMode,
+        pagePath: window.location.pathname,
+        hasAgentTrustProfile,
+        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
+        ...metadata
+      })
     });
   }
 
@@ -1390,6 +1577,65 @@ body.life-landing header .navbar .nav-link:focus {
     const el = document.getElementById(errorId);
     if (!el) return;
     el.classList.toggle('visible', !!show);
+  }
+
+  function setFieldError(name, message) {
+    const el = document.getElementById(`err-${name}`);
+    if (!el) return;
+    if (!el.dataset.defaultText) {
+      el.dataset.defaultText = el.textContent || '';
+    }
+    el.textContent = message || el.dataset.defaultText;
+    el.classList.add('visible');
+  }
+
+  function clearFieldError(name) {
+    const el = document.getElementById(`err-${name}`);
+    if (!el) return;
+    if (el.dataset.defaultText) {
+      el.textContent = el.dataset.defaultText;
+    }
+    el.classList.remove('visible');
+  }
+
+  function getContactFieldError(name) {
+    const el = form.querySelector(`[name="${name}"]`);
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+      return '';
+    }
+
+    const value = asTrimmed(el.value);
+    if (!value) {
+      return name === 'State'
+        ? 'Please select your state.'
+        : `Please enter your ${name === 'Email' ? 'email' : name === 'Phone' ? 'phone' : name === 'FirstName' ? 'first name' : 'last name'}.`;
+    }
+
+    if (name === 'Email' && el instanceof HTMLInputElement && !el.checkValidity()) {
+      return 'Please enter a valid email address.';
+    }
+
+    return '';
+  }
+
+  function validateContactFields(focusFirst = false) {
+    let firstInvalid = null;
+
+    requiredContactFields.forEach((name) => {
+      const error = getContactFieldError(name);
+      if (error) {
+        setFieldError(name, error);
+        firstInvalid ??= form.querySelector(`[name="${name}"]`);
+      } else {
+        clearFieldError(name);
+      }
+    });
+
+    if (focusFirst && firstInvalid instanceof HTMLElement) {
+      firstInvalid.focus();
+    }
+
+    return firstInvalid === null;
   }
 
   function clearAutoAdvanceTimer() {
@@ -1578,7 +1824,7 @@ body.life-landing header .navbar .nav-link:focus {
     clearAutoAdvanceTimer();
     clearProcessingTimer(false);
     setActivePanel(step2Panel);
-    trackEvent('life_step2_view');
+    trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
     if (shouldScroll) {
       scrollIntoViewAndFocus(step2Heading || step2Panel, true);
     }
@@ -1617,20 +1863,7 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function focusFirstInvalidContactField() {
-    const requiredAll = usesLeanContactFields
-      ? ['FirstName', 'LastName', 'Phone']
-      : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
-
-    for (const name of requiredAll) {
-      const el = form.querySelector(`[name="${name}"]`);
-      if (!el) continue;
-      const value = (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) ? asTrimmed(el.value) : '';
-      if (!value) {
-        document.getElementById(`err-${name}`)?.classList.add('visible');
-        el.focus();
-        return;
-      }
-    }
+    validateContactFields(true);
   }
 
   function queueMicroAdvance(expectedStep, nextStep) {
@@ -1741,40 +1974,18 @@ body.life-landing header .navbar .nav-link:focus {
     const lifeSuccess = document.getElementById('lifeSuccess');
     if (lifeError) lifeError.style.display = 'none';
     if (lifeSuccess) lifeSuccess.style.display = 'none';
-    ['FirstName','LastName','Phone','Email','State'].forEach(id => document.getElementById(`err-${id}`)?.classList.remove('visible'));
+    ['FirstName','LastName','Phone','Email','State'].forEach(clearFieldError);
     showStep2(false);
 
     // contact validation
-    const requiredAll = usesLeanContactFields
-      ? ['FirstName','LastName','Phone']
-      : ['FirstName','LastName','Phone','Email','State'];
-    for (const name of requiredAll) {
-      const el = form.querySelector(`[name=\"${name}\"]`);
-      if (!el || !el.value.trim()) {
-        if (lifeError) {
-          lifeError.textContent = 'Please fill all required contact fields.';
-          lifeError.style.display = 'block';
-        }
-        el?.focus();
-        document.getElementById(`err-${name}`)?.classList.add('visible');
-        showStep2(false);
-        form._trackSubmitAttempt?.(false, 1);
-        return;
+    if (!validateContactFields(true)) {
+      if (lifeError) {
+        lifeError.textContent = 'Please review the highlighted contact fields.';
+        lifeError.style.display = 'block';
       }
-    }
-    if (!usesLeanContactFields) {
-      const state = document.getElementById('State');
-      if (state && !state.value) {
-          if (lifeError) {
-            lifeError.textContent = 'Please select your state.';
-            lifeError.style.display = 'block';
-          }
-          state.focus();
-          document.getElementById('err-State')?.classList.add('visible');
-          showStep2(false);
-          form._trackSubmitAttempt?.(false, 1);
-          return;
-      }
+      showStep2(false);
+      form._trackSubmitAttempt?.(false, 1);
+      return;
     }
 
     trackEvent('life_step2_submit_attempt');
@@ -1813,6 +2024,9 @@ body.life-landing header .navbar .nav-link:focus {
         pageVariant,
         pageMode,
         pagePath: window.location.pathname,
+        hasAgentTrustProfile,
+        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         protectingWho: answer1Hidden?.value || '',
         coverageGoal: answer2Hidden?.value || '',
         age: answer4Hidden?.value || '',
@@ -1840,7 +2054,15 @@ body.life-landing header .navbar .nav-link:focus {
         secondaryRec: recSecondaryKeyEl?.value || '',
       });
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'success', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
+        SubmitOutcome: 'success', MetadataJson: JSON.stringify({
+          offer: '@cfg.OfferKey',
+          pageVariant,
+          pageMode,
+          pagePath: window.location.pathname,
+          hasAgentTrustProfile,
+          ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+          ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
+        }) });
       window.location.href = thankYouPath;
     } catch (err) {
       if (lifeError) {
@@ -1848,7 +2070,15 @@ body.life-landing header .navbar .nav-link:focus {
         lifeError.style.display = 'block';
       }
       window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'error', MetadataJson: JSON.stringify({ offer: '@cfg.OfferKey', pageVariant, pageMode, pagePath: window.location.pathname }) });
+        SubmitOutcome: 'error', MetadataJson: JSON.stringify({
+          offer: '@cfg.OfferKey',
+          pageVariant,
+          pageMode,
+          pagePath: window.location.pathname,
+          hasAgentTrustProfile,
+          ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+          ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
+        }) });
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;
@@ -1862,7 +2092,14 @@ body.life-landing header .navbar .nav-link:focus {
     EventType: startEvent,
     PageKey: pageKey,
     Offer: '@cfg.OfferKey',
-    MetadataJson: JSON.stringify({ pageVariant, pageMode, pagePath: window.location.pathname })
+    MetadataJson: JSON.stringify({
+      pageVariant,
+      pageMode,
+      pagePath: window.location.pathname,
+      hasAgentTrustProfile,
+      ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+      ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
+    })
   });
 
   syncStepOneAnswersFromUI();

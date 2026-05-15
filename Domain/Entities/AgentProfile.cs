@@ -16,6 +16,7 @@ public class AgentProfile
     public string? Title { get; set; }
     public string? Npn { get; set; }
     public string? Phone { get; set; }
+    public string? ShortBio { get; set; }
 
     public int? DisplayOrder { get; set; }
 

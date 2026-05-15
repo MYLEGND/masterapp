@@ -15,6 +15,7 @@ using System.Text.Json;
 using System.Globalization;
 using ProtectWebsite.Services;
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 
 namespace Protect_Website.Controllers
 {
@@ -29,6 +30,7 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
+        private readonly string trackingApiBase;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
         private readonly ILogger<LifeQuoteController> _logger;
@@ -42,6 +44,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
+            trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _resolver = resolver;
             _db = db;
             _logger = logger;
@@ -49,29 +52,29 @@ namespace Protect_Website.Controllers
 
         // ===================== GET =====================
         [HttpGet("Life")]
-        public IActionResult LifeQuote([FromQuery] string? offer = null) => RenderWizard(string.IsNullOrWhiteSpace(offer) ? "life" : offer);
+        public Task<IActionResult> LifeQuote([FromQuery] string? offer = null) => RenderWizard(string.IsNullOrWhiteSpace(offer) ? "life" : offer);
         [HttpGet("Life/landing")]
-        public IActionResult LifeLandingQuote() => RenderWizard(LifeOfferKeys.Life, isLandingPage: true);
+        public Task<IActionResult> LifeLandingQuote() => RenderWizard(LifeOfferKeys.Life, isLandingPage: true);
         [HttpGet("Term-Life")]
-        public IActionResult TermLifeQuote() => RenderWizard("term");
+        public Task<IActionResult> TermLifeQuote() => RenderWizard("term");
         [HttpGet("Term-Life/landing")]
-        public IActionResult TermLifeLandingQuote() => RenderWizard(LifeOfferKeys.Term, isLandingPage: true);
+        public Task<IActionResult> TermLifeLandingQuote() => RenderWizard(LifeOfferKeys.Term, isLandingPage: true);
         [HttpGet("Whole-Life")]
-        public IActionResult WholeLifeQuote() => RenderWizard("wholelife");
+        public Task<IActionResult> WholeLifeQuote() => RenderWizard("wholelife");
         [HttpGet("Whole-Life/landing")]
-        public IActionResult WholeLifeLandingQuote() => RenderWizard(LifeOfferKeys.WholeLife, isLandingPage: true);
+        public Task<IActionResult> WholeLifeLandingQuote() => RenderWizard(LifeOfferKeys.WholeLife, isLandingPage: true);
         [HttpGet("Final-Expense")]
-        public IActionResult FinalExpenseQuote() => RenderWizard("finalexpense");
+        public Task<IActionResult> FinalExpenseQuote() => RenderWizard("finalexpense");
         [HttpGet("Final-Expense/landing")]
-        public IActionResult FinalExpenseLandingQuote() => RenderWizard(LifeOfferKeys.FinalExpense, isLandingPage: true);
+        public Task<IActionResult> FinalExpenseLandingQuote() => RenderWizard(LifeOfferKeys.FinalExpense, isLandingPage: true);
         [HttpGet("Mortgage-Protection")]
-        public IActionResult MortgageQuote() => RenderWizard("mortgage");
+        public Task<IActionResult> MortgageQuote() => RenderWizard("mortgage");
         [HttpGet("Mortgage-Protection/landing")]
-        public IActionResult MortgageLandingQuote() => RenderWizard(LifeOfferKeys.Mortgage, isLandingPage: true);
+        public Task<IActionResult> MortgageLandingQuote() => RenderWizard(LifeOfferKeys.Mortgage, isLandingPage: true);
         [HttpGet("IUL")]
-        public IActionResult IulQuote() => RenderWizard("iul");
+        public Task<IActionResult> IulQuote() => RenderWizard("iul");
         [HttpGet("IUL/landing")]
-        public IActionResult IulLandingQuote() => RenderWizard(LifeOfferKeys.Iul, isLandingPage: true);
+        public Task<IActionResult> IulLandingQuote() => RenderWizard(LifeOfferKeys.Iul, isLandingPage: true);
 
         // ===================== POST =====================
         [HttpPost("Life")]
@@ -87,11 +90,11 @@ namespace Protect_Website.Controllers
         [HttpPost("IUL")]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
 
-        private IActionResult RenderWizard(string offerKey, bool isLandingPage = false)
+        private async Task<IActionResult> RenderWizard(string offerKey, bool isLandingPage = false)
         {
             var cfg = GetWizardConfig(offerKey);
             var mode = ResolvePageMode(cfg, isLandingPage, model: null);
-            var vm = BuildWizardViewModel(cfg, new LifeQuoteFormModel
+            var vm = await BuildWizardViewModelAsync(cfg, new LifeQuoteFormModel
             {
                 FirstName = "",
                 LastName = "",
@@ -113,21 +116,6 @@ namespace Protect_Website.Controllers
             {
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.Age), "Age must be between 18 and 85.");
             }
-            // Shared intake across all life product types:
-            // First/Last/Phone required, Email/State optional.
-            var requiresEmailAndState = false;
-            if (requiresEmailAndState)
-            {
-                if (string.IsNullOrWhiteSpace(model.Email))
-                {
-                    ModelState.AddModelError(nameof(LifeQuoteFormModel.Email), "Email is required");
-                }
-
-                if (string.IsNullOrWhiteSpace(model.State))
-                {
-                    ModelState.AddModelError(nameof(LifeQuoteFormModel.State), "State is required");
-                }
-            }
 
             if (!ModelState.IsValid)
             {
@@ -136,7 +124,7 @@ namespace Protect_Website.Controllers
 
                 model.OfferKey = cfg.OfferKey;
                 model.ProductType = cfg.ProductType;
-                var vmInvalid = BuildWizardViewModel(cfg, model, pageMode);
+                var vmInvalid = await BuildWizardViewModelAsync(cfg, model, pageMode);
                 ApplyWizardViewData(vmInvalid);
                 return View("~/Views/Quote/Life.cshtml", vmInvalid);
             }
@@ -147,7 +135,6 @@ namespace Protect_Website.Controllers
             model.PageVariant = pageMode.PageVariant;
             model.PageMode = pageMode.PageMode;
             var offerContent = GetContent(offerKey);
-            var isAgentContext = IsAgentContext();
 
             var correlationId = Guid.NewGuid();
             _logger.LogInformation(
@@ -155,6 +142,7 @@ namespace Protect_Website.Controllers
                 correlationId, offerKey, model.Email);
 
             var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+            var isAgentContext = agentProfileId.HasValue || !string.IsNullOrWhiteSpace(agentSlug);
             _logger.LogInformation(
                 "LifeQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
                 correlationId, agentSlug, agentProfileId, leadRecipientEmail);
@@ -231,7 +219,7 @@ namespace Protect_Website.Controllers
                 if (IsAjax())
                     return StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message });
                 ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
-                var vmPersistErr = BuildWizardViewModel(cfg, model, pageMode);
+                var vmPersistErr = await BuildWizardViewModelAsync(cfg, model, pageMode);
                 ApplyWizardViewData(vmPersistErr);
                 return View("~/Views/Quote/Life.cshtml", vmPersistErr);
             }
@@ -619,14 +607,152 @@ namespace Protect_Website.Controllers
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
         }
 
-        private bool IsAgentContext()
+        private bool HasExplicitAgentContext()
         {
+            if (HttpContext?.Items["IsFounderPath"] as bool? == true)
+            {
+                return false;
+            }
+
+            if (HttpContext?.Items["TrackingProfile"] is AgentTrackingProfile)
+            {
+                return true;
+            }
+
+            var requestMethod = Request?.Method;
+            if (string.IsNullOrWhiteSpace(requestMethod) || !Microsoft.AspNetCore.Http.HttpMethods.IsPost(requestMethod))
+            {
+                return false;
+            }
+
             string? slug = null;
             var formSlug = Request?.Form["AgentSlug"].ToString();
             if (!string.IsNullOrWhiteSpace(formSlug)) slug = formSlug.Trim();
             if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Path.Value);
             if (string.IsNullOrWhiteSpace(slug)) slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
             return !string.IsNullOrWhiteSpace(slug);
+        }
+
+        private static string ResolveAgentDisplayName(AgentProfile? agentProfile, AgentTrackingProfile trackingProfile)
+        {
+            if (!string.IsNullOrWhiteSpace(agentProfile?.FullName))
+            {
+                return agentProfile.FullName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(trackingProfile.DisplayName))
+            {
+                return trackingProfile.DisplayName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                var emailName = trackingProfile.AgentUpn.Split('@', 2)[0]
+                    .Replace('.', ' ')
+                    .Replace('-', ' ')
+                    .Replace('_', ' ')
+                    .Trim();
+                if (!string.IsNullOrWhiteSpace(emailName))
+                {
+                    return CultureInfo.InvariantCulture.TextInfo.ToTitleCase(emailName);
+                }
+            }
+
+            return trackingProfile.Slug;
+        }
+
+        private static string ResolveAgentFirstName(string displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return "there";
+            }
+
+            var first = displayName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()
+                ?.Trim();
+
+            return string.IsNullOrWhiteSpace(first) ? "there" : first;
+        }
+
+        private string BuildAgentAvatarUrl(string slug)
+        {
+            var safeSlug = Uri.EscapeDataString(slug.Trim());
+            return $"{trackingApiBase}/avatar/agent/{safeSlug}";
+        }
+
+        private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
+        {
+            if (!HasExplicitAgentContext())
+            {
+                return null;
+            }
+
+            var trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
+            string? agentSlug = HttpContext?.Items["TrackingSlug"] as string;
+
+            if ((trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug)))
+            {
+                string? requestedSlug = null;
+                var formSlug = Request?.Form["AgentSlug"].ToString();
+                if (!string.IsNullOrWhiteSpace(formSlug))
+                {
+                    requestedSlug = formSlug.Trim();
+                }
+                if (string.IsNullOrWhiteSpace(requestedSlug))
+                {
+                    requestedSlug = ExtractSlugFromPath(Request?.Path.Value);
+                }
+                if (string.IsNullOrWhiteSpace(requestedSlug))
+                {
+                    requestedSlug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+                }
+
+                if (!string.IsNullOrWhiteSpace(requestedSlug))
+                {
+                    var resolved = await _resolver.ResolveBySlugAsync(requestedSlug, ct);
+                    if (resolved.Found && resolved.Profile != null)
+                    {
+                        trackingProfile = resolved.Profile;
+                        agentSlug = resolved.CanonicalSlug ?? requestedSlug;
+                    }
+                }
+            }
+
+            if (trackingProfile == null || string.IsNullOrWhiteSpace(agentSlug))
+            {
+                return null;
+            }
+
+            AgentProfile? agentProfile = null;
+
+            if (!string.IsNullOrWhiteSpace(trackingProfile.AgentUserId))
+            {
+                agentProfile = await _db.AgentProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.AgentUserId == trackingProfile.AgentUserId, ct);
+            }
+
+            if (agentProfile == null && !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                var normalizedUpn = trackingProfile.AgentUpn.Trim().ToUpperInvariant();
+                agentProfile = await _db.AgentProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        x => x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn,
+                        ct);
+            }
+
+            var displayName = ResolveAgentDisplayName(agentProfile, trackingProfile);
+
+            return new LifeWizardAgentTrustProfile
+            {
+                AgentTrackingProfileId = trackingProfile.Id,
+                AgentSlug = agentSlug,
+                DisplayName = displayName,
+                FirstName = ResolveAgentFirstName(displayName),
+                ShortBio = string.IsNullOrWhiteSpace(agentProfile?.ShortBio) ? null : agentProfile.ShortBio.Trim(),
+                ProfileImageUrl = BuildAgentAvatarUrl(agentSlug)
+            };
         }
 
         private bool IsAjax()
@@ -691,7 +817,7 @@ namespace Protect_Website.Controllers
             };
         }
 
-        private static LifeWizardViewModel BuildWizardViewModel(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)
+        private async Task<LifeWizardViewModel> BuildWizardViewModelAsync(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)
         {
             model.OfferKey = string.IsNullOrWhiteSpace(model.OfferKey) ? cfg.OfferKey : model.OfferKey;
             model.ProductType = string.IsNullOrWhiteSpace(model.ProductType) ? cfg.ProductType : model.ProductType;
@@ -706,7 +832,8 @@ namespace Protect_Website.Controllers
                 IsLandingPage = pageMode.IsLandingPage,
                 PageVariant = pageMode.PageVariant,
                 PageMode = pageMode.PageMode,
-                EffectivePageKey = pageMode.EffectivePageKey
+                EffectivePageKey = pageMode.EffectivePageKey,
+                AgentTrustProfile = await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None)
             };
         }
 

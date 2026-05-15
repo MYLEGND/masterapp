@@ -67,6 +67,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.Property(x => x.AgentUserId).HasMaxLength(450);
             e.Property(x => x.AgentUpn).HasMaxLength(450);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
+            e.Property(x => x.ShortBio).HasMaxLength(280);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");

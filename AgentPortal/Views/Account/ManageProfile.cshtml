@@ -204,8 +204,9 @@
                 <div><strong>Title:</strong> @(string.IsNullOrWhiteSpace(Model.Title) ? "Not set" : Model.Title)</div>
                 <div><strong>Email:</strong> @Model.Email (read-only)</div>
                 <div><strong>Phone:</strong> @(string.IsNullOrWhiteSpace(Model.Phone) ? "Not set" : Model.Phone)</div>
+                <div><strong>Short bio:</strong> @(string.IsNullOrWhiteSpace(Model.ShortBio) ? "Not set" : Model.ShortBio)</div>
                 <div><strong>NPN:</strong> @(string.IsNullOrWhiteSpace(Model.Npn) ? "Not set" : Model.Npn)</div>
-                <div class="legend-help mb-0">These values show to clients and under your profile name.</div>
+                <div class="legend-help mb-0">These values power your public quote handoff card and profile surfaces.</div>
             </div>
 
             <form asp-action="ManageProfile" method="post" novalidate>
@@ -230,6 +231,12 @@
                         <label asp-for="Phone" class="legend-label"></label>
                         <input asp-for="Phone" class="legend-input" autocomplete="tel" inputmode="tel" placeholder="e.g., 555-555-1234" />
                         <span asp-validation-for="Phone" class="text-danger"></span>
+                    </div>
+                    <div class="field">
+                        <label asp-for="ShortBio" class="legend-label"></label>
+                        <textarea asp-for="ShortBio" class="legend-input" rows="4" maxlength="280" placeholder="A short public intro for your quote links, like how you help families review protection options."></textarea>
+                        <p class="legend-help">Optional. This shows on your public quote handoff card.</p>
+                        <span asp-validation-for="ShortBio" class="text-danger"></span>
                     </div>
                     <div class="field">
                         <label asp-for="Npn" class="legend-label"></label>

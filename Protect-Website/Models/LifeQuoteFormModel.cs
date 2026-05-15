@@ -11,6 +11,7 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Last Name is required")]
         public required string LastName { get; set; }
 
+        [Required(ErrorMessage = "Email is required")]
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public string? Email { get; set; }
 

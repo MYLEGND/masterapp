@@ -125,6 +125,7 @@ public class AccountController : Controller
             Email = profile.AgentUpn ?? upn ?? "",
             Title = profile.Title,
             Phone = profile.Phone,
+            ShortBio = profile.ShortBio,
             Npn = profile.Npn
         };
 
@@ -161,6 +162,7 @@ public class AccountController : Controller
         profile.Title = string.IsNullOrWhiteSpace(vm.Title) ? null : vm.Title.Trim();
         profile.Npn = vm.Npn?.Trim();
         profile.Phone = vm.Phone?.Trim();
+        profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
         // Email (UPN) remains authoritative from directory; do not allow editing here.
         profile.UpdatedUtc = DateTime.UtcNow;
 

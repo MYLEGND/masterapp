@@ -22,7 +22,7 @@
     <PackageReference Include="MimeKit" Version="4.14.0" />
 
     <!-- Microsoft Graph client library -->
-    <PackageReference Include="Microsoft.Graph" Version="5.103.0" />
+    <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
 
     <!-- Microsoft Identity Client (MSAL) -->
     <PackageReference Include="Microsoft.Identity.Client" Version="4.81.0" />

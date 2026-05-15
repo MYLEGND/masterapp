@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Security.Claims;
 using System.Threading.Tasks;
+using AgentPortal.Services.Tracking;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -11,21 +12,26 @@ using Microsoft.Extensions.Logging;
 
 namespace AgentPortal.Controllers
 {
-[Authorize]
-[EnableRateLimiting("anon-public")]
+    [Authorize]
+    [EnableRateLimiting("anon-public")]
     public class AvatarController : Controller
     {
         private readonly IWebHostEnvironment _env;
         private readonly ILogger<AvatarController> _logger;
+        private readonly AgentTrackingResolver _trackingResolver;
         private static readonly object AvatarRootLogSync = new();
         private static string? _loggedConfiguredRoot;
         private static string? _loggedHomeFallbackRoot;
         private static string? _loggedFallbackRoot;
 
-        public AvatarController(IWebHostEnvironment env, ILogger<AvatarController> logger)
+        public AvatarController(
+            IWebHostEnvironment env,
+            ILogger<AvatarController> logger,
+            AgentTrackingResolver trackingResolver)
         {
             _env = env;
             _logger = logger;
+            _trackingResolver = trackingResolver;
         }
 
         private void LogAvatarRootOnce(string root, bool fromEnvVar)
@@ -135,6 +141,50 @@ namespace AgentPortal.Controllers
                 ?? user.Identity?.Name;
         }
 
+        private bool TryResolveAvatarFile(string userId, out string? path, out string mime)
+        {
+            path = null;
+            mime = "image/jpeg";
+
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return false;
+            }
+
+            var root = GetAvatarRoot();
+            var candidates = new[] { ".png", ".jpg", ".jpeg", ".webp" };
+            foreach (var ext in candidates)
+            {
+                var candidate = Path.Combine(root, $"{userId}{ext}");
+                if (!System.IO.File.Exists(candidate))
+                {
+                    continue;
+                }
+
+                path = candidate;
+                mime = ext.ToLowerInvariant() switch
+                {
+                    ".png" => "image/png",
+                    ".webp" => "image/webp",
+                    _ => "image/jpeg"
+                };
+                return true;
+            }
+
+            return false;
+        }
+
+        private IActionResult DefaultAvatarResult()
+        {
+            var defaultAvatar = Path.Combine(_env.WebRootPath, "images", "company-icons", "legend.png");
+            if (System.IO.File.Exists(defaultAvatar))
+            {
+                return PhysicalFile(defaultAvatar, "image/png");
+            }
+
+            return NotFound();
+        }
+
         [HttpGet]
         public IActionResult Edit()
         {
@@ -223,34 +273,36 @@ namespace AgentPortal.Controllers
         public IActionResult Current()
         {
             var userId = GetUserId();
-            if (!string.IsNullOrWhiteSpace(userId))
+            if (TryResolveAvatarFile(userId ?? string.Empty, out var path, out var mime) && path != null)
             {
-                var root = GetAvatarRoot();
-                var candidates = new[] { ".png", ".jpg", ".jpeg", ".webp" };
-                foreach (var ext in candidates)
-                {
-                    var path = Path.Combine(root, $"{userId}{ext}");
-                    if (System.IO.File.Exists(path))
-                    {
-                        var mime = ext.ToLowerInvariant() switch
-                        {
-                            ".png" => "image/png",
-                            ".webp" => "image/webp",
-                            _ => "image/jpeg"
-                        };
-                        return PhysicalFile(path, mime);
-                    }
-                }
+                return PhysicalFile(path, mime);
             }
 
-            // Fallback to default avatar to avoid 404 noise (even if unauthenticated)
-            var defaultAvatar = Path.Combine(_env.WebRootPath, "images", "company-icons", "legend.png");
-            if (System.IO.File.Exists(defaultAvatar))
+            return DefaultAvatarResult();
+        }
+
+        [HttpGet("avatar/agent/{slug}")]
+        [AllowAnonymous]
+        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+        public async Task<IActionResult> Agent(string slug)
+        {
+            if (string.IsNullOrWhiteSpace(slug))
             {
-                return PhysicalFile(defaultAvatar, "image/png");
+                return DefaultAvatarResult();
             }
 
-            return NotFound();
+            var resolved = await _trackingResolver.ResolveAsync(slug.Trim(), null, HttpContext.RequestAborted);
+            if (!resolved.Found || string.IsNullOrWhiteSpace(resolved.Profile.AgentUserId))
+            {
+                return DefaultAvatarResult();
+            }
+
+            if (TryResolveAvatarFile(resolved.Profile.AgentUserId, out var path, out var mime) && path != null)
+            {
+                return PhysicalFile(path, mime);
+            }
+
+            return DefaultAvatarResult();
         }
     }
 }

@@ -11,5 +11,6 @@ namespace Protect_Website.Models
         public string PageVariant { get; set; } = "website";
         public string PageMode { get; set; } = "site_mode";
         public string EffectivePageKey { get; set; } = "quote_life";
+        public LifeWizardAgentTrustProfile? AgentTrustProfile { get; set; }
     }
 }
