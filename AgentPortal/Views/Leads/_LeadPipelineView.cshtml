@@ -1,3 +1,11 @@
+@model List<AgentPortal.Models.ClientListItemViewModel>
+
+@{
+    var search = (string)(ViewBag.Search ?? "");
+    var hasSearch = !string.IsNullOrWhiteSpace(search);
+    var searchResultCount = Model?.Count ?? 0;
+}
+
 <section class="cards navy-shell" id="cardsView" aria-label="Pipeline CRM workspace">
     <div class="pipeline-head">
         <div class="pipeline-head-top">
@@ -22,6 +30,164 @@
                 <button type="button" class="chip chip-amber" id="btnPipeNeeds">⏱ Needs Touch</button>
                 <button type="button" class="chip chip-violet" id="btnPipeMeetings">📅 Meetings</button>
                 <button type="button" class="chip chip-reset" id="btnPipeReset">Reset</button>
+            </div>
+        </div>
+        <div class="pipeline-command-dock" id="legendBar">
+            <div class="pipeline-command-row pipeline-command-row-search">
+                <form method="get" asp-action="Index" autocomplete="off" id="clientSearchForm" class="pipeline-command-form">
+                    <div class="field pipeline-command-field" title="Search (/)">
+                        <span class="pipeline-command-icon" aria-hidden="true">🔎</span>
+                        <input name="search"
+                               value="@search"
+                               id="clientSearchInput"
+                               placeholder="Search client name or email..."
+                               class="search-input"
+                               autocomplete="off"
+                               autocorrect="off"
+                               autocapitalize="off"
+                               spellcheck="false" />
+                        <span class="hint">/</span>
+                    </div>
+                    <div class="search-warning" id="clientSearchWarning" aria-live="polite"></div>
+                </form>
+                @if (hasSearch)
+                {
+                    <span class="pipeline-inline-stat">
+                        <span class="pipeline-inline-stat-label">Search</span>
+                        <strong>@searchResultCount</strong>
+                    </span>
+                    <a asp-action="Index" class="btn btn-ghost pipeline-mini-btn">Back To Full List</a>
+                }
+            </div>
+
+            <div class="pipeline-command-row pipeline-command-row-filters">
+                <select class="select" id="statusFilter" title="Filter by status (local)">
+                    <option value="">All Status</option>
+                    <option value="Lead">Lead</option>
+                    <option value="Prospect">Prospect</option>
+                    <option value="Active">Active Client</option>
+                    <option value="Dormant">Inactive</option>
+                </select>
+
+                <select class="select" id="priorityFilter" title="Filter by CRM priority">
+                    <option value="">All Priority</option>
+                    <option value="Urgent">Urgent</option>
+                    <option value="High">High</option>
+                    <option value="Normal">Normal</option>
+                    <option value="Low">Low</option>
+                </select>
+
+                <select class="select" id="stateFilter" title="Filter by state">
+                    <option value="">State</option>
+                </select>
+
+                <select class="select" id="stageFilter" title="Filter by pipeline stage">
+                    <option value="">All Stages</option>
+                    <option value="PolicyPlaced">Policy Placed</option>
+                    <option value="Booked">Booked</option>
+                    <option value="FollowUp">Follow Up</option>
+                    <option value="MortgageProtection">Mortgage Protection</option>
+                    <option value="LifeInsurance">Life Insurance</option>
+                    <option value="FinalExpense">Final Expense</option>
+                    <option value="DisabilityInsurance">Disability Insurance</option>
+                    <option value="CalledToday">Called Today</option>
+                    <option value="CallBack">Call Back</option>
+                    <option value="Contacted">Contacted</option>
+                    <option value="NeedsDocs">Needs Docs</option>
+                    <option value="Voicemail">Voicemail Left</option>
+                    <option value="NotInterested">Not Interested</option>
+                    <option value="Nurture">Nurture</option>
+                    <option value="NoAnswer">No Answer</option>
+                    <option value="Lost">Lost</option>
+                    <option value="AIReception">AI Reception</option>
+                    <option value="DoNotCallList">Do Not Call List</option>
+                </select>
+
+                <select class="select" id="attentionFilter" title="Focus filters">
+                    <option value="">All</option>
+                    <option value="callsnow">Calls Now</option>
+                    <option value="needs">Needs Attention</option>
+                    <option value="overdue">Overdue</option>
+                    <option value="today">Due Today</option>
+                    <option value="soon">Due Soon (3d)</option>
+                    <option value="hasnext">Has Next Action</option>
+                    <option value="nonext">No Next Action</option>
+                    <option value="notouch">No Last Touch</option>
+                    <option value="touched14">Touched (14d)</option>
+                    <option value="missing">Missing Contact</option>
+                    <option value="missingemail">Missing Email</option>
+                    <option value="missingphone">Missing Phone</option>
+                    <option value="broken">Broken Portal ID</option>
+                    <option value="meeting">Booked</option>
+                    <option value="zoom">Has Zoom Link</option>
+                    <option value="location">Has Meeting Location</option>
+                    <option value="waitingclient">Waiting On Client</option>
+                    <option value="waitingagent">Waiting On Agent</option>
+                    <option value="waitingcarrier">Waiting On Carrier</option>
+                    <option value="waitinguw">Waiting On Underwriting</option>
+                    <option value="waitingdocs">Waiting On Docs</option>
+                    <option value="stalled">Stage Aging 7+ Days</option>
+                    <option value="attempts3">3+ Attempts This Week</option>
+                    <option value="duplicates">Duplicate Warning</option>
+                    <option value="docsopen">Open Doc Checklist</option>
+                    <option value="rescue">Needs Rescue</option>
+                    <option value="appsinflight">Needs Docs / Policy Placed</option>
+                </select>
+
+                <select class="select" id="sortBy" title="Sort">
+                    <option value="name_asc">Sort: Name (A-Z)</option>
+                    <option value="name_desc">Sort: Name (Z-A)</option>
+                    <option value="status_asc">Sort: Status</option>
+                    <option value="nextaction_asc">Sort: Next Action (Soonest)</option>
+                    <option value="lasttouch_desc">Sort: Last Touch (Newest)</option>
+                </select>
+
+                <select class="select" id="pageSize" title="Rows per page">
+                    <option value="10">10 / page</option>
+                    <option value="20" selected>20 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                </select>
+
+                <button type="button" class="btn btn-ghost pipeline-mini-btn" data-preset="clear">Reset Filters</button>
+            </div>
+
+            <div class="pipeline-command-row pipeline-command-row-meta">
+                <div class="pipeline-command-meta">
+                    <span class="pipeline-inline-stat" id="selectionPill">
+                        <span class="pipeline-inline-stat-label">Selected</span>
+                        <strong id="selCount">0</strong>
+                    </span>
+                    <button type="button" class="btn btn-ghost pipeline-mini-btn" id="btnClearSel" disabled>Clear</button>
+                    <button type="button" class="btn btn-gold pipeline-mini-btn" id="btnOpenFirst" title="Open Quick View for first selected" disabled>Open</button>
+                    <button type="button" class="btn btn-ghost pipeline-mini-btn" id="btnBulkEdit" disabled>Edit</button>
+                    <button type="button" class="btn btn-red pipeline-mini-btn" id="btnBulkDelete" title="Ctrl/Cmd + Shift + D">Delete</button>
+                    <button type="button" class="btn btn-red pipeline-mini-btn" id="btnDeleteBucket" title="Delete entire bucket">Delete Bucket</button>
+                </div>
+                <div class="pipeline-command-meta pipeline-command-meta-right">
+                    <span class="pipeline-command-summary hint" id="pagerInfo">0 live records - 0 visible</span>
+                    <button type="button" class="btn btn-ghost pipeline-mini-btn" id="btnPrev">Prev</button>
+                    <span class="pipeline-inline-stat pipeline-inline-stat-page">
+                        <span class="pipeline-inline-stat-label">Page</span>
+                        <strong id="pageNow">1</strong>
+                        <span class="pipeline-inline-stat-sep">/</span>
+                        <strong id="pageMax">1</strong>
+                    </span>
+                    <button type="button" class="btn btn-ghost pipeline-mini-btn" id="btnNext">Next</button>
+                </div>
+            </div>
+
+            <div class="pipeline-command-ghosts" hidden aria-hidden="true">
+                <button type="button" class="btn btn-amber" id="btnEnableReminders">Enable Reminders</button>
+                <button type="button" class="btn btn-amber" id="btnReminders">
+                    Reminders <span class="pill" id="remCount">0</span>
+                </button>
+                <input type="hidden" id="viewMode" value="pipeline" />
+                <input type="hidden" id="density" value="comfort" />
+                <button type="button" class="btn btn-violet" id="btnShortcuts">Shortcuts</button>
+                <button type="button" class="btn btn-silver" id="btnCopyEmails" disabled>Copy Emails</button>
+                <button type="button" class="btn btn-green" id="btnExportCsv">Export CSV</button>
+                <button type="button" class="btn btn-teal" id="btnCalendarAuth" title="Connect your Microsoft calendar">Connect Calendar</button>
             </div>
         </div>
         <div class="pipeline-command-bar" id="pipelineStageNav"></div>

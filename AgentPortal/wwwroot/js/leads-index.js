@@ -2963,7 +2963,7 @@ function renderList(filtered){
 
   const showingA = filtered.length === 0 ? 0 : (start + 1);
   const showingB = Math.min(end, filtered.length);
-  pagerInfo.textContent = `${filtered.length} result(s) • Showing ${showingA}–${showingB}`;
+  pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
 
   btnPrev.disabled = currentPage <= 1;
   btnNext.disabled = currentPage >= max;
