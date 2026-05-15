@@ -609,11 +609,6 @@ namespace Protect_Website.Controllers
 
         private bool HasExplicitAgentContext()
         {
-            if (HttpContext?.Items["IsFounderPath"] as bool? == true)
-            {
-                return false;
-            }
-
             if (HttpContext?.Items["TrackingProfile"] is AgentTrackingProfile)
             {
                 return true;
