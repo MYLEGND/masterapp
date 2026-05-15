@@ -462,9 +462,10 @@ if (sqliteConn != null)
     EnsureSqliteBackup(sqliteConn);
 }
 
-var strictMigrations = builder.Environment.IsProduction()
-    || builder.Environment.IsStaging()
-    || string.Equals(builder.Configuration["Migrations:Strict"], "true", StringComparison.OrdinalIgnoreCase)
+// Migration strictness is opt-in.
+// When enabled, startup will hard-stop on pending migrations and pending model changes.
+// Leave disabled when the priority is app availability over schema enforcement.
+var strictMigrations = string.Equals(builder.Configuration["Migrations:Strict"], "true", StringComparison.OrdinalIgnoreCase)
     || string.Equals(Environment.GetEnvironmentVariable("MIGRATION_STRICT"), "true", StringComparison.OrdinalIgnoreCase);
 
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
