@@ -5078,6 +5078,18 @@ function cardTags(raw){
 function renderPipelineNav(filteredRows){
   if (!pipelineStageNav) return;
 
+  const activeStage = pipelineFocusStage || pipelineNavSelectedStage || "";
+  const activeMeta = activeStage ? pipelineMeta(activeStage) : null;
+  const activeCount = activeMeta
+    ? filteredRows.filter(r => norm(r.dataset.crmPipeline) === activeMeta.key).length
+    : filteredRows.length;
+  const activeCountLabel = activeCount === 1 ? "live card" : "live cards";
+  const boardFocusTitle = activeMeta ? activeMeta.label : "All Buckets";
+  const boardFocusState = activeMeta ? "Focused Bucket" : "Full Pipeline";
+  const boardFocusNote = activeMeta
+    ? activeMeta.note
+    : "Choose a bucket for a tighter work lane, or stay wide and manage the full board.";
+  const shellClass = activeMeta ? `pipeline-nav-shell ${activeMeta.className}` : "pipeline-nav-shell";
   const optionHtml = pipelineStages.map(stage => {
     const count = filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key).length;
     const selected = pipelineNavSelectedStage === stage.key ? "selected" : "";
@@ -5085,24 +5097,35 @@ function renderPipelineNav(filteredRows){
   }).join("");
 
   pipelineStageNav.innerHTML = `
-    <div class="pipeline-nav-shell">
+    <div class="${shellClass}">
       <div class="pipeline-nav-toolbar">
         <div class="pipeline-nav-copy">
-          <div class="pipeline-nav-label">Bucket Selector</div>
+          <div class="pipeline-nav-kicker-row">
+            <div class="pipeline-nav-label">Board Focus</div>
+            <span class="pipeline-nav-state">${boardFocusState}</span>
+          </div>
           <div class="pipeline-nav-title-row">
-          <div class="pipeline-nav-name">${safeHtml(pipelineFocusStage || pipelineNavSelectedStage || "Select A Bucket")}</div>
-          <span class="pipeline-nav-count">${filteredRows.length}</span>
+            <div class="pipeline-nav-title-stack">
+              <div class="pipeline-nav-name">${safeHtml(boardFocusTitle)}</div>
+              <div class="pipeline-nav-note">${safeHtml(boardFocusNote)}</div>
+            </div>
+            <span class="pipeline-nav-count">
+              <strong>${activeCount}</strong>
+              <span>${activeCountLabel}</span>
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="pipeline-nav-actions">
-          <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
-            <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>--SELECT--</option>
+        <div class="pipeline-nav-actions">
+          <label class="pipeline-nav-field" for="pipelineNavSelect">
+            <span class="pipeline-nav-field-label">Jump To Bucket</span>
+            <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
+              <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>Choose bucket...</option>
             ${optionHtml}
           </select>
-          <button type="button" class="btn btn-stage-tone pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>All Buckets</button>
+          </label>
+          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>Full Pipeline</button>
         </div>
       </div>
-      <div class="pipeline-nav-note">Jump into a bucket fast, or reset back to the full board.</div>
     </div>
   `;
 
