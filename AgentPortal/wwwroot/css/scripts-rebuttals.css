@@ -17629,3 +17629,30 @@ details.section{
         align-self: flex-start !important;
     }
 }
+
+/* ========================================================================
+   Desktop sticky workstation rails
+   Keep the objections rail and guide rail pinned while the center scripts
+   panel scrolls, without changing their existing fixed-height + inner-scroll UX.
+   ======================================================================== */
+@media (min-width: 1181px){
+    #rbShell{
+        --rb-sticky-top: 12px;
+    }
+
+    #rbShell .rebuttal-workspace-grid > .objections-card,
+    #rbShell .rebuttal-workspace-grid > .prosper-nav-card{
+        position: sticky !important;
+        top: var(--rb-sticky-top) !important;
+        align-self: start !important;
+        z-index: 4;
+    }
+
+    #rbShell #rbNav,
+    #rbShell #prosperNav{
+        min-height: 0 !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        scrollbar-gutter: stable;
+    }
+}
