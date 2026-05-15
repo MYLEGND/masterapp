@@ -465,7 +465,7 @@
 
         <div class="bar-col">
             <div class="group right views-card">
-                <div class="group-title">Views + Execution Tools</div>
+                <div class="group-title">Execution Tools</div>
 
                 <button type="button" class="btn btn-amber" id="btnEnableReminders" title="Enable browser reminders">Enable Reminders</button>
 
@@ -473,18 +473,13 @@
                     Reminders <span class="pill" style="padding:4px 8px;" id="remCount">0</span>
                 </button>
 
-                <select class="select" id="viewMode" title="View mode">
-                    <option value="pipeline" selected>View: Pipeline CRM</option>
-                    <option value="table">View: Table</option>
-                    <option value="hybrid">View: Hybrid</option>
-                </select>
+                <input type="hidden" id="viewMode" value="pipeline" />
 
                 <select class="select" id="density" title="Density">
                     <option value="comfort" selected>Density: Comfort</option>
                     <option value="compact">Density: Compact</option>
                 </select>
 
-                <button type="button" class="btn btn-blue" id="btnCols">Columns</button>
                 <button type="button" class="btn btn-violet" id="btnShortcuts">Shortcuts</button>
             </div>
 
@@ -524,7 +519,6 @@
     </div>
 </div>
 
-<!-- Hybrid command bar (only shown when Hybrid view selected) -->
 @if (Model == null || Model.Count == 0)
 {
     <div class="legend-empty-state">
@@ -535,7 +529,7 @@
 }
 else
 {
-<div class="card" id="tableView">
+<div class="card" id="tableView" hidden aria-hidden="true">
         <table id="clientsTable">
             <thead>
                 <tr>
