@@ -83,15 +83,23 @@
             <p class="insight-shell-sub">Keep submitted, issued, paid, personal revenue, KPI pressure, and call volume close by without letting them crowd the page.</p>
         </div>
         <div class="insight-shell-actions">
-            <div class="insight-preview">
-                <span class="insight-preview-pill is-paid">Paid <strong id="perfPreviewPaid">@prodTotals.Paid.ToString("C0")</strong></span>
-                <span class="insight-preview-pill is-personal">Personal <strong id="perfPreviewPersonal">@personalRevenueAmount.ToString("C0")</strong></span>
-                <span class="insight-preview-pill is-calls">Calls Today <strong id="perfPreviewCalls">0</strong></span>
-                <span class="insight-preview-pill is-overdue">Overdue <strong id="perfPreviewOverdue">0</strong></span>
+            <div class="insight-status-stack">
+                <div class="insight-rail-label">Live Stats</div>
+                <div class="insight-preview">
+                    <span class="insight-preview-pill is-paid">Paid <strong id="perfPreviewPaid">@prodTotals.Paid.ToString("C0")</strong></span>
+                    <span class="insight-preview-pill is-personal">Personal <strong id="perfPreviewPersonal">@personalRevenueAmount.ToString("C0")</strong></span>
+                    <span class="insight-preview-pill is-calls">Calls Today <strong id="perfPreviewCalls">0</strong></span>
+                    <span class="insight-preview-pill is-overdue">Overdue <strong id="perfPreviewOverdue">0</strong></span>
+                </div>
             </div>
-            <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnTogglePerformance" data-show-label="Show Snapshot" data-hide-label="Hide Snapshot" aria-expanded="false" aria-controls="performanceBody">
-                <span data-panel-label>Show Snapshot</span>
-            </button>
+            <div class="insight-action-stack">
+                <div class="insight-rail-label insight-rail-label-action">Actions</div>
+                <div class="insight-action-row">
+                    <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnTogglePerformance" data-show-label="Show Snapshot" data-hide-label="Hide Snapshot" aria-expanded="false" aria-controls="performanceBody">
+                        <span data-panel-label>Show Snapshot</span>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
     <div class="insight-shell-body" id="performanceBody" hidden>
@@ -164,17 +172,23 @@
             <p class="myday-sub">Start with the work that should happen right now. These queues are live off persisted CRM data.</p>
         </div>
         <div class="myday-head-side">
-            <div class="myday-preview-row">
-                <span class="myday-preview-pill is-callsnow">Calls Now <strong id="qCallsNowPreview">0</strong></span>
-                <span class="myday-preview-pill is-today">Due Today <strong id="qDueTodayPreview">0</strong></span>
-                <span class="myday-preview-pill is-overdue">Overdue <strong id="qOverduePreview">0</strong></span>
-                <span class="myday-preview-pill is-meetings">Meetings <strong id="qMeetingsPreview">0</strong></span>
+            <div class="insight-status-stack">
+                <div class="insight-rail-label">Live Queues</div>
+                <div class="myday-preview-row">
+                    <span class="myday-preview-pill is-callsnow">Calls Now <strong id="qCallsNowPreview">0</strong></span>
+                    <span class="myday-preview-pill is-today">Due Today <strong id="qDueTodayPreview">0</strong></span>
+                    <span class="myday-preview-pill is-overdue">Overdue <strong id="qOverduePreview">0</strong></span>
+                    <span class="myday-preview-pill is-meetings">Meetings <strong id="qMeetingsPreview">0</strong></span>
+                </div>
             </div>
-            <div class="myday-actions">
-                <button type="button" class="btn btn-gold" id="btnCallTaskMode">Call Task Mode</button>
-                <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnToggleMyDay" data-show-label="Show Queues" data-hide-label="Hide Queues" aria-expanded="false" aria-controls="myDayBody">
-                    <span data-panel-label>Show Queues</span>
-                </button>
+            <div class="insight-action-stack">
+                <div class="insight-rail-label insight-rail-label-action">Actions</div>
+                <div class="myday-actions">
+                    <button type="button" class="btn btn-gold" id="btnCallTaskMode">Call Task Mode</button>
+                    <button type="button" class="btn btn-ghost insight-toggle-btn" id="btnToggleMyDay" data-show-label="Show Queues" data-hide-label="Hide Queues" aria-expanded="false" aria-controls="myDayBody">
+                        <span data-panel-label>Show Queues</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

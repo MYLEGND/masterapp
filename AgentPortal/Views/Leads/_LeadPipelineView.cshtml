@@ -14,22 +14,36 @@
                 <p class="pipeline-sub">Stage-focused CRM workspace — drag to move, reorder by priority, drop to update instantly.</p>
             </div>
             <div class="pipeline-head-actions">
-                <span class="pill pipeline-summary-pill" id="pipelineBoardCount">0 active cards</span>
-                <button type="button" class="btn btn-ghost pipeline-head-btn pipeline-head-btn-refresh" id="btnPipelineRefresh">Refresh</button>
-                <button type="button" class="btn btn-stage-tone pipeline-head-btn pipeline-head-btn-buckets" id="btnPipelineAll">All Buckets</button>
-                <button type="button" class="btn btn-green pipeline-head-btn pipeline-head-btn-call" id="btnPipelineCallTask">Call Task Mode</button>
+                <div class="pipeline-status-stack">
+                    <div class="pipeline-rail-label">Live Count</div>
+                    <span class="pill pipeline-summary-pill" id="pipelineBoardCount">0 active cards</span>
+                </div>
+                <div class="pipeline-action-stack">
+                    <div class="pipeline-rail-label pipeline-rail-label-action">Actions</div>
+                    <div class="pipeline-action-row">
+                        <button type="button" class="btn btn-ghost pipeline-head-btn pipeline-head-btn-refresh" id="btnPipelineRefresh">Refresh</button>
+                        <button type="button" class="btn btn-stage-tone pipeline-head-btn pipeline-head-btn-buckets" id="btnPipelineAll">All Buckets</button>
+                        <button type="button" class="btn btn-green pipeline-head-btn pipeline-head-btn-call" id="btnPipelineCallTask">Call Task Mode</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="pipeline-interact">
-            <div class="pipeline-metrics">
-                <span class="pill pipeline-metric-ghost" id="pipelineTotalCards" hidden>0 cards</span>
-                <span class="pill pill-soft pipeline-focus-pill" id="pipelineFocusPill">All buckets</span>
+            <div class="pipeline-metrics-wrap">
+                <div class="pipeline-rail-label">Current Scope</div>
+                <div class="pipeline-metrics">
+                    <span class="pill pipeline-metric-ghost" id="pipelineTotalCards" hidden>0 cards</span>
+                    <span class="pill pill-soft pipeline-focus-pill" id="pipelineFocusPill">All buckets</span>
+                </div>
             </div>
-            <div class="pipeline-quick">
-                <button type="button" class="chip chip-red" id="btnPipeOverdue">🔥 Overdue</button>
-                <button type="button" class="chip chip-amber" id="btnPipeNeeds">⏱ Needs Touch</button>
-                <button type="button" class="chip chip-violet" id="btnPipeMeetings">📅 Meetings</button>
-                <button type="button" class="chip chip-reset" id="btnPipeReset">Reset</button>
+            <div class="pipeline-quick-wrap">
+                <div class="pipeline-rail-label pipeline-rail-label-action">Quick Filters</div>
+                <div class="pipeline-quick">
+                    <button type="button" class="chip chip-red" id="btnPipeOverdue">🔥 Overdue</button>
+                    <button type="button" class="chip chip-amber" id="btnPipeNeeds">⏱ Needs Touch</button>
+                    <button type="button" class="chip chip-violet" id="btnPipeMeetings">📅 Meetings</button>
+                    <button type="button" class="chip chip-reset" id="btnPipeReset">Reset</button>
+                </div>
             </div>
         </div>
         <div class="pipeline-command-dock" id="legendBar">
