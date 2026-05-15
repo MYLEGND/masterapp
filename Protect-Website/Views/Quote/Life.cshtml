@@ -121,7 +121,7 @@
         : "Share the best way to reach you and we'll walk through what may fit your situation.";
     var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
         ? agentTrustProfile!.ShortBio!.Trim()
-        : $"{agentGreetingName} personally review requests to help families understand their protection options clearly — without pressure or confusion.";
+        : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
 }
 
 <style>
@@ -635,14 +635,6 @@ body.life-landing header .navbar .nav-link:focus {
     font-weight: 900;
     letter-spacing: .02em;
 }
-.lq-agent-overline {
-    color: rgba(248,250,252,0.6);
-    font-size: .72rem;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    margin-bottom: 2px;
-}
 .lq-agent-name {
     color: #f3d78f;
     font-size: 1.08rem;
@@ -665,16 +657,17 @@ body.life-landing header .navbar .nav-link:focus {
 .lq-agent-trust-list {
     display: grid;
     gap: 8px;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .lq-agent-trust-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
     color: #f8fafc;
-    font-size: .86rem;
+    font-size: .78rem;
     font-weight: 800;
-    padding: 8px 10px;
+    line-height: 1.3;
+    padding: 9px 10px;
     border-radius: 10px;
     border: 1px solid rgba(199,153,49,0.24);
     background: rgba(16,30,52,0.72);
@@ -745,7 +738,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-display-name { font-size: .75rem; margin-bottom: 5px; }
     .lq-agent-bio { font-size: .86rem; }
     .lq-agent-trust-list { gap: 7px; }
-    .lq-agent-trust-item { font-size: .81rem; padding: 7px 9px; }
+    .lq-agent-trust-item { font-size: .74rem; padding: 7px 8px; }
     .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
     .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
     .lq-submit-row { margin-top: 8px; }
@@ -802,11 +795,10 @@ body.life-landing header .navbar .nav-link:focus {
     /* Contact step fields */
     .lq-agent-handoff-head { align-items: flex-start; }
     .lq-agent-avatar { width: 56px; height: 56px; }
-    .lq-agent-overline { font-size: .68rem; }
     .lq-agent-name { font-size: .96rem !important; }
     .lq-agent-display-name { font-size: .72rem; }
     .lq-agent-bio { font-size: .82rem; }
-    .lq-agent-trust-item { font-size: .8rem; }
+    .lq-agent-trust-item { font-size: .7rem; padding: 7px; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
     .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
@@ -926,8 +918,8 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-agent-display-name { font-size: .73rem !important; }
     body.life-landing .lq-agent-bio { font-size: .84rem !important; }
     body.life-landing .lq-agent-trust-item {
-        font-size: .8rem !important;
-        padding: 7px 9px !important;
+        font-size: .72rem !important;
+        padding: 7px 8px !important;
     }
     body.life-landing .form-control,
     body.life-landing .form-select {
@@ -1208,7 +1200,6 @@ body.life-landing header .navbar .nav-link:focus {
                                         <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
                                     </div>
                                     <div>
-                                        <div class="lq-agent-overline">Your agent handoff</div>
                                         <div class="lq-agent-name">Hi, I'm @agentGreetingName.</div>
                                         <div class="lq-agent-display-name">@agentDisplayName</div>
                                         <div class="lq-agent-bio">@agentTrustBio</div>
@@ -1237,13 +1228,12 @@ body.life-landing header .navbar .nav-link:focus {
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-help">We’ll walk through your options with you — clear and simple.</div>
+                                <div class="lq-field-help">I'll walk through your options with you.</div>
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
                                 <label for="Email">Email <span style="color:#f87171">*</span></label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
-                                <div class="lq-field-help">We’ll send your review summary here too.</div>
                                 <div class="lq-field-err" id="err-Email">Please enter your email.</div>
                             </div>
                         </div>
