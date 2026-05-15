@@ -120,6 +120,9 @@
     var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
         ? agentTrustProfile!.ShortBio!.Trim()
         : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
+    var finalSubmitButtonText = showAgentTrustCard
+        ? $"Review My Options With {agentGreetingName}"
+        : cfg.SubmitButtonText;
 }
 
 <style>
@@ -1278,7 +1281,7 @@ body.life-landing header .navbar .nav-link:focus {
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
                             <div class="lq-trust-note">Simple review • You decide what happens next</div>
-                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@cfg.SubmitButtonText">@cfg.SubmitButtonText</button>
+                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
