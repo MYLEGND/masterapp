@@ -116,9 +116,7 @@
     var finalStepHeading = showAgentTrustCard
         ? "You're almost done, I'll help you understand what may fit."
         : "You're almost done, we'll help you understand what may fit.";
-    var finalStepHelper = showAgentTrustCard
-        ? "Share the best way to reach you and I'll personally review what may fit your situation."
-        : "Share the best way to reach you and we'll walk through what may fit your situation.";
+    var finalStepHelper = showAgentTrustCard ? string.Empty : "Share the best way to reach you and we'll walk through what may fit your situation.";
     var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
         ? agentTrustProfile!.ShortBio!.Trim()
         : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
@@ -1022,7 +1020,7 @@ body.life-landing header .navbar .nav-link:focus {
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-header">
         <h1 class="hero-title">@cfg.Header</h1>
-        <div class="lq-subtext">@cfg.Subheader</div>
+        <div class="lq-subtext">@cfg.Subheader?.Replace(" — before making any decisions.", string.Empty)</div>
         <div class="lq-trust-note">Private • No pressure • Takes less than 30 seconds</div>
     </div>
 
@@ -1163,7 +1161,10 @@ body.life-landing header .navbar .nav-link:focus {
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Final step</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
-                <div class="lq-step-helper">@finalStepHelper</div>
+                @if (!string.IsNullOrWhiteSpace(finalStepHelper))
+                {
+                    <div class="lq-step-helper">@finalStepHelper</div>
+                }
                     <div class="lq-contact-grid">
                         @if (showAgentTrustCard)
                         {
