@@ -8,6 +8,7 @@ using Domain.Enums;
 using Infrastructure.Data;
 using AgentPortal.Services.Analytics;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
@@ -120,12 +121,22 @@ public class DashboardController : Controller
     private static string NormalizeOwnerKey(string? value)
         => (value ?? string.Empty).Trim().ToLowerInvariant();
 
+    private static string BuildCarrierSettingsStorageScope(string ownerId)
+    {
+        var normalized = NormalizeOwnerKey(ownerId);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return "dashboard";
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
+    }
+
     // GET: /Dashboard  (and /Dashboard/Index)
     [HttpGet]
     public async Task<IActionResult> Index()
     {
         var ownerId = CurrentUserId();
         if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
+        ViewData["CarrierSettingsStorageScope"] = BuildCarrierSettingsStorageScope(ownerId);
 
         var vm = new DashboardExecutionViewModel
         {

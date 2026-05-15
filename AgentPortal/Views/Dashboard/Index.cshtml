@@ -187,7 +187,14 @@
     </div>
 
     <!-- Carrier Settings Modal -->
-    <div class="modal fade legend-modal carrier-settings-modal" id="carrierSettingsModal" tabindex="-1" aria-hidden="true">
+    <div
+        class="modal fade legend-modal carrier-settings-modal"
+        id="carrierSettingsModal"
+        tabindex="-1"
+        aria-hidden="true"
+        data-load-url="@Url.Action("CarrierSettings", "Dashboard")"
+        data-save-url="@Url.Action("SaveCarrierSettings", "Dashboard")"
+        data-storage-scope="@((ViewData["CarrierSettingsStorageScope"] as string) ?? "dashboard")">
       <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
@@ -207,7 +214,7 @@
           </div>
           <div class="modal-footer">
             <div class="carrier-settings-footer-note me-auto">
-                Changes save automatically for the current agent profile.
+                Changes save automatically to the server for the current agent profile.
             </div>
             <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
           </div>
