@@ -688,17 +688,20 @@ namespace Protect_Website.Controllers
                 return null;
             }
 
-            return await _db.AgentProfiles.AsNoTracking()
+            var candidates = await _db.AgentProfiles.AsNoTracking()
                 .Where(x =>
                     (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
                     (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
+                .ToListAsync(ct);
+
+            return candidates
                 .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.Npn))
                 .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.ShortBio))
                 .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
                 .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.Title))
                 .ThenByDescending(x => hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId)
                 .ThenByDescending(x => x.UpdatedUtc)
-                .FirstOrDefaultAsync(ct);
+                .FirstOrDefault();
         }
 
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(CancellationToken ct)
