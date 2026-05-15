@@ -352,16 +352,18 @@ static void EnsureSqliteBackup(string sqliteConnString, int keepLatest = 20)
 
 static string? ResolveMasterDb(IConfiguration config)
 {
-    var cs = config.GetConnectionString("MasterAppDb");
-    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
-
-    cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb");
+    // Azure App Service injects Connection Strings as SQLCONNSTR_<Name>.
+    // Check environment first so appsettings SQLite defaults never override production SQL.
+    var cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     cs = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     cs = Environment.GetEnvironmentVariable("MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    cs = config.GetConnectionString("MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     return null;
