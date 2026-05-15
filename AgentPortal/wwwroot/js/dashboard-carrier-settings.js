@@ -14,6 +14,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const saveUrl = modalEl.dataset.saveUrl || "/Dashboard/SaveCarrierSettings";
     const storageScope = asTrimmed(modalEl.dataset.storageScope) || "dashboard";
     const draftStorageKey = `legend.dashboardCarrierSettingsDraft.${storageScope}`;
+    const excludedCarrierNames = new Set([
+        "integrity marketing",
+        "pinacle life crm",
+        "ezlynx ams",
+        "smart choice - p&c",
+    ]);
 
     const store = {
         loaded: false,
@@ -36,6 +42,10 @@ document.addEventListener("DOMContentLoaded", () => {
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "");
+    }
+
+    function isExcludedCarrierName(value) {
+        return excludedCarrierNames.has(asTrimmed(value).toLowerCase());
     }
 
     function escapeHtml(value) {
@@ -225,6 +235,7 @@ document.addEventListener("DOMContentLoaded", () => {
             categoryEl.querySelectorAll(".dashboard-tool").forEach((toolEl) => {
                 const carrierName = asTrimmed(toolEl.dataset.name || toolEl.querySelector(".tool-name")?.textContent);
                 if (!carrierName) return;
+                if (isExcludedCarrierName(carrierName)) return;
 
                 const carrierKey = slugify(carrierName);
                 const entryKey = `${categoryKey}::${carrierKey}`;
