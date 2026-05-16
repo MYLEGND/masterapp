@@ -1366,7 +1366,7 @@ namespace AgentPortal.Controllers;
             .ToListAsync();
 
         var allLeads = await _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal && l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
+            .Where(l => !l.IsInternal && !l.IsDeleted && l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .ToListAsync();
 
         // Compute attributed event rows
@@ -1421,5 +1421,11 @@ namespace AgentPortal.Controllers;
             ZeroDataHints = zeroDataHints,
             Note = "Attribution shown here is direct-field only (no session fallback). Actual query results use session→visitor fallback and may differ."
         });
+    }
+
+    public sealed class DeleteLeadRequest
+    {
+        public Guid LeadId { get; set; }
+        public string? Reason { get; set; }
     }
 }
