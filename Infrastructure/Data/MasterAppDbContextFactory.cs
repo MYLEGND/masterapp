@@ -17,7 +17,14 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         }
 
         var opts = new DbContextOptionsBuilder<MasterAppDbContext>();
-        opts.UseSqlServer(cs);
+        if (cs.Trim().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+        {
+            opts.UseSqlite(cs);
+        }
+        else
+        {
+            opts.UseSqlServer(cs);
+        }
 
         return new MasterAppDbContext(opts.Options);
     }
