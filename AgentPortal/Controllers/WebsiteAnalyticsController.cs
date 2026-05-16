@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
 using System.Data;
+using System.Data.Common;
 using System.Text;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
@@ -11,6 +12,7 @@ using AgentPortal.Security;
 using AgentPortal.Services;
 using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
@@ -237,124 +239,214 @@ namespace AgentPortal.Controllers;
         if (request == null || request.LeadId == Guid.Empty)
             return BadRequest(new { message = "A valid leadId is required." });
 
-        var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
-        if (string.IsNullOrWhiteSpace(actorId))
-        {
-            actorId = (User.FindFirstValue(ClaimTypes.Email)
-                ?? User.FindFirstValue("preferred_username")
-                ?? User.FindFirstValue("upn")
-                ?? User.Identity?.Name
-                ?? "unknown").Trim();
-        }
-
-        if (actorId.Length > 200)
-            actorId = actorId[..200];
-
-        var reason = string.IsNullOrWhiteSpace(request.Reason)
-            ? "Test lead cleanup"
-            : request.Reason.Trim();
-        if (reason.Length > 500)
-            reason = reason[..500];
-
         try
         {
-            var leadColumns = await GetWebsiteLeadColumnSetAsync(HttpContext.RequestAborted);
+            var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(actorId))
+            {
+                actorId = (User.FindFirstValue(ClaimTypes.Email)
+                    ?? User.FindFirstValue("preferred_username")
+                    ?? User.FindFirstValue("upn")
+                    ?? User.Identity?.Name
+                    ?? "unknown").Trim();
+            }
+
+            if (actorId.Length > 200)
+                actorId = actorId[..200];
+
+            var reason = string.IsNullOrWhiteSpace(request.Reason)
+                ? "Test lead cleanup"
+                : request.Reason.Trim();
+            if (reason.Length > 500)
+                reason = reason[..500];
+
+            var cancellationToken = HttpContext.RequestAborted;
+            var leadColumns = await GetWebsiteLeadColumnSetAsync(cancellationToken);
             var supportsSoftDelete = leadColumns.Contains("IsDeleted");
+            var provider = _db.Database.ProviderName ?? string.Empty;
+            var isSqlite = provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+            var conn = _db.Database.GetDbConnection();
+            var shouldClose = conn.State != ConnectionState.Open;
+            if (shouldClose)
+                await conn.OpenAsync(cancellationToken);
 
-            WebsiteLeadDeleteLookup? lead;
-            if (supportsSoftDelete)
+            try
             {
-                lead = await _db.WebsiteLeads.AsNoTracking()
-                    .Where(l => l.LeadId == request.LeadId)
-                    .Select(l => new WebsiteLeadDeleteLookup
+                var lead = await FindLeadAsync(conn, request.LeadId, supportsSoftDelete, isSqlite, cancellationToken);
+                if (lead == null)
+                    return NotFound(new { message = "Lead not found." });
+
+                if (lead.IsDeleted)
+                {
+                    return Json(new
                     {
-                        Id = l.Id,
-                        LeadId = l.LeadId,
-                        IsDeleted = l.IsDeleted
-                    })
-                    .FirstOrDefaultAsync(HttpContext.RequestAborted);
-            }
-            else
-            {
-                lead = await _db.WebsiteLeads.AsNoTracking()
-                    .Where(l => l.LeadId == request.LeadId)
-                    .Select(l => new WebsiteLeadDeleteLookup
+                        ok = true,
+                        alreadyDeleted = true,
+                        leadId = lead.LeadId
+                    });
+                }
+
+                DateTime? deletedAtUtc = null;
+                string? deleteReason = null;
+
+                if (supportsSoftDelete)
+                {
+                    await using var updateCmd = conn.CreateCommand();
+                    var assignments = new List<string>
                     {
-                        Id = l.Id,
-                        LeadId = l.LeadId
-                    })
-                    .FirstOrDefaultAsync(HttpContext.RequestAborted);
-            }
+                        $"{QuoteIdentifier("IsDeleted", isSqlite)} = @isDeleted"
+                    };
+                    AddParameter(updateCmd, "@isDeleted", isSqlite ? 1 : true);
 
-            if (lead == null)
-                return NotFound(new { message = "Lead not found." });
+                    if (leadColumns.Contains("DeletedAtUtc"))
+                    {
+                        deletedAtUtc = DateTime.UtcNow;
+                        assignments.Add($"{QuoteIdentifier("DeletedAtUtc", isSqlite)} = @deletedAtUtc");
+                        AddParameter(updateCmd, "@deletedAtUtc", deletedAtUtc.Value);
+                    }
 
-            if (lead.IsDeleted)
-            {
+                    if (leadColumns.Contains("DeletedByUserId"))
+                    {
+                        assignments.Add($"{QuoteIdentifier("DeletedByUserId", isSqlite)} = @deletedByUserId");
+                        AddParameter(updateCmd, "@deletedByUserId", actorId);
+                    }
+
+                    if (leadColumns.Contains("DeleteReason"))
+                    {
+                        deleteReason = reason;
+                        assignments.Add($"{QuoteIdentifier("DeleteReason", isSqlite)} = @deleteReason");
+                        AddParameter(updateCmd, "@deleteReason", reason);
+                    }
+
+                    updateCmd.CommandText = $"""
+                        UPDATE {QuoteIdentifier("WebsiteLeads", isSqlite)}
+                        SET {string.Join(", ", assignments)}
+                        WHERE {QuoteIdentifier("Id", isSqlite)} = @id
+                        """;
+                    AddParameter(updateCmd, "@id", lead.Id);
+                    await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+                else
+                {
+                    await using var deleteCmd = conn.CreateCommand();
+                    deleteCmd.CommandText = $"""
+                        DELETE FROM {QuoteIdentifier("WebsiteLeads", isSqlite)}
+                        WHERE {QuoteIdentifier("Id", isSqlite)} = @id
+                        """;
+                    AddParameter(deleteCmd, "@id", lead.Id);
+                    await deleteCmd.ExecuteNonQueryAsync(cancellationToken);
+                    _logger.LogWarning(
+                        "Hard deleting website lead {LeadId} because WebsiteLeads.IsDeleted is unavailable in the current database schema.",
+                        lead.LeadId);
+                }
+
                 return Json(new
                 {
                     ok = true,
-                    alreadyDeleted = true,
-                    leadId = lead.LeadId
+                    leadId = lead.LeadId,
+                    deletedAtUtc,
+                    deleteReason,
+                    usedHardDelete = !supportsSoftDelete
                 });
             }
-
-            DateTime? deletedAtUtc = null;
-            string? deleteReason = null;
-
-            if (supportsSoftDelete)
+            finally
             {
-                var stub = new WebsiteLead { Id = lead.Id, LeadId = lead.LeadId };
-                _db.WebsiteLeads.Attach(stub);
-
-                stub.IsDeleted = true;
-                _db.Entry(stub).Property(x => x.IsDeleted).IsModified = true;
-
-                if (leadColumns.Contains("DeletedAtUtc"))
-                {
-                    deletedAtUtc = DateTime.UtcNow;
-                    stub.DeletedAtUtc = deletedAtUtc;
-                    _db.Entry(stub).Property(x => x.DeletedAtUtc).IsModified = true;
-                }
-
-                if (leadColumns.Contains("DeletedByUserId"))
-                {
-                    stub.DeletedByUserId = actorId;
-                    _db.Entry(stub).Property(x => x.DeletedByUserId).IsModified = true;
-                }
-
-                if (leadColumns.Contains("DeleteReason"))
-                {
-                    deleteReason = reason;
-                    stub.DeleteReason = reason;
-                    _db.Entry(stub).Property(x => x.DeleteReason).IsModified = true;
-                }
+                if (shouldClose)
+                    await conn.CloseAsync();
             }
-            else
-            {
-                var stub = new WebsiteLead { Id = lead.Id };
-                _db.WebsiteLeads.Attach(stub);
-                _db.WebsiteLeads.Remove(stub);
-                _logger.LogWarning(
-                    "Hard deleting website lead {LeadId} because WebsiteLeads.IsDeleted is unavailable in the current database schema.",
-                    lead.LeadId);
-            }
-
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
-
-            return Json(new
-            {
-                ok = true,
-                leadId = lead.LeadId,
-                deletedAtUtc,
-                deleteReason,
-                usedHardDelete = !supportsSoftDelete
-            });
+        }
+        catch (AntiforgeryValidationException ex)
+        {
+            _logger.LogWarning(ex, "DeleteLead antiforgery validation failed for lead {LeadId}.", request.LeadId);
+            return BadRequest(new { message = "Your session expired. Refresh the page and try again." });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "DeleteLead failed for lead {LeadId}.", request.LeadId);
             return StatusCode(500, new { message = "Unable to delete lead right now." });
+        }
+
+        static async Task<WebsiteLeadDeleteLookup?> FindLeadAsync(
+            DbConnection conn,
+            Guid leadId,
+            bool supportsSoftDelete,
+            bool isSqlite,
+            CancellationToken cancellationToken)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = isSqlite
+                ? $"""
+                    SELECT "Id", "LeadId", {(supportsSoftDelete ? "COALESCE(\"IsDeleted\", 0)" : "0")} AS "IsDeleted"
+                    FROM "WebsiteLeads"
+                    WHERE "LeadId" = @leadId
+                    LIMIT 1
+                    """
+                : $"""
+                    SELECT TOP (1) [Id], [LeadId], {(supportsSoftDelete ? "CASE WHEN [IsDeleted] = 1 THEN 1 ELSE 0 END" : "0")} AS [IsDeleted]
+                    FROM [WebsiteLeads]
+                    WHERE [LeadId] = @leadId
+                    """;
+            AddParameter(cmd, "@leadId", isSqlite ? leadId.ToString() : leadId);
+
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+                return null;
+
+            return new WebsiteLeadDeleteLookup
+            {
+                Id = reader.GetInt64(reader.GetOrdinal("Id")),
+                LeadId = ReadGuid(reader, "LeadId"),
+                IsDeleted = ReadBoolean(reader, "IsDeleted")
+            };
+        }
+
+        static string QuoteIdentifier(string identifier, bool isSqlite)
+            => isSqlite ? $"\"{identifier}\"" : $"[{identifier}]";
+
+        static void AddParameter(DbCommand cmd, string name, object? value)
+        {
+            var param = cmd.CreateParameter();
+            param.ParameterName = name;
+            param.Value = value ?? DBNull.Value;
+            cmd.Parameters.Add(param);
+        }
+
+        static Guid ReadGuid(DbDataReader reader, string columnName)
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ordinal))
+                return Guid.Empty;
+
+            var value = reader.GetValue(ordinal);
+            return value switch
+            {
+                Guid guidValue => guidValue,
+                string stringValue when Guid.TryParse(stringValue, out var parsed) => parsed,
+                byte[] bytes when bytes.Length == 16 => new Guid(bytes),
+                _ => Guid.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out var fallback)
+                    ? fallback
+                    : Guid.Empty
+            };
+        }
+
+        static bool ReadBoolean(DbDataReader reader, string columnName)
+        {
+            var ordinal = reader.GetOrdinal(columnName);
+            if (reader.IsDBNull(ordinal))
+                return false;
+
+            var value = reader.GetValue(ordinal);
+            return value switch
+            {
+                bool boolValue => boolValue,
+                byte byteValue => byteValue != 0,
+                short shortValue => shortValue != 0,
+                int intValue => intValue != 0,
+                long longValue => longValue != 0,
+                string stringValue when bool.TryParse(stringValue, out var parsedBool) => parsedBool,
+                string stringValue when long.TryParse(stringValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedLong) => parsedLong != 0,
+                _ => false
+            };
         }
     }
 
