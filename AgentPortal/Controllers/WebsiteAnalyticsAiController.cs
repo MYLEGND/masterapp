@@ -217,42 +217,6 @@ public sealed class WebsiteAnalyticsAiController : Controller
         var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
         var effectiveProfileId = effectiveProfile?.Id;
 
-        if (_effectiveContext.IsViewingAsAgent)
-        {
-            if (effectiveProfileId.HasValue)
-                return ScopeContext.ForAgent(effectiveProfileId.Value);
-
-            var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
-            if (!string.IsNullOrWhiteSpace(effectiveOid))
-            {
-                var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
-                if (byOid != null)
-                    return ScopeContext.ForAgent(byOid.Id);
-
-                var oidLower = effectiveOid.ToLowerInvariant();
-                var agentProfile = await _db.AgentProfiles.AsNoTracking()
-                    .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
-                    .OrderByDescending(a => a.UpdatedUtc)
-                    .FirstOrDefaultAsync();
-
-                var upn = agentProfile?.AgentUpn
-                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
-                var displayName = agentProfile?.FullName
-                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
-
-                if (!string.IsNullOrWhiteSpace(upn))
-                {
-                    var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
-                    return ScopeContext.ForAgent(ensured.Id);
-                }
-            }
-
-            _logger.LogWarning(
-                "WebsiteAnalyticsAi scope resolution failed for impersonated agent. effectiveOid={Oid}.",
-                _effectiveContext.EffectiveAgentOid ?? "(null)");
-            return ScopeContext.ForAgent(Guid.Empty);
-        }
-
         if (team && !isFounder)
         {
             _logger.LogWarning("WebsiteAnalyticsAi denied team scope elevation for non-founder caller.");
@@ -265,8 +229,13 @@ public sealed class WebsiteAnalyticsAiController : Controller
         if (isFounder)
         {
             if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
+            if (_effectiveContext.IsViewingAsAgent)
+                return await ResolveEffectiveImpersonatedAgentScopeAsync();
             return ScopeContext.Global;
         }
+
+        if (_effectiveContext.IsViewingAsAgent)
+            return await ResolveEffectiveImpersonatedAgentScopeAsync();
 
         if (effectiveProfileId.HasValue)
             return ScopeContext.ForAgent(effectiveProfileId.Value);
@@ -280,7 +249,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
         if (team && FounderGuard.IsFounder(User)) return "Founder Team";
 
         if (scope.ScopeType == ScopeType.Global)
-            return FounderGuard.IsFounder(User) ? "Founder Global" : "Global";
+            return "Global";
 
         var agentId = scope.AgentTrackingProfileId;
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
@@ -292,8 +261,53 @@ public sealed class WebsiteAnalyticsAiController : Controller
             .FirstOrDefaultAsync();
 
         if (profile == null) return "Agent Scope";
+        if (FounderGuard.IsFounder(User) &&
+            !string.IsNullOrWhiteSpace(profile.AgentUpn) &&
+            string.Equals(profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Founder Personal";
+        }
+
         var name = profile.DisplayName ?? profile.AgentUpn ?? profile.Slug;
         return string.IsNullOrWhiteSpace(name) ? "Agent Scope" : $"Agent: {name}";
+    }
+
+    private async Task<ScopeContext> ResolveEffectiveImpersonatedAgentScopeAsync()
+    {
+        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
+        var effectiveProfileId = effectiveProfile?.Id;
+        if (effectiveProfileId.HasValue)
+            return ScopeContext.ForAgent(effectiveProfileId.Value);
+
+        var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(effectiveOid))
+        {
+            var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
+            if (byOid != null)
+                return ScopeContext.ForAgent(byOid.Id);
+
+            var oidLower = effectiveOid.ToLowerInvariant();
+            var agentProfile = await _db.AgentProfiles.AsNoTracking()
+                .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
+                .OrderByDescending(a => a.UpdatedUtc)
+                .FirstOrDefaultAsync();
+
+            var upn = agentProfile?.AgentUpn
+                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
+            var displayName = agentProfile?.FullName
+                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
+
+            if (!string.IsNullOrWhiteSpace(upn))
+            {
+                var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
+                return ScopeContext.ForAgent(ensured.Id);
+            }
+        }
+
+        _logger.LogWarning(
+            "WebsiteAnalyticsAi scope resolution failed for impersonated agent. effectiveOid={Oid}.",
+            _effectiveContext.EffectiveAgentOid ?? "(null)");
+        return ScopeContext.ForAgent(Guid.Empty);
     }
 
     private static TrafficType ParseTrafficType(string? value)

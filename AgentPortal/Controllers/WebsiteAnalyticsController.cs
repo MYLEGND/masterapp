@@ -70,8 +70,7 @@ namespace AgentPortal.Controllers;
             ViewData["CallerProfileId"] = callerProfile.Id;
         }
 
-        var isViewingAsAgent = _effectiveContext.IsViewingAsAgent;
-        var canViewFounderTeamUi = FounderGuard.IsFounder(User) && !isViewingAsAgent;
+        var canViewFounderTeamUi = FounderGuard.IsFounder(User);
         ViewData["CanViewFounderTeamUi"] = canViewFounderTeamUi;
         if (canViewFounderTeamUi)
         {
@@ -774,49 +773,6 @@ namespace AgentPortal.Controllers;
         var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
         var effectiveProfileId = effectiveProfile?.Id;
 
-        // If founder is impersonating an agent, analytics must scope to that agent.
-        // Never fall back to founder scope for view-as-agent requests.
-        if (_effectiveContext.IsViewingAsAgent)
-        {
-            if (effectiveProfileId.HasValue)
-            {
-                return ScopeContext.ForAgent(effectiveProfileId.Value);
-            }
-
-            var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
-            if (!string.IsNullOrWhiteSpace(effectiveOid))
-            {
-                // Fallback path: if a tracking profile is missing, provision one from AgentProfile metadata.
-                var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
-                if (byOid != null)
-                {
-                    return ScopeContext.ForAgent(byOid.Id);
-                }
-
-                var oidLower = effectiveOid.ToLowerInvariant();
-                var agentProfile = await _db.AgentProfiles.AsNoTracking()
-                    .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
-                    .OrderByDescending(a => a.UpdatedUtc)
-                    .FirstOrDefaultAsync();
-
-                var upn = agentProfile?.AgentUpn
-                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
-                var displayName = agentProfile?.FullName
-                    ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
-
-                if (!string.IsNullOrWhiteSpace(upn))
-                {
-                    var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
-                    return ScopeContext.ForAgent(ensured.Id);
-                }
-            }
-
-            _logger.LogWarning(
-                "WebsiteAnalytics scope resolution failed for impersonated agent. effectiveOid={EffectiveOid}. Returning empty scope.",
-                _effectiveContext.EffectiveAgentOid ?? "(null)");
-            return ScopeContext.ForAgent(Guid.Empty); // no data, never founder fallback in impersonation mode
-        }
-
         if (team && !isFounder)
         {
             _logger.LogWarning("WebsiteAnalytics denied team scope elevation for non-founder caller.");
@@ -830,7 +786,18 @@ namespace AgentPortal.Controllers;
         if (isFounder)
         {
             if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
+            if (_effectiveContext.IsViewingAsAgent)
+            {
+                return await ResolveEffectiveImpersonatedAgentScopeAsync();
+            }
             return ScopeContext.Global;
+        }
+
+        // If founder is impersonating an agent, analytics must scope to that agent.
+        // Never fall back to founder scope for view-as-agent requests.
+        if (_effectiveContext.IsViewingAsAgent)
+        {
+            return await ResolveEffectiveImpersonatedAgentScopeAsync();
         }
 
         // Agent (or assistant) uses effective profile
@@ -841,6 +808,49 @@ namespace AgentPortal.Controllers;
 
         _logger.LogWarning("Scope resolution: no agent profile for caller; returning empty scope (no data)");
         return ScopeContext.ForAgent(Guid.Empty); // will match nothing
+    }
+
+    private async Task<ScopeContext> ResolveEffectiveImpersonatedAgentScopeAsync()
+    {
+        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
+        var effectiveProfileId = effectiveProfile?.Id;
+        if (effectiveProfileId.HasValue)
+        {
+            return ScopeContext.ForAgent(effectiveProfileId.Value);
+        }
+
+        var effectiveOid = (_effectiveContext.EffectiveAgentOid ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(effectiveOid))
+        {
+            // Fallback path: if a tracking profile is missing, provision one from AgentProfile metadata.
+            var byOid = await _tracking.GetByUserIdAsync(effectiveOid);
+            if (byOid != null)
+            {
+                return ScopeContext.ForAgent(byOid.Id);
+            }
+
+            var oidLower = effectiveOid.ToLowerInvariant();
+            var agentProfile = await _db.AgentProfiles.AsNoTracking()
+                .Where(a => a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower)
+                .OrderByDescending(a => a.UpdatedUtc)
+                .FirstOrDefaultAsync();
+
+            var upn = agentProfile?.AgentUpn
+                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentEmail", out var emailObj) ? emailObj as string : null);
+            var displayName = agentProfile?.FullName
+                ?? (HttpContext.Items.TryGetValue("ImpersonatedAgentName", out var nameObj) ? nameObj as string : null);
+
+            if (!string.IsNullOrWhiteSpace(upn))
+            {
+                var ensured = await _tracking.EnsureProfileAsync(effectiveOid, upn, displayName);
+                return ScopeContext.ForAgent(ensured.Id);
+            }
+        }
+
+        _logger.LogWarning(
+            "WebsiteAnalytics scope resolution failed for impersonated agent. effectiveOid={EffectiveOid}. Returning empty scope.",
+            _effectiveContext.EffectiveAgentOid ?? "(null)");
+        return ScopeContext.ForAgent(Guid.Empty);
     }
 
     private async Task<Domain.Entities.AgentTrackingProfile?> GetCallerProfileAsync()
