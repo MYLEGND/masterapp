@@ -11,6 +11,7 @@
     var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
     var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingView ? "landing" : "website") : Model.PageVariant;
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingView ? "paid_landing" : "site_mode") : Model.PageMode;
+    var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
     ViewData["IsLandingPage"] = isLandingView;
@@ -25,7 +26,7 @@
     {
         viewSteps = new List<Protect_Website.Models.LifeWizardStep>
         {
-            new("Who depends on you the most?", new List<Protect_Website.Models.LifeWizardOption>
+            new("Who are you looking to protect?", new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("just_me","Just me"),
                 new("spouse_or_partner","My spouse or partner"),
@@ -126,6 +127,19 @@
     var finalSubmitButtonText = showAgentTrustCard
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
+    var heroHeadline = isPaidLandingExperience ? "See what coverage may fit your family." : cfg.Header;
+    var heroSubheadline = isPaidLandingExperience
+        ? "Answer 3 quick questions. No pressure."
+        : (cfg.Subheader?.Replace(" — before making any decisions.", string.Empty) ?? string.Empty);
+    var heroTrustNote = isPaidLandingExperience
+        ? "Private • Takes less than 30 seconds"
+        : "Private • No pressure • Takes less than 30 seconds";
+    var step1IntroTitle = isPaidLandingExperience
+        ? string.Empty
+        : "If something happened to you tomorrow, would they actually be okay?";
+    var step1IntroHelper = isPaidLandingExperience
+        ? string.Empty
+        : "This takes 30 seconds — and helps you see what may actually fit your situation.";
 }
 
 <style>
@@ -877,6 +891,7 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-step-helper { margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress { font-size: .69rem !important; padding: 3px 8px !important; }
+    body.life-landing #lifeStep1Progress { display: none !important; }
     body.life-landing .lq-step-progress-track { height: 5px !important; }
     body.life-landing .lq-choice-grid { gap: 7px !important; }
     body.life-landing .lq-card {
@@ -1035,9 +1050,9 @@ body.life-landing header .navbar .nav-link:focus {
 <div class="lq-hero-shell">
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-header">
-        <h1 class="hero-title">@cfg.Header</h1>
-        <div class="lq-subtext">@cfg.Subheader?.Replace(" — before making any decisions.", string.Empty)</div>
-        <div class="lq-trust-note">Private • No pressure • Takes less than 30 seconds</div>
+        <h1 class="hero-title">@heroHeadline</h1>
+        <div class="lq-subtext">@heroSubheadline</div>
+        <div class="lq-trust-note">@heroTrustNote</div>
     </div>
 
     <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
@@ -1079,8 +1094,14 @@ body.life-landing header .navbar .nav-link:focus {
 
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-title">If something happened to you tomorrow, would they actually be okay?</div>
-                <div class="lq-step-helper">This takes 30 seconds — and helps you see what may actually fit your situation.</div>
+                @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
+                {
+                    <div class="lq-step-title">@step1IntroTitle</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(step1IntroHelper))
+                {
+                    <div class="lq-step-helper">@step1IntroHelper</div>
+                }
                 <div class="lq-step-progress-wrap" aria-live="polite">
                     <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 3</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
