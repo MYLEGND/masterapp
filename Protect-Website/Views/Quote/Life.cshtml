@@ -127,19 +127,11 @@
     var finalSubmitButtonText = showAgentTrustCard
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
-    var heroHeadline = isPaidLandingExperience ? "See what coverage may fit your family." : cfg.Header;
-    var heroSubheadline = isPaidLandingExperience
-        ? "Answer 3 quick questions. No pressure."
-        : (cfg.Subheader?.Replace(" — before making any decisions.", string.Empty) ?? string.Empty);
-    var heroTrustNote = isPaidLandingExperience
-        ? "Private • Takes less than 30 seconds"
-        : "Private • No pressure • Takes less than 30 seconds";
-    var step1IntroTitle = isPaidLandingExperience
-        ? string.Empty
-        : "If something happened to you tomorrow, would they actually be okay?";
-    var step1IntroHelper = isPaidLandingExperience
-        ? string.Empty
-        : "This takes 30 seconds — and helps you see what may actually fit your situation.";
+    var heroHeadline = "Protect the people who count on you";
+    var heroSubheadline = string.Empty;
+    var heroTrustNote = "Private • No pressure • Takes less than 30 seconds";
+    var step1IntroTitle = string.Empty;
+    var step1IntroHelper = string.Empty;
 }
 
 <style>
@@ -333,6 +325,9 @@ body.life-landing header .navbar .nav-link:focus {
     display: grid;
     gap: 8px;
     margin-bottom: 12px;
+}
+.lq-step1-panel .lq-step-progress-wrap{
+    display: none !important;
 }
 .lq-step-progress-wrap .lq-step-progress{ margin-bottom: 0; }
 .lq-step-progress-track{
@@ -891,7 +886,6 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-step-helper { margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress { font-size: .69rem !important; padding: 3px 8px !important; }
-    body.life-landing #lifeStep1Progress { display: none !important; }
     body.life-landing .lq-step-progress-track { height: 5px !important; }
     body.life-landing .lq-choice-grid { gap: 7px !important; }
     body.life-landing .lq-card {
@@ -1051,7 +1045,10 @@ body.life-landing header .navbar .nav-link:focus {
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-header">
         <h1 class="hero-title">@heroHeadline</h1>
-        <div class="lq-subtext">@heroSubheadline</div>
+        @if (!string.IsNullOrWhiteSpace(heroSubheadline))
+        {
+            <div class="lq-subtext">@heroSubheadline</div>
+        }
         <div class="lq-trust-note">@heroTrustNote</div>
     </div>
 
