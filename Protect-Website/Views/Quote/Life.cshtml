@@ -264,7 +264,7 @@ body.life-landing header .navbar .nav-link:focus {
 .btn-ghost:hover { border-color: #c79931; color: #dfb75a; transform: translateY(-1px); box-shadow: 0 8px 18px rgba(0,0,0,0.18); }
 .btn-ghost:focus-visible { outline: 2px solid #dfb75a; outline-offset: 2px; }
 
-.lq-header { margin-top: 18px; margin-bottom: 20px; text-align: center; }
+.lq-header { margin-top: 18px; margin-bottom: 16px; text-align: center; }
 .lq-header h1 {
     font-weight: 900;
     font-size: 2rem;
@@ -282,11 +282,11 @@ body.life-landing header .navbar .nav-link:focus {
 }
 .lq-trust-note{
     text-align:center;
-    color: rgba(248,250,252,0.7);
-    font-weight: 780;
+    color: rgba(248,250,252,0.66);
+    font-weight: 760;
     letter-spacing: .015em;
-    font-size: .9rem;
-    margin-top: 8px;
+    font-size: .84rem;
+    margin-top: 7px;
 }
 .lq-trust-row {
     display: flex;
@@ -407,7 +407,7 @@ body.life-landing header .navbar .nav-link:focus {
 .lq-step-panel {
     max-width: 760px;
     width: 100%;
-    margin: 0 auto 14px auto;
+    margin: 0 auto 12px auto;
     background: #122541;
     border: 1.5px solid rgba(199,153,49,.44);
     border-radius: 12px;
@@ -438,37 +438,37 @@ body.life-landing header .navbar .nav-link:focus {
     color: rgba(248,250,252,0.7);
     margin-bottom: 16px;
 }
-.lq-step-panel-pad { padding: 16px; }
+.lq-step-panel-pad { padding: 14px; }
 
 @@keyframes lqFadeIn {
     from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 
-.lq-choice-group { margin-bottom: 8px; }
+.lq-choice-group { margin-bottom: 6px; }
 .lq-choice-label {
     font-weight: 800;
     font-size: 1rem;
     color: #f8fafc;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 #lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
-    font-size: 1.22rem;
-    font-weight: 920;
-    line-height: 1.15;
-    letter-spacing: -0.015em;
+    font-size: 1.28rem;
+    font-weight: 940;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
     color: #fff6d8;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 .lq-choice-grid {
     display: grid;
-    gap: 10px;
+    gap: 9px;
     grid-template-columns: 1fr;
 }
 .lq-choice-grid.lq-grid-2 { grid-template-columns: 1fr 1fr; }
 .lq-choice-grid.lq-step1-twoup .lq-card {
-    min-height: 64px;
-    padding: 12px 8px;
+    min-height: 66px;
+    padding: 13px 9px;
 }
 .lq-choice-grid.lq-step1-twoup .lq-card span {
     overflow-wrap: anywhere;
@@ -486,33 +486,40 @@ body.life-landing header .navbar .nav-link:focus {
     text-align: center;
     padding: 14px 10px;
     min-height: 58px;
-    border: 1.6px solid rgba(215,174,78,0.50);
+    border: 1.7px solid rgba(223,183,90,0.54);
     border-radius: 10px;
     background:
-        linear-gradient(180deg, rgba(36,53,80,0.96) 0%, rgba(27,41,65,0.96) 100%);
+        linear-gradient(180deg, rgba(42,61,92,0.98) 0%, rgba(30,45,70,0.98) 100%);
     color: #f8fafc;
     font-weight: 800;
     font-size: .95rem;
     cursor: pointer;
-    transition: border-color .18s ease, background .18s ease, box-shadow .18s ease, color .18s ease, transform .16s ease, filter .18s ease;
+    transition: border-color .2s ease, background .2s ease, box-shadow .2s ease, color .2s ease, transform .18s cubic-bezier(0.22, 1, 0.36, 1), filter .2s ease;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
     line-height: 1.25;
     position: relative;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.04),
-        0 8px 18px rgba(0,0,0,0.18);
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 9px 20px rgba(0,0,0,0.19);
 }
 .lq-card:hover {
-    border-color: rgba(239,200,111,0.82);
+    border-color: rgba(244,210,124,0.88);
     background:
-        linear-gradient(180deg, rgba(43,62,92,0.98) 0%, rgba(31,47,75,0.98) 100%);
-    transform: translateY(-1px);
+        linear-gradient(180deg, rgba(49,70,103,0.99) 0%, rgba(34,51,79,0.99) 100%);
+    transform: translateY(-2px) scale(1.012);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.07),
+        0 14px 28px rgba(0,0,0,0.25),
+        0 0 0 1px rgba(244,210,124,0.16);
+    filter: saturate(1.05);
+}
+.lq-card:active {
+    transform: translateY(0) scale(0.992);
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.06),
-        0 12px 24px rgba(0,0,0,0.24),
-        0 0 0 1px rgba(239,200,111,0.12);
-    filter: saturate(1.03);
+        0 6px 14px rgba(0,0,0,0.24);
+    filter: saturate(1.04);
 }
 .lq-card input[type="radio"] {
     position: absolute;
@@ -523,17 +530,21 @@ body.life-landing header .navbar .nav-link:focus {
 }
 .lq-card.lq-selected,
 .lq-card:has(input:checked) {
-    border-color: #f2cf7c;
+    border-color: #f4d58b;
     background:
-        linear-gradient(180deg, rgba(199,153,49,0.22) 0%, rgba(114,79,18,0.14) 100%),
-        linear-gradient(180deg, rgba(39,56,85,0.98) 0%, rgba(29,43,68,0.98) 100%);
+        linear-gradient(180deg, rgba(210,166,62,0.28) 0%, rgba(128,89,20,0.18) 100%),
+        linear-gradient(180deg, rgba(45,64,96,0.99) 0%, rgba(32,48,74,0.99) 100%);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.08),
-        0 14px 28px rgba(0,0,0,0.26),
-        0 0 0 2px rgba(239,200,111,0.44),
-        0 0 18px rgba(239,200,111,0.16);
+        inset 0 1px 0 rgba(255,255,255,0.1),
+        0 16px 30px rgba(0,0,0,0.28),
+        0 0 0 2px rgba(244,210,124,0.56),
+        0 0 24px rgba(244,210,124,0.22);
     color: #f8fafc;
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.015);
+}
+.lq-card.lq-selected:active,
+.lq-card:has(input:checked):active {
+    transform: translateY(-1px) scale(1.005);
 }
 .lq-card.lq-invalid { border-color: #ef4444; }
 .lq-choice-error {
@@ -727,23 +738,24 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     /* Hero header block */
-    .lq-header { margin-top: 6px; margin-bottom: 8px; }
+    .lq-header { margin-top: 6px; margin-bottom: 7px; }
 
     /* Step panels */
     .lq-step-panel { margin-bottom: 10px; }
-    .lq-step-panel-pad { padding: 11px; }
+    .lq-step-panel-pad { padding: 10px; }
     .lq-inner-block { padding: 14px 12px 10px; }
     .lq-step-title { font-size: 1.02rem; margin-bottom: 4px; }
     .lq-step-helper { margin-bottom: 8px; font-size: .88rem; line-height: 1.32; }
     #lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
-        font-size: 1.12rem;
-        margin-bottom: 8px;
+        font-size: 1.16rem;
+        margin-bottom: 7px;
     }
     .lq-step-progress-wrap { gap: 7px; margin-bottom: 10px; }
     .lq-step-progress { font-size: .71rem; padding: 3px 8px; }
     .lq-step-progress-track { height: 5px; }
-    .lq-card { min-height: 54px; padding: 12px 10px; font-size: .9rem; }
-    .lq-choice-grid { gap: 9px; }
+    .lq-card { min-height: 56px; padding: 12px 10px; font-size: .9rem; }
+    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 58px; }
+    .lq-choice-grid { gap: 8px; }
     .lq-step-actions { margin-top: 10px; }
     .lq-step-actions.dual { align-items: stretch; gap: 8px; }
     .lq-step-actions.dual .btn-ghost { min-height: 44px; padding: 9px 12px; }
@@ -793,24 +805,24 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     /* Hero header block */
-    .lq-header { margin-top: 2px !important; margin-bottom: 4px !important; }
+    .lq-header { margin-top: 2px !important; margin-bottom: 3px !important; }
     .lq-header h1 { font-size: 1.18rem !important; letter-spacing: .1px !important; line-height: 1.18 !important; }
     .lq-subtext { font-size: .82rem !important; margin-bottom: 4px !important; line-height: 1.3 !important; }
 
     /* Step panel */
-    .lq-step-panel-pad { padding: 8px !important; }
+    .lq-step-panel-pad { padding: 7px !important; }
     .lq-inner-block { padding: 10px 10px 8px !important; }
     .lq-step-title { font-size: 1rem !important; }
     .lq-step-helper { font-size: .84rem !important; margin-bottom: 7px !important; }
     #lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
-        font-size: 1.04rem !important;
-        margin-bottom: 7px !important;
+        font-size: 1.08rem !important;
+        margin-bottom: 6px !important;
     }
     .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     .lq-step-progress { font-size: .68rem !important; padding: 3px 7px !important; }
     .lq-step-progress-track { height: 5px !important; }
-    .lq-card { min-height: 50px !important; padding: 11px 8px !important; font-size: .86rem !important; }
-    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 52px !important; }
+    .lq-card { min-height: 54px !important; padding: 11px 9px !important; font-size: .86rem !important; }
+    .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 56px !important; }
     .lq-choice-grid { gap: 7px !important; }
     .lq-step-actions.dual { gap: 8px !important; }
     .lq-step-actions.dual .btn-ghost {
@@ -878,7 +890,7 @@ body.life-landing header .navbar .nav-link:focus {
 
     body.life-landing .lq-header {
         margin-top: 2px !important;
-        margin-bottom: 6px !important;
+        margin-bottom: 5px !important;
     }
     body.life-landing .lq-header h1 {
         font-size: clamp(1.12rem, 5.6vw, 1.35rem) !important;
@@ -901,7 +913,7 @@ body.life-landing header .navbar .nav-link:focus {
         margin-bottom: 7px !important;
         border-radius: 10px;
     }
-    body.life-landing .lq-step-panel-pad { padding: 9px !important; }
+    body.life-landing .lq-step-panel-pad { padding: 8px !important; }
     body.life-landing .lq-contact-step .lq-step-title {
         display: block !important;
         margin-bottom: 6px !important;
@@ -917,10 +929,10 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress { font-size: .69rem !important; padding: 3px 8px !important; }
     body.life-landing .lq-step-progress-track { height: 5px !important; }
-    body.life-landing .lq-choice-grid { gap: 7px !important; }
+    body.life-landing .lq-choice-grid { gap: 8px !important; }
     body.life-landing .lq-card {
-        min-height: 46px !important;
-        padding: 10px 7px !important;
+        min-height: 52px !important;
+        padding: 11px 8px !important;
         font-size: .86rem !important;
     }
     body.life-landing .lq-step-actions { margin-top: 10px !important; }
@@ -974,7 +986,7 @@ body.life-landing header .navbar .nav-link:focus {
     }
     body.life-landing .lq-trust-note {
         margin-top: 6px !important;
-        font-size: .82rem !important;
+        font-size: .78rem !important;
     }
 }
 
