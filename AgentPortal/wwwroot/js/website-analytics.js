@@ -207,7 +207,7 @@
     if (callerProfileId && String(agentId) === String(callerProfileId)) return 'Founder Personal';
     const agent = findAgentOption(agentId);
     const name = agent?.name || agent?.slug || 'Selected Agent';
-    return `Agent: ${name}`;
+    return name;
   }
 
   function isGlobalScope() {
@@ -227,7 +227,7 @@
   }
 
   function updateFounderScopeUi() {
-    setText('wa-scope-label', `Viewing: ${state.scope.scopeLabel || 'Global'}`);
+    setText('wa-scope-label', state.scope.scopeLabel || 'Global');
 
     const globalScope = isGlobalScope();
     const teamBtn = document.getElementById('team-rollup-btn');
@@ -288,12 +288,12 @@
 
     if (agentScopeOptions.length) {
       const agentGroup = document.createElement('optgroup');
-      agentGroup.label = 'Individual Agent Scopes';
+      agentGroup.label = 'Agents';
       agentScopeOptions.forEach(agent => {
         const id = String(agent?.id || '');
         const opt = document.createElement('option');
         opt.value = id;
-        opt.textContent = `Agent — ${agent?.name || agent?.slug || id}`;
+        opt.textContent = `${agent?.name || agent?.slug || id}`;
         agentGroup.appendChild(opt);
       });
       select.appendChild(agentGroup);

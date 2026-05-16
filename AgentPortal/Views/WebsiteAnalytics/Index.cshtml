@@ -3,7 +3,10 @@
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
-    var initialScopeLabel = ViewData["InitialScopeLabel"] as string ?? "Global";
+    var initialScopeLabelRaw = ViewData["InitialScopeLabel"] as string ?? "Global";
+    var initialScopeLabel = initialScopeLabelRaw.StartsWith("Agent:", StringComparison.OrdinalIgnoreCase)
+        ? initialScopeLabelRaw.Substring("Agent:".Length).Trim()
+        : initialScopeLabelRaw;
     var personalLink = ViewData["PersonalLink"] as string;
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
