@@ -229,7 +229,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost("DeleteLead")]
-    [HttpPost("/WebsiteAnalytics/DeleteLead")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> DeleteLead([FromBody] DeleteLeadRequest? request)
     {
