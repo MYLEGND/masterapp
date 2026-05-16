@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
+using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -16,6 +17,8 @@ namespace AgentPortal.Services.Analytics;
 
 public sealed class MetaAdsService : IMetaAdsService
 {
+    private readonly string? _envFilter;
+    private readonly bool _excludeLocalHosts;
     private readonly IConfiguration _config;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -29,6 +32,8 @@ public sealed class MetaAdsService : IMetaAdsService
         _httpClientFactory = httpClientFactory;
         _connectionStore = connectionStore;
         _logger = logger;
+        _envFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
+        _excludeLocalHosts = ParseBool(config["Analytics:ExcludeLocalHosts"] ?? config["Analytics__ExcludeLocalHosts"]);
     }
 
     public async Task<MetaCampaignsDto> GetCampaignsAsync(TimeRangeRequest range, ScopeContext scope, CancellationToken ct = default)
@@ -51,11 +56,17 @@ public sealed class MetaAdsService : IMetaAdsService
 
         var campaigns = await FetchCampaignDefinitionsAsync(client, version, accountId, token, ct);
         var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, accountMetadata.TimeZone, ct);
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
+        var websiteLeadCounts = await BuildWebsiteLeadCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
 
         var rows = campaigns
             .Select(c =>
             {
                 insights.TryGetValue(c.CampaignId, out var i);
+                var websiteLeads = websiteLeadCounts.TryGetValue(c.CampaignId, out var websiteLeadCount)
+                    ? websiteLeadCount
+                    : 0;
+                var metaLeads = i?.Leads ?? 0;
                 return new MetaCampaignRow
                 {
                     CampaignId = c.CampaignId,
@@ -73,7 +84,9 @@ public sealed class MetaAdsService : IMetaAdsService
                     Cpc = i?.Cpc ?? 0m,
                     Cpm = i?.Cpm ?? 0m,
                     Frequency = i?.Frequency ?? 0m,
-                    Leads = i?.Leads ?? 0
+                    Leads = metaLeads,
+                    WebsiteLeads = websiteLeads,
+                    WebsiteLeadGap = metaLeads - websiteLeads
                 };
             })
             .OrderByDescending(x => x.Spend)
@@ -87,10 +100,199 @@ public sealed class MetaAdsService : IMetaAdsService
             AccountName = accountMetadata.AccountName,
             RangeLabel = range.Label,
             TimeZoneLabel = accountMetadata.TimeZoneLabel,
-            ComparisonNote = $"Clicks prefer landing page views or link clicks when Meta provides them. Meta leads are Meta-reported platform leads; compare them separately from Website Analytics server-confirmed leads and website-attributed leads. Date range is aligned to the Meta account timezone ({accountMetadata.TimeZoneLabel}).",
+            ComparisonNote = $"Meta Leads are reported by the Meta Ads API. Website Leads are server-confirmed leads captured on your site and attributed by meta_campaign_id, utm_id, then utm_campaign fallback. These may differ because of attribution windows, browser restrictions, CAPI configuration, or reporting delay. Date range is aligned to the Meta account timezone ({accountMetadata.TimeZoneLabel}).",
             SyncedUtc = DateTime.UtcNow,
             Rows = rows
         };
+    }
+
+    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
+    {
+        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+            return null;
+
+        var selectedId = scope.AgentTrackingProfileId.Value;
+        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.Id == selectedId)
+            .Select(p => p.AgentUpn)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(upn))
+            return new[] { selectedId };
+
+        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.AgentUpn == upn)
+            .Select(p => p.Id)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (!ids.Contains(selectedId))
+            ids.Add(selectedId);
+
+        return ids.ToArray();
+    }
+
+    private async Task<Dictionary<string, long>> BuildWebsiteLeadCountsAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds,
+        IReadOnlyCollection<MetaCampaignSeed> campaigns,
+        CancellationToken ct)
+    {
+        if (campaigns.Count == 0)
+            return new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        var campaignIds = campaigns
+            .Select(c => NormalizeCampaignKey(c.CampaignId))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var campaignNameMap = campaigns
+            .Select(c => new
+            {
+                Name = NormalizeCampaignKey(c.CampaignName),
+                Id = NormalizeCampaignKey(c.CampaignId)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name) && !string.IsNullOrWhiteSpace(x.Id))
+            .GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id!, StringComparer.OrdinalIgnoreCase);
+
+        var leads = await BaseWebsiteLeads(range, scope, scopedAgentIds)
+            .Select(l => new WebsiteLeadAttributionSeed
+            {
+                UtmCampaign = l.UtmCampaign,
+                UtmId = l.UtmId,
+                MetaCampaignId = l.MetaCampaignId,
+                MetadataJson = l.MetadataJson
+            })
+            .ToListAsync(ct);
+
+        var counts = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var lead in leads)
+        {
+            var metadata = ReadLeadMetadata(lead.MetadataJson);
+            var metaCampaignId = NormalizeCampaignKey(lead.MetaCampaignId) ?? metadata.MetaCampaignId;
+            var utmId = NormalizeCampaignKey(lead.UtmId) ?? metadata.UtmId;
+            var utmCampaign = NormalizeCampaignKey(lead.UtmCampaign);
+
+            string? matchedCampaignId = null;
+
+            if (!string.IsNullOrWhiteSpace(metaCampaignId) && campaignIds.Contains(metaCampaignId))
+            {
+                matchedCampaignId = metaCampaignId;
+            }
+            else if (!string.IsNullOrWhiteSpace(utmId) && campaignIds.Contains(utmId))
+            {
+                matchedCampaignId = utmId;
+            }
+            else if (!string.IsNullOrWhiteSpace(utmCampaign) && campaignNameMap.TryGetValue(utmCampaign, out var byName))
+            {
+                matchedCampaignId = byName;
+            }
+
+            if (string.IsNullOrWhiteSpace(matchedCampaignId))
+                continue;
+
+            counts[matchedCampaignId] = counts.TryGetValue(matchedCampaignId, out var current)
+                ? current + 1
+                : 1;
+        }
+
+        return counts;
+    }
+
+    private IQueryable<WebsiteLead> BaseWebsiteLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
+        _db.WebsiteLeads.AsNoTracking()
+            .Where(l => !l.IsInternal)
+            .Where(l => !l.IsDeleted)
+            .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
+            .Where(LeadEnvironmentPredicate())
+            .Where(LeadHostPredicate())
+            .Where(LeadScopePredicate(scope, scopedAgentIds));
+
+    private System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadEnvironmentPredicate()
+    {
+        if (_envFilter == "prod")
+            return l => l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production";
+        if (_envFilter == "dev")
+            return l => l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
+
+        return l =>
+            l.Environment == null || l.Environment == "" ||
+            l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production" ||
+            l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
+    }
+
+    private System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadHostPredicate()
+    {
+        if (!_excludeLocalHosts)
+            return l => true;
+
+        return l =>
+            l.Host == null || l.Host == "" ||
+            (!l.Host.StartsWith("localhost") &&
+             !l.Host.StartsWith("127.0.0.1") &&
+             !l.Host.StartsWith("::1") &&
+             !l.Host.StartsWith("[::1]"));
+    }
+
+    private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds)
+    {
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
+        {
+            if (scopedAgentIds != null && scopedAgentIds.Length > 0)
+            {
+                return l => l.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(l.AgentTrackingProfileId.Value);
+            }
+
+            var agentId = scope.AgentTrackingProfileId.Value;
+            return l => l.AgentTrackingProfileId == agentId;
+        }
+
+        return l => true;
+    }
+
+    private static bool ParseBool(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && bool.TryParse(value, out var parsed) && parsed;
+
+    private static string? NormalizeEnv(string? env)
+    {
+        if (string.IsNullOrWhiteSpace(env)) return null;
+        var value = env.Trim().ToLowerInvariant();
+        if (value.StartsWith("prod")) return "prod";
+        if (value.StartsWith("dev")) return "dev";
+        return null;
+    }
+
+    private static string? NormalizeCampaignKey(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static WebsiteLeadMetadataSeed ReadLeadMetadata(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return new WebsiteLeadMetadataSeed();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            var root = doc.RootElement;
+
+            string? ReadString(string propertyName) =>
+                root.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.String
+                    ? NormalizeCampaignKey(value.GetString())
+                    : null;
+
+            return new WebsiteLeadMetadataSeed
+            {
+                UtmId = ReadString("UtmId"),
+                MetaCampaignId = ReadString("MetaCampaignId")
+            };
+        }
+        catch
+        {
+            return new WebsiteLeadMetadataSeed();
+        }
     }
 
     private async Task<(string Token, string AccountId)> ResolveCredentialsAsync(ScopeContext scope, CancellationToken ct)
@@ -462,6 +664,20 @@ public sealed class MetaAdsService : IMetaAdsService
         public decimal Cpm { get; set; }
         public decimal Frequency { get; set; }
         public long Leads { get; set; }
+    }
+
+    private sealed class WebsiteLeadAttributionSeed
+    {
+        public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetadataJson { get; set; }
+    }
+
+    private sealed class WebsiteLeadMetadataSeed
+    {
+        public string? UtmId { get; set; }
+        public string? MetaCampaignId { get; set; }
     }
 
     private sealed class MetaAccountMetadata

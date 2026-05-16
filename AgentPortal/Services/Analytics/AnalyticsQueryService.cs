@@ -461,9 +461,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmSource,
         string? UtmMedium,
         string? UtmCampaign,
+        string? UtmId,
         string? Fbclid,
         string? UtmTerm,
-        string? UtmContent);
+        string? UtmContent,
+        string? MetaCampaignId,
+        string? MetaAdSetId,
+        string? MetaAdId);
 
     private sealed record AttributedEventRow(
         AnalyticsEvent Event,
@@ -479,15 +483,23 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmSource),
             NormalizeAttributionToken(e.UtmMedium),
             NormalizeAttributionToken(e.UtmCampaign),
+            NormalizeAttributionToken(e.UtmId),
             NormalizeAttributionToken(e.Fbclid),
             NormalizeAttributionToken(e.UtmTerm),
-            NormalizeAttributionToken(e.UtmContent));
+            NormalizeAttributionToken(e.UtmContent),
+            NormalizeAttributionToken(e.MetaCampaignId),
+            NormalizeAttributionToken(e.MetaAdSetId),
+            NormalizeAttributionToken(e.MetaAdId));
 
     private static bool HasAttributionSignal(EventAttributionSnapshot snapshot) =>
         !string.IsNullOrWhiteSpace(snapshot.UtmSource) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmMedium) ||
         !string.IsNullOrWhiteSpace(snapshot.UtmCampaign) ||
-        !string.IsNullOrWhiteSpace(snapshot.Fbclid);
+        !string.IsNullOrWhiteSpace(snapshot.UtmId) ||
+        !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
+        !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
+        !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
+        !string.IsNullOrWhiteSpace(snapshot.MetaAdId);
 
     private static TrafficType Classify(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.Classify(snapshot.UtmSource, snapshot.UtmMedium, snapshot.UtmCampaign, snapshot.Fbclid);
@@ -596,14 +608,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     }
 
     private sealed record LeadMetadataSnapshot(
+        string? UtmId,
         string? UtmTerm,
         string? UtmContent,
+        string? MetaCampaignId,
+        string? MetaAdSetId,
+        string? MetaAdId,
         MetaLeadTrackingState? MetaTracking);
 
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
-            return new LeadMetadataSnapshot(null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null);
 
         try
         {
@@ -616,13 +632,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     : null;
 
             return new LeadMetadataSnapshot(
+                ReadString("UtmId"),
                 ReadString("UtmTerm"),
                 ReadString("UtmContent"),
+                ReadString("MetaCampaignId"),
+                ReadString("MetaAdSetId"),
+                ReadString("MetaAdId"),
                 MetaLeadTrackingJson.Read(lead.MetadataJson));
         }
         catch
         {
-            return new LeadMetadataSnapshot(null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null);
         }
     }
 
@@ -636,9 +656,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(lead.UtmSource),
             NormalizeAttributionToken(lead.UtmMedium),
             NormalizeAttributionToken(lead.UtmCampaign),
+            NormalizeAttributionToken(lead.UtmId) ?? metadata.UtmId,
             NormalizeAttributionToken(lead.Fbclid),
             metadata.UtmTerm,
-            metadata.UtmContent);
+            metadata.UtmContent,
+            NormalizeAttributionToken(lead.MetaCampaignId) ?? metadata.MetaCampaignId,
+            NormalizeAttributionToken(lead.MetaAdSetId) ?? metadata.MetaAdSetId,
+            NormalizeAttributionToken(lead.MetaAdId) ?? metadata.MetaAdId);
 
         if (HasAttributionSignal(direct))
             return (direct, "lead");
@@ -1186,6 +1210,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var metaTracking = metadata.MetaTracking;
                 var browserPixelSent = string.Equals(metaTracking?.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
+                var resolvedUtmId = resolved.Attribution.UtmId;
+                var resolvedMetaCampaignId = resolved.Attribution.MetaCampaignId;
+                var resolvedMetaAdSetId = resolved.Attribution.MetaAdSetId;
+                var resolvedMetaAdId = resolved.Attribution.MetaAdId;
+                var leadUtmId = NormalizeAttributionToken(l.UtmId) ?? metadata.UtmId;
+                var leadMetaCampaignId = NormalizeAttributionToken(l.MetaCampaignId) ?? metadata.MetaCampaignId;
+                var leadMetaAdSetId = NormalizeAttributionToken(l.MetaAdSetId) ?? metadata.MetaAdSetId;
+                var leadMetaAdId = NormalizeAttributionToken(l.MetaAdId) ?? metadata.MetaAdId;
                 return new LeadSnapshotRow
                 {
                     LeadId      = l.LeadId,
@@ -1198,13 +1230,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     UtmSource   = l.UtmSource,
                     UtmMedium   = l.UtmMedium,
                     UtmCampaign = l.UtmCampaign,
+                    UtmId       = leadUtmId,
                     Fbclid      = l.Fbclid,
+                    MetaCampaignId = leadMetaCampaignId,
+                    MetaAdSetId = leadMetaAdSetId,
+                    MetaAdId    = leadMetaAdId,
                     ResolvedSource = resolved.Attribution.UtmSource,
                     ResolvedMedium = resolved.Attribution.UtmMedium,
                     ResolvedCampaign = resolved.Attribution.UtmCampaign,
+                    ResolvedUtmId = resolvedUtmId,
                     ResolvedContent = resolved.Attribution.UtmContent,
                     ResolvedTerm = resolved.Attribution.UtmTerm,
                     ResolvedFbclidPresent = !string.IsNullOrWhiteSpace(resolved.Attribution.Fbclid),
+                    ResolvedMetaCampaignId = resolvedMetaCampaignId,
+                    ResolvedMetaAdSetId = resolvedMetaAdSetId,
+                    ResolvedMetaAdId = resolvedMetaAdId,
                     SourcePage  = l.SourcePageKey,
                     LandingPage = l.SourcePageKey,
                     TrafficType = classified,

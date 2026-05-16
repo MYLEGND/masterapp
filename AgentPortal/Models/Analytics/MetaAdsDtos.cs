@@ -22,6 +22,8 @@ public sealed class MetaCampaignRow
     public decimal Cpm { get; set; }
     public decimal Frequency { get; set; }
     public long Leads { get; set; }
+    public long WebsiteLeads { get; set; }
+    public long WebsiteLeadGap { get; set; }
 }
 
 public sealed class MetaCampaignsDto

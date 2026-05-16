@@ -938,13 +938,30 @@
           <td>${escapeHtml(lead.phone || '—')}</td>
           <td>${escapeHtml(lead.interest || '—')}</td>
           <td>${escapeHtml(lead.leadSource || '—')}</td>
-          <td>${escapeHtml(lead.resolvedSource || '—')}</td>
+          <td>${escapeHtml(lead.resolvedSource || '—')}${leadAttributionIdSummary(lead)}</td>
           <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span></td>
           <td class="text-center">${metaTrackingBadge(lead.metaTracking)}</td>
         </tr>
       `;
     }).join('');
     setText('leads-range-label', data.rangeLabel || '');
+  }
+
+  function leadAttributionIdSummary(lead) {
+    if (!lead) return '';
+    const parts = [];
+    const utmId = lead.resolvedUtmId || lead.utmId;
+    const metaCampaignId = lead.resolvedMetaCampaignId || lead.metaCampaignId;
+    const metaAdSetId = lead.resolvedMetaAdSetId || lead.metaAdSetId;
+    const metaAdId = lead.resolvedMetaAdId || lead.metaAdId;
+
+    if (utmId) parts.push(`utm_id ${escapeHtml(utmId)}`);
+    if (metaCampaignId) parts.push(`campaign ${escapeHtml(metaCampaignId)}`);
+    if (metaAdSetId) parts.push(`adset ${escapeHtml(metaAdSetId)}`);
+    if (metaAdId) parts.push(`ad ${escapeHtml(metaAdId)}`);
+
+    if (!parts.length) return '';
+    return `<div class="text-muted small">${parts.join(' · ')}</div>`;
   }
 
   function metaTrackingBadge(metaTracking) {
@@ -1629,6 +1646,13 @@
     return 'meta-good';
   }
 
+  function metaLeadGapClass(v) {
+    const n = Math.abs(toNumber(v));
+    if (n === 0) return 'meta-good';
+    if (n <= 2) return 'meta-warn';
+    return 'meta-bad';
+  }
+
   function metaSpendClass(row) {
     const spend = toNumber(row?.spend);
     const leads = toNumber(row?.leads);
@@ -1674,7 +1698,7 @@
     const note = document.getElementById('meta-campaigns-note');
     if (note) {
       note.textContent = data.comparisonNote
-        || 'Meta leads are Meta-reported platform leads. Website Analytics tracks server-confirmed leads and separately attributed website leads, so those numbers can differ.';
+        || 'Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay.';
     }
 
     renderTable('meta-campaigns-body', data.rows || [], [
@@ -1690,7 +1714,9 @@
       { render: r => pill(formatPct(r.ctr), metaCtrClass(r.ctr)), align: 'text-end' },
       { render: r => pill(formatMoney(r.cpc), metaCpcClass(r.cpc)), align: 'text-end' },
       { render: r => pill(formatMoney(r.cpm), metaCpmClass(r.cpm)), align: 'text-end' },
-      { render: r => pill(formatInt(r.leads), metaLeadsClass(r.leads)), align: 'text-end' }
+      { render: r => pill(formatInt(r.leads), metaLeadsClass(r.leads)), align: 'text-end' },
+      { render: r => pill(formatInt(r.websiteLeads), metaLeadsClass(r.websiteLeads)), align: 'text-end' },
+      { render: r => pill(formatInt(r.websiteLeadGap), metaLeadGapClass(r.websiteLeadGap)), align: 'text-end' }
     ]);
   }
 
@@ -1719,7 +1745,7 @@
       const body = document.getElementById('meta-campaigns-body');
       const message = (err && err.message) ? err.message : 'Unable to load Meta campaigns.';
       if (body) {
-        body.innerHTML = `<tr><td colspan="11" class="text-danger">${message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="13" class="text-danger">${message}</td></tr>`;
       }
       console.error(err);
     }
@@ -1776,7 +1802,7 @@
       await fetchPostJson('meta-disconnect', endpoints.metaDisconnect);
       await loadMetaConnectionStatus();
       const body = document.getElementById('meta-campaigns-body');
-      if (body) body.innerHTML = '<tr><td colspan="11" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="13" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
     } catch (err) {
       const statusEl = document.getElementById('meta-connection-status');
       if (statusEl) {
@@ -2175,11 +2201,22 @@
           { header: 'Phone', selector: 'phone' },
           { header: 'Interest', selector: 'interest' },
           { header: 'LeadSource', selector: r => r.leadSource || '' },
+          { header: 'UtmSource', selector: r => r.utmSource || '' },
+          { header: 'UtmMedium', selector: r => r.utmMedium || '' },
+          { header: 'UtmCampaign', selector: r => r.utmCampaign || '' },
+          { header: 'UtmId', selector: r => r.utmId || '' },
+          { header: 'MetaCampaignId', selector: r => r.metaCampaignId || '' },
+          { header: 'MetaAdSetId', selector: r => r.metaAdSetId || '' },
+          { header: 'MetaAdId', selector: r => r.metaAdId || '' },
           { header: 'ResolvedSource', selector: r => r.resolvedSource || '' },
           { header: 'ResolvedMedium', selector: r => r.resolvedMedium || '' },
           { header: 'ResolvedCampaign', selector: r => r.resolvedCampaign || '' },
+          { header: 'ResolvedUtmId', selector: r => r.resolvedUtmId || '' },
           { header: 'ResolvedContent', selector: r => r.resolvedContent || '' },
           { header: 'ResolvedTerm', selector: r => r.resolvedTerm || '' },
+          { header: 'ResolvedMetaCampaignId', selector: r => r.resolvedMetaCampaignId || '' },
+          { header: 'ResolvedMetaAdSetId', selector: r => r.resolvedMetaAdSetId || '' },
+          { header: 'ResolvedMetaAdId', selector: r => r.resolvedMetaAdId || '' },
           { header: 'ResolvedFbclidPresent', selector: r => !!r.resolvedFbclidPresent },
           { header: 'AttributionResolution', selector: r => r.attribution?.resolutionSource || 'unknown' },
           { header: 'MetaEventId', selector: r => r.metaTracking?.eventId || '' },

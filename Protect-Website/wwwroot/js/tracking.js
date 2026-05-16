@@ -90,6 +90,7 @@
       utmSource: sanitizeAttributionValue(raw?.utmSource),
       utmMedium: sanitizeAttributionValue(raw?.utmMedium),
       utmCampaign: sanitizeAttributionValue(raw?.utmCampaign),
+      utmId: sanitizeAttributionValue(raw?.utmId),
       utmTerm: sanitizeAttributionValue(raw?.utmTerm),
       utmContent: sanitizeAttributionValue(raw?.utmContent),
       fbclid: sanitizeAttributionValue(raw?.fbclid),
@@ -105,6 +106,7 @@
       attribution.utmSource ||
       attribution.utmMedium ||
       attribution.utmCampaign ||
+      attribution.utmId ||
       attribution.utmTerm ||
       attribution.utmContent ||
       attribution.fbclid ||
@@ -155,6 +157,7 @@
       utmSource: params.get('utm_source'),
       utmMedium: params.get('utm_medium'),
       utmCampaign: params.get('utm_campaign'),
+      utmId: params.get('utm_id'),
       utmTerm: params.get('utm_term'),
       utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid'),
@@ -172,6 +175,7 @@
       utmSource: payload.UtmSource,
       utmMedium: payload.UtmMedium,
       utmCampaign: payload.UtmCampaign,
+      utmId: payload.UtmId,
       utmTerm: payload.UtmTerm,
       utmContent: payload.UtmContent,
       fbclid: payload.Fbclid,
@@ -185,6 +189,7 @@
       utmSource: payloadAttribution.utmSource || queryAttribution.utmSource || sessionAttribution?.utmSource,
       utmMedium: payloadAttribution.utmMedium || queryAttribution.utmMedium || sessionAttribution?.utmMedium,
       utmCampaign: payloadAttribution.utmCampaign || queryAttribution.utmCampaign || sessionAttribution?.utmCampaign,
+      utmId: payloadAttribution.utmId || queryAttribution.utmId || sessionAttribution?.utmId,
       utmTerm: payloadAttribution.utmTerm || queryAttribution.utmTerm || sessionAttribution?.utmTerm,
       utmContent: payloadAttribution.utmContent || queryAttribution.utmContent || sessionAttribution?.utmContent,
       fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid,
@@ -207,6 +212,7 @@
       utmSource: firstTouchAttribution?.utmSource,
       utmMedium: firstTouchAttribution?.utmMedium,
       utmCampaign: firstTouchAttribution?.utmCampaign,
+      utmId: firstTouchAttribution?.utmId,
       utmTerm: firstTouchAttribution?.utmTerm,
       utmContent: firstTouchAttribution?.utmContent,
       fbclid: firstTouchAttribution?.fbclid,
@@ -248,6 +254,7 @@
       UtmSource: attribution.utmSource || null,
       UtmMedium: attribution.utmMedium || null,
       UtmCampaign: attribution.utmCampaign || null,
+      UtmId: attribution.utmId || null,
       UtmTerm: attribution.utmTerm || null,
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
@@ -440,7 +447,8 @@
   // Hidden / attribution fields we must never track
   const SKIP_NAMES = new Set([
     'sessionid','visitorid','utmsource','utmmedium','utmcampaign','utmterm',
-    'utmcontent','fbclid','referrerurl','landingpageurl','offerkey','producttype',
+    'utmid','utmcontent','fbclid','metacampaignid','metaadsetid','metaadid',
+    'referrerurl','landingpageurl','offerkey','producttype',
     'pagekeyvalue','protectfocus','answer1','answer2','answer3','answer4',
     'agerange','agentslug','requestverificationtoken','pagekeyfield',
   ]);
@@ -731,6 +739,7 @@
       utmSource: attribution.utmSource || null,
       utmMedium: attribution.utmMedium || null,
       utmCampaign: attribution.utmCampaign || null,
+      utmId: attribution.utmId || null,
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,
@@ -746,6 +755,7 @@
       utmSource: attribution.utmSource || null,
       utmMedium: attribution.utmMedium || null,
       utmCampaign: attribution.utmCampaign || null,
+      utmId: attribution.utmId || null,
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
       fbclid: attribution.fbclid || null,

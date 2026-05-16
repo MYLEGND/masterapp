@@ -56,6 +56,12 @@ public class LeadSubmitController : ControllerBase
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetaAdSetId { get; set; }
+        public string? MetaAdId { get; set; }
         public string? Fbclid { get; set; }
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }
@@ -151,6 +157,10 @@ public class LeadSubmitController : ControllerBase
             UtmSource = string.IsNullOrWhiteSpace(req.UtmSource) ? null : req.UtmSource.Trim(),
             UtmMedium = string.IsNullOrWhiteSpace(req.UtmMedium) ? null : req.UtmMedium.Trim(),
             UtmCampaign = string.IsNullOrWhiteSpace(req.UtmCampaign) ? null : req.UtmCampaign.Trim(),
+            UtmId = string.IsNullOrWhiteSpace(req.UtmId) ? null : req.UtmId.Trim(),
+            MetaCampaignId = string.IsNullOrWhiteSpace(req.MetaCampaignId) ? null : req.MetaCampaignId.Trim(),
+            MetaAdSetId = string.IsNullOrWhiteSpace(req.MetaAdSetId) ? null : req.MetaAdSetId.Trim(),
+            MetaAdId = string.IsNullOrWhiteSpace(req.MetaAdId) ? null : req.MetaAdId.Trim(),
             Fbclid = string.IsNullOrWhiteSpace(req.Fbclid) ? null : req.Fbclid.Trim(),
             SessionId = string.IsNullOrWhiteSpace(req.SessionId) ? null : req.SessionId.Trim(),
             VisitorId = string.IsNullOrWhiteSpace(req.VisitorId) ? null : req.VisitorId.Trim(),
@@ -188,7 +198,11 @@ public class LeadSubmitController : ControllerBase
                 UtmSource  = lead.UtmSource,
                 UtmMedium  = lead.UtmMedium,
                 UtmCampaign= lead.UtmCampaign,
+                UtmId      = lead.UtmId,
                 Fbclid     = lead.Fbclid,
+                MetaCampaignId = lead.MetaCampaignId,
+                MetaAdSetId = lead.MetaAdSetId,
+                MetaAdId = lead.MetaAdId,
                 AgentTrackingProfileId = lead.AgentTrackingProfileId,
                 AgentSlug  = lead.AgentSlug,
                 Environment= lead.Environment,

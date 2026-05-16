@@ -18,6 +18,10 @@ public class WebsiteLead
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaAdSetId { get; set; }
+    public string? MetaAdId { get; set; }
     public string? SessionId { get; set; }
     public string? VisitorId { get; set; }
     public bool MarketingEmailConsent { get; set; }

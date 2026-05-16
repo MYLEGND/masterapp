@@ -22,6 +22,7 @@ public class AnalyticsEvent
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
     public bool IsInternal { get; set; }
     public string? Environment { get; set; }
     public string? Host { get; set; }

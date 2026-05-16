@@ -128,13 +128,21 @@ public sealed class LeadSnapshotRow
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
     public string? Fbclid { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaAdSetId { get; set; }
+    public string? MetaAdId { get; set; }
     public string? ResolvedSource { get; set; }
     public string? ResolvedMedium { get; set; }
     public string? ResolvedCampaign { get; set; }
+    public string? ResolvedUtmId { get; set; }
     public string? ResolvedContent { get; set; }
     public string? ResolvedTerm { get; set; }
     public bool ResolvedFbclidPresent { get; set; }
+    public string? ResolvedMetaCampaignId { get; set; }
+    public string? ResolvedMetaAdSetId { get; set; }
+    public string? ResolvedMetaAdId { get; set; }
     public string? LandingPage { get; set; }
     public string? SourcePage { get; set; }
     /// <summary>Server-classified attribution — consumed by trafficBadge() in the frontend.</summary>

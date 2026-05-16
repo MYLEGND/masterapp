@@ -473,8 +473,12 @@ body { background-color: #0f172a; color: #f8fafc; }
     <input type="hidden" name="UtmSource" />
     <input type="hidden" name="UtmMedium" />
     <input type="hidden" name="UtmCampaign" />
+    <input type="hidden" name="UtmId" />
     <input type="hidden" name="UtmTerm" />
     <input type="hidden" name="UtmContent" />
+    <input type="hidden" name="MetaCampaignId" />
+    <input type="hidden" name="MetaAdSetId" />
+    <input type="hidden" name="MetaAdId" />
     <input type="hidden" name="Fbclid" />
     <input type="hidden" name="ReferrerUrl" />
     <input type="hidden" name="LandingPageUrl" />
@@ -491,8 +495,12 @@ body { background-color: #0f172a; color: #f8fafc; }
     sh('UtmSource',    attr.utmSource || p.get('utm_source') || '');
     sh('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
     sh('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
+    sh('UtmId',        attr.utmId || p.get('utm_id') || '');
     sh('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
     sh('UtmContent',   attr.utmContent || p.get('utm_content') || '');
+    sh('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
+    sh('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
+    sh('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
     sh('Fbclid',       attr.fbclid || p.get('fbclid') || '');
     sh('ReferrerUrl',  document.referrer || '');
     sh('LandingPageUrl', window.location.href || '');

@@ -1004,10 +1004,10 @@
             <div class="fa-muted">Last sync: <span id="meta-campaigns-synced">—</span></div>
         </div>
         <div class="alert alert-warning small py-2 px-3 mb-3" id="meta-campaigns-note">
-            Meta leads are Meta-reported platform leads. Website Analytics tracks server-confirmed leads and separately attributed website leads; those numbers can differ because of attribution windows, on-platform forms, and campaign URL tagging. Campaign date ranges are aligned to the Meta account timezone when available.
+            Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay. Campaign date ranges are aligned to the Meta account timezone when available.
         </div>
         <div class="fa-muted small mb-3" id="meta-campaigns-utm-note">
-            Recommended Meta URL parameters: <code>utm_campaign={{campaign.name}}</code> <code>utm_content={{ad.name}}</code> <code>utm_term={{adset.name}}</code> <code>meta_campaign_id={{campaign.id}}</code> <code>meta_adset_id={{adset.id}}</code> <code>meta_ad_id={{ad.id}}</code>
+            Recommended Meta URL parameters: <code>utm_id={{campaign.id}}</code> <code>utm_campaign={{campaign.name}}</code> <code>utm_content={{ad.name}}</code> <code>utm_term={{adset.id}}</code> <code>meta_campaign_id={{campaign.id}}</code> <code>meta_adset_id={{adset.id}}</code> <code>meta_ad_id={{ad.id}}</code>
         </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle meta-campaigns-table">
@@ -1023,11 +1023,13 @@
                         <th class="text-end">CTR</th>
                         <th class="text-end">CPC</th>
                         <th class="text-end">CPM</th>
-                        <th class="text-end">Leads</th>
+                        <th class="text-end">Meta Leads</th>
+                        <th class="text-end">Website Leads</th>
+                        <th class="text-end">Website Lead Gap</th>
                     </tr>
                 </thead>
                 <tbody id="meta-campaigns-body">
-                    <tr><td colspan="11" class="fa-loading">Loading campaigns…</td></tr>
+                    <tr><td colspan="13" class="fa-loading">Loading campaigns…</td></tr>
                 </tbody>
             </table>
         </div>

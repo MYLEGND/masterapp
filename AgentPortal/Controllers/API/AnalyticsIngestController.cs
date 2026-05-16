@@ -127,6 +127,7 @@ public class AnalyticsIngestController : ControllerBase
         public string? UtmSource { get; set; }
         public string? UtmMedium { get; set; }
         public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
         public string? Fbclid { get; set; }
         public Guid? AgentTrackingProfileId { get; set; }
         public string? AgentSlug { get; set; }
@@ -228,6 +229,7 @@ public class AnalyticsIngestController : ControllerBase
             UtmSource = TrimOrNull(req.UtmSource),
             UtmMedium = TrimOrNull(req.UtmMedium),
             UtmCampaign = TrimOrNull(req.UtmCampaign),
+            UtmId = TrimOrNull(req.UtmId),
             Fbclid = TrimOrNull(req.Fbclid),
             Environment = ResolveEnvironment(req.Environment),
             Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
