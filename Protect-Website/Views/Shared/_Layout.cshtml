@@ -23,7 +23,8 @@
         ?? (Env.IsDevelopment() ? "https://localhost:5221" : "https://client.mylegnd.com"))
         .TrimEnd('/');
     var clientLoginUrl = $"{clientPortalBaseUrl}/Account/AzureLogin";
-    var metaPixelId = (Config["Meta:PixelId"] ?? string.Empty).Trim();
+    var metaPixelId = (ViewData["ResolvedMetaPixelId"]?.ToString() ?? string.Empty).Trim();
+    var metaPixelOwnerType = (ViewData["MetaPixelOwnerType"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
 }
 <!DOCTYPE html>
@@ -45,6 +46,8 @@
         window.IS_LANDING_PAGE = @isLandingPage.ToString().ToLowerInvariant();
         window.PAGE_VARIANT = "@pageVariant";
         window.PAGE_MODE = "@pageMode";
+        window.RESOLVED_META_PIXEL_ID = "@metaPixelId";
+        window.RESOLVED_META_PIXEL_OWNER_TYPE = "@metaPixelOwnerType";
     </script>
 
     <style>

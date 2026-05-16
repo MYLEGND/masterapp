@@ -28,5 +28,12 @@ namespace AgentPortal.Models
         [Display(Name = "NPN")]
         [MaxLength(30)]
         public string? Npn { get; set; }
+
+        [Display(Name = "Meta Pixel ID")]
+        [MaxLength(64)]
+        [RegularExpression(@"^\s*\d+\s*$", ErrorMessage = "Enter only the numeric Meta Pixel ID.")]
+        public string? MetaPixelId { get; set; }
+
+        public bool HasSecureMetaCapiAccessToken { get; set; }
     }
 }

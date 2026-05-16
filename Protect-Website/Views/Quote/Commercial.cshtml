@@ -3,6 +3,9 @@
 @{
     ViewData["Title"] = "Commercial Insurance Quote";
     ViewData["PageKey"] = "quote_commercial";
+    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
 
     var states = new[]{
         "AZ","CA","IA","KS","LA","MD","MS","OH","SC","SD","TX","WA"
@@ -278,6 +281,10 @@
 
 
         @Html.AntiForgeryToken()
+        @if (!string.IsNullOrWhiteSpace(agentSlug))
+        {
+            <input type="hidden" name="AgentSlug" value="@agentSlug" />
+        }
 
         <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
 

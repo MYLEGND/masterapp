@@ -17,6 +17,9 @@ public class AgentProfile
     public string? Npn { get; set; }
     public string? Phone { get; set; }
     public string? ShortBio { get; set; }
+    public string? MetaPixelId { get; set; }
+    public string? MetaCapiAccessToken { get; set; }
+    public string? MetaTestEventCode { get; set; }
 
     public int? DisplayOrder { get; set; }
 

@@ -1259,7 +1259,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         ? null
                         : new MetaLeadTrackingDto
                         {
-                            EventId = metaTracking.EventId,
+                            MetaLeadEventId = metaTracking.EventId,
+                            ResolvedMetaPixelId = metaTracking.ResolvedMetaPixelId,
+                            PixelOwnerType = metaTracking.PixelOwnerType,
                             BrowserPixelStatus = metaTracking.BrowserPixelStatus,
                             ServerCapiStatus = metaTracking.ServerCapiStatus,
                             BrowserPixelSent = browserPixelSent,

@@ -162,7 +162,9 @@ public sealed class LeadSnapshotDto
 
 public sealed class MetaLeadTrackingDto
 {
-    public string? EventId { get; set; }
+    public string? MetaLeadEventId { get; set; }
+    public string? ResolvedMetaPixelId { get; set; }
+    public string? PixelOwnerType { get; set; }
     public string? BrowserPixelStatus { get; set; }
     public string? ServerCapiStatus { get; set; }
     public bool BrowserPixelSent { get; set; }

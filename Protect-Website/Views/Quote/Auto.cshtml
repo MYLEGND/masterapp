@@ -3,6 +3,9 @@
 @{
     ViewData["Title"] = "Auto Insurance Quote";
     ViewData["PageKey"] = "quote_auto";
+    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
 
     Model.Drivers ??= new List<Protect_Website.Models.Driver>();
     if (Model.Drivers.Count == 0) Model.Drivers.Add(new Protect_Website.Models.Driver());
@@ -201,6 +204,10 @@
 
 <form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="quote_auto_form">
     @Html.AntiForgeryToken()
+    @if (!string.IsNullOrWhiteSpace(agentSlug))
+    {
+        <input type="hidden" name="AgentSlug" value="@agentSlug" />
+    }
 
     <!-- ===================== SECTION 1 ===================== -->
     <div class="section-card wizard-step active" data-step="1">

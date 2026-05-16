@@ -25,10 +25,11 @@ namespace Protect_Website.Controllers
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
         private readonly IMetaConversionsApiService _metaConversionsApi;
+        private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly ILogger<HealthQuoteController> _logger;
 
         public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, ILogger<HealthQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, ILogger<HealthQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -39,6 +40,7 @@ namespace Protect_Website.Controllers
             _resolver = resolver;
             _db = db;
             _metaConversionsApi = metaConversionsApi;
+            _metaPixelResolution = metaPixelResolution;
             _logger = logger;
         }
 
@@ -59,10 +61,15 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         "HealthQuote [{CorrelationId}]: request received Email={Email}",
         correlationId, model.Email);
 
-    var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
+    var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
     _logger.LogInformation(
         "HealthQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
         correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+    var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
+        agentProfileId,
+        agentSlug,
+        isFounderPath,
+        HttpContext?.RequestAborted ?? CancellationToken.None);
 
     // ── 1. Persist lead FIRST ──────────────────────────────────────────────────
     WebsiteLead lead;
@@ -140,6 +147,8 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         state =>
         {
             state.EventId = metaLeadEventId;
+            state.ResolvedMetaPixelId = resolvedMetaPixel.PixelId;
+            state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
             state.BrowserPixelStatus = "pending";
             state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
             state.BrowserPixelNote = null;
@@ -166,7 +175,11 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
             Email = lead.Email,
             Phone = lead.Phone,
             AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
-            EventUtc = lead.CreatedUtc
+            EventUtc = lead.CreatedUtc,
+            PixelId = resolvedMetaPixel.PixelId,
+            AccessToken = resolvedMetaPixel.AccessToken,
+            TestEventCode = resolvedMetaPixel.TestEventCode,
+            PixelOwnerType = resolvedMetaPixel.PixelOwnerType
         },
         HttpContext?.RequestAborted ?? CancellationToken.None);
 
@@ -180,6 +193,8 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         state =>
         {
             state.EventId ??= metaLeadEventId;
+            state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
+            state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
             state.ServerCapiStatus = metaCapiResult.Status;
             state.ServerCapiUpdatedUtc = DateTime.UtcNow;
             state.ServerCapiNote = metaCapiResult.Note;
@@ -330,35 +345,27 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     return RedirectToAction("Index", "ThankYou");
 }
 
-        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
-            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile &&
-                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
-            {
-                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug);
-            }
-
-            string? slug = null;
-
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug))
-                slug = formSlug.Trim();
-
-            if (string.IsNullOrWhiteSpace(slug))
-                slug = ExtractSlugFromPath(Request?.Path.Value);
-
-            if (string.IsNullOrWhiteSpace(slug))
-                slug = ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+            var slug = ResolveExplicitAgentSlugFromRequest();
 
             if (!string.IsNullOrWhiteSpace(slug))
             {
                 var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
                 if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
-                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug);
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
             }
 
-            return (recipientEmail, null, null);
+            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
+            if (!isFounderPath &&
+                HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile &&
+                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            {
+                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug, false);
+            }
+
+            return (recipientEmail, null, null, isFounderPath);
         }
 
         private static string? ExtractSlugFromPath(string? pathOrUrl)
@@ -378,6 +385,16 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
             }
 
             return null;
+        }
+
+        private string? ResolveExplicitAgentSlugFromRequest()
+        {
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug))
+                return formSlug.Trim();
+
+            return ExtractSlugFromPath(Request?.Path.Value)
+                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
         }
     }
 }

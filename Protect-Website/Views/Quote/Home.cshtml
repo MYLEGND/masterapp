@@ -4,6 +4,9 @@
 @{
     ViewData["Title"] = "Home Insurance Quote";
     ViewData["PageKey"] = "quote_home";
+    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
 }
 
 <div class="container-narrow">
@@ -182,6 +185,10 @@
 
 <form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="container" id="homeQuoteForm" novalidate data-form-key="quote_home_form">
     @Html.AntiForgeryToken()
+    @if (!string.IsNullOrWhiteSpace(agentSlug))
+    {
+        <input type="hidden" name="AgentSlug" value="@agentSlug" />
+    }
 
     <!-- ===================== SECTION 1: APPLICANT INFO ===================== -->
     <div class="section-card wizard-step active" data-step="1">

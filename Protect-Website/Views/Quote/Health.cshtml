@@ -3,6 +3,9 @@
 @{
     ViewData["Title"] = "Explore Your Health Insurance Options";
     ViewData["PageKey"] = "quote_health";
+    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
 }
 
 <div class="container-narrow">
@@ -206,6 +209,10 @@
 }
 
 <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form">
+    @if (!string.IsNullOrWhiteSpace(agentSlug))
+    {
+        <input type="hidden" name="AgentSlug" value="@agentSlug" />
+    }
 
     <!-- ===================== SINGLE CONTACT CARD (VISUAL RE-ORG ONLY) ===================== -->
     <div class="section-card lead-card">

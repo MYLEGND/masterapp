@@ -126,7 +126,9 @@ public class AccountController : Controller
             Title = profile.Title,
             Phone = profile.Phone,
             ShortBio = profile.ShortBio,
-            Npn = profile.Npn
+            Npn = profile.Npn,
+            MetaPixelId = profile.MetaPixelId,
+            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
         };
 
         return View(vm);
@@ -143,10 +145,14 @@ public class AccountController : Controller
         if (string.IsNullOrWhiteSpace(userId))
             return Challenge();
 
+        vm.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
+        var existingProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
+        vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
+
         if (!ModelState.IsValid)
             return View(vm);
 
-        var profile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
+        var profile = existingProfile;
         if (profile == null)
         {
             profile = new Domain.Entities.AgentProfile
@@ -163,6 +169,7 @@ public class AccountController : Controller
         profile.Npn = vm.Npn?.Trim();
         profile.Phone = vm.Phone?.Trim();
         profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
+        profile.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
         // Email (UPN) remains authoritative from directory; do not allow editing here.
         profile.UpdatedUtc = DateTime.UtcNow;
 

@@ -36,6 +36,10 @@ public sealed class MetaLeadConversionRequest
     public string? Phone { get; init; }
     public bool AllowHashedContactData { get; init; }
     public DateTime EventUtc { get; init; }
+    public string? PixelId { get; init; }
+    public string? AccessToken { get; init; }
+    public string? TestEventCode { get; init; }
+    public string? PixelOwnerType { get; init; }
 }
 
 public sealed class MetaConversionsApiResult
@@ -44,6 +48,8 @@ public sealed class MetaConversionsApiResult
     public bool Sent { get; init; }
     public string Status { get; init; } = "unknown";
     public string? Note { get; init; }
+    public string? PixelId { get; init; }
+    public string? PixelOwnerType { get; init; }
 }
 
 public sealed class MetaConversionsApiService : IMetaConversionsApiService
@@ -71,22 +77,31 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     public async Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default)
     {
-        var pixelId = _options.Value.PixelId?.Trim();
-        var accessToken = _options.Value.AccessToken?.Trim();
-        var testEventCode = _options.Value.TestEventCode?.Trim();
+        var pixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId);
+        var accessToken = Normalize(request.AccessToken) ?? Normalize(_options.Value.AccessToken);
+        var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
+        var pixelOwnerType = Normalize(request.PixelOwnerType);
 
         if (string.IsNullOrWhiteSpace(pixelId) || string.IsNullOrWhiteSpace(accessToken))
         {
+            var isAgentTokenMissing =
+                !string.IsNullOrWhiteSpace(pixelId) &&
+                string.Equals(pixelOwnerType, MetaPixelOwnerTypes.Agent, StringComparison.OrdinalIgnoreCase);
+            var status = isAgentTokenMissing ? "skipped_agent_token_missing" : "skipped_not_configured";
+            var skipNote = isAgentTokenMissing ? "agent_token_missing" : "meta_config_missing";
+
             _logger.LogInformation(
                 "MetaCapi [{CorrelationId}]: skipped lead {LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-                request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, "skipped_not_configured");
+                request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, status);
 
             return new MetaConversionsApiResult
             {
                 Attempted = false,
                 Sent = false,
-                Status = "skipped_not_configured",
-                Note = "meta_config_missing"
+                Status = status,
+                Note = skipNote,
+                PixelId = pixelId,
+                PixelOwnerType = pixelOwnerType
             };
         }
 
@@ -132,7 +147,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 {
                     Attempted = true,
                     Sent = true,
-                    Status = "sent"
+                    Status = "sent",
+                    PixelId = pixelId,
+                    PixelOwnerType = pixelOwnerType
                 };
             }
 
@@ -146,7 +163,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 Attempted = true,
                 Sent = false,
                 Status = "failed",
-                Note = safeNote
+                Note = safeNote,
+                PixelId = pixelId,
+                PixelOwnerType = pixelOwnerType
             };
         }
         catch (Exception ex)
@@ -161,7 +180,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 Attempted = true,
                 Sent = false,
                 Status = "failed",
-                Note = "exception"
+                Note = "exception",
+                PixelId = pixelId,
+                PixelOwnerType = pixelOwnerType
             };
         }
     }
@@ -279,5 +300,10 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         {
             return string.IsNullOrWhiteSpace(reasonPhrase) ? "http_error" : $"http_error:{reasonPhrase.Trim()}";
         }
+    }
+
+    private static string? Normalize(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 }

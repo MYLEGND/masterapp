@@ -68,6 +68,9 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.Property(x => x.AgentUpn).HasMaxLength(450);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
             e.Property(x => x.ShortBio).HasMaxLength(280);
+            e.Property(x => x.MetaPixelId).HasMaxLength(64);
+            e.Property(x => x.MetaCapiAccessToken).HasColumnName("MetaAccessToken").HasMaxLength(2048);
+            e.Property(x => x.MetaTestEventCode).HasMaxLength(128);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");

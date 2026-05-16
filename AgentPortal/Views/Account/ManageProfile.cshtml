@@ -206,6 +206,8 @@
                 <div><strong>Phone:</strong> @(string.IsNullOrWhiteSpace(Model.Phone) ? "Not set" : Model.Phone)</div>
                 <div><strong>Short bio:</strong> @(string.IsNullOrWhiteSpace(Model.ShortBio) ? "Not set" : Model.ShortBio)</div>
                 <div><strong>NPN:</strong> @(string.IsNullOrWhiteSpace(Model.Npn) ? "Not set" : Model.Npn)</div>
+                <div><strong>Meta Pixel ID:</strong> @(string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "Not set" : Model.MetaPixelId)</div>
+                <div><strong>Agent Meta CAPI:</strong> @(Model.HasSecureMetaCapiAccessToken ? "Securely configured" : "Not configured")</div>
                 <div class="legend-help mb-0">These values power your public quote handoff card and profile surfaces.</div>
             </div>
 
@@ -242,6 +244,17 @@
                         <label asp-for="Npn" class="legend-label"></label>
                         <input asp-for="Npn" class="legend-input" autocomplete="off" placeholder="National Producer Number" />
                         <span asp-validation-for="Npn" class="text-danger"></span>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <div class="legend-label" style="margin-bottom:0;">Marketing Settings</div>
+                        <p class="legend-help">Manage the tracking defaults used on your public quote links.</p>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <label asp-for="MetaPixelId" class="legend-label"></label>
+                        <input asp-for="MetaPixelId" class="legend-input" autocomplete="off" inputmode="numeric" placeholder="Meta browser pixel / dataset ID" />
+                        <p class="legend-help">Optional. If set, your personal/agency Meta Pixel will be used on your agent quote links. If blank, Legend’s default tracking pixel will be used.</p>
+                        <p class="legend-help">Agent-specific server-side Meta CAPI tokens are configured separately and are not editable here.</p>
+                        <span asp-validation-for="MetaPixelId" class="text-danger"></span>
                     </div>
                 </div>
 

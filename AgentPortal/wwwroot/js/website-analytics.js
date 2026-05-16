@@ -969,7 +969,9 @@
       return '<span class="text-muted">—</span>';
     }
 
-    const shortEventId = metaTracking.eventId ? escapeHtml(String(metaTracking.eventId).slice(0, 8)) : '—';
+    const shortEventId = metaTracking.metaLeadEventId ? escapeHtml(String(metaTracking.metaLeadEventId).slice(0, 8)) : '—';
+    const shortPixelId = metaTracking.resolvedMetaPixelId ? escapeHtml(String(metaTracking.resolvedMetaPixelId).slice(-6)) : '—';
+    const pixelOwnerType = escapeHtml(metaTracking.pixelOwnerType || 'none');
     let badgeClass = 'bg-secondary';
     let label = 'Pending';
 
@@ -982,7 +984,7 @@
     } else if (metaTracking.serverCapiSent) {
       badgeClass = 'bg-info text-dark';
       label = 'Server Only';
-    } else if (metaTracking.serverCapiStatus === 'skipped_not_configured') {
+    } else if (metaTracking.serverCapiStatus === 'skipped_not_configured' || metaTracking.serverCapiStatus === 'skipped_agent_token_missing') {
       badgeClass = 'bg-secondary';
       label = 'Server Skipped';
     } else if (metaTracking.serverCapiStatus === 'failed') {
@@ -998,7 +1000,7 @@
 
     const browserStatus = escapeHtml(metaTracking.browserPixelStatus || 'unknown');
     const serverStatus = escapeHtml(metaTracking.serverCapiStatus || 'unknown');
-    return `<span class="badge ${badgeClass}">${label}</span><div class="text-muted small">eid ${shortEventId}</div><div class="text-muted small">b:${browserStatus} / s:${serverStatus}</div>`;
+    return `<span class="badge ${badgeClass}">${label}</span><div class="text-muted small">eid ${shortEventId}</div><div class="text-muted small">pixel ${shortPixelId} · ${pixelOwnerType}</div><div class="text-muted small">b:${browserStatus} / s:${serverStatus}</div>`;
   }
   // Maps each modal id to the badge <span> id that shows "Viewing: ..."
   const trafficTypeBadgeIds = {
@@ -2219,7 +2221,9 @@
           { header: 'ResolvedMetaAdId', selector: r => r.resolvedMetaAdId || '' },
           { header: 'ResolvedFbclidPresent', selector: r => !!r.resolvedFbclidPresent },
           { header: 'AttributionResolution', selector: r => r.attribution?.resolutionSource || 'unknown' },
-          { header: 'MetaEventId', selector: r => r.metaTracking?.eventId || '' },
+          { header: 'MetaLeadEventId', selector: r => r.metaTracking?.metaLeadEventId || '' },
+          { header: 'ResolvedMetaPixelId', selector: r => r.metaTracking?.resolvedMetaPixelId || '' },
+          { header: 'PixelOwnerType', selector: r => r.metaTracking?.pixelOwnerType || '' },
           { header: 'BrowserPixelStatus', selector: r => r.metaTracking?.browserPixelStatus || '' },
           { header: 'ServerCapiStatus', selector: r => r.metaTracking?.serverCapiStatus || '' },
           { header: 'MetaDedupReady', selector: r => !!r.metaTracking?.dedupReady }

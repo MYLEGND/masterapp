@@ -6,6 +6,8 @@ namespace Shared.Meta;
 public sealed class MetaLeadTrackingState
 {
     public string? EventId { get; set; }
+    public string? ResolvedMetaPixelId { get; set; }
+    public string? PixelOwnerType { get; set; }
     public string? BrowserPixelStatus { get; set; }
     public DateTime? BrowserPixelUpdatedUtc { get; set; }
     public string? BrowserPixelNote { get; set; }

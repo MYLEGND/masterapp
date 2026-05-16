@@ -1,5 +1,8 @@
+using Azure.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,17 +36,41 @@ if (IsSqlServerConn(connString))
 }
 else
 {
-builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
-    opts.UseSqlite(connString));
+    builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
+        opts.UseSqlite(connString));
 }
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
+builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
 builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+
+var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
+var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
+
+var dataProtectionBuilder = builder.Services.AddDataProtection()
+    // Shares the same key ring/app isolation as AgentPortal so protected
+    // agent-scoped Meta CAPI credentials can be decrypted safely here.
+    .SetApplicationName("AgentPortal");
+
+if (!string.IsNullOrWhiteSpace(dpBlobUri) && !string.IsNullOrWhiteSpace(dpKeyVaultId))
+{
+    var azureCred = new DefaultAzureCredential();
+    dataProtectionBuilder
+        .PersistKeysToAzureBlobStorage(new Uri(dpBlobUri), azureCred)
+        .ProtectKeysWithAzureKeyVault(new Uri(dpKeyVaultId), azureCred);
+}
+else
+{
+    var sharedKeysDir = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "AgentPortal", "App_Data", "keys"));
+    Directory.CreateDirectory(sharedKeysDir);
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(sharedKeysDir));
+}
 
 // 🔹 🔹 SESSION SUPPORT for TempData
 builder.Services.AddDistributedMemoryCache();

@@ -18,8 +18,25 @@ namespace Protect_Website.Controllers
         }
 
         // GET: /ThankYou
-        public IActionResult Index()
+        public async Task<IActionResult> Index()
         {
+            var leadIdRaw = TempData.Peek("MetaLeadLeadId")?.ToString()?.Trim();
+            if (Guid.TryParse(leadIdRaw, out var leadId))
+            {
+                var lead = await _db.WebsiteLeads.AsNoTracking().FirstOrDefaultAsync(
+                    x => x.LeadId == leadId,
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                var metaTracking = MetaLeadTrackingJson.Read(lead?.MetadataJson);
+                if (metaTracking != null)
+                {
+                    ViewData["ResolvedMetaPixelId"] = metaTracking.ResolvedMetaPixelId;
+                    ViewData["MetaPixelOwnerType"] = string.IsNullOrWhiteSpace(metaTracking.PixelOwnerType)
+                        ? MetaPixelOwnerTypes.None
+                        : metaTracking.PixelOwnerType;
+                }
+            }
+
             // Loads Views/Quote/ThankYou.cshtml
             return View("~/Views/Quote/ThankYou.cshtml");
         }
