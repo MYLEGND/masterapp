@@ -49,14 +49,30 @@ namespace AgentPortal.Controllers;
     [HttpGet("Index")]
     [HttpGet("/website-analytics")]
     [HttpGet("/website-analytics/index")]
-    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null)
+    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null)
     {
-        var range = TimeRangeRequest.FromPreset("30d");
+        var viewerTimeZone = GetViewerTimeZone();
+        TimeRangeRequest range;
+        try
+        {
+            range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, viewerTimeZone);
+        }
+        catch (ArgumentException)
+        {
+            range = TimeRangeRequest.FromPreset("30d", null, null, viewerTimeZone);
+        }
+
         var scope = await ResolveScopeAsync(agentProfileId);
         var summary = await _analytics.GetSummaryAsync(range, scope);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team: false);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
+        ViewData["InitialRangeFrom"] = range.Preset == "custom"
+            ? TimeZoneInfo.ConvertTimeFromUtc(range.FromUtc, range.ViewerTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : string.Empty;
+        ViewData["InitialRangeTo"] = range.Preset == "custom"
+            ? TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, range.ViewerTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : string.Empty;
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
         ViewData["InitialScopeProfileId"] = scope.ScopeType == ScopeType.Agent

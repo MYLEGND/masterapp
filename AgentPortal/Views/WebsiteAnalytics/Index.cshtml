@@ -2,6 +2,8 @@
     ViewData["Title"] = "Website Analytics";
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
+    var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
+    var initialRangeTo = ViewData["InitialRangeTo"] as string ?? string.Empty;
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
     var initialScopeLabelRaw = ViewData["InitialScopeLabel"] as string ?? "Global";
     var initialScopeLabel = initialScopeLabelRaw.StartsWith("Agent:", StringComparison.OrdinalIgnoreCase)
@@ -19,7 +21,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
     <div class="hero-link mb-4 p-4 p-md-5">
     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
             <div>
@@ -161,8 +163,8 @@
             <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
         </div>
         <div class="date-group d-flex align-items-center gap-2 flex-fill">
-            <input type="date" id="range-from" class="form-control form-control-sm flex-fill" />
-            <input type="date" id="range-to" class="form-control form-control-sm flex-fill" />
+            <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
+            <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
             <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Custom</button>
         </div>
         <div id="fa-range-error" class="text-danger small"></div>

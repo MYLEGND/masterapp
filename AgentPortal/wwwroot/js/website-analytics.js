@@ -1,5 +1,8 @@
 (() => {
   const OPEN_MODAL_STORAGE_KEY = 'websiteAnalytics.openModal';
+  const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || '30d';
+  const initialFrom = document.querySelector('.fa-shell')?.dataset.initialFrom || null;
+  const initialTo = document.querySelector('.fa-shell')?.dataset.initialTo || null;
 
   const viewerTz = (() => {
     try {
@@ -15,9 +18,9 @@
   const shell = document.querySelector('.fa-shell');
   const canDeleteLeads = shell?.dataset.canDeleteLeads === 'true';
   const state = {
-    preset: shell?.dataset.initialPreset || '30d',
-    from: null,
-    to: null,
+    preset: initialPreset,
+    from: initialFrom,
+    to: initialTo,
     pollMs: 45000,
     controllers: {},
     openModal: null,
@@ -34,9 +37,9 @@
     canDeleteLeads,
     agentProfileId: null,
     scope: {
-      preset: shell?.dataset.initialPreset || '30d',
-      from: null,
-      to: null,
+      preset: initialPreset,
+      from: initialFrom,
+      to: initialTo,
       agentProfileId: null
     },
     trafficType: {
@@ -197,6 +200,10 @@
     }
   }
 
+  function asTrimmed(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
   function findAgentOption(agentId) {
     if (!agentId) return null;
     return (agentOptions || []).find(a => String(a.id || '') === String(agentId || '')) || null;
@@ -220,6 +227,51 @@
       const url = new URL(window.location.href);
       if (agentId) url.searchParams.set('agentProfileId', agentId);
       else url.searchParams.delete('agentProfileId');
+      window.history.replaceState({}, '', url);
+    } catch {
+      // ignore URL parse issues
+    }
+  }
+
+  function syncRangeInputsFromState() {
+    const fromInput = document.getElementById('range-from');
+    const toInput = document.getElementById('range-to');
+    const isCustom = state.scope.preset === 'custom';
+
+    if (fromInput) {
+      fromInput.value = isCustom ? (state.scope.from || '') : '';
+    }
+    if (toInput) {
+      toInput.value = isCustom ? (state.scope.to || '') : '';
+    }
+  }
+
+  function syncRangeQueryParams() {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('preset', state.scope.preset || '30d');
+
+      if (viewerTz.id) url.searchParams.set('timezoneId', viewerTz.id);
+      else url.searchParams.delete('timezoneId');
+
+      if (Number.isFinite(viewerTz.offsetMinutes)) {
+        url.searchParams.set('timezoneOffsetMinutes', String(viewerTz.offsetMinutes));
+      } else {
+        url.searchParams.delete('timezoneOffsetMinutes');
+      }
+
+      if (state.scope.preset === 'custom' && state.scope.from && state.scope.to) {
+        const [fy, fm, fd] = state.scope.from.split('-').map(Number);
+        const [ty, tm, td] = state.scope.to.split('-').map(Number);
+        const fromUtc = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
+        const toUtc = new Date(ty, tm - 1, td, 23, 59, 59).toISOString();
+        url.searchParams.set('fromUtc', fromUtc);
+        url.searchParams.set('toUtc', toUtc);
+      } else {
+        url.searchParams.delete('fromUtc');
+        url.searchParams.delete('toUtc');
+      }
+
       window.history.replaceState({}, '', url);
     } catch {
       // ignore URL parse issues
@@ -1875,13 +1927,18 @@
   }
 
   function initRangeControls() {
-    document.querySelectorAll('.btn-range').forEach(btn => {
+    syncRangeInputsFromState();
+
+    document.querySelectorAll('.btn-range[data-range]').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.btn-range[data-range]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         state.scope.preset = btn.dataset.range || '30d';
         if (state.scope.preset !== 'custom') {
-          state.scope.from = null; state.scope.to = null;
+          state.scope.from = null;
+          state.scope.to = null;
+          syncRangeInputsFromState();
+          syncRangeQueryParams();
           loadSummary();
           refreshOpenModal();
         }
@@ -1913,7 +1970,9 @@
         state.scope.preset = 'custom';
         state.scope.from = parsedFrom.iso;
         state.scope.to = parsedTo.iso;
-        document.querySelectorAll('.btn-range').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.btn-range[data-range]').forEach(b => b.classList.remove('active'));
+        syncRangeInputsFromState();
+        syncRangeQueryParams();
         loadSummary();
         refreshOpenModal();
       });
