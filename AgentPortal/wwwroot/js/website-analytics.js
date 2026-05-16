@@ -1789,6 +1789,12 @@
       if (disconnectBtn) disconnectBtn.style.display = '';
       setMetaCampaignsEnabled(true);
       setMetaAccountChip(acct || 'Connected', true);
+      const openAdsLink = document.getElementById('openMetaAdsManagerLink');
+      if (openAdsLink && data && data.accountId) {
+        const accountId = String(data.accountId).replace(/^act_/, '');
+        openAdsLink.href = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(accountId)}`;
+      }
+
     } catch (err) {
       statusEl.className = 'small mt-2 text-danger';
       statusEl.textContent = 'Unable to read Meta Ads connection status.';
