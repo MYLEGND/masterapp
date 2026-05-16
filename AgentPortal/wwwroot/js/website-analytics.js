@@ -853,10 +853,12 @@
     state.cache.leads = data;
     setText('leads-total', data.total);
     setText('leads-cap-note', data.isTruncated ? `Showing latest ${data.returnedCount} leads.` : `Showing all ${data.returnedCount} leads in range.`);
+    const meta = document.getElementById('mod-leads-meta');
     if (data.leads && data.leads.length) {
       const newest = data.leads[0];
-      const meta = document.getElementById('mod-leads-meta');
       if (meta) meta.textContent = `Most recent (local): ${formatDisplayDate(newest.createdUtc)}`;
+    } else if (meta) {
+      meta.textContent = 'No leads in range';
     }
     const body = document.getElementById('leads-body');
     if (!body) return;
