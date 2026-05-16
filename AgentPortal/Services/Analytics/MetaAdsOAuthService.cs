@@ -80,7 +80,7 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
         var shortToken = await ExchangeCodeForTokenAsync(client, apiVersion, appId, appSecret, code, redirectUri, ct);
         var longToken = await ExchangeForLongLivedTokenAsync(client, apiVersion, appId, appSecret, shortToken.AccessToken, ct);
         var me = await FetchCurrentUserAsync(client, apiVersion, longToken.AccessToken, ct);
-        var account = await FetchPrimaryAccountAsync(client, apiVersion, longToken.AccessToken, ct);
+        var account = await FetchBestAccountAsync(client, apiVersion, longToken.AccessToken, ct);
 
         var record = new MetaAdsConnectionRecord
         {
@@ -191,28 +191,55 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
         return (id, name);
     }
 
-    private async Task<(string AccountId, string AccountName)> FetchPrimaryAccountAsync(HttpClient client, string version, string accessToken, CancellationToken ct)
+    private async Task<(string AccountId, string AccountName)> FetchBestAccountAsync(HttpClient client, string version, string accessToken, CancellationToken ct)
     {
-        var fields = "id,name,account_status";
+        var fields = "id,name,account_status,business{id,name},campaigns.limit(1){id}";
         var url = $"https://graph.facebook.com/{version}/me/adaccounts?fields={Uri.EscapeDataString(fields)}&limit=200&access_token={Uri.EscapeDataString(accessToken)}";
+
         using var res = await client.GetAsync(url, ct);
         var body = await res.Content.ReadAsStringAsync(ct);
-        if (!res.IsSuccessStatusCode) throw new InvalidOperationException("Unable to read Meta ad accounts.");
+        if (!res.IsSuccessStatusCode)
+            throw new InvalidOperationException("Unable to read Meta ad accounts.");
 
         using var doc = JsonDocument.Parse(body);
         if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("No Meta ad accounts returned.");
 
+        var accounts = new List<(string AccountId, string AccountName, bool HasBusiness, bool HasCampaigns, bool IsActive)>();
+
         foreach (var item in data.EnumerateArray())
         {
             var idRaw = item.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
             if (string.IsNullOrWhiteSpace(idRaw)) continue;
+
             var accountId = idRaw.StartsWith("act_", StringComparison.OrdinalIgnoreCase) ? idRaw.Substring(4) : idRaw;
-            var name = item.TryGetProperty("name", out var nEl) ? nEl.GetString() ?? "" : "";
-            return (accountId, name);
+            var name = item.TryGetProperty("name", out var nEl) ? nEl.GetString() ?? "" : accountId;
+
+            var hasBusiness = item.TryGetProperty("business", out var businessEl) && businessEl.ValueKind == JsonValueKind.Object;
+
+            var hasCampaigns =
+                item.TryGetProperty("campaigns", out var campaignsEl) &&
+                campaignsEl.TryGetProperty("data", out var campaignData) &&
+                campaignData.ValueKind == JsonValueKind.Array &&
+                campaignData.GetArrayLength() > 0;
+
+            var status = item.TryGetProperty("account_status", out var statusEl) && statusEl.TryGetInt32(out var s) ? s : 0;
+            var isActive = status == 1;
+
+            accounts.Add((accountId, name, hasBusiness, hasCampaigns, isActive));
         }
 
-        throw new InvalidOperationException("No Meta ad account available for this user.");
+        var selected = accounts
+            .OrderByDescending(x => x.HasBusiness)
+            .ThenByDescending(x => x.HasCampaigns)
+            .ThenByDescending(x => x.IsActive)
+            .ThenBy(x => x.AccountName)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(selected.AccountId))
+            throw new InvalidOperationException("No Meta ad account available for this user.");
+
+        return (selected.AccountId, selected.AccountName);
     }
 
     private string ResolveRedirectUri(string? explicitRedirectUri)
