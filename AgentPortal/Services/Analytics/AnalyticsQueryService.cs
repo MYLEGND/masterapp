@@ -249,10 +249,22 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(formKey) &&
         formKey.Contains("quote_", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsTrackedLeadSuccessEvent(AnalyticsEvent e)
+    {
+        if (e.EventType == "lead_form_submit_success")
+            return true;
+
+        if (e.EventType == "website_lead_submitted")
+            return IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey);
+
+        return e.EventType == "form_submit" &&
+               (e.SubmitOutcome == null ||
+                string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static bool IsQuoteSubmitSuccess(AnalyticsEvent e) =>
-        e.EventType == "form_submit" &&
-        IsQuoteFormKey(e.FormKey) &&
-        string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase);
+        IsTrackedLeadSuccessEvent(e) &&
+        (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
 
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
     {
@@ -272,6 +284,102 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(BuildInteractionUnitKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
+    }
+
+    private static string? InferQuoteTypeFromKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        var normalized = key.Trim().ToLowerInvariant();
+
+        if (normalized.Contains("mortgage_protection") || normalized.Contains("mortgageprotection")) return "mortgage";
+        if (normalized.Contains("final_expense") || normalized.Contains("finalexpense")) return "finalexpense";
+        if (normalized.Contains("whole_life") || normalized.Contains("wholelife")) return "wholelife";
+        if (normalized.Contains("term_life") || normalized.Contains("termlife")) return "term";
+        if (normalized.Contains("quote_life") || normalized == "life") return "life";
+        if (normalized.Contains("iul")) return "iul";
+        if (normalized.Contains("quote_auto") || normalized == "auto") return "auto";
+        if (normalized.Contains("quote_home") || normalized == "home") return "home";
+        if (normalized.Contains("quote_commercial") || normalized == "commercial") return "commercial";
+        if (normalized.Contains("quote_disability") || normalized == "disability") return "disability";
+        if (normalized.Contains("quote_health") || normalized == "health") return "health";
+
+        return null;
+    }
+
+    private static string? NormalizeQuoteTypeToken(string? quoteType)
+    {
+        if (string.IsNullOrWhiteSpace(quoteType)) return null;
+        var normalized = quoteType.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "mortgage_protection" or "mortgageprotection" => "mortgage",
+            "final_expense" or "finalexpense" => "finalexpense",
+            "whole_life" or "wholelife" => "wholelife",
+            "term_life" or "termlife" => "term",
+            _ => normalized
+        };
+    }
+
+    private static string? ResolveQuoteTypeForReporting(string? quoteType, string? formKey = null, string? pageKey = null) =>
+        InferQuoteTypeFromKey(formKey) ??
+        InferQuoteTypeFromKey(pageKey) ??
+        NormalizeQuoteTypeToken(quoteType);
+
+    private static string? BuildSessionFormKey(string? sessionId, string? formKey, string? quoteType, string? pageKey = null)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return null;
+        var normalizedScopeKey = NormalizeSuccessScopeKey(formKey) ?? NormalizeSuccessScopeKey(pageKey);
+        if (!string.IsNullOrWhiteSpace(normalizedScopeKey)) return $"{sessionId}::{normalizedScopeKey}";
+        var normalizedQuoteType = ResolveQuoteTypeForReporting(quoteType, formKey, pageKey);
+        if (!string.IsNullOrWhiteSpace(normalizedQuoteType)) return $"{sessionId}::qt:{normalizedQuoteType}";
+        return null;
+    }
+
+    private static string? NormalizeSuccessScopeKey(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        var normalized = key.Trim().ToLowerInvariant();
+        return normalized.EndsWith("_form", StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^5]
+            : normalized;
+    }
+
+    private static string BuildSuccessUnitKey(AnalyticsEvent e)
+    {
+        var scopeKey =
+            NormalizeSuccessScopeKey(e.FormKey) ??
+            NormalizeSuccessScopeKey(e.FormId) ??
+            NormalizeSuccessScopeKey(e.PageKey) ??
+            ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey) ??
+            e.EventType.ToLowerInvariant();
+
+        if (!string.IsNullOrWhiteSpace(e.SessionId))
+            return $"sid:{e.SessionId}::{scopeKey}";
+        if (!string.IsNullOrWhiteSpace(e.VisitorId))
+            return $"vid:{e.VisitorId}::{scopeKey}";
+        if (e.ClientEventId.HasValue)
+            return $"cid:{e.ClientEventId.Value:D}::{scopeKey}";
+        return $"eid:{e.EventId:D}::{scopeKey}";
+    }
+
+    private static int SuccessEventPriority(AnalyticsEvent e) => e.EventType switch
+    {
+        "website_lead_submitted" => 3,
+        "lead_form_submit_success" => 2,
+        "form_submit" => 1,
+        _ => 0
+    };
+
+    private static List<AnalyticsEvent> SelectCanonicalSuccessEvents(IEnumerable<AnalyticsEvent> events)
+    {
+        return events
+            .Where(IsTrackedLeadSuccessEvent)
+            .GroupBy(BuildSuccessUnitKey, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g
+                .OrderByDescending(SuccessEventPriority)
+                .ThenByDescending(e => e.EventUtc)
+                .First())
+            .ToList();
     }
 
     private static int CountQuoteIntentStarts(IEnumerable<AnalyticsEvent> events)
@@ -807,19 +915,19 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         // the session map, causing paid conversions to be misclassified as Unknown.
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
 
-        var filteredConversionEvents = FilterAttributedRowsByTraffic(
+        var filteredEvents = FilterAttributedRowsByTraffic(
                 BuildAttributedEventRows(allEvents),
                 trafficType)
-            .Where(r => r.Event.EventType == "lead_form_submit_success" ||
-                        (r.Event.EventType == "form_submit" &&
-                         (r.Event.SubmitOutcome == null || r.Event.SubmitOutcome == "success")))
             .Select(r => r.Event)
             .ToList();
 
-        var totalConversions = filteredConversionEvents.Count;
-
-        var recentEvents = filteredConversionEvents
+        var canonicalConversionEvents = SelectCanonicalSuccessEvents(filteredEvents)
             .OrderByDescending(e => e.EventUtc)
+            .ToList();
+
+        var totalConversions = canonicalConversionEvents.Count;
+
+        var recentEvents = canonicalConversionEvents
             .Take(100)
             .ToList();
 
@@ -910,6 +1018,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var events = await BaseEvents(range, ScopeContext.Global).ToListAsync();
         var leads = await BaseLeads(range, ScopeContext.Global).ToListAsync();
+        var attributedRows = BuildAttributedEventRows(events);
+        var attributedSessionRows = BuildSessionAttributionRows(attributedRows);
+        var topAttributionRows = attributedSessionRows.Count > 0 ? attributedSessionRows : attributedRows;
 
         var sessionsByAgent = events
             .Where(e => e.AgentTrackingProfileId != null && !string.IsNullOrWhiteSpace(e.SessionId))
@@ -926,16 +1037,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .GroupBy(l => l.AgentTrackingProfileId!.Value)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var conversionsByAgent = events
-            .Where(e => e.AgentTrackingProfileId != null &&
-                        (e.EventType == "lead_form_submit_success" ||
-                         (e.EventType == "form_submit" && (e.SubmitOutcome == null || e.SubmitOutcome == "success"))))
+        var conversionsByAgent = SelectCanonicalSuccessEvents(events)
+            .Where(e => e.AgentTrackingProfileId != null)
             .GroupBy(e => e.AgentTrackingProfileId!.Value)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var topSourceByAgent = events
-            .Where(e => e.AgentTrackingProfileId != null && !string.IsNullOrWhiteSpace(e.UtmSource))
-            .GroupBy(e => new { e.AgentTrackingProfileId, e.UtmSource })
+        var topSourceByAgent = topAttributionRows
+            .Where(r => r.Event.AgentTrackingProfileId != null && !string.IsNullOrWhiteSpace(r.Attribution.UtmSource))
+            .GroupBy(r => new { r.Event.AgentTrackingProfileId, r.Attribution.UtmSource })
             .Select(g => new { AgentId = g.Key.AgentTrackingProfileId!.Value, Source = g.Key.UtmSource!, Count = g.Count() })
             .GroupBy(x => x.AgentId)
             .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Count).First().Source);
@@ -1166,18 +1275,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+            .Select(r => r.Event)
+            .ToList();
         // page_exit carries the real elapsed dwell per page visit; page_view.DwellMilliseconds is always 0 at load.
-        var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
+        var events = filteredEvents
+            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null)
+            .ToList();
         // Views count = distinct page_view events per page (for denominator context).
-        var pvEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_view").ToListAsync();
-
-        if (trafficType != TrafficType.All)
-        {
-            events  = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events),   trafficType).Select(r => r.Event).ToList();
-            pvEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pvEvents), trafficType).Select(r => r.Event).ToList();
-        }
+        var pvEvents = filteredEvents
+            .Where(e => e.EventType == "page_view")
+            .ToList();
 
         var pvCounts = pvEvents
             .GroupBy(e => e.PageKey ?? "unknown")
@@ -1213,17 +1322,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+            .Select(r => r.Event)
+            .ToList();
         // Load page_view for view counts and page_exit for exit/dwell signals.
-        var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_view").ToListAsync();
-        var pageExitEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_exit").ToListAsync();
-
-        if (trafficType != TrafficType.All)
-        {
-            pageViewEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pageViewEvents), trafficType).Select(r => r.Event).ToList();
-            pageExitEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pageExitEvents), trafficType).Select(r => r.Event).ToList();
-        }
+        var pageViewEvents = filteredEvents.Where(e => e.EventType == "page_view").ToList();
+        var pageExitEvents = filteredEvents.Where(e => e.EventType == "page_exit").ToList();
         var viewsByPage = pageViewEvents.GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         var lastExitPerSession = pageExitEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
@@ -1278,15 +1383,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_view").ToListAsync();
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
-
+        var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+            .Select(r => r.Event)
+            .ToList();
+        var events = filteredEvents.Where(e => e.EventType == "page_view").ToList();
         if (trafficType != TrafficType.All)
-        {
-            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType).Select(r => r.Event).ToList();
-            leads  = ResolveAndFilterLeads(leads, events, trafficType);
-        }
+            leads = ResolveAndFilterLeads(leads, allEvents, trafficType);
         var topLanding = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First())
             .GroupBy(e => e.PageKey ?? "unknown").OrderByDescending(g => g.Count()).Take(10)
@@ -1307,26 +1411,25 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
-        if (trafficType != TrafficType.All)
-        {
-            pageViewEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(pageViewEvents), trafficType)
-                .Select(r => r.Event)
-                .ToList();
-        }
-        var engagementSignals = await BaseEvents(range, scope, scopedAgentIds)
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
+        var filteredEvents = attributedRows.Select(r => r.Event).ToList();
+        var pageViewRows = attributedRows
+            .Where(r => r.Event.EventType == "page_view")
+            .ToList();
+        var leads = trafficType == TrafficType.All
+            ? allLeads
+            : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+        var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
+            .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
+        var engagementSignals = filteredEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
                         (e.EventType == "page_engaged_30s" ||
                          e.EventType == "page_engaged_60s" ||
                          e.EngagedMilliseconds.HasValue))
             .Select(e => new { e.SessionId, e.EventType, e.EngagedMilliseconds })
-            .ToListAsync();
-        // page_exit carries real elapsed dwell per page; page_view.DwellMilliseconds is always 0 at load time.
-        var exitDwellEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
-        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
-        var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
-            .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
+            .ToList();
         var engagedBySid = engagementSignals
             .GroupBy(e => e.SessionId!)
             .ToDictionary(
@@ -1334,23 +1437,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 g => g.Any(x => x.EventType == "page_engaged_30s" || x.EventType == "page_engaged_60s") ||
                      g.Max(x => x.EngagedMilliseconds ?? 0) >= 30_000);
         // Sum page_exit dwell times per session = total time on site for that session.
-        var totalDwellBySid = exitDwellEvents
-            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+        var totalDwellBySid = filteredEvents
+            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null && !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
-        var sessionFirst = pageViewEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-            .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First()).ToList();
+        var sessionFirst = pageViewRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Event.SessionId))
+            .GroupBy(r => r.Event.SessionId!)
+            .Select(g => g.OrderBy(x => x.Event.EventUtc).First())
+            .ToList();
         var rows = sessionFirst
-            .GroupBy(e => new
+            .GroupBy(r => new
             {
-                Source = string.IsNullOrWhiteSpace(e.UtmSource) ? "unattributed" : e.UtmSource.Trim(),
-                Medium = e.UtmMedium?.Trim() ?? (string?)null,
-                Campaign = e.UtmCampaign?.Trim() ?? (string?)null,
-                LandingPage = e.PageKey ?? "unknown"
+                Source = string.IsNullOrWhiteSpace(r.Attribution.UtmSource) ? "unattributed" : r.Attribution.UtmSource.Trim(),
+                Medium = r.Attribution.UtmMedium?.Trim() ?? (string?)null,
+                Campaign = r.Attribution.UtmCampaign?.Trim() ?? (string?)null,
+                LandingPage = r.Event.PageKey ?? "unknown"
             })
             .Select(g =>
             {
-                var sids = g.Select(e => e.SessionId!).ToList();
+                var sids = g.Select(r => r.Event.SessionId!).ToList();
                 var sessions = sids.Count;
                 var engaged = sids.Count(sid => engagedBySid.TryGetValue(sid, out var v) && v);
                 var lCount = sids.Sum(sid => leadsBySid.TryGetValue(sid, out var c) ? c : 0);
@@ -1374,20 +1480,20 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var pageViewEvents = await BaseEvents(range, scope, scopedAgentIds).Where(e => e.EventType == "page_view").ToListAsync();
-        var engagementSignals = await BaseEvents(range, scope, scopedAgentIds)
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var pageViewRows = BuildAttributedEventRows(allEvents)
+            .Where(r => r.Event.EventType == "page_view")
+            .ToList();
+        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
+            .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
+        var engagementSignals = allEvents
             .Where(e => !string.IsNullOrWhiteSpace(e.SessionId) &&
                         (e.EventType == "page_engaged_30s" ||
                          e.EventType == "page_engaged_60s" ||
                          e.EngagedMilliseconds.HasValue))
             .Select(e => new { e.SessionId, e.EventType, e.EngagedMilliseconds })
-            .ToListAsync();
-        // page_exit carries real elapsed dwell; page_view.DwellMilliseconds is always 0 at load time.
-        var exitDwellEvents = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null).ToListAsync();
-        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
-        var leadsBySid = leads.Where(l => !string.IsNullOrWhiteSpace(l.SessionId))
-            .GroupBy(l => l.SessionId!).ToDictionary(g => g.Key, g => g.Count());
+            .ToList();
         var engagedBySid = engagementSignals
             .GroupBy(e => e.SessionId!)
             .ToDictionary(
@@ -1395,16 +1501,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 g => g.Any(x => x.EventType == "page_engaged_30s" || x.EventType == "page_engaged_60s") ||
                      g.Max(x => x.EngagedMilliseconds ?? 0) >= 30_000);
         // Sum page_exit dwell times per session = total time on site for that session.
-        var totalDwellBySid = exitDwellEvents
-            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+        var totalDwellBySid = allEvents
+            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null && !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
-        var rows = pageViewEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-            .GroupBy(e => e.SessionId!).Select(g => g.OrderBy(x => x.EventUtc).First())
-            .GroupBy(e => e.PageKey ?? "unknown")
+        var rows = pageViewRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Event.SessionId))
+            .GroupBy(r => r.Event.SessionId!).Select(g => g.OrderBy(x => x.Event.EventUtc).First())
+            .GroupBy(r => r.Event.PageKey ?? "unknown")
             .Select(g =>
             {
-                var sids = g.Select(e => e.SessionId!).ToList();
+                var sids = g.Select(r => r.Event.SessionId!).ToList();
                 var sessions = sids.Count;
                 var engaged = sids.Count(sid => engagedBySid.TryGetValue(sid, out var v) && v);
                 var lCount = sids.Sum(sid => leadsBySid.TryGetValue(sid, out var c) ? c : 0);
@@ -1416,8 +1523,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 {
                     PageKey = g.Key, Sessions = sessions, EngagedSessions = engaged, AvgDwellMs = Math.Round(avgDwell, 0),
                     VerifiedLeads = lCount, ConversionRate = sessions > 0 ? Math.Round((decimal)lCount / sessions * 100, 2) : 0,
-                    TopSource = g.Where(e => !string.IsNullOrWhiteSpace(e.UtmSource)).GroupBy(e => e.UtmSource!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault(),
-                    TopCampaign = g.Where(e => !string.IsNullOrWhiteSpace(e.UtmCampaign)).GroupBy(e => e.UtmCampaign!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault()
+                    TopSource = g.Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmSource)).GroupBy(r => r.Attribution.UtmSource!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault(),
+                    TopCampaign = g.Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmCampaign)).GroupBy(r => r.Attribution.UtmCampaign!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault()
                 };
             }).OrderByDescending(r => r.Sessions).ToList();
         return new LandingPagePerformanceDto { Rows = rows, RangeLabel = range.Label };
@@ -1463,39 +1570,23 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-
-        // Fetch form_abandon and form_start for denominator, plus form_field_error for validation friction.
-        // Include submit-success events so true submitters are never counted as abandons.
-        var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "form_abandon" ||
-                        e.EventType == "form_start" ||
-                        e.EventType == "form_field_error" ||
-                        e.EventType == "lead_form_submit_success" ||
-                        e.EventType == "form_submit")
-            .ToListAsync();
-        if (trafficType != TrafficType.All)
+        var relevantEventTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType)
-                .Select(r => r.Event)
-                .ToList();
-        }
-
-        var submitSuccessEvents = events
-            .Where(e => e.EventType == "lead_form_submit_success" ||
-                        (e.EventType == "form_submit" &&
-                         string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase)))
+            "form_abandon",
+            "form_start",
+            "form_field_error",
+            "lead_form_submit_success",
+            "form_submit",
+            "website_lead_submitted"
+        };
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
+            .Where(r => relevantEventTypes.Contains(r.Event.EventType))
+            .Select(r => r.Event)
             .ToList();
 
-        static string? BuildSessionFormKey(string? sessionId, string? formKey, string? quoteType)
-        {
-            if (string.IsNullOrWhiteSpace(sessionId)) return null;
-            if (!string.IsNullOrWhiteSpace(formKey)) return $"{sessionId}::{formKey}";
-            if (!string.IsNullOrWhiteSpace(quoteType)) return $"{sessionId}::qt:{quoteType}";
-            return null;
-        }
-
-        var successfulSubmitKeys = submitSuccessEvents
-            .Select(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType))
+        var successfulSubmitKeys = SelectCanonicalSuccessEvents(events)
+            .Select(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey))
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -1503,11 +1594,17 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e => e.EventType == "form_abandon")
             .Where(e =>
             {
-                var key = BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType);
+                var key = BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey);
                 return key == null || !successfulSubmitKeys.Contains(key);
             })
+            .GroupBy(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(e => e.EventUtc).First())
             .ToList();
-        var startEvents = events.Where(e => e.EventType == "form_start").ToList();
+        var startEvents = events
+            .Where(e => e.EventType == "form_start")
+            .GroupBy(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderBy(e => e.EventUtc).First())
+            .ToList();
         var errorEvents = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName)).ToList();
 
         // Parse MetadataJson from form_abandon events
@@ -1545,12 +1642,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     catch { /* malformed JSON — skip */ }
                 }
 
+                var resolvedQuoteType = ResolveQuoteTypeForReporting(quoteType, e.FormKey ?? e.FormId, e.PageKey) ?? "unknown";
+
                 return new
                 {
                     Event = e,
                     LastFocused = lastFocused,
                     LastCompleted = lastCompleted,
-                    QuoteType = quoteType ?? "unknown",
+                    QuoteType = resolvedQuoteType,
                     SubmitAttempted = submitAttempted,
                     ConsentInteracted = consentInteracted,
                     CompletedCount = completedCount,
@@ -1562,7 +1661,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         // Summary per quote type
         var startsByType = startEvents
-            .GroupBy(e => e.QuoteType ?? "unknown")
+            .GroupBy(e => ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey) ?? "unknown")
             .ToDictionary(g => g.Key, g => g.Count());
 
         var summary = parsed
@@ -1610,7 +1709,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         // Validation friction from form_field_error events
         var validationFriction = errorEvents
-            .GroupBy(e => new { FieldName = e.FieldName!, QuoteType = e.QuoteType ?? "unknown" })
+            .GroupBy(e => new
+            {
+                FieldName = e.FieldName!,
+                QuoteType = ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey) ?? "unknown"
+            })
             .Select(g => new ValidationFrictionRow { FieldName = g.Key.FieldName, QuoteType = g.Key.QuoteType, ErrorCount = g.Count() })
             .OrderByDescending(r => r.ErrorCount)
             .Take(15)

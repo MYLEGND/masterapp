@@ -1546,7 +1546,7 @@ body.life-landing header .navbar .nav-link:focus {
   }
 
   function trackEvent(eventType, metadata = {}) {
-    window.legendTrack?.({
+    return window.legendTrack?.({
       EventType: eventType,
       PageKey: pageKey,
       Offer: '@cfg.OfferKey',
@@ -1559,7 +1559,60 @@ body.life-landing header .navbar .nav-link:focus {
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
       })
-    });
+    }) ?? Promise.resolve();
+  }
+
+  function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
+    return window.legendTrack?.({
+      EventType: 'form_submit',
+      FormKey: pageKey,
+      PageKey: pageKey,
+      SubmitOutcome: submitOutcome,
+      MetadataJson: JSON.stringify({
+        offer: '@cfg.OfferKey',
+        pageVariant,
+        pageMode,
+        pagePath: window.location.pathname,
+        hasAgentTrustProfile,
+        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
+        ...metadata
+      })
+    }) ?? Promise.resolve();
+  }
+
+  function trackMetaLeadSuccess() {
+    if (typeof window.fbq !== 'function') {
+      return Promise.resolve(false);
+    }
+
+    try {
+      window.fbq('track', 'Lead', {
+        content_name: pageKey,
+        content_category: '@cfg.OfferKey'
+      });
+      return Promise.resolve(true);
+    } catch {
+      return Promise.resolve(false);
+    }
+  }
+
+  async function flushSuccessTracking() {
+    const trackingTasks = [
+      trackEvent('life_step2_submit_success'),
+      trackEvent(submitEvent, { submitOutcome: 'success' }),
+      trackEvent('results_contact_submit', {
+        primaryRec: recPrimaryKeyEl?.value || '',
+        secondaryRec: recSecondaryKeyEl?.value || '',
+      }),
+      trackFormSubmitOutcome('success'),
+      trackMetaLeadSuccess()
+    ];
+
+    await Promise.race([
+      Promise.allSettled(trackingTasks),
+      new Promise((resolve) => window.setTimeout(resolve, 700))
+    ]);
   }
 
   function selectedRadio(name) {
@@ -2015,26 +2068,13 @@ body.life-landing header .navbar .nav-link:focus {
       set('LandingPageUrl', window.location.href || '');
     })();
 
-    window.legendTrack?.({
-      EventType: 'form_submit',
-      FormKey: pageKey,
-      PageKey: pageKey,
-      SubmitOutcome: 'attempt',
-      MetadataJson: JSON.stringify({
-        offer: '@cfg.OfferKey',
-        step: 'submit_attempt',
-        pageVariant,
-        pageMode,
-        pagePath: window.location.pathname,
-        hasAgentTrustProfile,
-        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
-        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: answer2Hidden?.value || '',
-        age: answer4Hidden?.value || '',
-        ageRange: ageHidden.value,
-        protectFocus: focusHidden.value
-      })
+    trackFormSubmitOutcome('attempt', {
+      step: 'submit_attempt',
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      age: answer4Hidden?.value || '',
+      ageRange: ageHidden.value,
+      protectFocus: focusHidden.value
     });
 
     const thankYouPath = (() => {
@@ -2049,38 +2089,14 @@ body.life-landing header .navbar .nav-link:focus {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
       form._trackSubmitSuccess?.();
-      trackEvent('life_step2_submit_success');
-      trackEvent(submitEvent, { submitOutcome: 'success' });
-      trackEvent('results_contact_submit', {
-        primaryRec:   recPrimaryKeyEl?.value   || '',
-        secondaryRec: recSecondaryKeyEl?.value || '',
-      });
-      window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'success', MetadataJson: JSON.stringify({
-          offer: '@cfg.OfferKey',
-          pageVariant,
-          pageMode,
-          pagePath: window.location.pathname,
-          hasAgentTrustProfile,
-          ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
-          ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
-        }) });
+      await flushSuccessTracking();
       window.location.href = thankYouPath;
     } catch (err) {
       if (lifeError) {
         lifeError.textContent = 'We could not send this right now. Please try again.';
         lifeError.style.display = 'block';
       }
-      window.legendTrack?.({ EventType: 'form_submit', FormKey: pageKey, PageKey: pageKey,
-        SubmitOutcome: 'error', MetadataJson: JSON.stringify({
-          offer: '@cfg.OfferKey',
-          pageVariant,
-          pageMode,
-          pagePath: window.location.pathname,
-          hasAgentTrustProfile,
-          ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
-          ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
-        }) });
+      trackFormSubmitOutcome('error');
     } finally {
       if (submitBtn) {
         submitBtn.disabled = false;

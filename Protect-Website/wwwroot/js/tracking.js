@@ -39,7 +39,16 @@
     'life_processing_bridge_view','life_processing_bridge_complete',
     'life_value_bridge_view','life_value_bridge_continue',
     'life_step2_view','life_step2_back',
-    'life_step2_submit_attempt','life_step2_submit_success'
+    'life_step2_submit_attempt','life_step2_submit_success',
+    'mini_results_view',
+    'recommendation_generated',
+    'results_contact_submit',
+    'life_general_form_start','life_general_submit',
+    'life_term_form_start','life_term_submit',
+    'life_whole_form_start','life_whole_submit',
+    'life_finalexpense_form_start','life_finalexpense_submit',
+    'life_mp_form_start','life_mp_submit',
+    'life_iul_form_start','life_iul_submit'
   ]);
 
   function uuid() {
@@ -257,6 +266,7 @@
       await fetch(INGEST_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
         body: JSON.stringify(body)
       });
     } catch { /* swallow */ }
@@ -385,11 +395,14 @@
   function formQuoteType(formKey) {
     if (!formKey) return null;
     const k = formKey.toLowerCase();
-    // Specific multi-word life products must be checked before the generic 'life' catch-all
-    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage_protection';
-    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'final_expense';
+    // Keep quote-type names aligned with the page-level tracking value (offer key).
+    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage';
+    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'finalexpense';
+    if (k.includes('whole_life')          || k.includes('wholelife'))          return 'wholelife';
+    if (k.includes('term_life')           || k.includes('termlife'))           return 'term';
     if (k.includes('iul'))                                                      return 'iul';
-    if (k.includes('life'))        return 'life';
+    if (k.includes('quote_life'))                                               return 'life';
+    if (k.includes('life'))                                                     return 'life';
     if (k.includes('auto'))        return 'auto';
     if (k.includes('home'))        return 'home';
     if (k.includes('commercial'))  return 'commercial';
@@ -421,6 +434,11 @@
     const formKey = formEl.dataset.formKey || '';
     const quoteType = formQuoteType(formKey);
     if (!formKey) return;
+    const abandonSessionFlag = `form_abandon_${formKey}`;
+    let abandonAlreadyTrackedForSession = false;
+    try {
+      abandonAlreadyTrackedForSession = sessionStorage.getItem(abandonSessionFlag) === '1';
+    } catch { /* ignore */ }
 
     const state = {
       started: false,
@@ -433,7 +451,7 @@
       completedFields: new Set(),
       errorsSeen: new Set(),     // "fieldName:errorType" deduplication
       consentInteracted: false,
-      abandonFired: false,
+      abandonFired: abandonAlreadyTrackedForSession,
     };
     _formTrackStateByKey.set(formKey, state);
 
@@ -561,6 +579,9 @@
     _formAbandonCallbacks.push(function () {
       if (!state.started || state.submitted || state.abandonFired) return;
       state.abandonFired = true;
+      try {
+        sessionStorage.setItem(abandonSessionFlag, '1');
+      } catch { /* ignore */ }
       beaconSend(buildBody({
         EventType: 'form_abandon',
         FormKey: formKey,
