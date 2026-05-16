@@ -9,6 +9,8 @@ public sealed class MetaAdsConnectionRecord
     public DateTime? AccessTokenExpiresUtc { get; set; }
     public string? AccountId { get; set; }
     public string? AccountName { get; set; }
+    public string? BusinessId { get; set; }
+    public string? BusinessName { get; set; }
     public string? MetaUserId { get; set; }
     public string? MetaUserName { get; set; }
     public DateTime ConnectedUtc { get; set; } = DateTime.UtcNow;
@@ -21,6 +23,8 @@ public sealed class MetaAdsConnectionStatusDto
     public Guid? AgentTrackingProfileId { get; set; }
     public string? AccountId { get; set; }
     public string? AccountName { get; set; }
+    public string? BusinessId { get; set; }
+    public string? BusinessName { get; set; }
     public string? MetaUserName { get; set; }
     public DateTime? ConnectedUtc { get; set; }
     public DateTime? AccessTokenExpiresUtc { get; set; }

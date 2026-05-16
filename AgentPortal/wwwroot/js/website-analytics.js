@@ -1792,7 +1792,14 @@
       const openAdsLink = document.getElementById('openMetaAdsManagerLink');
       if (openAdsLink && data && data.accountId) {
         const accountId = String(data.accountId).replace(/^act_/, '');
-        openAdsLink.href = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${encodeURIComponent(accountId)}`;
+        const businessId = data.businessId ? String(data.businessId).trim() : '';
+        const params = new URLSearchParams();
+        if (businessId) {
+          params.set('business_id', businessId);
+          params.set('global_scope_id', businessId);
+        }
+        params.set('act', accountId);
+        openAdsLink.href = `https://adsmanager.facebook.com/adsmanager/manage/campaigns?${params.toString()}`;
       }
 
     } catch (err) {

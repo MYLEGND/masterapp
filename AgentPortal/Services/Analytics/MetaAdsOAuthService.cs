@@ -89,6 +89,8 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
             AccessTokenExpiresUtc = longToken.ExpiresUtc,
             AccountId = account.AccountId,
             AccountName = account.AccountName,
+            BusinessId = account.BusinessId,
+            BusinessName = account.BusinessName,
             MetaUserId = me.UserId,
             MetaUserName = me.UserName,
             ConnectedUtc = DateTime.UtcNow,
@@ -191,7 +193,7 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
         return (id, name);
     }
 
-    private async Task<(string AccountId, string AccountName)> FetchBestAccountAsync(HttpClient client, string version, string accessToken, CancellationToken ct)
+    private async Task<(string AccountId, string AccountName, string? BusinessId, string? BusinessName)> FetchBestAccountAsync(HttpClient client, string version, string accessToken, CancellationToken ct)
     {
         var fields = "id,name,account_status,business{id,name},campaigns.limit(1){id}";
         var url = $"https://graph.facebook.com/{version}/me/adaccounts?fields={Uri.EscapeDataString(fields)}&limit=200&access_token={Uri.EscapeDataString(accessToken)}";
@@ -205,7 +207,7 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
         if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
             throw new InvalidOperationException("No Meta ad accounts returned.");
 
-        var accounts = new List<(string AccountId, string AccountName, bool HasBusiness, bool HasCampaigns, bool IsActive)>();
+        var accounts = new List<(string AccountId, string AccountName, string? BusinessId, string? BusinessName, bool HasBusiness, bool HasCampaigns, bool IsActive)>();
 
         foreach (var item in data.EnumerateArray())
         {
@@ -216,6 +218,13 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
             var name = item.TryGetProperty("name", out var nEl) ? nEl.GetString() ?? "" : accountId;
 
             var hasBusiness = item.TryGetProperty("business", out var businessEl) && businessEl.ValueKind == JsonValueKind.Object;
+            string? businessId = null;
+            string? businessName = null;
+            if (hasBusiness)
+            {
+                businessId = businessEl.TryGetProperty("id", out var bidEl) ? bidEl.GetString() : null;
+                businessName = businessEl.TryGetProperty("name", out var bnameEl) ? bnameEl.GetString() : null;
+            }
 
             var hasCampaigns =
                 item.TryGetProperty("campaigns", out var campaignsEl) &&
@@ -226,7 +235,7 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
             var status = item.TryGetProperty("account_status", out var statusEl) && statusEl.TryGetInt32(out var s) ? s : 0;
             var isActive = status == 1;
 
-            accounts.Add((accountId, name, hasBusiness, hasCampaigns, isActive));
+            accounts.Add((accountId, name, businessId, businessName, hasBusiness, hasCampaigns, isActive));
         }
 
         var selected = accounts
@@ -239,7 +248,7 @@ public sealed class MetaAdsOAuthService : IMetaAdsOAuthService
         if (string.IsNullOrWhiteSpace(selected.AccountId))
             throw new InvalidOperationException("No Meta ad account available for this user.");
 
-        return (selected.AccountId, selected.AccountName);
+        return (selected.AccountId, selected.AccountName, selected.BusinessId, selected.BusinessName);
     }
 
     private string ResolveRedirectUri(string? explicitRedirectUri)

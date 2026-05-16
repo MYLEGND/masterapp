@@ -992,6 +992,8 @@ namespace AgentPortal.Controllers;
             AgentTrackingProfileId = agentId,
             AccountId = record.AccountId,
             AccountName = record.AccountName,
+            BusinessId = record.BusinessId,
+            BusinessName = record.BusinessName,
             MetaUserName = record.MetaUserName,
             ConnectedUtc = record.ConnectedUtc,
             AccessTokenExpiresUtc = record.AccessTokenExpiresUtc
