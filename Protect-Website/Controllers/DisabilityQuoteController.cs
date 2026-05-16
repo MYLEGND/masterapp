@@ -227,8 +227,14 @@ namespace Protect_Website.Controllers
                     correlationId, lead.LeadId);
             }
 
+            if (IsAjax())
+            {
+                return Ok(new { success = true });
+            }
+
             TempData["QuoteType"] = "Disability";
-            return IsAjax() ? Ok(new { success = true }) : RedirectToAction("Index", "ThankYou");
+            TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
+            return RedirectToAction("Index", "ThankYou");
 }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()

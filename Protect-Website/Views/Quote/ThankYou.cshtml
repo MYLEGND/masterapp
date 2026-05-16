@@ -1,8 +1,32 @@
+@using System.Text.Json
 @{
     ViewData["Title"] = "Thank You";
     var bookingLink = "https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true";
 
     var quoteKey = TempData["QuoteType"]?.ToString()?.Trim() ?? "";
+    var metaLeadSuccessToken = TempData["MetaLeadSuccessToken"]?.ToString()?.Trim() ?? "";
+    var metaLeadContentName = quoteKey switch
+    {
+        "Auto" => "quote_auto",
+        "Home" => "quote_home",
+        "Health" => "quote_health",
+        "Disability" => "quote_disability",
+        "Commercial" => "quote_commercial",
+        _ => string.Empty
+    };
+    var metaLeadContentCategory = quoteKey.ToLowerInvariant() switch
+    {
+        "auto" => "auto",
+        "home" => "home",
+        "health" => "health",
+        "disability" => "disability",
+        "commercial" => "commercial",
+        _ => string.Empty
+    };
+    var shouldTrackMetaLead =
+        !string.IsNullOrWhiteSpace(metaLeadSuccessToken) &&
+        !string.IsNullOrWhiteSpace(metaLeadContentName) &&
+        !string.IsNullOrWhiteSpace(metaLeadContentCategory);
 
     var quoteDisplayName = quoteKey switch
     {
@@ -301,3 +325,32 @@ main.layout-content,
 
     </div>
 </div>
+
+@if (shouldTrackMetaLead)
+{
+    <script>
+    (() => {
+        if (typeof window.fbq !== 'function') return;
+
+        const successToken = @Html.Raw(JsonSerializer.Serialize(metaLeadSuccessToken));
+        const contentName = @Html.Raw(JsonSerializer.Serialize(metaLeadContentName));
+        const contentCategory = @Html.Raw(JsonSerializer.Serialize(metaLeadContentCategory));
+        const firedKey = `meta_lead_success_${successToken}`;
+
+        try {
+            if (window.sessionStorage?.getItem(firedKey)) {
+                return;
+            }
+
+            window.fbq('track', 'Lead', {
+                content_name: contentName,
+                content_category: contentCategory
+            });
+
+            window.sessionStorage?.setItem(firedKey, '1');
+        } catch {
+            // Never interrupt the thank-you experience if Meta tracking fails.
+        }
+    })();
+    </script>
+}

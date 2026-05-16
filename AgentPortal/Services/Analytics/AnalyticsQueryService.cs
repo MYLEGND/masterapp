@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using System.Linq.Expressions;
+using Shared.Meta;
 
 namespace AgentPortal.Services.Analytics;
 
@@ -594,12 +595,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private sealed record LeadMetadataSnapshot(
         string? UtmTerm,
-        string? UtmContent);
+        string? UtmContent,
+        MetaLeadTrackingState? MetaTracking);
 
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
-            return new LeadMetadataSnapshot(null, null);
+            return new LeadMetadataSnapshot(null, null, null);
 
         try
         {
@@ -613,11 +615,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
             return new LeadMetadataSnapshot(
                 ReadString("UtmTerm"),
-                ReadString("UtmContent"));
+                ReadString("UtmContent"),
+                MetaLeadTrackingJson.Read(lead.MetadataJson));
         }
         catch
         {
-            return new LeadMetadataSnapshot(null, null);
+            return new LeadMetadataSnapshot(null, null, null);
         }
     }
 
@@ -1177,6 +1180,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             {
                 var resolved = ResolveLeadAttribution(l, sessionMap, visitorMap);
                 var classified = Classify(resolved.Attribution);
+                var metadata = SnapshotFromLeadMetadata(l);
+                var metaTracking = metadata.MetaTracking;
+                var browserPixelSent = string.Equals(metaTracking?.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase);
+                var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 return new LeadSnapshotRow
                 {
                     CreatedUtc  = l.CreatedUtc,
@@ -1204,7 +1211,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         IsNonPaid = classified == TrafficType.Direct || classified == TrafficType.Organic || classified == TrafficType.Referral,
                         TrafficType = classified,
                         ResolutionSource = resolved.ResolutionSource
-                    }
+                    },
+                    MetaTracking = metaTracking == null
+                        ? null
+                        : new MetaLeadTrackingDto
+                        {
+                            EventId = metaTracking.EventId,
+                            BrowserPixelStatus = metaTracking.BrowserPixelStatus,
+                            ServerCapiStatus = metaTracking.ServerCapiStatus,
+                            BrowserPixelSent = browserPixelSent,
+                            ServerCapiSent = serverCapiSent,
+                            DedupReady = browserPixelSent && serverCapiSent && !string.IsNullOrWhiteSpace(metaTracking.EventId)
+                        }
                 };
             }).ToList()
         };

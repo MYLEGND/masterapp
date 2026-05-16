@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using ProtectWebsite.Services.Meta;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -38,6 +39,11 @@ builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
+builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
+builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 
 // 🔹 🔹 SESSION SUPPORT for TempData
 builder.Services.AddDistributedMemoryCache();

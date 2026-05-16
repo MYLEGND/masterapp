@@ -254,6 +254,7 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     }
 
     TempData["QuoteType"] = "Health";
+    TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
     return RedirectToAction("Index", "ThankYou");
 }
 

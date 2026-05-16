@@ -330,6 +330,7 @@ namespace Protect_Website.Controllers
             }
 
             TempData["QuoteType"] = "Commercial";
+            TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
             return RedirectToAction("Index", "ThankYou");
         }
 

@@ -138,6 +138,7 @@ public sealed class LeadSnapshotRow
     public string? SourcePage { get; set; }
     /// <summary>Server-classified attribution — consumed by trafficBadge() in the frontend.</summary>
     public LeadAttributionDto? Attribution { get; set; }
+    public MetaLeadTrackingDto? MetaTracking { get; set; }
 }
 
 public sealed class LeadSnapshotDto
@@ -148,6 +149,16 @@ public sealed class LeadSnapshotDto
     public bool IsTruncated { get; set; }
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; }
+}
+
+public sealed class MetaLeadTrackingDto
+{
+    public string? EventId { get; set; }
+    public string? BrowserPixelStatus { get; set; }
+    public string? ServerCapiStatus { get; set; }
+    public bool BrowserPixelSent { get; set; }
+    public bool ServerCapiSent { get; set; }
+    public bool DedupReady { get; set; }
 }
 
 // ── Form Abandonment ──────────────────────────────────────────────────────────

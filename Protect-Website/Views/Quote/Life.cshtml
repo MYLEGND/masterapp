@@ -1340,6 +1340,7 @@ body.life-landing header .navbar .nav-link:focus {
   const recSecondaryKeyEl = document.getElementById('RecommendationSecondaryKey');
   const recSecondaryTitleEl = document.getElementById('RecommendationSecondaryTitle');
   const pageKey = form.dataset.formKey || 'quote_life';
+  const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
   const startEvent = '@cfg.StartEvent';
@@ -1581,8 +1582,48 @@ body.life-landing header .navbar .nav-link:focus {
     }) ?? Promise.resolve();
   }
 
-  function trackMetaLeadSuccess() {
+  function notifyBrowserPixelStatus(leadId, metaLeadEventId, status, note = '') {
+    if (!leadId || !metaLeadEventId) {
+      return;
+    }
+
+    const payload = JSON.stringify({
+      leadId,
+      eventId: metaLeadEventId,
+      status,
+      ...(note ? { note } : {})
+    });
+
+    try {
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        if (navigator.sendBeacon(metaBrowserAckUrl, blob)) {
+          return;
+        }
+      }
+    } catch {
+      // Fall through to fetch keepalive below.
+    }
+
+    try {
+      fetch(metaBrowserAckUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).catch(() => {});
+    } catch {
+      // Never block the thank-you redirect on diagnostics.
+    }
+  }
+
+  function trackMetaLeadSuccess(leadId, metaLeadEventId) {
+    if (!metaLeadEventId) {
+      return Promise.resolve(false);
+    }
+
     if (typeof window.fbq !== 'function') {
+      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'unavailable', 'fbq_unavailable');
       return Promise.resolve(false);
     }
 
@@ -1590,14 +1631,18 @@ body.life-landing header .navbar .nav-link:focus {
       window.fbq('track', 'Lead', {
         content_name: pageKey,
         content_category: '@cfg.OfferKey'
+      }, {
+        eventID: metaLeadEventId
       });
+      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'sent');
       return Promise.resolve(true);
     } catch {
+      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'error', 'fbq_exception');
       return Promise.resolve(false);
     }
   }
 
-  async function flushSuccessTracking() {
+  async function flushSuccessTracking(leadId, metaLeadEventId) {
     const trackingTasks = [
       trackEvent('life_step2_submit_success'),
       trackEvent(submitEvent, { submitOutcome: 'success' }),
@@ -1606,7 +1651,7 @@ body.life-landing header .navbar .nav-link:focus {
         secondaryRec: recSecondaryKeyEl?.value || '',
       }),
       trackFormSubmitOutcome('success'),
-      trackMetaLeadSuccess()
+      trackMetaLeadSuccess(leadId, metaLeadEventId)
     ];
 
     await Promise.race([
@@ -2088,8 +2133,11 @@ body.life-landing header .navbar .nav-link:focus {
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
+      const responseBody = await res.json().catch(() => ({}));
+      const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
+      const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
       form._trackSubmitSuccess?.();
-      await flushSuccessTracking();
+      await flushSuccessTracking(leadId, metaLeadEventId);
       window.location.href = thankYouPath;
     } catch (err) {
       if (lifeError) {

@@ -740,9 +740,47 @@
       { key: 'interest' },
       { key: 'leadSource' },
       { render: r => r.resolvedSource || '—' },
-      { render: r => `${trafficBadge(r.attribution)} <span class="text-muted small">${r.attribution?.resolutionSource || 'unknown'}</span>`, align: 'text-center' }
+      { render: r => `${trafficBadge(r.attribution)} <span class="text-muted small">${r.attribution?.resolutionSource || 'unknown'}</span>`, align: 'text-center' },
+      { render: r => metaTrackingBadge(r.metaTracking), align: 'text-center' }
     ]);
     setText('leads-range-label', data.rangeLabel || '');
+  }
+
+  function metaTrackingBadge(metaTracking) {
+    if (!metaTracking) {
+      return '<span class="text-muted">—</span>';
+    }
+
+    const shortEventId = metaTracking.eventId ? escapeHtml(String(metaTracking.eventId).slice(0, 8)) : '—';
+    let badgeClass = 'bg-secondary';
+    let label = 'Pending';
+
+    if (metaTracking.dedupReady) {
+      badgeClass = 'bg-success';
+      label = 'Browser + Server';
+    } else if (metaTracking.browserPixelSent) {
+      badgeClass = 'bg-primary';
+      label = 'Browser Only';
+    } else if (metaTracking.serverCapiSent) {
+      badgeClass = 'bg-info text-dark';
+      label = 'Server Only';
+    } else if (metaTracking.serverCapiStatus === 'skipped_not_configured') {
+      badgeClass = 'bg-secondary';
+      label = 'Server Skipped';
+    } else if (metaTracking.serverCapiStatus === 'failed') {
+      badgeClass = 'bg-danger';
+      label = 'Server Failed';
+    } else if (metaTracking.browserPixelStatus === 'unavailable') {
+      badgeClass = 'bg-warning text-dark';
+      label = 'Browser Unavailable';
+    } else if (metaTracking.browserPixelStatus === 'error') {
+      badgeClass = 'bg-danger';
+      label = 'Browser Error';
+    }
+
+    const browserStatus = escapeHtml(metaTracking.browserPixelStatus || 'unknown');
+    const serverStatus = escapeHtml(metaTracking.serverCapiStatus || 'unknown');
+    return `<span class="badge ${badgeClass}">${label}</span><div class="text-muted small">eid ${shortEventId}</div><div class="text-muted small">b:${browserStatus} / s:${serverStatus}</div>`;
   }
   // Maps each modal id to the badge <span> id that shows "Viewing: ..."
   const trafficTypeBadgeIds = {
@@ -1127,7 +1165,7 @@
       setText('leads-range-label', 'Unavailable');
       setText('leads-total', '—');
       setText('leads-cap-note', message);
-      setTableMessage('leads-body', 8, message, 'text-danger');
+      setTableMessage('leads-body', 9, message, 'text-danger');
       console.error(err);
     }
   }
@@ -1798,7 +1836,11 @@
           { header: 'ResolvedContent', selector: r => r.resolvedContent || '' },
           { header: 'ResolvedTerm', selector: r => r.resolvedTerm || '' },
           { header: 'ResolvedFbclidPresent', selector: r => !!r.resolvedFbclidPresent },
-          { header: 'AttributionResolution', selector: r => r.attribution?.resolutionSource || 'unknown' }
+          { header: 'AttributionResolution', selector: r => r.attribution?.resolutionSource || 'unknown' },
+          { header: 'MetaEventId', selector: r => r.metaTracking?.eventId || '' },
+          { header: 'BrowserPixelStatus', selector: r => r.metaTracking?.browserPixelStatus || '' },
+          { header: 'ServerCapiStatus', selector: r => r.metaTracking?.serverCapiStatus || '' },
+          { header: 'MetaDedupReady', selector: r => !!r.metaTracking?.dedupReady }
         ]);
       } catch (err) {
         console.error(err);

@@ -16,6 +16,8 @@ using System.Globalization;
 using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using ProtectWebsite.Services.Meta;
+using Shared.Meta;
 
 namespace Protect_Website.Controllers
 {
@@ -33,10 +35,11 @@ namespace Protect_Website.Controllers
         private readonly string trackingApiBase;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly ILogger<LifeQuoteController> _logger;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -47,6 +50,7 @@ namespace Protect_Website.Controllers
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _resolver = resolver;
             _db = db;
+            _metaConversionsApi = metaConversionsApi;
             _logger = logger;
         }
 
@@ -138,8 +142,8 @@ namespace Protect_Website.Controllers
 
             var correlationId = Guid.NewGuid();
             _logger.LogInformation(
-                "LifeQuote [{CorrelationId}]: request received offer={Offer} Email={Email}",
-                correlationId, offerKey, model.Email);
+                "LifeQuote [{CorrelationId}]: request received offer={Offer} pageKey={PageKey}",
+                correlationId, offerKey, pageMode.EffectivePageKey);
 
             var (leadRecipientEmail, agentProfileId, agentSlug) = await ResolveLeadContextAsync();
             var isAgentContext = agentProfileId.HasValue || !string.IsNullOrWhiteSpace(agentSlug);
@@ -214,8 +218,8 @@ namespace Protect_Website.Controllers
             catch (Exception persistEx)
             {
                 _logger.LogError(persistEx,
-                    "LifeQuote [{CorrelationId}]: lead persistence failed for {Email} offer={Offer}",
-                    correlationId, model.Email, model.OfferKey);
+                    "LifeQuote [{CorrelationId}]: lead persistence failed offer={Offer} pageKey={PageKey}",
+                    correlationId, model.OfferKey, pageMode.EffectivePageKey);
                 if (IsAjax())
                     return StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message });
                 ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
@@ -223,6 +227,56 @@ namespace Protect_Website.Controllers
                 ApplyWizardViewData(vmPersistErr);
                 return View("~/Views/Quote/Life.cshtml", vmPersistErr);
             }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await TryPersistMetaTrackingAsync(
+                lead,
+                correlationId,
+                "meta_tracking_initialized",
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = cfg.ProductType,
+                    PageKey = pageMode.EffectivePageKey,
+                    OfferKey = cfg.OfferKey,
+                    EventSourceUrl = ResolveEventSourceUrl(model),
+                    ClientIpAddress = ResolveClientIpAddress(),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = ResolveCookieValue("_fbp"),
+                    Fbc = ResolveCookieValue("_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await TryPersistMetaTrackingAsync(
+                lead,
+                correlationId,
+                "meta_capi_result",
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
 
             // ── 2. Send email ─────────────────────────────────────────────────────
             try
@@ -366,9 +420,71 @@ namespace Protect_Website.Controllers
 
             // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
             if (IsAjax())
-                return Ok(new { success = true });
+                return Ok(new
+                {
+                    success = true,
+                    leadId = lead.LeadId.ToString("D"),
+                    metaLeadEventId,
+                    metaCapiStatus = metaCapiResult.Status
+                });
 
             return RedirectToAction("Index", "ThankYou");
+        }
+
+        [HttpPost("Life/meta-browser-ack")]
+        [IgnoreAntiforgeryToken]
+        public async Task<IActionResult> AckLifeBrowserPixel([FromBody] MetaBrowserPixelAckRequest? request)
+        {
+            if (request == null ||
+                request.LeadId == Guid.Empty ||
+                string.IsNullOrWhiteSpace(request.EventId))
+            {
+                return BadRequest(new { error = "Invalid browser pixel acknowledgment." });
+            }
+
+            var lead = await _db.WebsiteLeads.FirstOrDefaultAsync(
+                x => x.LeadId == request.LeadId,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (lead == null)
+                return NotFound();
+
+            var currentState = MetaLeadTrackingJson.Read(lead.MetadataJson);
+            if (!string.IsNullOrWhiteSpace(currentState?.EventId) &&
+                !string.Equals(currentState.EventId, request.EventId.Trim(), StringComparison.OrdinalIgnoreCase))
+            {
+                return Conflict();
+            }
+
+            var normalizedStatus = NormalizeBrowserPixelStatus(request.Status);
+            var normalizedNote = NormalizeBrowserPixelNote(request.Note);
+
+            lead.MetadataJson = MetaLeadTrackingJson.Upsert(
+                lead.MetadataJson,
+                state =>
+                {
+                    state.EventId ??= request.EventId.Trim();
+                    state.BrowserPixelStatus = normalizedStatus;
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = normalizedNote;
+                });
+
+            try
+            {
+                await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                _logger.LogInformation(
+                    "LifeQuote browser pixel ack lead={LeadId} status={Status} eventId={EventId}",
+                    request.LeadId, normalizedStatus, request.EventId);
+            }
+            catch (Exception ackEx)
+            {
+                _logger.LogError(
+                    ackEx,
+                    "LifeQuote browser pixel ack save failed lead={LeadId} status={Status} eventId={EventId}",
+                    request.LeadId, normalizedStatus, request.EventId);
+            }
+
+            return NoContent();
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug)> ResolveLeadContextAsync()
@@ -771,6 +887,103 @@ namespace Protect_Website.Controllers
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
+        private async Task TryPersistMetaTrackingAsync(
+            WebsiteLead lead,
+            Guid correlationId,
+            string stage,
+            Action<MetaLeadTrackingState> mutate)
+        {
+            try
+            {
+                lead.MetadataJson = MetaLeadTrackingJson.Upsert(lead.MetadataJson, mutate);
+                await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+            }
+            catch (Exception metaPersistEx)
+            {
+                _logger.LogError(
+                    metaPersistEx,
+                    "LifeQuote [{CorrelationId}]: meta tracking persistence failed stage={Stage} lead={LeadId}",
+                    correlationId, stage, lead.LeadId);
+            }
+        }
+
+        private string? ResolveEventSourceUrl(LifeQuoteFormModel model)
+        {
+            if (!string.IsNullOrWhiteSpace(model.LandingPageUrl) &&
+                Uri.TryCreate(model.LandingPageUrl.Trim(), UriKind.Absolute, out var landingUri))
+            {
+                return landingUri.ToString();
+            }
+
+            var referer = Request?.Headers.Referer.ToString();
+            if (!string.IsNullOrWhiteSpace(referer) &&
+                Uri.TryCreate(referer.Trim(), UriKind.Absolute, out var refererUri))
+            {
+                return refererUri.ToString();
+            }
+
+            var request = Request;
+            if (request == null || !request.Host.HasValue)
+                return null;
+
+            return $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}{request.QueryString}";
+        }
+
+        private string? ResolveClientIpAddress()
+        {
+            static string? FirstHeaderValue(string? raw)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                    return null;
+
+                return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .FirstOrDefault();
+            }
+
+            var request = Request;
+            if (request == null)
+                return null;
+
+            return FirstHeaderValue(request.Headers["X-Forwarded-For"].ToString())
+                ?? FirstHeaderValue(request.Headers["X-Real-IP"].ToString())
+                ?? FirstHeaderValue(request.Headers["CF-Connecting-IP"].ToString())
+                ?? request.HttpContext.Connection.RemoteIpAddress?.ToString();
+        }
+
+        private string? ResolveCookieValue(string cookieName)
+        {
+            if (string.IsNullOrWhiteSpace(cookieName))
+                return null;
+
+            if (Request?.Cookies.TryGetValue(cookieName, out var cookieValue) != true)
+                return null;
+
+            return string.IsNullOrWhiteSpace(cookieValue) ? null : cookieValue.Trim();
+        }
+
+        private static string NormalizeBrowserPixelStatus(string? status)
+        {
+            var normalized = status?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "sent" => "sent",
+                "unavailable" => "unavailable",
+                "error" => "error",
+                _ => "unknown"
+            };
+        }
+
+        private static string? NormalizeBrowserPixelNote(string? note)
+        {
+            var normalized = note?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "fbq_unavailable" => "fbq_unavailable",
+                "fbq_exception" => "fbq_exception",
+                _ => null
+            };
+        }
+
         private static string BuildVariantPageKey(string basePageKey, bool isLandingPage) =>
             isLandingPage ? $"{basePageKey}_landing" : basePageKey;
 
@@ -867,6 +1080,14 @@ namespace Protect_Website.Controllers
             string PageVariant,
             string PageMode,
             string EffectivePageKey);
+
+        public sealed class MetaBrowserPixelAckRequest
+        {
+            public Guid LeadId { get; set; }
+            public string? EventId { get; set; }
+            public string? Status { get; set; }
+            public string? Note { get; set; }
+        }
 
         private static IReadOnlyDictionary<string, LifeWizardConfig> BuildConfigs()
         {
