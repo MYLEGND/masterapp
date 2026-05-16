@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Security.Claims;
+using System.Data;
 using System.Text;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Security;
 using AgentPortal.Services;
+using Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -235,20 +237,6 @@ namespace AgentPortal.Controllers;
         if (request == null || request.LeadId == Guid.Empty)
             return BadRequest(new { message = "A valid leadId is required." });
 
-        var lead = await _db.WebsiteLeads.FirstOrDefaultAsync(l => l.LeadId == request.LeadId);
-        if (lead == null)
-            return NotFound(new { message = "Lead not found." });
-
-        if (lead.IsDeleted)
-        {
-            return Json(new
-            {
-                ok = true,
-                alreadyDeleted = true,
-                leadId = lead.LeadId
-            });
-        }
-
         var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(actorId))
         {
@@ -268,20 +256,106 @@ namespace AgentPortal.Controllers;
         if (reason.Length > 500)
             reason = reason[..500];
 
-        lead.IsDeleted = true;
-        lead.DeletedAtUtc = DateTime.UtcNow;
-        lead.DeletedByUserId = actorId;
-        lead.DeleteReason = reason;
-
-        await _db.SaveChangesAsync();
-
-        return Json(new
+        try
         {
-            ok = true,
-            leadId = lead.LeadId,
-            deletedAtUtc = lead.DeletedAtUtc,
-            deleteReason = lead.DeleteReason
-        });
+            var leadColumns = await GetWebsiteLeadColumnSetAsync(HttpContext.RequestAborted);
+            var supportsSoftDelete = leadColumns.Contains("IsDeleted");
+
+            WebsiteLeadDeleteLookup? lead;
+            if (supportsSoftDelete)
+            {
+                lead = await _db.WebsiteLeads.AsNoTracking()
+                    .Where(l => l.LeadId == request.LeadId)
+                    .Select(l => new WebsiteLeadDeleteLookup
+                    {
+                        Id = l.Id,
+                        LeadId = l.LeadId,
+                        IsDeleted = l.IsDeleted
+                    })
+                    .FirstOrDefaultAsync(HttpContext.RequestAborted);
+            }
+            else
+            {
+                lead = await _db.WebsiteLeads.AsNoTracking()
+                    .Where(l => l.LeadId == request.LeadId)
+                    .Select(l => new WebsiteLeadDeleteLookup
+                    {
+                        Id = l.Id,
+                        LeadId = l.LeadId
+                    })
+                    .FirstOrDefaultAsync(HttpContext.RequestAborted);
+            }
+
+            if (lead == null)
+                return NotFound(new { message = "Lead not found." });
+
+            if (lead.IsDeleted)
+            {
+                return Json(new
+                {
+                    ok = true,
+                    alreadyDeleted = true,
+                    leadId = lead.LeadId
+                });
+            }
+
+            DateTime? deletedAtUtc = null;
+            string? deleteReason = null;
+
+            if (supportsSoftDelete)
+            {
+                var stub = new WebsiteLead { Id = lead.Id, LeadId = lead.LeadId };
+                _db.WebsiteLeads.Attach(stub);
+
+                stub.IsDeleted = true;
+                _db.Entry(stub).Property(x => x.IsDeleted).IsModified = true;
+
+                if (leadColumns.Contains("DeletedAtUtc"))
+                {
+                    deletedAtUtc = DateTime.UtcNow;
+                    stub.DeletedAtUtc = deletedAtUtc;
+                    _db.Entry(stub).Property(x => x.DeletedAtUtc).IsModified = true;
+                }
+
+                if (leadColumns.Contains("DeletedByUserId"))
+                {
+                    stub.DeletedByUserId = actorId;
+                    _db.Entry(stub).Property(x => x.DeletedByUserId).IsModified = true;
+                }
+
+                if (leadColumns.Contains("DeleteReason"))
+                {
+                    deleteReason = reason;
+                    stub.DeleteReason = reason;
+                    _db.Entry(stub).Property(x => x.DeleteReason).IsModified = true;
+                }
+            }
+            else
+            {
+                var stub = new WebsiteLead { Id = lead.Id };
+                _db.WebsiteLeads.Attach(stub);
+                _db.WebsiteLeads.Remove(stub);
+                _logger.LogWarning(
+                    "Hard deleting website lead {LeadId} because WebsiteLeads.IsDeleted is unavailable in the current database schema.",
+                    lead.LeadId);
+            }
+
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+            return Json(new
+            {
+                ok = true,
+                leadId = lead.LeadId,
+                deletedAtUtc,
+                deleteReason,
+                usedHardDelete = !supportsSoftDelete
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "DeleteLead failed for lead {LeadId}.", request.LeadId);
+            return StatusCode(500, new { message = "Unable to delete lead right now." });
+        }
     }
 
     [HttpGet("agent-performance")]
@@ -1009,6 +1083,57 @@ namespace AgentPortal.Controllers;
             .Any(candidate => candidate.Equals(value, StringComparison.OrdinalIgnoreCase));
     }
 
+    private async Task<HashSet<string>> GetWebsiteLeadColumnSetAsync(CancellationToken cancellationToken)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var conn = _db.Database.GetDbConnection();
+        var shouldClose = conn.State != ConnectionState.Open;
+        if (shouldClose)
+            await conn.OpenAsync(cancellationToken);
+
+        try
+        {
+            await using var cmd = conn.CreateCommand();
+            var provider = _db.Database.ProviderName ?? string.Empty;
+
+            if (provider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+            {
+                cmd.CommandText = "PRAGMA table_info(\"WebsiteLeads\")";
+                await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+                var nameOrdinal = reader.GetOrdinal("name");
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (!reader.IsDBNull(nameOrdinal))
+                        columns.Add(reader.GetString(nameOrdinal));
+                }
+
+                return columns;
+            }
+
+            cmd.CommandText = "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = @tableName";
+            var tableName = cmd.CreateParameter();
+            tableName.ParameterName = "@tableName";
+            tableName.Value = "WebsiteLeads";
+            cmd.Parameters.Add(tableName);
+
+            await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken))
+            {
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    if (!reader.IsDBNull(0))
+                        columns.Add(reader.GetString(0));
+                }
+            }
+
+            return columns;
+        }
+        finally
+        {
+            if (shouldClose)
+                await conn.CloseAsync();
+        }
+    }
+
     private static List<string> BuildSnapshotWarnings(SummaryKpiDto summary)
     {
         var warnings = new List<string>();
@@ -1443,5 +1568,12 @@ namespace AgentPortal.Controllers;
     {
         public Guid LeadId { get; set; }
         public string? Reason { get; set; }
+    }
+
+    private sealed class WebsiteLeadDeleteLookup
+    {
+        public long Id { get; set; }
+        public Guid LeadId { get; set; }
+        public bool IsDeleted { get; set; }
     }
 }
