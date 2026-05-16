@@ -47,16 +47,19 @@ namespace AgentPortal.Controllers;
     [HttpGet("Index")]
     [HttpGet("/website-analytics")]
     [HttpGet("/website-analytics/index")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null)
     {
         var range = TimeRangeRequest.FromPreset("30d");
-        var scope = await ResolveScopeAsync(null);
+        var scope = await ResolveScopeAsync(agentProfileId);
         var summary = await _analytics.GetSummaryAsync(range, scope);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team: false);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
+        ViewData["InitialScopeProfileId"] = scope.ScopeType == ScopeType.Agent
+            ? scope.AgentTrackingProfileId
+            : null;
 
         var callerProfile = await GetCallerProfileAsync();
         if (callerProfile != null)

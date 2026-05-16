@@ -11,6 +11,7 @@
     // ── State ──────────────────────────────────────────────────────────────────
     let activeChart = null;
     let activeFetchController = null;
+    let activeMetric = null;
     let isOpen = false;
     let closing = false;
 
@@ -77,8 +78,8 @@
         else if (tt === 'non_paid') p.set('trafficType', 'NonPaid');
         else                   p.set('trafficType', 'All');
 
-        // Agent scoping — founders never send agentProfileId (global scope)
-        if (!s.isFounder && s.agentProfileId) {
+        // Agent scoping — include the selected agent scope for founders and agents.
+        if (s.agentProfileId) {
             p.set('agentProfileId', s.agentProfileId);
         }
 
@@ -396,6 +397,7 @@
     // ── Main open handler ─────────────────────────────────────────────────────
     async function openModal(metric) {
         if (!panel) return;
+        activeMetric = metric;
 
         // Header
         const metricLabels = {
@@ -578,6 +580,11 @@
         if (!window.__waState) {
             window.__waState = null;
         }
+
+        window.addEventListener('wa:scope-changed', () => {
+            if (!isOpen || !activeMetric) return;
+            openModal(activeMetric);
+        });
     }
 
     document.addEventListener('DOMContentLoaded', init);

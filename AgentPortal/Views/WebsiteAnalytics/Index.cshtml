@@ -9,12 +9,13 @@
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
+    var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
     var isFounder = agentOptionsJson != "[]";
 }
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
     <div class="hero-link mb-4 p-4 p-md-5">
     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
             <div>
@@ -114,18 +115,22 @@
             <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
         </div>
         <div class="wa-header-right">
-            <div class="wa-tz-chip" id="wa-scope-label">Viewing: @initialScopeLabel</div>
+            <div class="wa-tz-chip wa-scope-chip" id="wa-scope-label">Viewing: @initialScopeLabel</div>
             @if (canViewFounderTeamUi)
             {
-            <div class="wa-scope-picker">
-                <label class="small text-muted d-block mb-1" for="wa-scope-select">Analytics Scope</label>
-                <select id="wa-scope-select" class="form-select form-select-sm">
-                    <option value="">Global</option>
+            <div class="wa-scope-picker" aria-label="Analytics scope selector">
+                <div class="wa-scope-picker-head">
+                    <label class="wa-scope-picker-label" for="wa-scope-select">Analytics Scope</label>
+                    <div class="wa-scope-picker-help">Switch between Global, Founder Personal, or an individual agent without reloading.</div>
+                </div>
+                <select id="wa-scope-select" class="form-select form-select-sm scope-select">
+                    <option value="">Global — all tracking profiles and agents</option>
                     @if (callerProfileId.HasValue)
                     {
-                    <option value="@callerProfileId.Value">Founder Personal</option>
+                    <option value="@callerProfileId.Value">Founder Personal — founder-owned analytics</option>
                     }
                 </select>
+                <div class="wa-scope-active-desc" id="wa-scope-active-desc">Current scope updates every analytics surface on this page.</div>
             </div>
             }
             <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>

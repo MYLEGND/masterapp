@@ -413,6 +413,12 @@
         runReview();
       }
     });
+
+    window.addEventListener('wa:scope-changed', function () {
+      if (!drawerOpen) return;
+      updateDrawerScopeLabel(getCurrentState());
+      runReview();
+    });
   }
 
   // ── Bootstrap ─────────────────────────────────────────────────────────────

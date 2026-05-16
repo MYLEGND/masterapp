@@ -61,8 +61,10 @@
   })();
   const isFounder = agentOptions.length > 0;
   const callerProfileId = shell?.dataset.callerProfileId || null;
+  const initialScopeProfileId = shell?.dataset.initialScopeProfileId || null;
   const initialFounderAgentProfileId = (() => {
     if (!isFounder) return null;
+    if (initialScopeProfileId) return initialScopeProfileId;
     try {
       const url = new URL(window.location.href);
       return url.searchParams.get('agentProfileId') || null;
@@ -205,6 +207,22 @@
     return `Agent: ${name}`;
   }
 
+  function resolveScopeDescription(agentId) {
+    if (!agentId) {
+      return 'Global scope aggregates all tracking profiles and agents.';
+    }
+    if (callerProfileId && String(agentId) === String(callerProfileId)) {
+      return 'Founder Personal shows only founder-owned analytics.';
+    }
+    const agent = findAgentOption(agentId);
+    const name = agent?.name || agent?.slug || 'that agent';
+    return `${name} only. KPI cards, modals, AI, and exports stay isolated to this agent.`;
+  }
+
+  function isGlobalScope() {
+    return !state.scope.agentProfileId;
+  }
+
   function syncScopeQueryParam(agentId) {
     if (!isFounder) return;
     try {
@@ -219,31 +237,32 @@
 
   function updateFounderScopeUi() {
     setText('wa-scope-label', `Viewing: ${state.scope.scopeLabel || 'Global'}`);
+    setText('wa-scope-active-desc', resolveScopeDescription(state.scope.agentProfileId));
 
-    const isGlobalScope = !state.scope.agentProfileId;
+    const globalScope = isGlobalScope();
     const teamBtn = document.getElementById('team-rollup-btn');
     if (teamBtn) {
-      teamBtn.disabled = !isGlobalScope;
-      teamBtn.title = isGlobalScope
+      teamBtn.disabled = !globalScope;
+      teamBtn.title = globalScope
         ? 'View agency-wide team performance'
         : 'Switch back to Global scope to compare the full agency';
-      teamBtn.setAttribute('aria-disabled', isGlobalScope ? 'false' : 'true');
-      teamBtn.style.opacity = isGlobalScope ? '1' : '.6';
+      teamBtn.setAttribute('aria-disabled', globalScope ? 'false' : 'true');
+      teamBtn.style.opacity = globalScope ? '1' : '.6';
     }
 
     const agentPerfCard = document.getElementById('mod-agentperf');
     if (agentPerfCard) {
-      agentPerfCard.style.pointerEvents = isGlobalScope ? '' : 'none';
-      agentPerfCard.style.opacity = isGlobalScope ? '1' : '.55';
-      agentPerfCard.setAttribute('aria-disabled', isGlobalScope ? 'false' : 'true');
-      agentPerfCard.title = isGlobalScope
+      agentPerfCard.style.pointerEvents = globalScope ? '' : 'none';
+      agentPerfCard.style.opacity = globalScope ? '1' : '.55';
+      agentPerfCard.setAttribute('aria-disabled', globalScope ? 'false' : 'true');
+      agentPerfCard.title = globalScope
         ? 'Open Agent Performance'
         : 'Switch back to Global scope to compare agents';
     }
 
     const agentPerfMeta = document.getElementById('mod-agentperf-meta');
     if (agentPerfMeta) {
-      agentPerfMeta.textContent = isGlobalScope
+      agentPerfMeta.textContent = globalScope
         ? 'Top performers · founder only'
         : 'Global scope only · switch back to compare agents';
     }
@@ -254,21 +273,49 @@
     const select = document.getElementById('wa-scope-select');
     if (!select) return;
 
-    const seen = new Set(Array.from(select.options).map(o => String(o.value || '')));
-    (agentOptions || [])
+    select.innerHTML = '';
+
+    const globalOption = document.createElement('option');
+    globalOption.value = '';
+    globalOption.textContent = 'Global — all tracking profiles and agents';
+    select.appendChild(globalOption);
+
+    if (callerProfileId) {
+      const founderOption = document.createElement('option');
+      founderOption.value = callerProfileId;
+      founderOption.textContent = 'Founder Personal — founder-owned analytics';
+      select.appendChild(founderOption);
+    }
+
+    const agentScopeOptions = (agentOptions || [])
       .slice()
-      .sort((a, b) => String(a?.name || a?.slug || '').localeCompare(String(b?.name || b?.slug || '')))
-      .forEach(agent => {
+      .filter(agent => {
         const id = String(agent?.id || '');
-        if (!id || seen.has(id)) return;
-        if (callerProfileId && id === String(callerProfileId)) return;
+        if (!id) return false;
+        return !(callerProfileId && id === String(callerProfileId));
+      })
+      .sort((a, b) => String(a?.name || a?.slug || '').localeCompare(String(b?.name || b?.slug || '')));
+
+    if (agentScopeOptions.length) {
+      const agentGroup = document.createElement('optgroup');
+      agentGroup.label = 'Individual Agent Scopes';
+      agentScopeOptions.forEach(agent => {
+        const id = String(agent?.id || '');
         const opt = document.createElement('option');
         opt.value = id;
-        opt.textContent = `Agent: ${agent?.name || agent?.slug || id}`;
-        select.appendChild(opt);
+        opt.textContent = `Agent — ${agent?.name || agent?.slug || id}`;
+        agentGroup.appendChild(opt);
       });
+      select.appendChild(agentGroup);
+    }
 
-    select.value = state.scope.agentProfileId || '';
+    const requestedScopeId = state.scope.agentProfileId || '';
+    select.value = requestedScopeId;
+    if (select.value !== requestedScopeId) {
+      state.scope.agentProfileId = select.value || null;
+      state.agentProfileId = state.scope.agentProfileId;
+      syncScopeQueryParam(state.scope.agentProfileId);
+    }
     state.scope.scopeLabel = resolveScopeLabel(state.scope.agentProfileId);
     updateFounderScopeUi();
 
@@ -278,10 +325,31 @@
       state.scope.scopeLabel = resolveScopeLabel(state.scope.agentProfileId);
       syncScopeQueryParam(state.scope.agentProfileId);
       updateFounderScopeUi();
+      notifyScopeChange();
       updateGrowthBaseLink();
       loadSummary();
       refreshOpenModal();
     });
+  }
+
+  function notifyScopeChange() {
+    if (!isFounder) return;
+
+    if (isGlobalScope() === false) {
+      const teamRollupModalEl = document.getElementById('teamRollupModal');
+      if (teamRollupModalEl && typeof bootstrap !== 'undefined' && bootstrap?.Modal) {
+        const teamRollupModal = bootstrap.Modal.getInstance(teamRollupModalEl);
+        teamRollupModal?.hide();
+      }
+    }
+
+    window.dispatchEvent(new CustomEvent('wa:scope-changed', {
+      detail: {
+        agentProfileId: state.scope.agentProfileId || null,
+        scopeLabel: state.scope.scopeLabel || 'Global',
+        isGlobal: isGlobalScope()
+      }
+    }));
   }
 
   function rangeParams({ team = false, modal = null } = {}) {
@@ -1170,7 +1238,22 @@
     }
   }
 
+  function renderAgentPerfDisabledState() {
+    setText('agentperf-range-label', state.cache.summary?.rangeLabel || 'Current Range');
+    setTableMessage(
+      'agentperf-body',
+      8,
+      'Agent Performance is available in Global scope only. Switch back to Global to compare agents.',
+      'fa-empty'
+    );
+  }
+
   async function loadAgentPerf() {
+    if (isFounder && !isGlobalScope()) {
+      renderAgentPerfDisabledState();
+      return;
+    }
+
     try {
       const data = await fetchJson('agentperf', endpoints.agentPerf, rangeParams());
       if (!data) return;
