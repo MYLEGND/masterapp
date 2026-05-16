@@ -362,7 +362,11 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "DeleteLead failed for lead {LeadId}.", request.LeadId);
+            _logger.LogError(
+                ex,
+                "DeleteLead failed for lead {LeadId}. Request={@Request}",
+                request?.LeadId,
+                request);
             return StatusCode(500, new { message = "Unable to delete lead right now." });
         }
 
