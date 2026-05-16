@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
@@ -60,6 +62,33 @@ public sealed class WebsiteAnalyticsAiController : Controller
             ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
+    private static TimeZoneInfo ResolveViewerTimeZone(string? timezoneId, int? timezoneOffsetMinutes)
+    {
+        if (!string.IsNullOrWhiteSpace(timezoneId))
+        {
+            try { return TimeZoneInfo.FindSystemTimeZoneById(timezoneId.Trim()); }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
+        }
+
+        if (timezoneOffsetMinutes.HasValue &&
+            timezoneOffsetMinutes.Value >= -840 &&
+            timezoneOffsetMinutes.Value <= 840)
+        {
+            try
+            {
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    $"viewer-offset-{timezoneOffsetMinutes.Value}",
+                    TimeSpan.FromMinutes(-timezoneOffsetMinutes.Value),
+                    "Viewer Local",
+                    "Viewer Local");
+            }
+            catch { }
+        }
+
+        return TimeZoneInfo.Utc;
+    }
+
     // ── POST /website-analytics/ai/review ────────────────────────────────────
 
     [HttpPost("review")]
@@ -69,7 +98,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
         var ct = HttpContext.RequestAborted;
 
         TimeRangeRequest range;
-        try { range = TimeRangeRequest.FromPreset(request?.Preset, request?.FromUtc, request?.ToUtc); }
+        try { range = TimeRangeRequest.FromPreset(request?.Preset, request?.FromUtc, request?.ToUtc, ResolveViewerTimeZone(request?.TimezoneId, request?.TimezoneOffsetMinutes)); }
         catch { range = TimeRangeRequest.FromPreset("30d"); }
 
         var scope = await ResolveScopeAsync(request?.AgentProfileId, request?.Team ?? false);
@@ -90,6 +119,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
             var safePayload = WebsiteAnalyticsAiRedactor.Redact(rawPayload, _logger);
 
             var result = await _reviewService.ReviewAsync(safePayload, ct);
+            AppendPayloadWarnings(result, safePayload.Warnings);
 
             _logger.LogInformation(
                 "AI review completed. Scope={Scope} Range={Range} IsError={IsError}",
@@ -138,7 +168,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
             return Json(ErrorDto("Follow-up question may not contain phone numbers."));
 
         TimeRangeRequest range;
-        try { range = TimeRangeRequest.FromPreset(request.Preset, request.FromUtc, request.ToUtc); }
+        try { range = TimeRangeRequest.FromPreset(request.Preset, request.FromUtc, request.ToUtc, ResolveViewerTimeZone(request.TimezoneId, request.TimezoneOffsetMinutes)); }
         catch { range = TimeRangeRequest.FromPreset("30d"); }
 
         var scope = await ResolveScopeAsync(request.AgentProfileId, request.Team);
@@ -163,6 +193,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
                 priorSummary = priorSummary[..2000];
 
             var result = await _reviewService.FollowUpAsync(safePayload, question, priorSummary, ct);
+            AppendPayloadWarnings(result, safePayload.Warnings);
 
             _logger.LogInformation(
                 "AI follow-up completed. Scope={Scope} IsError={IsError}",
@@ -234,9 +265,6 @@ public sealed class WebsiteAnalyticsAiController : Controller
         if (isFounder)
         {
             if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
-            var founderProfile = await _tracking.GetByUpnAsync(_founderUpn);
-            if (founderProfile != null) return ScopeContext.ForAgent(founderProfile.Id);
-            if (effectiveProfileId.HasValue) return ScopeContext.ForAgent(effectiveProfileId.Value);
             return ScopeContext.Global;
         }
 
@@ -282,4 +310,17 @@ public sealed class WebsiteAnalyticsAiController : Controller
         ErrorMessage = message,
         Summary = message
     };
+
+    private static void AppendPayloadWarnings(AiInsightsResultDto? result, IReadOnlyCollection<string>? warnings)
+    {
+        if (result == null || warnings == null || warnings.Count == 0) return;
+        result.ConfidenceNotes ??= new List<string>();
+        foreach (var warning in warnings)
+        {
+            if (string.IsNullOrWhiteSpace(warning)) continue;
+            var note = $"Partial data warning: {warning}";
+            if (!result.ConfidenceNotes.Contains(note, StringComparer.OrdinalIgnoreCase))
+                result.ConfidenceNotes.Add(note);
+        }
+    }
 }

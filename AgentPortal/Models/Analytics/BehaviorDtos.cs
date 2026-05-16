@@ -137,7 +137,8 @@ public sealed class SourcePerformanceRow
     public int VerifiedLeads { get; set; }
     public decimal SessionConversionRate { get; set; }
     public decimal LandingPageConversionRate { get; set; }
-    public double AvgDwellMs { get; set; }
+    public double? AvgDwellMs { get; set; }
+    public int AvgDwellSampleCount { get; set; }
 }
 
 public sealed class SourcePerformanceDto

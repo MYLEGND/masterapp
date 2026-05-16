@@ -36,7 +36,8 @@
                 toUtc:         bridge.to     || null,
                 trafficType:   bridge.trafficType || 'all',
                 agentProfileId: bridge.agentProfileId || null,
-                isFounder:     bridge.isFounder || false
+                isFounder:     bridge.isFounder || false,
+                rangeParams:   typeof bridge.rangeParams === 'function' ? bridge.rangeParams.bind(bridge) : null
             };
         }
 
@@ -54,6 +55,12 @@
 
     function buildParams(metric) {
         const s = readPageState();
+        if (s.rangeParams) {
+            const params = new URLSearchParams(s.rangeParams());
+            params.set('metric', metric);
+            params.set('trafficType', 'All');
+            return params.toString();
+        }
 
         const p = new URLSearchParams();
         p.set('metric', metric);

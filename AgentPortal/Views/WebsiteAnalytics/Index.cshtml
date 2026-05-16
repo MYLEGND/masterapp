@@ -3,21 +3,18 @@
     var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
+    var initialScopeLabel = ViewData["InitialScopeLabel"] as string ?? "Global";
     var personalLink = ViewData["PersonalLink"] as string;
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
     var isFounder = agentOptionsJson != "[]";
-    if (isFounder)
-    {
-        callerProfileId = null;
-    }
 }
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
     <div class="hero-link mb-4 p-4 p-md-5">
     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
             <div>
@@ -117,6 +114,20 @@
             <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
         </div>
         <div class="wa-header-right">
+            <div class="wa-tz-chip" id="wa-scope-label">Viewing: @initialScopeLabel</div>
+            @if (canViewFounderTeamUi)
+            {
+            <div class="wa-scope-picker">
+                <label class="small text-muted d-block mb-1" for="wa-scope-select">Analytics Scope</label>
+                <select id="wa-scope-select" class="form-select form-select-sm">
+                    <option value="">Global</option>
+                    @if (callerProfileId.HasValue)
+                    {
+                    <option value="@callerProfileId.Value">Founder Personal</option>
+                    }
+                </select>
+            </div>
+            }
             <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(canViewFounderTeamUi)
@@ -143,6 +154,10 @@
             <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Custom</button>
         </div>
         <div id="fa-range-error" class="text-danger small"></div>
+    </div>
+
+    <div class="alert alert-warning small py-2 px-3 mb-3" id="wa-methodology-note">
+        Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.
     </div>
 
     <div class="row row-cols-1 row-cols-md-4 row-cols-lg-8 g-3 fa-kpi-grid">
@@ -190,7 +205,7 @@
             <div class="kpi-card">
                 <div class="fa-kpi-title">Session Conversion Rate</div>
                 <div class="fa-kpi-value" id="kpi-session">0%</div>
-                <div class="fa-kpi-sub">Leads / Sessions</div>
+                <div class="fa-kpi-sub">Converted Sessions / Sessions</div>
                 <div class="fa-kpi-warning" id="kpi-session-warning"></div>
             </div>
         </div>
@@ -571,14 +586,16 @@
                     <th>Source</th>
                     <th>Medium</th>
                     <th>Campaign</th>
+                    <th>Landing Page</th>
                     <th class="text-end">Sessions</th>
                     <th class="text-end">Engaged</th>
                     <th class="text-end">Leads</th>
                     <th class="text-end">Sess Conv</th>
                     <th class="text-end">Avg Dwell</th>
+                    <th class="text-end">Dwell Samples</th>
                   </tr>
                 </thead>
-                <tbody id="bhvr-source-body"><tr><td colspan="8" class="fa-empty">Loading…</td></tr></tbody>
+                <tbody id="bhvr-source-body"><tr><td colspan="10" class="fa-empty">Loading…</td></tr></tbody>
               </table>
             </div>
           </div>
@@ -629,14 +646,14 @@
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Sources</h6>
                 <table class="table table-sm">
-                    <thead><tr><th>Source</th><th class="text-end">Events</th></tr></thead>
+                    <thead><tr><th>Source</th><th class="text-end">Sessions</th></tr></thead>
                     <tbody id="traffic-top-sources-body"></tbody>
                 </table>
             </div>
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Campaigns</h6>
                 <table class="table table-sm">
-                    <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
+                    <thead><tr><th>Campaign</th><th class="text-end">Sessions</th></tr></thead>
                     <tbody id="traffic-top-campaigns-body"></tbody>
                 </table>
             </div>
@@ -689,7 +706,7 @@
       </div>
       <div class="modal-body">
         <table class="table table-sm">
-            <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead>
+            <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Lead / View %</th></tr></thead>
             <tbody id="pageperf-body"></tbody>
         </table>
       </div>
@@ -714,7 +731,7 @@
       </div>
       <div class="modal-body">
         <table class="table table-sm">
-            <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Clicks</th></tr></thead>
+            <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Raw Clicks</th><th class="text-end">Unique Click Sessions</th><th class="text-end">Leads</th><th class="text-end">Click→Lead %</th></tr></thead>
             <tbody id="ctaperf-body"></tbody>
         </table>
       </div>
@@ -759,11 +776,16 @@
                     <div class="fa-kpi-value" id="quote-form-starts">0</div>
                 </div>
                 <div class="col-4">
-                    <div class="fa-kpi-title">Submits</div>
+                    <div class="fa-kpi-title">Confirmed Leads</div>
                     <div class="fa-kpi-value" id="quote-form-submits">0</div>
                 </div>
             </div>
             <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
+            <h6 class="text-warning mt-3">Life Stage Progression</h6>
+            <table class="table table-sm">
+                <thead><tr><th>Stage</th><th class="text-end">Session-Deduped Count</th></tr></thead>
+                <tbody id="quote-stage-body"></tbody>
+            </table>
             <h6 class="text-warning mt-3">By Quote Type</h6>
             <table class="table table-sm">
                 <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
@@ -776,7 +798,7 @@
             <!-- Summary by quote type -->
             <h6 class="text-warning">Abandonment by Quote Type</h6>
             <table class="table table-sm mb-3">
-                <thead><tr><th>Type</th><th class="text-end">Abandons</th><th class="text-end">Starts</th><th class="text-end">Rate</th><th class="text-end">Avg Fields</th><th class="text-end">Submit→Left</th></tr></thead>
+                <thead><tr><th>Type</th><th class="text-end">Abandons</th><th class="text-end">Starts</th><th class="text-end">Rate</th><th class="text-end">Avg Fields</th><th class="text-end">Attempted Submit Before Leaving</th></tr></thead>
                 <tbody id="abandon-summary-body"></tbody>
             </table>
             <!-- Top abandoned fields -->
@@ -832,11 +854,11 @@
             <div>
                 <div class="fa-kpi-title">Session Conversion Rate</div>
                 <div class="fa-kpi-value" id="conv-session">—</div>
-                <div class="fa-kpi-sub">Leads / Sessions</div>
+                <div class="fa-kpi-sub">Converted Sessions / Sessions</div>
                 <div class="fa-kpi-warning" id="conv-session-warning"></div>
             </div>
             <div>
-                <div class="fa-kpi-title">Total Conversions</div>
+                <div class="fa-kpi-title">Server-confirmed Leads</div>
                 <div class="fa-kpi-value" id="conv-total">0</div>
             </div>
             <button class="btn btn-sm fa-export-btn" id="export-conv">Export CSV</button>
@@ -874,8 +896,9 @@
                 <button class="btn btn-sm fa-export-btn" id="export-leads">Export CSV</button>
             </div>
         </div>
+        <div class="small text-muted mb-2" id="leads-cap-note">Showing latest 200 leads.</div>
         <table class="table table-sm">
-          <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th><th>Attribution</th><th>Badge</th></tr></thead>
+          <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Lead Source</th><th>Resolved Source</th><th>Attribution</th></tr></thead>
           <tbody id="leads-body"></tbody>
         </table>
       </div>
@@ -898,6 +921,7 @@
           <div><span class="text-warning">Generated:</span> <span id="ai-snapshot-generated">—</span></div>
           <div><span class="text-warning">Range:</span> <span id="ai-snapshot-range">—</span></div>
           <div><span class="text-warning">Scope:</span> <span id="ai-snapshot-scope">—</span></div>
+          <div><span class="text-warning">Traffic:</span> <span id="ai-snapshot-traffic">—</span></div>
         </div>
         <div class="fa-muted small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
         <div id="ai-snapshot-render" aria-live="polite"></div>
@@ -929,6 +953,12 @@
             <div class="fa-muted">Account: <span class="fa-meta-strong" id="meta-campaigns-account">—</span></div>
             <div class="fa-muted">Last sync: <span id="meta-campaigns-synced">—</span></div>
         </div>
+        <div class="alert alert-warning small py-2 px-3 mb-3" id="meta-campaigns-note">
+            Meta leads are Meta-reported platform leads. Website Analytics tracks server-confirmed leads and separately attributed website leads; those numbers can differ because of attribution windows, on-platform forms, and campaign URL tagging. Campaign date ranges are aligned to the Meta account timezone when available.
+        </div>
+        <div class="fa-muted small mb-3" id="meta-campaigns-utm-note">
+            Recommended Meta URL parameters: <code>utm_campaign={{campaign.name}}</code> <code>utm_content={{ad.name}}</code> <code>utm_term={{adset.name}}</code> <code>meta_campaign_id={{campaign.id}}</code> <code>meta_adset_id={{adset.id}}</code> <code>meta_ad_id={{ad.id}}</code>
+        </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle meta-campaigns-table">
                 <thead>
@@ -939,7 +969,7 @@
                         <th class="text-end">Spend</th>
                         <th class="text-end">Impr.</th>
                         <th class="text-end">Reach</th>
-                        <th class="text-end">Clicks</th>
+                        <th class="text-end">Link Clicks / LPVs</th>
                         <th class="text-end">CTR</th>
                         <th class="text-end">CPC</th>
                         <th class="text-end">CPM</th>
@@ -1018,6 +1048,7 @@
         <div>
             <div class="ai-drawer-title">AI Review</div>
             <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
+            <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
         </div>
         <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
     </div>

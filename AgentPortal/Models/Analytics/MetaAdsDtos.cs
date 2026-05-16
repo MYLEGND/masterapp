@@ -27,7 +27,10 @@ public sealed class MetaCampaignRow
 public sealed class MetaCampaignsDto
 {
     public string AccountId { get; set; } = "";
+    public string? AccountName { get; set; }
     public string RangeLabel { get; set; } = "";
+    public string? TimeZoneLabel { get; set; }
+    public string? ComparisonNote { get; set; }
     public DateTime SyncedUtc { get; set; }
     public List<MetaCampaignRow> Rows { get; set; } = new();
 }

@@ -48,33 +48,39 @@
       behaviorModal: 'all'
     }
   };
-  const agentOptions = window.AGENT_OPTIONS || [];
+  const agentOptions = (() => {
+    const raw = shell?.dataset.agentOptions || '';
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        // fall through
+      }
+    }
+    return window.AGENT_OPTIONS || [];
+  })();
   const isFounder = agentOptions.length > 0;
   const callerProfileId = shell?.dataset.callerProfileId || null;
-
-  // Founder hard override: force global scope and strip any agent id from URL
-  if (isFounder) {
-    state.scope = state.scope || {};
-    state.scope.agentProfileId = null;
-    state.agentProfileId = null;
+  const initialFounderAgentProfileId = (() => {
+    if (!isFounder) return null;
     try {
       const url = new URL(window.location.href);
-      if (url.searchParams.has("agentProfileId")) {
-        url.searchParams.delete("agentProfileId");
-        window.history.replaceState({}, "", url);
-      }
-    } catch { /* ignore URL parse issues */ }
-  }
+      return url.searchParams.get('agentProfileId') || null;
+    } catch {
+      return null;
+    }
+  })();
 
   if (isFounder) {
-    // Founder → always global
-    state.agentProfileId = null;
-    state.scope.agentProfileId = null;
+    // Founder default is global unless a personal or agent scope is explicitly selected.
+    state.agentProfileId = initialFounderAgentProfileId;
+    state.scope.agentProfileId = initialFounderAgentProfileId;
   } else {
     // Agent → scoped to caller
     state.agentProfileId = callerProfileId;
     state.scope.agentProfileId = callerProfileId;
   }
+  state.scope.scopeLabel = shell?.dataset.initialScopeLabel || (isFounder ? 'Global' : 'Agent Scope');
 
   const endpoints = {
     summary: '/WebsiteAnalytics/summary',
@@ -186,11 +192,99 @@
     }
   }
 
-  function rangeParams({ team = false, modal = null } = {}) {
-    // Defensive: never allow founder requests to carry an agentProfileId
-    if (isFounder) {
-      state.scope.agentProfileId = null;
+  function findAgentOption(agentId) {
+    if (!agentId) return null;
+    return (agentOptions || []).find(a => String(a.id || '') === String(agentId || '')) || null;
+  }
+
+  function resolveScopeLabel(agentId) {
+    if (!agentId) return 'Global';
+    if (callerProfileId && String(agentId) === String(callerProfileId)) return 'Founder Personal';
+    const agent = findAgentOption(agentId);
+    const name = agent?.name || agent?.slug || 'Selected Agent';
+    return `Agent: ${name}`;
+  }
+
+  function syncScopeQueryParam(agentId) {
+    if (!isFounder) return;
+    try {
+      const url = new URL(window.location.href);
+      if (agentId) url.searchParams.set('agentProfileId', agentId);
+      else url.searchParams.delete('agentProfileId');
+      window.history.replaceState({}, '', url);
+    } catch {
+      // ignore URL parse issues
     }
+  }
+
+  function updateFounderScopeUi() {
+    setText('wa-scope-label', `Viewing: ${state.scope.scopeLabel || 'Global'}`);
+
+    const isGlobalScope = !state.scope.agentProfileId;
+    const teamBtn = document.getElementById('team-rollup-btn');
+    if (teamBtn) {
+      teamBtn.disabled = !isGlobalScope;
+      teamBtn.title = isGlobalScope
+        ? 'View agency-wide team performance'
+        : 'Switch back to Global scope to compare the full agency';
+      teamBtn.setAttribute('aria-disabled', isGlobalScope ? 'false' : 'true');
+      teamBtn.style.opacity = isGlobalScope ? '1' : '.6';
+    }
+
+    const agentPerfCard = document.getElementById('mod-agentperf');
+    if (agentPerfCard) {
+      agentPerfCard.style.pointerEvents = isGlobalScope ? '' : 'none';
+      agentPerfCard.style.opacity = isGlobalScope ? '1' : '.55';
+      agentPerfCard.setAttribute('aria-disabled', isGlobalScope ? 'false' : 'true');
+      agentPerfCard.title = isGlobalScope
+        ? 'Open Agent Performance'
+        : 'Switch back to Global scope to compare agents';
+    }
+
+    const agentPerfMeta = document.getElementById('mod-agentperf-meta');
+    if (agentPerfMeta) {
+      agentPerfMeta.textContent = isGlobalScope
+        ? 'Top performers · founder only'
+        : 'Global scope only · switch back to compare agents';
+    }
+  }
+
+  function initScopeControls() {
+    if (!isFounder) return;
+    const select = document.getElementById('wa-scope-select');
+    if (!select) return;
+
+    const seen = new Set(Array.from(select.options).map(o => String(o.value || '')));
+    (agentOptions || [])
+      .slice()
+      .sort((a, b) => String(a?.name || a?.slug || '').localeCompare(String(b?.name || b?.slug || '')))
+      .forEach(agent => {
+        const id = String(agent?.id || '');
+        if (!id || seen.has(id)) return;
+        if (callerProfileId && id === String(callerProfileId)) return;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = `Agent: ${agent?.name || agent?.slug || id}`;
+        select.appendChild(opt);
+      });
+
+    select.value = state.scope.agentProfileId || '';
+    state.scope.scopeLabel = resolveScopeLabel(state.scope.agentProfileId);
+    updateFounderScopeUi();
+
+    select.addEventListener('change', () => {
+      state.scope.agentProfileId = select.value || null;
+      state.agentProfileId = state.scope.agentProfileId;
+      state.scope.scopeLabel = resolveScopeLabel(state.scope.agentProfileId);
+      syncScopeQueryParam(state.scope.agentProfileId);
+      updateFounderScopeUi();
+      updateGrowthBaseLink();
+      loadSummary();
+      refreshOpenModal();
+    });
+  }
+
+  function rangeParams({ team = false, modal = null } = {}) {
     const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
     if (state.scope.preset === 'custom' && state.scope.from && state.scope.to) {
@@ -205,8 +299,7 @@
       p.team = true;
       return p;
     }
-    // Only send agentProfileId for non-founder agents
-    if (!isFounder && state.scope.agentProfileId) {
+    if (state.scope.agentProfileId) {
       p.agentProfileId = state.scope.agentProfileId;
     }
     // Add trafficType if modal context is provided
@@ -225,8 +318,30 @@
     if (el) el.textContent = val;
   }
 
+  function setTableMessage(bodyId, colspan, message, cssClass = 'fa-empty') {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    body.innerHTML = `<tr><td colspan="${colspan}" class="${cssClass}">${message}</td></tr>`;
+  }
+
+  function setSummaryRefreshStatus(message, isError) {
+    const note = document.getElementById('wa-methodology-note');
+    if (!note) return;
+    if (!note.dataset.baseText) note.dataset.baseText = note.textContent || '';
+    if (!note.dataset.baseClass) note.dataset.baseClass = note.className || '';
+    if (!message) {
+      note.textContent = note.dataset.baseText;
+      note.className = note.dataset.baseClass;
+      return;
+    }
+
+    note.className = `alert ${isError ? 'alert-danger' : 'alert-warning'} small py-2 px-3 mb-3`;
+    note.textContent = `${note.dataset.baseText} ${message}`.trim();
+  }
+
   function renderSummary(data) {
     state.cache.summary = data;
+    state.scope.scopeLabel = data.scopeLabel || state.scope.scopeLabel || 'Global';
     setText('kpi-pageviews', data.pageViews);
     setText('kpi-visitors', data.uniqueVisitors);
     setText('kpi-sessions', data.sessions);
@@ -242,6 +357,8 @@
     if (label) label.textContent = data.rangeLabel || '';
     const env = document.getElementById('fa-env-label');
     if (env) env.textContent = data.environmentLabel || '';
+    updateFounderScopeUi();
+    setText('ai-drawer-scope-label', `AI reviewing: All Traffic · ${data.rangeLabel || 'Current Range'} · ${state.scope.scopeLabel}`);
 
     applyDelta('kpi-pv-delta', data.pageViews, data.prevPageViews);
     applyDelta('kpi-vis-delta', data.uniqueVisitors, data.prevUniqueVisitors);
@@ -277,7 +394,12 @@
         const alignClass = c.align || '';
         const extraClass = typeof c.className === 'function' ? (c.className(r) || '') : (c.className || '');
         const cellClass = `${alignClass} ${extraClass}`.trim();
-        return `<td class="${cellClass}">${c.render ? c.render(r) : (r[c.key] ?? '')}</td>`;
+        const value = c.render
+          ? c.render(r)
+          : c.fmt
+            ? c.fmt(c.key ? r[c.key] : undefined, r)
+            : (r[c.key] ?? '');
+        return `<td class="${cellClass}">${value}</td>`;
       }).join('')}</tr>`;
     }).join('');
   }
@@ -386,9 +508,32 @@
     renderTable('ctaperf-body', data.rows || [], [
       { key: 'pageKey' },
       { key: 'elementKey' },
-      { key: 'clicks', align: 'text-end' }
+      { key: 'clicks', align: 'text-end' },
+      { key: 'uniqueClickSessions', align: 'text-end' },
+      { key: 'verifiedLeads', align: 'text-end' },
+      { render: r => formatPct(r.clickToLeadRate), align: 'text-end' }
     ]);
     setText('ctaperf-range-label', data.rangeLabel || '');
+  }
+
+  function prettifyQuoteType(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return 'Unknown';
+    const normalized = raw.toLowerCase();
+    const map = {
+      life: 'Life',
+      term_life: 'Term Life',
+      whole_life: 'Whole Life',
+      final_expense: 'Final Expense',
+      mortgage_protection: 'Mortgage Protection',
+      disability: 'Disability',
+      auto: 'Auto',
+      iul: 'IUL',
+      home: 'Home',
+      commercial: 'Commercial',
+      health: 'Health'
+    };
+    return map[normalized] || raw.replace(/_/g, ' ');
   }
 
   function renderQuote(data) {
@@ -397,11 +542,15 @@
     setText('quote-form-submits', data.quoteFormSubmits);
     const drop = data.dropOffFormStartsToSubmits ?? (data.quoteFormStarts > 0 ? Math.round((1 - (data.quoteFormSubmits / data.quoteFormStarts)) * 100) : null);
     const meta = document.getElementById('mod-quote-meta');
-    if (meta && drop !== null) meta.textContent = `Drop-off: ${drop}% between form starts → submits`;
+    if (meta && drop !== null) meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads`;
     const meta2 = document.getElementById('quote-dropoff-starts');
     if (meta2 && data.dropOffStartsToFormStarts != null) meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}%`;
+    renderTable('quote-stage-body', data.stageMetrics || [], [
+      { key: 'label' },
+      { key: 'count', align: 'text-end' }
+    ]);
     renderTable('quote-type-body', data.byQuoteType || [], [
-      { key: 'key' },
+      { render: r => prettifyQuoteType(r.key) },
       { key: 'count', align: 'text-end' }
     ]);
     setText('quote-range-label', data.rangeLabel || '');
@@ -410,7 +559,7 @@
   function renderAbandonment(data) {
     if (!data) return;
     renderTable('abandon-summary-body', data.summary || [], [
-      { key: 'quoteType' },
+      { render: r => prettifyQuoteType(r.quoteType) },
       { key: 'abandons', align: 'text-end' },
       { key: 'starts', align: 'text-end' },
       { key: 'abandonRate', align: 'text-end', fmt: v => formatPct(v) },
@@ -473,7 +622,7 @@
     if (sampleNote) {
       const totalViews = time?.totalPageViews != null ? formatInt(time.totalPageViews) : '—';
       const timingSamples = time?.totalTimingSamples != null ? formatInt(time.totalTimingSamples) : '—';
-      sampleNote.textContent = `Timing metrics use page_exit samples. Page views: ${totalViews} · Timing samples: ${timingSamples}.`;
+      sampleNote.textContent = `Timing metrics use page_exit samples. Avg session excludes single-event sessions. Page views: ${totalViews} · Timing samples: ${timingSamples}.`;
     }
 
     // ── Dwell table columns ────────────────────────────────────────
@@ -518,11 +667,13 @@
       { key: 'source' },
       { render: r => r.medium   || '—' },
       { render: r => r.campaign || '—' },
+      { render: r => r.landingPage || '—' },
       { key: 'sessions',       align: 'text-end' },
       { key: 'engagedSessions', align: 'text-end' },
       { key: 'verifiedLeads',  align: 'text-end' },
       { render: r => formatPct(r.sessionConversionRate), align: 'text-end' },
-      { render: r => formatMs(r.avgDwellMs),             align: 'text-end' }
+      { render: r => formatMs(r.avgDwellMs),             align: 'text-end' },
+      { key: 'avgDwellSampleCount', align: 'text-end' }
     ]);
   }
 
@@ -563,17 +714,19 @@
 
   function trafficBadge(attribution) {
     if (!attribution) return '';
-    if (attribution.isPaid) {
-      return '<span class="badge badge-paid">Ads</span>';
-    } else if (attribution.isNonPaid) {
-      return '<span class="badge badge-nonpaid">Non-Ads</span>';
+    switch (attribution.trafficType) {
+      case 'PaidAds': return '<span class="badge badge-paid">Paid Ads</span>';
+      case 'Direct': return '<span class="badge badge-nonpaid">Direct</span>';
+      case 'Organic': return '<span class="badge badge-nonpaid">Organic</span>';
+      case 'Referral': return '<span class="badge badge-nonpaid">Referral</span>';
+      default: return '<span class="badge bg-secondary">Unknown</span>';
     }
-    return '';
   }
 
   function renderLeads(data) {
     state.cache.leads = data;
     setText('leads-total', data.total);
+    setText('leads-cap-note', data.isTruncated ? `Showing latest ${data.returnedCount} leads.` : `Showing all ${data.returnedCount} leads in range.`);
     if (data.leads && data.leads.length) {
       const newest = data.leads[0];
       const meta = document.getElementById('mod-leads-meta');
@@ -585,8 +738,9 @@
       { key: 'email' },
       { key: 'phone' },
       { key: 'interest' },
-      { key: 'source' },
-      { render: r => trafficBadge(r.attribution), align: 'text-center' }
+      { key: 'leadSource' },
+      { render: r => r.resolvedSource || '—' },
+      { render: r => `${trafficBadge(r.attribution)} <span class="text-muted small">${r.attribution?.resolutionSource || 'unknown'}</span>`, align: 'text-center' }
     ]);
     setText('leads-range-label', data.rangeLabel || '');
   }
@@ -773,6 +927,7 @@
     setText('ai-snapshot-generated', data.generatedAtLocal ? formatDisplayDate(data.generatedAtLocal) : '—');
     setText('ai-snapshot-range', data.rangeLabel || '—');
     setText('ai-snapshot-scope', data.scopeLabel || '—');
+    setText('ai-snapshot-traffic', data.trafficFilterLabel || 'All Traffic');
 
     const textEl = document.getElementById('ai-snapshot-text');
     if (textEl) textEl.value = data.snapshotText || '';
@@ -799,6 +954,7 @@
     setText('ai-snapshot-generated', '—');
     setText('ai-snapshot-range', '—');
     setText('ai-snapshot-scope', '—');
+    setText('ai-snapshot-traffic', '—');
     setAiSnapshotStatus('Generating snapshot…');
 
     try {
@@ -828,36 +984,75 @@
 
   // Fetch wrappers ---------------------------------------------------
   async function loadSummary() {
-    const data = await fetchJson('summary', endpoints.summary, rangeParams());
-    if (!data) return;
-    renderSummary(data);
+    try {
+      const data = await fetchJson('summary', endpoints.summary, rangeParams());
+      if (!data) return;
+      setSummaryRefreshStatus('', false);
+      renderSummary(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
+      setSummaryRefreshStatus(`Live refresh warning: ${message} Showing the last successfully loaded summary.`, true);
+      console.error(err);
+    }
   }
   async function loadTraffic() {
-    const data = await fetchJson('traffic', endpoints.traffic, rangeParams({ modal: 'trafficModal' }));
-    if (!data) return;
-    renderTraffic(data);
-    state.cache.traffic = data;
-    if (isFounder) {
-      renderCampaignInsights(data, state.cache.agentPerf);
+    try {
+      const data = await fetchJson('traffic', endpoints.traffic, rangeParams({ modal: 'trafficModal' }));
+      if (!data) return;
+      renderTraffic(data);
+      state.cache.traffic = data;
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Traffic Overview.';
+      setText('traffic-range-label', 'Unavailable');
+      setTableMessage('traffic-top-pages-body', 2, message, 'text-danger');
+      setTableMessage('traffic-entry-pages-body', 2, message, 'text-danger');
+      setTableMessage('traffic-top-sources-body', 2, message, 'text-danger');
+      setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
+      setTableMessage('traffic-activity-body', 4, message, 'text-danger');
+      console.error(err);
     }
   }
   async function loadPagePerf() {
-    const data = await fetchJson('pageperf', endpoints.pagePerf, rangeParams({ modal: 'pagePerfModal' }));
-    if (!data) return;
-    renderPagePerf(data);
+    try {
+      const data = await fetchJson('pageperf', endpoints.pagePerf, rangeParams({ modal: 'pagePerfModal' }));
+      if (!data) return;
+      renderPagePerf(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load page performance.';
+      setText('pageperf-range-label', 'Unavailable');
+      setTableMessage('pageperf-body', 5, message, 'text-danger');
+      console.error(err);
+    }
   }
   async function loadCtaPerf() {
-    const data = await fetchJson('ctaperf', endpoints.ctaPerf, rangeParams({ modal: 'ctaPerfModal' }));
-    if (!data) return;
-    renderCtaPerf(data);
+    try {
+      const data = await fetchJson('ctaperf', endpoints.ctaPerf, rangeParams({ modal: 'ctaPerfModal' }));
+      if (!data) return;
+      renderCtaPerf(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load CTA performance.';
+      setText('ctaperf-range-label', 'Unavailable');
+      setTableMessage('ctaperf-body', 7, message, 'text-danger');
+      console.error(err);
+    }
   }
   async function loadQuote() {
-    const [data, abandon] = await Promise.all([
-      fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
-      fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams({ modal: 'quoteModal' }))
-    ]);
-    if (data) renderQuote(data);
-    if (abandon) renderAbandonment(abandon);
+    try {
+      const [data, abandon] = await Promise.all([
+        fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
+        fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams({ modal: 'quoteModal' }))
+      ]);
+      if (data) renderQuote(data);
+      if (abandon) renderAbandonment(abandon);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load quote funnel.';
+      setText('quote-range-label', 'Unavailable');
+      setTableMessage('quote-type-body', 2, message, 'text-danger');
+      setTableMessage('quote-stage-body', 2, message, 'text-danger');
+      setTableMessage('abandon-summary-body', 4, message, 'text-danger');
+      setTableMessage('abandon-fields-body', 2, message, 'text-danger');
+      console.error(err);
+    }
   }
   async function loadBehavior() {
     try {
@@ -872,40 +1067,82 @@
       ]);
       renderBehavior(summary || {}, time || {}, exit || {}, journey || {}, sources || {});
     } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Behavior Intelligence.';
+      setText('bhvr-range-label', 'Unavailable');
+      setText('bhvr-total-sessions', '—');
+      setText('bhvr-avg-session', '—');
+      setText('bhvr-med-session', '—');
+      setText('bhvr-avg-page', '—');
+      setText('bhvr-quick-exit', '—');
+      setText('bhvr-engaged-rate', '—');
+      setText('bhvr-time-sample-note', `${message} Existing numbers were cleared to avoid showing stale data.`);
+      [
+        ['bhvr-short-body', 5],
+        ['bhvr-exit-body-overview', 4],
+        ['bhvr-long-avg-body', 5],
+        ['bhvr-short-body-time', 5],
+        ['bhvr-exit-body', 4],
+        ['bhvr-quick-exit-body', 2],
+        ['bhvr-landing-body', 2],
+        ['bhvr-prelead-body', 2],
+        ['bhvr-dropoff-body', 2],
+        ['bhvr-source-body', 10]
+      ].forEach(([id, colspan]) => setTableMessage(id, colspan, message, 'text-danger'));
       console.error(err);
     }
   }
   async function loadConv() {
-    const params = rangeParams({ modal: 'convModal' });
-    const t = state.trafficType.convModal || 'all';
-    let convData, summaryData;
-    if (t === 'all') {
-      // No filter active — use the cached all-traffic summary (no extra fetch needed).
-      convData = await fetchJson('conv', endpoints.conversions, params);
-      summaryData = state.cache.summary;
-    } else {
-      // Filter is active — fetch conversion data AND a matching filtered summary in parallel
-      // so Intent Conversion Rate and Session Conversion Rate reflect the same traffic population
-      // as Total Conversions. Without this, rates would silently use an all-traffic denominator.
-      [convData, summaryData] = await Promise.all([
-        fetchJson('conv', endpoints.conversions, params),
-        fetchJson('conv-summary', endpoints.summary, params)
-      ]);
+    try {
+      const params = rangeParams({ modal: 'convModal' });
+      const t = state.trafficType.convModal || 'all';
+      let convData, summaryData;
+      if (t === 'all') {
+        convData = await fetchJson('conv', endpoints.conversions, params);
+        summaryData = state.cache.summary;
+      } else {
+        [convData, summaryData] = await Promise.all([
+          fetchJson('conv', endpoints.conversions, params),
+          fetchJson('conv-summary', endpoints.summary, params)
+        ]);
+      }
+      if (!convData) return;
+      renderConversions(convData, summaryData);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Conversion Center.';
+      setText('conv-range-label', 'Unavailable');
+      setText('conv-total', '—');
+      setText('conv-session-rate', '—');
+      setText('conv-intent-rate', '—');
+      setTableMessage('conv-body', 6, message, 'text-danger');
+      console.error(err);
     }
-    if (!convData) return;
-    renderConversions(convData, summaryData);
   }
   async function loadLeads() {
-    const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
-    if (!data) return;
-    renderLeads(data);
+    try {
+      const data = await fetchJson('leads', endpoints.leads, rangeParams({ modal: 'leadsModal' }));
+      if (!data) return;
+      renderLeads(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load leads.';
+      setText('leads-range-label', 'Unavailable');
+      setText('leads-total', '—');
+      setText('leads-cap-note', message);
+      setTableMessage('leads-body', 8, message, 'text-danger');
+      console.error(err);
+    }
   }
 
   async function loadAgentPerf() {
-    const data = await fetchJson('agentperf', endpoints.agentPerf, rangeParams());
-    if (!data) return;
-    renderAgentPerf(data);
-    if (isFounder && state.cache.traffic) renderCampaignInsights(state.cache.traffic, data);
+    try {
+      const data = await fetchJson('agentperf', endpoints.agentPerf, rangeParams());
+      if (!data) return;
+      renderAgentPerf(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Agent Performance.';
+      setText('agentperf-range-label', 'Unavailable');
+      setTableMessage('agentperf-body', 8, message, 'text-danger');
+      console.error(err);
+    }
   }
 
   function formatMoney(v) {
@@ -927,7 +1164,8 @@
   }
 
   function formatMs(ms) {
-    const num = Number(ms || 0);
+    if (ms == null) return '—';
+    const num = Number(ms);
     if (!Number.isFinite(num) || num <= 0) return '—';
     const totalSeconds = Math.round(num / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -939,6 +1177,12 @@
   function toNumber(v) {
     const n = Number(v);
     return Number.isFinite(n) ? n : 0;
+  }
+
+  function toUtcIso(value) {
+    if (!value) return '';
+    const dt = new Date(value);
+    return Number.isNaN(dt.getTime()) ? '' : dt.toISOString();
   }
 
   function pill(text, cls) {
@@ -1049,9 +1293,14 @@
   function renderMetaCampaigns(data) {
     state.cache.metaCampaigns = data;
     setText('meta-campaigns-range-label', data.rangeLabel || '');
-    setText('meta-campaigns-account', data.accountId || '—');
+    setText('meta-campaigns-account', data.accountName || data.accountId || '—');
     setText('meta-campaigns-synced', data.syncedUtc ? formatDisplayDate(data.syncedUtc) : '—');
     setMetaAccountChip(data.accountName || data.accountId || 'Connected');
+    const note = document.getElementById('meta-campaigns-note');
+    if (note) {
+      note.textContent = data.comparisonNote
+        || 'Meta leads are Meta-reported platform leads. Website Analytics tracks server-confirmed leads and separately attributed website leads, so those numbers can differ.';
+    }
 
     renderTable('meta-campaigns-body', data.rows || [], [
       {
@@ -1427,6 +1676,7 @@
       tzTextEl.textContent = viewerTz.id || 'Local Timezone';
     }
     showMetaCallbackBanner();
+    initScopeControls();
     updateGrowthBaseLink();
     // load initial summary from server-provided JSON if present
     const initial = shell?.dataset.initialSummary;
@@ -1499,44 +1749,92 @@
     }
 
     const exportConv = document.getElementById('export-conv');
-    if (exportConv) exportConv.addEventListener('click', () => {
-      const data = state.cache.conversions;
-      if (!data || !data.recent || !data.recent.length) return;
-      downloadCsv('conversions.csv', data.recent, [
-        { header: 'WhenUtc', selector: r => new Date(r.eventUtc + 'Z').toISOString() },
-        { header: 'Event', selector: 'eventType' },
-        { header: 'Page', selector: 'pageKey' },
-        { header: 'CTA', selector: 'sourceCta' }
-      ]);
+    if (exportConv) exportConv.addEventListener('click', async () => {
+      const original = exportConv.textContent;
+      exportConv.disabled = true;
+      exportConv.textContent = 'Exporting…';
+      try {
+        const params = rangeParams({ modal: 'convModal' });
+        params.recentTake = 5000;
+        const data = await fetchJson('export-conv', endpoints.conversions, params);
+        if (!data || !data.recent || !data.recent.length) return;
+        downloadCsv('conversions.csv', data.recent, [
+          { header: 'WhenUtc', selector: r => toUtcIso(r.eventUtc) },
+          { header: 'ReportTimezone', selector: () => 'UTC' },
+          { header: 'Event', selector: 'eventType' },
+          { header: 'QuoteType', selector: r => r.quoteType || '' },
+          { header: 'Page', selector: r => r.pageKey || '' },
+          { header: 'CTA', selector: r => r.sourceCta || '' },
+          { header: 'ResolvedSource', selector: r => r.sourceLabel || '' }
+        ]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        exportConv.disabled = false;
+        exportConv.textContent = original || 'Export';
+      }
     });
     const exportLeads = document.getElementById('export-leads');
-    if (exportLeads) exportLeads.addEventListener('click', () => {
-      const data = state.cache.leads;
-      if (!data || !data.leads || !data.leads.length) return;
-      downloadCsv('leads.csv', data.leads, [
-        { header: 'WhenUtc', selector: r => new Date(r.createdUtc + 'Z').toISOString() },
-        { header: 'Name', selector: 'name' },
-        { header: 'Email', selector: 'email' },
-        { header: 'Phone', selector: 'phone' },
-        { header: 'Interest', selector: 'interest' },
-        { header: 'Source', selector: 'source' }
-      ]);
+    if (exportLeads) exportLeads.addEventListener('click', async () => {
+      const original = exportLeads.textContent;
+      exportLeads.disabled = true;
+      exportLeads.textContent = 'Exporting…';
+      try {
+        const params = rangeParams({ modal: 'leadsModal' });
+        params.limit = 5000;
+        const data = await fetchJson('export-leads', endpoints.leads, params);
+        if (!data || !data.leads || !data.leads.length) return;
+        downloadCsv('leads.csv', data.leads, [
+          { header: 'CreatedUtc', selector: r => toUtcIso(r.createdUtc) },
+          { header: 'ReportTimezone', selector: () => 'UTC' },
+          { header: 'Name', selector: 'name' },
+          { header: 'Email', selector: 'email' },
+          { header: 'Phone', selector: 'phone' },
+          { header: 'Interest', selector: 'interest' },
+          { header: 'LeadSource', selector: r => r.leadSource || '' },
+          { header: 'ResolvedSource', selector: r => r.resolvedSource || '' },
+          { header: 'ResolvedMedium', selector: r => r.resolvedMedium || '' },
+          { header: 'ResolvedCampaign', selector: r => r.resolvedCampaign || '' },
+          { header: 'ResolvedContent', selector: r => r.resolvedContent || '' },
+          { header: 'ResolvedTerm', selector: r => r.resolvedTerm || '' },
+          { header: 'ResolvedFbclidPresent', selector: r => !!r.resolvedFbclidPresent },
+          { header: 'AttributionResolution', selector: r => r.attribution?.resolutionSource || 'unknown' }
+        ]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        exportLeads.disabled = false;
+        exportLeads.textContent = original || 'Export';
+      }
     });
 
     const exportBehavior = document.getElementById('export-behavior');
-    if (exportBehavior) exportBehavior.addEventListener('click', () => {
-      const data = state.cache.behaviorSources;
-      if (!data || !data.rows || !data.rows.length) return;
-      downloadCsv('behavior-sources.csv', data.rows, [
-        { header: 'Source',    selector: 'source' },
-        { header: 'Medium',    selector: r => r.medium   || '' },
-        { header: 'Campaign',  selector: r => r.campaign || '' },
-        { header: 'Sessions',  selector: 'sessions' },
-        { header: 'Engaged',   selector: 'engagedSessions' },
-        { header: 'Leads',     selector: 'verifiedLeads' },
-        { header: 'SessConv',  selector: r => formatPct(r.sessionConversionRate) },
-        { header: 'AvgDwell',  selector: r => formatMs(r.avgDwellMs) }
-      ]);
+    if (exportBehavior) exportBehavior.addEventListener('click', async () => {
+      const original = exportBehavior.textContent;
+      exportBehavior.disabled = true;
+      exportBehavior.textContent = 'Exporting…';
+      try {
+        const data = await fetchJson('export-behavior', endpoints.behaviorSources, rangeParams({ modal: 'behaviorModal' }));
+        if (!data || !data.rows || !data.rows.length) return;
+        downloadCsv('behavior-sources.csv', data.rows, [
+          { header: 'ViewerTimezone', selector: () => viewerTz.id || 'Local Time' },
+          { header: 'Source', selector: 'source' },
+          { header: 'Medium', selector: r => r.medium || '' },
+          { header: 'Campaign', selector: r => r.campaign || '' },
+          { header: 'LandingPage', selector: r => r.landingPage || '' },
+          { header: 'Sessions', selector: 'sessions' },
+          { header: 'EngagedSessions', selector: 'engagedSessions' },
+          { header: 'VerifiedLeads', selector: 'verifiedLeads' },
+          { header: 'SessionConversionRate', selector: r => formatPct(r.sessionConversionRate) },
+          { header: 'AvgDwell', selector: r => formatMs(r.avgDwellMs) },
+          { header: 'DwellSamples', selector: r => r.avgDwellSampleCount ?? 0 }
+        ]);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        exportBehavior.disabled = false;
+        exportBehavior.textContent = original || 'Export';
+      }
     });
 
     const copyLink = document.getElementById('fa-copy-link');
@@ -1574,17 +1872,11 @@
       get preset()      { return state.scope.preset || '30d'; },
       get from()        { return state.scope.from || null; },
       get to()          { return state.scope.to || null; },
-      get trafficType() {
-        // Return the active traffic filter for the currently open modal,
-        // or 'all' when no modal filter is engaged.
-        const t = state.trafficType;
-        if (!t) return 'all';
-        // Find the most recently active modal traffic type (non-'all' wins).
-        const active = Object.values(t).find(v => v && v !== 'all');
-        return active || 'all';
-      },
+      get trafficType() { return 'all'; },
       get agentProfileId() { return state.scope.agentProfileId || null; },
-      get isFounder()      { return isFounder; }
+      get isFounder()      { return isFounder; },
+      get scopeLabel()     { return state.scope.scopeLabel || 'Global'; },
+      rangeParams(options) { return rangeParams(options || {}); }
     };
   }
 

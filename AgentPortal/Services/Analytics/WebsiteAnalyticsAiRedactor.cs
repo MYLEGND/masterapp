@@ -44,6 +44,10 @@ public static class WebsiteAnalyticsAiRedactor
             RangeLabel = CleanLabel(payload.RangeLabel, logger, "RangeLabel"),
             ScopeLabel = CleanLabel(payload.ScopeLabel, logger, "ScopeLabel"),
             TrafficFilter = CleanLabel(payload.TrafficFilter, logger, "TrafficFilter"),
+            Warnings = (payload.Warnings ?? new List<string>())
+                .Select(w => CleanLabel(w, logger, "Warnings"))
+                .Where(w => !string.IsNullOrWhiteSpace(w) && w != "[redacted]")
+                .ToList(),
 
             // ── Allowed numeric aggregates ────────────────────────────────────
             PageViews = payload.PageViews,

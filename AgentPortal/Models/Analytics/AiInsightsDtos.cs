@@ -15,6 +15,8 @@ public sealed class AiReviewRequestDto
     public string? TrafficType { get; set; }
     public Guid? AgentProfileId { get; set; }
     public bool Team { get; set; }
+    public string? TimezoneId { get; set; }
+    public int? TimezoneOffsetMinutes { get; set; }
 }
 
 public sealed class AiFollowUpRequestDto
@@ -26,6 +28,8 @@ public sealed class AiFollowUpRequestDto
     public string? TrafficType { get; set; }
     public Guid? AgentProfileId { get; set; }
     public bool Team { get; set; }
+    public string? TimezoneId { get; set; }
+    public int? TimezoneOffsetMinutes { get; set; }
     /// <summary>The follow-up question from the user. Max 500 chars; no PII; no HTML.</summary>
     public string FollowUpQuestion { get; set; } = "";
     /// <summary>The summary text from the prior AI response, included for context.</summary>
@@ -98,6 +102,7 @@ public sealed class AiSafeAnalyticsPayload
     public string RangeLabel { get; set; } = "";
     public string ScopeLabel { get; set; } = "";
     public string TrafficFilter { get; set; } = "";
+    public List<string> Warnings { get; set; } = new();
 
     // Summary KPIs — aggregate counts only
     public int PageViews { get; set; }

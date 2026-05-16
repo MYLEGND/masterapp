@@ -16,6 +16,7 @@ public sealed class SummaryKpiDto
     public bool IntentAvailable { get; set; }
     public bool IntentLowSample { get; set; }
     public string EnvironmentLabel { get; set; } = "";
+    public string ScopeLabel { get; set; } = "";
     public int PrevPageViews { get; set; }
     public int PrevUniqueVisitors { get; set; }
     public int PrevSessions { get; set; }

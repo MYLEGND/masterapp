@@ -46,26 +46,28 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             range.Label,
             trafficType);
 
+        var warnings = new List<string>();
+
         // Run only the queries needed for conversion-focused analysis.
         // Removed: traffic breakdowns, CTA performance, total conversions, dwell time.
         var summaryTask     = SafeLoadAsync("Summary",     () => _analytics.GetSummaryAsync(range, scope, trafficType),
-                                 () => new SummaryKpiDto { RangeLabel = range.Label });
+                                 () => new SummaryKpiDto { RangeLabel = range.Label }, warnings);
         var pagePerfTask    = SafeLoadAsync("PagePerf",    () => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
-                                 () => new PagePerformanceDto { RangeLabel = range.Label });
+                                 () => new PagePerformanceDto { RangeLabel = range.Label }, warnings);
         var quoteFunnelTask = SafeLoadAsync("QuoteFunnel", () => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-                                 () => new QuoteFunnelDto { RangeLabel = range.Label });
+                                 () => new QuoteFunnelDto { RangeLabel = range.Label }, warnings);
         var engagementTask  = SafeLoadAsync("Engagement",  () => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
-                                 () => new EngagementSummaryDto { RangeLabel = range.Label });
+                                 () => new EngagementSummaryDto { RangeLabel = range.Label }, warnings);
         var exitTask        = SafeLoadAsync("Exit",        () => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
-                                 () => new ExitAnalysisDto { RangeLabel = range.Label });
+                                 () => new ExitAnalysisDto { RangeLabel = range.Label }, warnings);
         var sourceTask      = SafeLoadAsync("Source",      () => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
-                                 () => new SourcePerformanceDto { RangeLabel = range.Label });
+                                 () => new SourcePerformanceDto { RangeLabel = range.Label }, warnings);
         var abandonTask     = SafeLoadAsync("Abandon",     () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
-                                 () => new FormAbandonmentDto { RangeLabel = range.Label });
+                                 () => new FormAbandonmentDto { RangeLabel = range.Label }, warnings);
 
         // Meta Ads — active campaigns. SafeLoadAsync catches "not connected" / API errors gracefully.
         var metaAdsTask = SafeLoadAsync("MetaAds", () => _metaAds.GetCampaignsAsync(range, scope, ct),
-                              () => new MetaCampaignsDto { RangeLabel = range.Label });
+                              () => new MetaCampaignsDto { RangeLabel = range.Label }, warnings);
 
         await Task.WhenAll(
             summaryTask, pagePerfTask, quoteFunnelTask,
@@ -91,6 +93,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             RangeLabel   = rangeLabel,
             ScopeLabel   = scopeLabel,
             TrafficFilter = trafficFilter,
+            Warnings = warnings,
 
             // (e) Unique Visitors + Lead data
             UniqueVisitors        = summary.UniqueVisitors,
@@ -181,7 +184,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         };
     }
 
-    private async Task<T> SafeLoadAsync<T>(string taskName, Func<Task<T>> loader, Func<T> fallback)
+    private async Task<T> SafeLoadAsync<T>(string taskName, Func<Task<T>> loader, Func<T> fallback, ICollection<string> warnings)
     {
         try
         {
@@ -192,6 +195,10 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             _logger.LogWarning(ex,
                 "AiDataBuilder: {Task} query failed — returning zero fallback. {Message}",
                 taskName, ex.Message);
+            lock (warnings)
+            {
+                warnings.Add($"{taskName} used fallback data: {ex.Message}");
+            }
             return fallback();
         }
     }

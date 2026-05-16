@@ -52,9 +52,11 @@ namespace AgentPortal.Controllers;
         var range = TimeRangeRequest.FromPreset("30d");
         var scope = await ResolveScopeAsync(null);
         var summary = await _analytics.GetSummaryAsync(range, scope);
+        summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team: false);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
+        ViewData["InitialScopeLabel"] = summary.ScopeLabel;
 
         var callerProfile = await GetCallerProfileAsync();
         if (callerProfile != null)
@@ -131,11 +133,12 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("summary")]
     [HttpGet("/website-analytics/summary")]
-    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
+    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetSummaryAsync(range, scope);
+        var result = await _analytics.GetSummaryAsync(range, scope, trafficType);
+        result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
 
@@ -181,21 +184,21 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("conversions")]
     [HttpGet("/website-analytics/conversions")]
-    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
+    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] int recentTake = 100)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetConversionsAsync(range, scope, trafficType);
+        var result = await _analytics.GetConversionsAsync(range, scope, trafficType, recentTake);
         return Json(result);
     }
 
     [HttpGet("leads")]
     [HttpGet("/website-analytics/leads")]
-    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
+    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] int limit = 200)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
+        var result = await _analytics.GetLeadsAsync(range, scope, trafficType, limit);
         return Json(result);
     }
 
@@ -409,6 +412,7 @@ namespace AgentPortal.Controllers;
                 GeneratedAtLocal = generatedUtcIso,
                 ScopeLabel = scopeLabel,
                 RangeLabel = rangeLabel,
+                TrafficFilterLabel = TrafficAttribution.BucketLabel(trafficType),
                 Warnings = warnings
             });
         }
@@ -439,6 +443,7 @@ namespace AgentPortal.Controllers;
                 GeneratedAtLocal = fallbackUtc.ToString("o"),
                 ScopeLabel = "Current Scope",
                 RangeLabel = fallbackRange.Label,
+                TrafficFilterLabel = TrafficAttribution.BucketLabel(trafficType),
                 Warnings = warnings
             });
         }
@@ -465,17 +470,17 @@ namespace AgentPortal.Controllers;
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
 
-        // Previous period: same duration, ending the day before the current start
         var span = range.ToUtc - range.FromUtc;
-        var prevFrom = range.FromUtc - span - TimeSpan.FromSeconds(1);
-        var prevTo = range.FromUtc - TimeSpan.FromSeconds(1);
+        var prevFrom = range.FromUtc - span;
+        var prevTo = range.ToUtc - span;
         var prevRange = new TimeRangeRequest
         {
             FromUtc = prevFrom,
             ToUtc = prevTo,
             Grouping = range.Grouping,
             Label = range.Label,
-            Preset = range.Preset
+            Preset = range.Preset,
+            ViewerTimeZone = range.ViewerTimeZone
         };
 
         // Pull the data we need — reuse existing service methods, no duplication
@@ -503,11 +508,10 @@ namespace AgentPortal.Controllers;
                 series = traffic.SessionTrend;
                 break;
             case "leads":
-                var leads = await _analytics.GetLeadsAsync(range, scope, trafficType, 50);
-                var prevLeads = await _analytics.GetLeadsAsync(prevRange, scope, trafficType, 1);
+                var leads = await _analytics.GetLeadsAsync(range, scope, trafficType, 5000);
+                var prevLeads = await _analytics.GetLeadsAsync(prevRange, scope, trafficType, 5000);
                 total = leads.Total;
                 prevTotal = prevLeads.Total;
-                // Build daily series for leads from the lead list
                 series = BuildLeadDailySeries(leads, range);
                 break;
             default:
@@ -517,7 +521,9 @@ namespace AgentPortal.Controllers;
 
         var deltaCount = total - prevTotal;
         var deltaPct = prevTotal > 0 ? Math.Round((decimal)deltaCount / prevTotal * 100, 1) : 0;
-        var days = Math.Max(1, (range.ToUtc - range.FromUtc).TotalDays);
+        var localStart = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.FromUtc, DateTimeKind.Utc), range.ViewerTimeZone).Date;
+        var localEnd = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.ToUtc, DateTimeKind.Utc), range.ViewerTimeZone).Date;
+        var days = Math.Max(1, (localEnd - localStart).TotalDays + 1);
         var avgPerDay = Math.Round((decimal)total / (decimal)days, 1);
 
         // Build breakdown
@@ -551,17 +557,17 @@ namespace AgentPortal.Controllers;
                 break;
 
             case "leads":
-                var leadsForBreakdown = await _analytics.GetLeadsAsync(range, scope, trafficType, 200);
+                var leadsForBreakdown = await _analytics.GetLeadsAsync(range, scope, trafficType, 5000);
                 breakdown.TopSources = leadsForBreakdown.Leads
-                    .Where(l => !string.IsNullOrWhiteSpace(l.UtmSource))
-                    .GroupBy(l => l.UtmSource!, StringComparer.OrdinalIgnoreCase)
+                    .Where(l => !string.IsNullOrWhiteSpace(l.ResolvedSource))
+                    .GroupBy(l => l.ResolvedSource!, StringComparer.OrdinalIgnoreCase)
                     .OrderByDescending(g => g.Count())
                     .Take(10)
                     .Select(g => new Models.Analytics.KpiDetailBreakdownItemDto { Label = g.Key, Value = g.Count() })
                     .ToList();
                 breakdown.TopCampaigns = leadsForBreakdown.Leads
-                    .Where(l => !string.IsNullOrWhiteSpace(l.UtmCampaign))
-                    .GroupBy(l => l.UtmCampaign!, StringComparer.OrdinalIgnoreCase)
+                    .Where(l => !string.IsNullOrWhiteSpace(l.ResolvedCampaign))
+                    .GroupBy(l => l.ResolvedCampaign!, StringComparer.OrdinalIgnoreCase)
                     .OrderByDescending(g => g.Count())
                     .Take(10)
                     .Select(g => new Models.Analytics.KpiDetailBreakdownItemDto { Label = g.Key, Value = g.Count() })
@@ -578,7 +584,7 @@ namespace AgentPortal.Controllers;
                     {
                         Label = string.IsNullOrWhiteSpace(l.Name) ? l.Email : l.Name,
                         Value = 1,
-                        Meta = l.Source ?? (l.UtmSource ?? "direct")
+                        Meta = l.LeadSource ?? (l.ResolvedSource ?? "direct")
                     })
                     .ToList();
                 break;
@@ -597,8 +603,8 @@ namespace AgentPortal.Controllers;
         {
             Metric = metric,
             Label = metricLabel,
-            StartDateLocal = range.FromUtc.ToString("MMM d, yyyy"),
-            EndDateLocal = range.ToUtc.ToString("MMM d, yyyy"),
+            StartDateLocal = localStart.ToString("MMM d, yyyy"),
+            EndDateLocal = localEnd.ToString("MMM d, yyyy"),
             Totals = new Models.Analytics.KpiDetailTotalsDto
             {
                 Total = total,
@@ -616,18 +622,24 @@ namespace AgentPortal.Controllers;
 
     private static List<TrendPointDto> BuildLeadDailySeries(LeadSnapshotDto leads, TimeRangeRequest range)
     {
-        if (!leads.Leads.Any())
-            return new List<TrendPointDto>();
+        var tz = range.ViewerTimeZone;
+        var start = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.FromUtc, DateTimeKind.Utc), tz).Date;
+        var end = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(range.ToUtc, DateTimeKind.Utc), tz).Date;
+        var grouped = leads.Leads
+            .GroupBy(l => TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(l.CreatedUtc, DateTimeKind.Utc), tz).Date)
+            .ToDictionary(g => g.Key, g => g.Count());
 
-        return leads.Leads
-            .GroupBy(l => l.CreatedUtc.Date)
-            .OrderBy(g => g.Key)
-            .Select(g => new TrendPointDto
+        var series = new List<TrendPointDto>();
+        for (var day = start; day <= end; day = day.AddDays(1))
+        {
+            series.Add(new TrendPointDto
             {
-                Label = g.Key.ToString("yyyy-MM-dd"),
-                Value = g.Count()
-            })
-            .ToList();
+                Label = day.ToString("yyyy-MM-dd"),
+                Value = grouped.TryGetValue(day, out var value) ? value : 0
+            });
+        }
+
+        return series;
     }
 
     [HttpGet("meta-campaigns")]
@@ -702,11 +714,13 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> MetaConnectionStatus()
     {
         var agentId = await ResolveMetaConnectionAgentIdAsync();
+        var hasConfiguredFallback = !string.IsNullOrWhiteSpace(_config["MetaAds:AccessToken"]) &&
+                                    !string.IsNullOrWhiteSpace(_config["MetaAds:DefaultAccountId"]);
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
         {
             return Json(new MetaAdsConnectionStatusDto
             {
-                Connected = false,
+                Connected = hasConfiguredFallback,
                 AgentTrackingProfileId = null
             });
         }
@@ -716,8 +730,11 @@ namespace AgentPortal.Controllers;
         {
             return Json(new MetaAdsConnectionStatusDto
             {
-                Connected = false,
-                AgentTrackingProfileId = agentId
+                Connected = hasConfiguredFallback,
+                AgentTrackingProfileId = agentId,
+                AccountId = hasConfiguredFallback ? _config["MetaAds:DefaultAccountId"] : null,
+                AccountName = hasConfiguredFallback ? "Configured fallback account" : null,
+                MetaUserName = hasConfiguredFallback ? "Configured fallback" : null
             });
         }
 
@@ -810,9 +827,6 @@ namespace AgentPortal.Controllers;
         if (isFounder)
         {
             if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
-            var founderProfile = await _tracking.GetByUpnAsync(_founderUpn);
-            if (founderProfile != null) return ScopeContext.ForAgent(founderProfile.Id);
-            if (effectiveProfileId.HasValue) return ScopeContext.ForAgent(effectiveProfileId.Value);
             return ScopeContext.Global;
         }
 
@@ -851,11 +865,8 @@ namespace AgentPortal.Controllers;
 
     private async Task<string> ResolveScopeLabelAsync(ScopeContext scope, bool team)
     {
-        if (team && FounderGuard.IsFounder(User))
-            return "Founder Team";
-
         if (scope.ScopeType == ScopeType.Global)
-            return FounderGuard.IsFounder(User) ? "Founder Global" : "Global";
+            return "Global";
 
         var agentId = scope.AgentTrackingProfileId;
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
@@ -870,6 +881,12 @@ namespace AgentPortal.Controllers;
             return "Agent Scope";
 
         var agentName = profile.DisplayName ?? profile.AgentUpn ?? profile.Slug;
+        if (FounderGuard.IsFounder(User) &&
+            !string.IsNullOrWhiteSpace(profile.AgentUpn) &&
+            string.Equals(profile.AgentUpn, _founderUpn, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Founder Personal";
+        }
         return string.IsNullOrWhiteSpace(agentName) ? "Agent Scope" : $"Agent: {agentName}";
     }
 

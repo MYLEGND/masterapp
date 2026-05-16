@@ -92,7 +92,10 @@
       utmCampaign: sanitizeAttributionValue(raw?.utmCampaign),
       utmTerm: sanitizeAttributionValue(raw?.utmTerm),
       utmContent: sanitizeAttributionValue(raw?.utmContent),
-      fbclid: sanitizeAttributionValue(raw?.fbclid)
+      fbclid: sanitizeAttributionValue(raw?.fbclid),
+      metaCampaignId: sanitizeAttributionValue(raw?.metaCampaignId),
+      metaAdSetId: sanitizeAttributionValue(raw?.metaAdSetId),
+      metaAdId: sanitizeAttributionValue(raw?.metaAdId)
     };
   }
 
@@ -104,7 +107,10 @@
       attribution.utmCampaign ||
       attribution.utmTerm ||
       attribution.utmContent ||
-      attribution.fbclid
+      attribution.fbclid ||
+      attribution.metaCampaignId ||
+      attribution.metaAdSetId ||
+      attribution.metaAdId
     );
   }
 
@@ -151,21 +157,27 @@
       utmCampaign: params.get('utm_campaign'),
       utmTerm: params.get('utm_term'),
       utmContent: params.get('utm_content'),
-      fbclid: params.get('fbclid')
+      fbclid: params.get('fbclid'),
+      metaCampaignId: params.get('meta_campaign_id'),
+      metaAdSetId: params.get('meta_adset_id'),
+      metaAdId: params.get('meta_ad_id')
     });
   }
 
   const queryAttribution = readAttributionFromQuery();
   rememberAttribution(queryAttribution);
 
-  function resolveAttribution(payload) {
+  function resolveCurrentSessionAttribution(payload, sessionId) {
     const payloadAttribution = normalizeAttribution({
       utmSource: payload.UtmSource,
       utmMedium: payload.UtmMedium,
       utmCampaign: payload.UtmCampaign,
       utmTerm: payload.UtmTerm,
       utmContent: payload.UtmContent,
-      fbclid: payload.Fbclid
+      fbclid: payload.Fbclid,
+      metaCampaignId: payload.MetaCampaignId,
+      metaAdSetId: payload.MetaAdSetId,
+      metaAdId: payload.MetaAdId
     });
 
     const sessionAttribution = getStoredAttribution(STORAGE_ATTR_SESSION);
@@ -175,7 +187,10 @@
       utmCampaign: payloadAttribution.utmCampaign || queryAttribution.utmCampaign || sessionAttribution?.utmCampaign,
       utmTerm: payloadAttribution.utmTerm || queryAttribution.utmTerm || sessionAttribution?.utmTerm,
       utmContent: payloadAttribution.utmContent || queryAttribution.utmContent || sessionAttribution?.utmContent,
-      fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid
+      fbclid: payloadAttribution.fbclid || queryAttribution.fbclid || sessionAttribution?.fbclid,
+      metaCampaignId: payloadAttribution.metaCampaignId || queryAttribution.metaCampaignId || sessionAttribution?.metaCampaignId,
+      metaAdSetId: payloadAttribution.metaAdSetId || queryAttribution.metaAdSetId || sessionAttribution?.metaAdSetId,
+      metaAdId: payloadAttribution.metaAdId || queryAttribution.metaAdId || sessionAttribution?.metaAdId
     });
 
     if (hasAttribution(currentAttribution)) {
@@ -183,6 +198,10 @@
       return currentAttribution;
     }
 
+    return normalizeAttribution({});
+  }
+
+  function resolveFirstTouchAttribution() {
     const firstTouchAttribution = getStoredAttribution(STORAGE_ATTR_FIRST_TOUCH);
     return normalizeAttribution({
       utmSource: firstTouchAttribution?.utmSource,
@@ -190,7 +209,10 @@
       utmCampaign: firstTouchAttribution?.utmCampaign,
       utmTerm: firstTouchAttribution?.utmTerm,
       utmContent: firstTouchAttribution?.utmContent,
-      fbclid: firstTouchAttribution?.fbclid
+      fbclid: firstTouchAttribution?.fbclid,
+      metaCampaignId: firstTouchAttribution?.metaCampaignId,
+      metaAdSetId: firstTouchAttribution?.metaAdSetId,
+      metaAdId: firstTouchAttribution?.metaAdId
     });
   }
 
@@ -207,7 +229,8 @@
   }
 
   function buildBody(payload) {
-    const attribution = resolveAttribution(payload);
+    const sessionId = getSessionId();
+    const attribution = resolveCurrentSessionAttribution(payload, sessionId);
     return {
       ClientEventId: uuid(),
       EventType: payload.EventType,
@@ -220,7 +243,7 @@
       Url: window.location.href,
       Path: window.location.pathname,
       Referrer: document.referrer || null,
-      SessionId: getSessionId(),
+      SessionId: sessionId,
       VisitorId: getVisitorId(),
       UtmSource: attribution.utmSource || null,
       UtmMedium: attribution.utmMedium || null,
@@ -228,6 +251,9 @@
       UtmTerm: attribution.utmTerm || null,
       UtmContent: attribution.utmContent || null,
       Fbclid: attribution.fbclid || null,
+      MetaCampaignId: attribution.metaCampaignId || null,
+      MetaAdSetId: attribution.metaAdSetId || null,
+      MetaAdId: attribution.metaAdId || null,
       SubmitOutcome: payload.SubmitOutcome || null,
       MetadataJson: payload.MetadataJson || null,
       AgentTrackingProfileId: AGENT_ID,
@@ -396,10 +422,10 @@
     if (!formKey) return null;
     const k = formKey.toLowerCase();
     // Keep quote-type names aligned with the page-level tracking value (offer key).
-    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage';
-    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'finalexpense';
-    if (k.includes('whole_life')          || k.includes('wholelife'))          return 'wholelife';
-    if (k.includes('term_life')           || k.includes('termlife'))           return 'term';
+    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage_protection';
+    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'final_expense';
+    if (k.includes('whole_life')          || k.includes('wholelife'))          return 'whole_life';
+    if (k.includes('term_life')           || k.includes('termlife'))           return 'term_life';
     if (k.includes('iul'))                                                      return 'iul';
     if (k.includes('quote_life'))                                               return 'life';
     if (k.includes('life'))                                                     return 'life';
@@ -434,7 +460,7 @@
     const formKey = formEl.dataset.formKey || '';
     const quoteType = formQuoteType(formKey);
     if (!formKey) return;
-    const abandonSessionFlag = `form_abandon_${formKey}`;
+    const abandonSessionFlag = `form_abandon_${getSessionId()}_${formKey}_${quoteType || 'unknown'}`;
     let abandonAlreadyTrackedForSession = false;
     try {
       abandonAlreadyTrackedForSession = sessionStorage.getItem(abandonSessionFlag) === '1';
@@ -662,11 +688,12 @@
     const form = document.querySelector(selector);
     if (!form) return;
     const sessionFlag = `form_started_${formKey}`;
-    let fired = sessionStorage.getItem(sessionFlag) === '1';
+    const currentSessionId = getSessionId();
+    let fired = sessionStorage.getItem(sessionFlag) === currentSessionId;
     const handler = () => {
       if (fired) return;
       fired = true;
-      sessionStorage.setItem(sessionFlag, '1');
+      sessionStorage.setItem(sessionFlag, currentSessionId);
       sendEvent({ EventType: 'form_start', FormKey: formKey });
     };
     form.addEventListener('focusin', handler, { once: true });
@@ -699,16 +726,34 @@
 
   window.legendTrack = (payload) => sendEvent(payload);
   function getAttribution() {
-    const attribution = resolveAttribution({});
+    const attribution = resolveCurrentSessionAttribution({}, getSessionId());
     return {
       utmSource: attribution.utmSource || null,
       utmMedium: attribution.utmMedium || null,
       utmCampaign: attribution.utmCampaign || null,
       utmTerm: attribution.utmTerm || null,
       utmContent: attribution.utmContent || null,
-      fbclid: attribution.fbclid || null
+      fbclid: attribution.fbclid || null,
+      metaCampaignId: attribution.metaCampaignId || null,
+      metaAdSetId: attribution.metaAdSetId || null,
+      metaAdId: attribution.metaAdId || null
     };
   }
 
-  window.legendTrackingIds = { getVisitorId, getSessionId, getAttribution };
+  function getFirstTouchAttribution() {
+    const attribution = resolveFirstTouchAttribution();
+    return {
+      utmSource: attribution.utmSource || null,
+      utmMedium: attribution.utmMedium || null,
+      utmCampaign: attribution.utmCampaign || null,
+      utmTerm: attribution.utmTerm || null,
+      utmContent: attribution.utmContent || null,
+      fbclid: attribution.fbclid || null,
+      metaCampaignId: attribution.metaCampaignId || null,
+      metaAdSetId: attribution.metaAdSetId || null,
+      metaAdId: attribution.metaAdId || null
+    };
+  }
+
+  window.legendTrackingIds = { getVisitorId, getSessionId, getAttribution, getFirstTouchAttribution };
 })();

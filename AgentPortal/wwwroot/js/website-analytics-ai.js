@@ -53,14 +53,47 @@
   function getCurrentState() {
     var st = window.__waState || {};
     var shell = document.querySelector('.fa-shell');
+    var tzId = '';
+    var tzOffset = 0;
+    try {
+      tzId = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      tzOffset = new Date().getTimezoneOffset();
+    } catch (_) { }
     return {
       preset: st.preset || shell?.dataset.initialPreset || '30d',
       from: st.from || null,
       to: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: typeof st.trafficType === 'string' ? st.trafficType : 'all'
+      trafficType: typeof st.trafficType === 'string' ? st.trafficType : 'all',
+      scopeLabel: st.scopeLabel || shell?.dataset.initialScopeLabel || 'Global',
+      timezoneId: tzId,
+      timezoneOffsetMinutes: tzOffset
     };
+  }
+
+  function trafficLabel(trafficType) {
+    if (trafficType === 'paid') return 'Paid Ads';
+    if (trafficType === 'non_paid') return 'Non-Ads';
+    return 'All Traffic';
+  }
+
+  function presetLabel(preset) {
+    if (preset === 'today') return 'Today';
+    if (preset === '7d') return 'Last 7 Days';
+    if (preset === '30d') return 'Last 30 Days';
+    if (preset === 'month') return 'This Month';
+    if (preset === 'year') return 'This Year';
+    return preset || 'Selected Range';
+  }
+
+  function updateDrawerScopeLabel(st) {
+    var el = document.getElementById('ai-drawer-scope-label');
+    if (!el) return;
+    var rangeLabel = st.preset === 'custom' && st.from && st.to
+      ? `${st.from} → ${st.to}`
+      : presetLabel(st.preset);
+    el.textContent = `AI reviewing: ${trafficLabel(st.trafficType)} · ${rangeLabel} · ${st.scopeLabel || 'Global'}`;
   }
 
   // ── POST helper ───────────────────────────────────────────────────────────
@@ -98,6 +131,7 @@
     var d = drawer();
     var b = backdrop();
     if (!d) return;
+    updateDrawerScopeLabel(getCurrentState());
     d.classList.add('open');
     if (b) b.classList.add('visible');
     drawerOpen = true;
@@ -272,7 +306,9 @@
       toUtc: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: 'all'
+      trafficType: st.trafficType || 'all',
+      timezoneId: st.timezoneId || null,
+      timezoneOffsetMinutes: st.timezoneOffsetMinutes
     };
 
     try {
@@ -305,7 +341,9 @@
       toUtc: st.to || null,
       agentProfileId: st.agentProfileId || null,
       team: st.team || false,
-      trafficType: 'all',
+      trafficType: st.trafficType || 'all',
+      timezoneId: st.timezoneId || null,
+      timezoneOffsetMinutes: st.timezoneOffsetMinutes,
       followUpQuestion: question,
       priorSummary: lastResult?.summary || ''
     };

@@ -48,6 +48,9 @@ public sealed class CtaPerformanceRow
     public string PageKey { get; set; } = "";
     public string ElementKey { get; set; } = "";
     public int Clicks { get; set; }
+    public int UniqueClickSessions { get; set; }
+    public int VerifiedLeads { get; set; }
+    public decimal? ClickToLeadRate { get; set; }
 }
 
 public sealed class CtaPerformanceDto
@@ -61,12 +64,21 @@ public sealed class QuoteFunnelDto
 {
     public int QuoteStarts { get; set; }
     public int QuoteFormStarts { get; set; }
+    public int QuoteSubmitAttempts { get; set; }
     public int QuoteFormSubmits { get; set; }
     public List<KeyCountDto> ByQuoteType { get; set; } = new();
+    public List<QuoteStageMetricRow> StageMetrics { get; set; } = new();
     public decimal? DropOffStartsToFormStarts { get; set; }
     public decimal? DropOffFormStartsToSubmits { get; set; }
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; }
+}
+
+public sealed class QuoteStageMetricRow
+{
+    public string StageKey { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int Count { get; set; }
 }
 
 public sealed class ConversionRow
@@ -75,6 +87,8 @@ public sealed class ConversionRow
     public string? PageKey { get; set; }
     public string? SourceCta { get; set; }
     public DateTime EventUtc { get; set; }
+    public string? QuoteType { get; set; }
+    public string? SourceLabel { get; set; }
 }
 
 public sealed class ConversionCenterDto
@@ -97,6 +111,8 @@ public sealed class LeadAttributionDto
     public bool IsNonPaid { get; set; }
     /// <summary>Granular classification for display/debugging.</summary>
     public TrafficType TrafficType { get; set; }
+    /// <summary>lead | session | visitor | unknown</summary>
+    public string ResolutionSource { get; set; } = "unknown";
 }
 
 public sealed class LeadSnapshotRow
@@ -106,12 +122,18 @@ public sealed class LeadSnapshotRow
     public string Email { get; set; } = "";
     public string? Phone { get; set; }
     public string? Interest { get; set; }
-    public string? Source { get; set; }
+    public string? LeadSource { get; set; }
     public TrafficType TrafficType { get; set; }
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }
     public string? Fbclid { get; set; }
+    public string? ResolvedSource { get; set; }
+    public string? ResolvedMedium { get; set; }
+    public string? ResolvedCampaign { get; set; }
+    public string? ResolvedContent { get; set; }
+    public string? ResolvedTerm { get; set; }
+    public bool ResolvedFbclidPresent { get; set; }
     public string? LandingPage { get; set; }
     public string? SourcePage { get; set; }
     /// <summary>Server-classified attribution — consumed by trafficBadge() in the frontend.</summary>
@@ -122,6 +144,8 @@ public sealed class LeadSnapshotDto
 {
     public List<LeadSnapshotRow> Leads { get; set; } = new();
     public int Total { get; set; }
+    public int ReturnedCount { get; set; }
+    public bool IsTruncated { get; set; }
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; }
 }

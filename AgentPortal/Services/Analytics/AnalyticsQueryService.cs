@@ -203,6 +203,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static bool ParseBool(string? value) =>
         !string.IsNullOrWhiteSpace(value) && bool.TryParse(value, out var parsed) && parsed;
 
+    private static DateTime EnsureUtc(DateTime dt) =>
+        dt.Kind == DateTimeKind.Utc ? dt : DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+
+    private static DateTime ViewerLocal(DateTime utc, TimeZoneInfo tz) =>
+        TimeZoneInfo.ConvertTimeFromUtc(EnsureUtc(utc), tz);
+
     private static string BucketLabel(DateTime dt, TimeGrouping g) =>
         g switch
         {
@@ -213,35 +219,74 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             _ => dt.ToString("yyyy-MM-dd")
         };
 
-    private static DateTime BucketStart(DateTime dt, TimeGrouping g)
+    private static DateTime BucketStart(DateTime utc, TimeGrouping g, TimeZoneInfo tz)
     {
+        var dt = ViewerLocal(utc, tz);
+        var mondayOffset = ((int)dt.Date.DayOfWeek + 6) % 7;
         return g switch
         {
             TimeGrouping.Day => dt.Date,
-            TimeGrouping.Week => dt.Date.AddDays(-(int)dt.Date.DayOfWeek + (int)DayOfWeek.Monday),
-            TimeGrouping.Month => new DateTime(dt.Year, dt.Month, 1, 0, 0, 0, DateTimeKind.Utc),
-            TimeGrouping.Year => new DateTime(dt.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            TimeGrouping.Week => dt.Date.AddDays(-mondayOffset),
+            TimeGrouping.Month => new DateTime(dt.Year, dt.Month, 1),
+            TimeGrouping.Year => new DateTime(dt.Year, 1, 1),
             _ => dt.Date
         };
     }
 
-    private static List<TrendPointDto> TrendFromEvents(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, DateTime> selector, TimeGrouping grouping)
+    private static DateTime NextBucket(DateTime localBucketStart, TimeGrouping grouping) =>
+        grouping switch
+        {
+            TimeGrouping.Day => localBucketStart.AddDays(1),
+            TimeGrouping.Week => localBucketStart.AddDays(7),
+            TimeGrouping.Month => localBucketStart.AddMonths(1),
+            TimeGrouping.Year => localBucketStart.AddYears(1),
+            _ => localBucketStart.AddDays(1)
+        };
+
+    private static IEnumerable<DateTime> EnumerateBuckets(TimeRangeRequest range)
     {
-        return events
-            .GroupBy(e => BucketStart(selector(e), grouping))
-            .OrderBy(g => g.Key)
-            .Select(g => new TrendPointDto { Label = BucketLabel(g.Key, grouping), Value = g.Count() })
+        var start = BucketStart(range.FromUtc, range.Grouping, range.ViewerTimeZone);
+        var end = BucketStart(range.ToUtc, range.Grouping, range.ViewerTimeZone);
+
+        for (var cursor = start; cursor <= end; cursor = NextBucket(cursor, range.Grouping))
+        {
+            yield return cursor;
+        }
+    }
+
+    private static List<TrendPointDto> TrendFromEvents(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, DateTime> selector, TimeRangeRequest range)
+    {
+        var grouped = events
+            .GroupBy(e => BucketStart(selector(e), range.Grouping, range.ViewerTimeZone))
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return EnumerateBuckets(range)
+            .Select(bucket => new TrendPointDto
+            {
+                Label = BucketLabel(bucket, range.Grouping),
+                Value = grouped.TryGetValue(bucket, out var value) ? value : 0
+            })
             .ToList();
     }
 
-    private static List<TrendPointDto> TrendDistinct(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, string?> keySelector, TimeGrouping grouping, Func<AnalyticsEvent, DateTime> timeSelector)
+    private static List<TrendPointDto> TrendDistinct(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, string?> keySelector, TimeRangeRequest range, Func<AnalyticsEvent, DateTime> timeSelector)
     {
-        return events
+        var grouped = events
             .Where(e => !string.IsNullOrWhiteSpace(keySelector(e)))
-            .GroupBy(e => new { Bucket = BucketStart(timeSelector(e), grouping), Key = keySelector(e)! })
+            .GroupBy(e => new
+            {
+                Bucket = BucketStart(timeSelector(e), range.Grouping, range.ViewerTimeZone),
+                Key = keySelector(e)!
+            })
             .GroupBy(g => g.Key.Bucket)
-            .OrderBy(g => g.Key)
-            .Select(g => new TrendPointDto { Label = BucketLabel(g.Key, grouping), Value = g.SelectMany(x => x).Select(x => keySelector(x)).Distinct().Count() })
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        return EnumerateBuckets(range)
+            .Select(bucket => new TrendPointDto
+            {
+                Label = BucketLabel(bucket, range.Grouping),
+                Value = grouped.TryGetValue(bucket, out var value) ? value : 0
+            })
             .ToList();
     }
 
@@ -249,22 +294,37 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(formKey) &&
         formKey.Contains("quote_", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsTrackedLeadSuccessEvent(AnalyticsEvent e)
+    private static bool IsOfficialLeadSuccessEvent(AnalyticsEvent e)
     {
-        if (e.EventType == "lead_form_submit_success")
-            return true;
-
-        if (e.EventType == "website_lead_submitted")
-            return IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey);
-
-        return e.EventType == "form_submit" &&
-               (e.SubmitOutcome == null ||
-                string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase));
+        return e.EventType == "website_lead_submitted" &&
+               (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
     }
 
     private static bool IsQuoteSubmitSuccess(AnalyticsEvent e) =>
-        IsTrackedLeadSuccessEvent(e) &&
+        IsOfficialLeadSuccessEvent(e) &&
         (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
+
+    private static bool IsQuoteSubmitAttempt(AnalyticsEvent e)
+    {
+        var inQuoteScope =
+            IsQuoteFormKey(e.FormKey) ||
+            IsQuoteFormKey(e.FormId) ||
+            IsQuoteFormKey(e.PageKey) ||
+            !string.IsNullOrWhiteSpace(ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey));
+
+        if (!inQuoteScope)
+            return false;
+
+        if (e.EventType == "form_submit_attempt" || e.EventType == "life_step2_submit_attempt")
+            return true;
+
+        if (!string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return string.Equals(e.SubmitOutcome, "attempt", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.SubmitOutcome, "error", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
     {
@@ -291,10 +351,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (string.IsNullOrWhiteSpace(key)) return null;
         var normalized = key.Trim().ToLowerInvariant();
 
-        if (normalized.Contains("mortgage_protection") || normalized.Contains("mortgageprotection")) return "mortgage";
-        if (normalized.Contains("final_expense") || normalized.Contains("finalexpense")) return "finalexpense";
-        if (normalized.Contains("whole_life") || normalized.Contains("wholelife")) return "wholelife";
-        if (normalized.Contains("term_life") || normalized.Contains("termlife")) return "term";
+        if (normalized.Contains("mortgage_protection") || normalized.Contains("mortgageprotection")) return "mortgage_protection";
+        if (normalized.Contains("final_expense") || normalized.Contains("finalexpense")) return "final_expense";
+        if (normalized.Contains("whole_life") || normalized.Contains("wholelife")) return "whole_life";
+        if (normalized.Contains("term_life") || normalized.Contains("termlife")) return "term_life";
         if (normalized.Contains("quote_life") || normalized == "life") return "life";
         if (normalized.Contains("iul")) return "iul";
         if (normalized.Contains("quote_auto") || normalized == "auto") return "auto";
@@ -312,10 +372,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var normalized = quoteType.Trim().ToLowerInvariant();
         return normalized switch
         {
-            "mortgage_protection" or "mortgageprotection" => "mortgage",
-            "final_expense" or "finalexpense" => "finalexpense",
-            "whole_life" or "wholelife" => "wholelife",
-            "term_life" or "termlife" => "term",
+            "mortgage" or "mortgageprotection" => "mortgage_protection",
+            "finalexpense" => "final_expense",
+            "wholelife" => "whole_life",
+            "term" => "term_life",
+            "mortgage protection" => "mortgage_protection",
+            "final expense" => "final_expense",
+            "whole life" => "whole_life",
+            "term life" => "term_life",
+            "mortgage_protection" or "final_expense" or "whole_life" or "term_life" => normalized,
             _ => normalized
         };
     }
@@ -373,7 +438,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static List<AnalyticsEvent> SelectCanonicalSuccessEvents(IEnumerable<AnalyticsEvent> events)
     {
         return events
-            .Where(IsTrackedLeadSuccessEvent)
+            .Where(IsOfficialLeadSuccessEvent)
             .GroupBy(BuildSuccessUnitKey, StringComparer.OrdinalIgnoreCase)
             .Select(g => g
                 .OrderByDescending(SuccessEventPriority)
@@ -393,12 +458,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmSource,
         string? UtmMedium,
         string? UtmCampaign,
-        string? Fbclid);
+        string? Fbclid,
+        string? UtmTerm,
+        string? UtmContent);
 
     private sealed record AttributedEventRow(
         AnalyticsEvent Event,
         EventAttributionSnapshot Attribution,
-        TrafficType TrafficType);
+        TrafficType TrafficType,
+        string ResolutionSource);
 
     private static string? NormalizeAttributionToken(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -408,7 +476,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmSource),
             NormalizeAttributionToken(e.UtmMedium),
             NormalizeAttributionToken(e.UtmCampaign),
-            NormalizeAttributionToken(e.Fbclid));
+            NormalizeAttributionToken(e.Fbclid),
+            NormalizeAttributionToken(e.UtmTerm),
+            NormalizeAttributionToken(e.UtmContent));
 
     private static bool HasAttributionSignal(EventAttributionSnapshot snapshot) =>
         !string.IsNullOrWhiteSpace(snapshot.UtmSource) ||
@@ -469,33 +539,35 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return map;
     }
 
-    private static EventAttributionSnapshot ResolveAttribution(
+    private static (EventAttributionSnapshot Snapshot, string ResolutionSource) ResolveAttribution(
         AnalyticsEvent e,
         IReadOnlyDictionary<string, EventAttributionSnapshot> sessionMap,
-        IReadOnlyDictionary<string, EventAttributionSnapshot> visitorMap)
+        IReadOnlyDictionary<string, EventAttributionSnapshot> visitorMap,
+        bool allowVisitorFallback)
     {
         var direct = SnapshotFromEvent(e);
         if (HasAttributionSignal(direct))
-            return direct;
+            return (direct, "direct");
 
         if (!string.IsNullOrWhiteSpace(e.SessionId) &&
             sessionMap.TryGetValue(e.SessionId!, out var sessionAttribution) &&
             HasAttributionSignal(sessionAttribution))
         {
-            return sessionAttribution;
+            return (sessionAttribution, "session");
         }
 
-        if (!string.IsNullOrWhiteSpace(e.VisitorId) &&
+        if (allowVisitorFallback &&
+            !string.IsNullOrWhiteSpace(e.VisitorId) &&
             visitorMap.TryGetValue(e.VisitorId!, out var visitorAttribution) &&
             HasAttributionSignal(visitorAttribution))
         {
-            return visitorAttribution;
+            return (visitorAttribution, "visitor");
         }
 
-        return direct;
+        return (direct, "unknown");
     }
 
-    private static List<AttributedEventRow> BuildAttributedEventRows(IEnumerable<AnalyticsEvent> events)
+    private static List<AttributedEventRow> BuildAttributedEventRows(IEnumerable<AnalyticsEvent> events, bool allowVisitorFallback = false)
     {
         var list = events.ToList();
         if (list.Count == 0)
@@ -507,8 +579,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return list
             .Select(e =>
             {
-                var attribution = ResolveAttribution(e, sessionMap, visitorMap);
-                return new AttributedEventRow(e, attribution, Classify(attribution));
+                var resolved = ResolveAttribution(e, sessionMap, visitorMap, allowVisitorFallback);
+                return new AttributedEventRow(e, resolved.Snapshot, Classify(resolved.Snapshot), resolved.ResolutionSource);
             })
             .ToList();
     }
@@ -519,6 +591,103 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return rows;
         return rows.Where(r => TrafficAttribution.MatchesFilter(r.TrafficType, trafficType)).ToList();
     }
+
+    private sealed record LeadMetadataSnapshot(
+        string? UtmTerm,
+        string? UtmContent);
+
+    private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
+    {
+        if (string.IsNullOrWhiteSpace(lead.MetadataJson))
+            return new LeadMetadataSnapshot(null, null);
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(lead.MetadataJson);
+            var root = doc.RootElement;
+
+            string? ReadString(string propertyName) =>
+                root.TryGetProperty(propertyName, out var value) && value.ValueKind == System.Text.Json.JsonValueKind.String
+                    ? NormalizeAttributionToken(value.GetString())
+                    : null;
+
+            return new LeadMetadataSnapshot(
+                ReadString("UtmTerm"),
+                ReadString("UtmContent"));
+        }
+        catch
+        {
+            return new LeadMetadataSnapshot(null, null);
+        }
+    }
+
+    private static (EventAttributionSnapshot Attribution, string ResolutionSource) ResolveLeadAttribution(
+        WebsiteLead lead,
+        IReadOnlyDictionary<string, EventAttributionSnapshot> sessionMap,
+        IReadOnlyDictionary<string, EventAttributionSnapshot> visitorMap)
+    {
+        var metadata = SnapshotFromLeadMetadata(lead);
+        var direct = new EventAttributionSnapshot(
+            NormalizeAttributionToken(lead.UtmSource),
+            NormalizeAttributionToken(lead.UtmMedium),
+            NormalizeAttributionToken(lead.UtmCampaign),
+            NormalizeAttributionToken(lead.Fbclid),
+            metadata.UtmTerm,
+            metadata.UtmContent);
+
+        if (HasAttributionSignal(direct))
+            return (direct, "lead");
+
+        if (!string.IsNullOrWhiteSpace(lead.SessionId) &&
+            sessionMap.TryGetValue(lead.SessionId!, out var sessionAttribution) &&
+            HasAttributionSignal(sessionAttribution))
+        {
+            return (sessionAttribution, "session");
+        }
+
+        if (!string.IsNullOrWhiteSpace(lead.VisitorId) &&
+            visitorMap.TryGetValue(lead.VisitorId!, out var visitorAttribution) &&
+            HasAttributionSignal(visitorAttribution))
+        {
+            return (visitorAttribution, "visitor");
+        }
+
+        return (direct, "unknown");
+    }
+
+    private static string SourceBucketLabel(AttributedEventRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.Attribution.UtmSource))
+            return row.Attribution.UtmSource!.Trim();
+
+        return row.TrafficType switch
+        {
+            TrafficType.Direct => "Direct",
+            TrafficType.Organic => "Organic",
+            TrafficType.Referral => "Referral",
+            TrafficType.PaidAds => "Paid (Unattributed)",
+            _ => "Unknown"
+        };
+    }
+
+    private static string CampaignBucketLabel(AttributedEventRow row) =>
+        !string.IsNullOrWhiteSpace(row.Attribution.UtmCampaign)
+            ? row.Attribution.UtmCampaign!.Trim()
+            : "(none)";
+
+    private static string BuildLeadUnitKey(WebsiteLead lead)
+    {
+        if (!string.IsNullOrWhiteSpace(lead.SessionId))
+            return $"sid:{lead.SessionId}";
+        if (!string.IsNullOrWhiteSpace(lead.VisitorId))
+            return $"vid:{lead.VisitorId}";
+        return $"lid:{lead.LeadId:D}";
+    }
+
+    private static int CountConvertedSessions(IEnumerable<WebsiteLead> leads) =>
+        leads.Select(BuildLeadUnitKey)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
 
     /// <summary>
     /// Applies traffic filtering to a list of leads using the same session→visitor attribution
@@ -540,35 +709,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         return leads.Where(l =>
         {
-            var direct = new EventAttributionSnapshot(
-                NormalizeAttributionToken(l.UtmSource),
-                NormalizeAttributionToken(l.UtmMedium),
-                NormalizeAttributionToken(l.UtmCampaign),
-                NormalizeAttributionToken(l.Fbclid));
-
-            EventAttributionSnapshot resolved;
-            if (HasAttributionSignal(direct))
-            {
-                resolved = direct;
-            }
-            else if (!string.IsNullOrWhiteSpace(l.SessionId) &&
-                     sessionMap.TryGetValue(l.SessionId!, out var sessionAttr) &&
-                     HasAttributionSignal(sessionAttr))
-            {
-                resolved = sessionAttr;
-            }
-            else if (!string.IsNullOrWhiteSpace(l.VisitorId) &&
-                     visitorMap.TryGetValue(l.VisitorId!, out var visitorAttr) &&
-                     HasAttributionSignal(visitorAttr))
-            {
-                resolved = visitorAttr;
-            }
-            else
-            {
-                resolved = direct; // remains Unknown
-            }
-
-            return TrafficAttribution.MatchesFilter(Classify(resolved), trafficType);
+            var resolved = ResolveLeadAttribution(l, sessionMap, visitorMap);
+            return TrafficAttribution.MatchesFilter(Classify(resolved.Attribution), trafficType);
         }).ToList();
     }
 
@@ -637,8 +779,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
         int quoteFormStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
-        int quoteFormSubmits = CountDistinctUnits(events, IsQuoteSubmitSuccess);
+        int quoteFormSubmits = verifiedLeads;
         int quoteStarts = CountQuoteIntentStarts(events);
+        int convertedSessions = CountConvertedSessions(leads);
 
         int prevPageViews = prevEvents.Count(e => e.EventType == "page_view");
         int prevSessions = prevEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
@@ -662,29 +805,27 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var topAttributionRows = sessionAttributionRows.Count > 0 ? sessionAttributionRows : attributedRows;
 
         var topSource = topAttributionRows
-            .Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmSource))
-            .GroupBy(r => r.Attribution.UtmSource!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(SourceBucketLabel, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
             .FirstOrDefault();
 
         var topCampaign = topAttributionRows
-            .Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmCampaign))
-            .GroupBy(r => r.Attribution.UtmCampaign!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(CampaignBucketLabel, StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
             .FirstOrDefault();
 
-        decimal sessionConversionRate = sessions > 0 ? Math.Round((decimal)verifiedLeads / sessions * 100, 2) : 0;
+        decimal sessionConversionRate = sessions > 0 ? Math.Round((decimal)convertedSessions / sessions * 100, 2) : 0;
         bool sessionLow = sessions > 0 && sessions < LowSampleThreshold;
 
         int intentDenom = quoteStarts;
-        string intentLabel = "Quote Submits / Quote Starts";
-        bool intentAvailable = intentDenom > 0 && quoteFormSubmits > 0;
-        decimal intentConversionRate = intentAvailable
+        string intentLabel = "Server-confirmed Leads / Quote Starts";
+        bool intentAvailable = intentDenom > 0;
+        decimal intentConversionRate = intentDenom > 0
             ? Math.Min(100, Math.Round((decimal)quoteFormSubmits / intentDenom * 100, 2))
             : 0;
-        bool intentLow = intentAvailable && intentDenom < LowSampleThreshold;
+        bool intentLow = intentDenom > 0 && intentDenom < LowSampleThreshold;
         var envLabel = _envFilter switch
         {
             "prod" => "Environment: Production",
@@ -709,7 +850,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             PrevSessions = prevSessions,
             PrevUniqueVisitors = prevVisitors,
             PrevVerifiedLeads = prevVerifiedLeads,
-            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range.Grouping),
+            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range),
             TopPage = topPage,
             TopCta = topCta,
             TopSource = topSource,
@@ -730,9 +871,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var traffic = new TrafficOverviewDto
         {
-            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range.Grouping),
-            SessionTrend = TrendDistinct(events, e => e.SessionId, range.Grouping, e => e.EventUtc),
-            VisitorTrend = TrendDistinct(events, e => e.VisitorId, range.Grouping, e => e.EventUtc),
+            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range),
+            SessionTrend = TrendDistinct(events, e => e.SessionId, range, e => e.EventUtc),
+            VisitorTrend = TrendDistinct(events, e => e.VisitorId, range, e => e.EventUtc),
             TopPages = events.Where(e => e.EventType == "page_view")
                 .GroupBy(e => e.PageKey ?? "unknown")
                 .OrderByDescending(g => g.Count())
@@ -746,16 +887,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
                 .ToList(),
             RangeLabel = range.Label,
+            TrafficType = trafficType,
             TopSources = topAttributionRows
-                .Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmSource))
-                .GroupBy(r => r.Attribution.UtmSource!, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(SourceBucketLabel, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(g => g.Count())
                 .Take(10)
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
                 .ToList(),
             TopCampaigns = topAttributionRows
-                .Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmCampaign))
-                .GroupBy(r => r.Attribution.UtmCampaign!, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(CampaignBucketLabel, StringComparer.OrdinalIgnoreCase)
                 .OrderByDescending(g => g.Count())
                 .Take(10)
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
@@ -775,6 +915,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         traffic.EntryPages = firstPerSession;
 
         traffic.RecentActivity = events
+            .Where(e =>
+                e.EventType != "page_visibility_hidden" &&
+                e.EventType != "page_visibility_return" &&
+                e.EventType != "scroll_depth_25" &&
+                e.EventType != "scroll_depth_50" &&
+                e.EventType != "scroll_depth_75" &&
+                e.EventType != "scroll_depth_90" &&
+                e.EventType != "scroll_depth_100")
             .OrderByDescending(e => e.EventUtc)
             .Take(25)
             .Select(e => new ActivityItemDto
@@ -839,7 +987,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             };
         }).OrderByDescending(r => r.Views).ToList();
 
-        return new PagePerformanceDto { Rows = rows, RangeLabel = range.Label };
+        return new PagePerformanceDto { Rows = rows, RangeLabel = range.Label, TrafficType = trafficType };
     }
 
     public async Task<CtaPerformanceDto> GetCtaPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
@@ -847,11 +995,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         // Load ALL events for proper session attribution (same reason as GetConversionsAsync).
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var events = attributedRows
             .Where(r => r.Event.EventType == "cta_click")
             .Select(r => r.Event)
             .ToList();
+        var leads = trafficType == TrafficType.All
+            ? allLeads
+            : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
 
         var rows = events
             .GroupBy(e => new { Page = e.PageKey ?? "unknown", Cta = e.ElementKey ?? "unknown" })
@@ -860,42 +1012,92 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             {
                 PageKey = g.Key.Page,
                 ElementKey = g.Key.Cta,
-                Clicks = g.Count()
+                Clicks = g.Count(),
+                UniqueClickSessions = g.Where(x => !string.IsNullOrWhiteSpace(x.SessionId))
+                    .Select(x => x.SessionId!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count(),
+                VerifiedLeads = leads.Count(l => (l.SourcePageKey ?? "unknown") == g.Key.Page && (l.SourceCtaKey ?? "unknown") == g.Key.Cta),
+                ClickToLeadRate = null
+            })
+            .ToList()
+            .Select(row =>
+            {
+                row.ClickToLeadRate = row.UniqueClickSessions > 0
+                    ? Math.Round((decimal)row.VerifiedLeads / row.UniqueClickSessions * 100, 2)
+                    : null;
+                return row;
             })
             .ToList();
 
-        return new CtaPerformanceDto { Rows = rows, RangeLabel = range.Label };
+        return new CtaPerformanceDto { Rows = rows, RangeLabel = range.Label, TrafficType = trafficType };
     }
 
     public async Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = BuildAttributedEventRows(allEvents);
         attributedRows = FilterAttributedRowsByTraffic(attributedRows, trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
+        var leads = trafficType == TrafficType.All
+            ? allLeads
+            : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
 
         int starts = CountQuoteIntentStarts(events);
         int formStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
-        int formSubmits = CountDistinctUnits(events, IsQuoteSubmitSuccess);
+        int submitAttempts = CountDistinctUnits(events, IsQuoteSubmitAttempt);
+        int formSubmits = leads.Count;
 
         var byType = events
-            .Where(e => e.EventType == "quote_click" && !string.IsNullOrWhiteSpace(e.QuoteType))
-            .GroupBy(e => e.QuoteType!)
+            .Where(e =>
+                e.EventType == "quote_click" ||
+                (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)))
+            .Select(e => new
+            {
+                QuoteType = ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey),
+                UnitKey = BuildInteractionUnitKey(e)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.QuoteType))
+            .GroupBy(x => x.QuoteType!, StringComparer.OrdinalIgnoreCase)
             .Select(g => new KeyCountDto
             {
                 Key = g.Key,
-                Count = g.Select(BuildInteractionUnitKey).Distinct(StringComparer.OrdinalIgnoreCase).Count()
+                Count = g.Select(x => x.UnitKey).Distinct(StringComparer.OrdinalIgnoreCase).Count()
             })
             .OrderByDescending(x => x.Count)
             .ToList();
+
+        var stageMetrics = new List<QuoteStageMetricRow>
+        {
+            new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => e.EventType == "page_view" && IsQuoteFormKey(e.PageKey)) },
+            new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, e =>
+                e.EventType == "life_general_form_start" ||
+                e.EventType == "life_term_form_start" ||
+                e.EventType == "life_whole_form_start" ||
+                e.EventType == "life_finalexpense_form_start" ||
+                e.EventType == "life_mp_form_start" ||
+                e.EventType == "life_iul_form_start" ||
+                (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey))) },
+            new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select") },
+            new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select") },
+            new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue") },
+            new() { StageKey = "processing_viewed", Label = "Processing Bridge Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_processing_bridge_view") },
+            new() { StageKey = "recommendation_viewed", Label = "Recommendation Generated / Viewed", Count = CountDistinctUnits(events, e => e.EventType == "recommendation_generated" || e.EventType == "mini_results_view") },
+            new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_step2_view") },
+            new() { StageKey = "submit_attempted", Label = "Submit Attempted", Count = submitAttempts },
+            new() { StageKey = "server_confirmed_leads", Label = "Server-confirmed Leads", Count = formSubmits }
+        }.Where(x => x.Count > 0).ToList();
 
         return new QuoteFunnelDto
         {
             QuoteStarts = starts,
             QuoteFormStarts = formStarts,
+            QuoteSubmitAttempts = submitAttempts,
             QuoteFormSubmits = formSubmits,
             ByQuoteType = byType,
+            StageMetrics = stageMetrics,
             RangeLabel = range.Label,
             TrafficType = trafficType,
             DropOffStartsToFormStarts = starts > 0
@@ -907,41 +1109,36 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
-    public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int recentTake = 100)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        // Load ALL events so BuildAttributedEventRows can include page_view events when resolving
-        // session-level attribution. Pre-filtering to conversion types would strip page_views from
-        // the session map, causing paid conversions to be misclassified as Unknown.
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        var leads = trafficType == TrafficType.All
+            ? allLeads
+            : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+        var safeRecentTake = recentTake > 0 ? recentTake : 100;
 
-        var filteredEvents = FilterAttributedRowsByTraffic(
-                BuildAttributedEventRows(allEvents),
-                trafficType)
-            .Select(r => r.Event)
-            .ToList();
-
-        var canonicalConversionEvents = SelectCanonicalSuccessEvents(filteredEvents)
-            .OrderByDescending(e => e.EventUtc)
-            .ToList();
-
-        var totalConversions = canonicalConversionEvents.Count;
-
-        var recentEvents = canonicalConversionEvents
-            .Take(100)
+        var recentEvents = leads
+            .OrderByDescending(l => l.CreatedUtc)
+            .Take(safeRecentTake)
+            .Select(l => new ConversionRow
+            {
+                EventType = "Server-confirmed lead",
+                PageKey = l.SourcePageKey,
+                SourceCta = l.SourceCtaKey,
+                EventUtc = l.CreatedUtc,
+                QuoteType = NormalizeQuoteTypeToken(l.InterestType),
+                SourceLabel = string.IsNullOrWhiteSpace(l.UtmSource) ? "Unattributed" : l.UtmSource
+            })
             .ToList();
 
         var dto = new ConversionCenterDto
         {
-            TotalConversions = totalConversions,
-            Recent = recentEvents.Select(e => new ConversionRow
-            {
-                EventType = e.EventType,
-                PageKey = e.PageKey,
-                SourceCta = e.ElementKey,
-                EventUtc = e.EventUtc
-            }).ToList(),
-            RangeLabel = range.Label
+            TotalConversions = leads.Count,
+            Recent = recentEvents,
+            RangeLabel = range.Label,
+            TrafficType = trafficType
         };
         return dto;
     }
@@ -949,11 +1146,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int take = 200)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        // Load all leads first (without SQL-level traffic filter) so we can apply session/visitor
-        // attribution fallback for leads whose own UTM fields are blank but whose session carried UTMs.
         var allLeads = await BaseLeads(range, scope, scopedAgentIds)
             .OrderByDescending(l => l.CreatedUtc)
             .ToListAsync();
+        var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var sessionMap = BuildSessionAttributionMap(contextEvents);
+        var visitorMap = BuildVisitorAttributionMap(contextEvents);
 
         List<WebsiteLead> filteredLeads;
         if (trafficType == TrafficType.All)
@@ -962,7 +1160,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         }
         else
         {
-            var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
             filteredLeads = ResolveAndFilterLeads(allLeads, contextEvents, trafficType);
         }
 
@@ -972,11 +1169,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var dto = new LeadSnapshotDto
         {
             Total = total,
+            ReturnedCount = leads.Count,
+            IsTruncated = total > take,
             RangeLabel = range.Label,
             TrafficType = trafficType,
             Leads = leads.Select(l =>
             {
-                var classified = TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid);
+                var resolved = ResolveLeadAttribution(l, sessionMap, visitorMap);
+                var classified = Classify(resolved.Attribution);
                 return new LeadSnapshotRow
                 {
                     CreatedUtc  = l.CreatedUtc,
@@ -984,18 +1184,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     Email       = l.Email,
                     Phone       = l.Phone,
                     Interest    = l.InterestType,
-                    Source      = $"{l.SourcePageKey}/{l.SourceCtaKey}".Trim('/'),
+                    LeadSource  = $"{l.SourcePageKey}/{l.SourceCtaKey}".Trim('/'),
                     UtmSource   = l.UtmSource,
                     UtmMedium   = l.UtmMedium,
                     UtmCampaign = l.UtmCampaign,
                     Fbclid      = l.Fbclid,
+                    ResolvedSource = resolved.Attribution.UtmSource,
+                    ResolvedMedium = resolved.Attribution.UtmMedium,
+                    ResolvedCampaign = resolved.Attribution.UtmCampaign,
+                    ResolvedContent = resolved.Attribution.UtmContent,
+                    ResolvedTerm = resolved.Attribution.UtmTerm,
+                    ResolvedFbclidPresent = !string.IsNullOrWhiteSpace(resolved.Attribution.Fbclid),
                     SourcePage  = l.SourcePageKey,
+                    LandingPage = l.SourcePageKey,
                     TrafficType = classified,
                     Attribution = new LeadAttributionDto
                     {
                         IsPaid    = classified == TrafficType.PaidAds,
-                        IsNonPaid = classified != TrafficType.PaidAds && classified != TrafficType.Unknown,
-                        TrafficType = classified
+                        IsNonPaid = classified == TrafficType.Direct || classified == TrafficType.Organic || classified == TrafficType.Referral,
+                        TrafficType = classified,
+                        ResolutionSource = resolved.ResolutionSource
                     }
                 };
             }).ToList()
@@ -1022,58 +1230,83 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var attributedSessionRows = BuildSessionAttributionRows(attributedRows);
         var topAttributionRows = attributedSessionRows.Count > 0 ? attributedSessionRows : attributedRows;
 
+        var profiles = await _db.AgentTrackingProfiles.AsNoTracking().ToListAsync();
+        var profileToGroupKey = profiles.ToDictionary(
+            p => p.Id,
+            p =>
+            {
+                if (!string.IsNullOrWhiteSpace(p.AgentUserId)) return $"oid:{p.AgentUserId.Trim().ToLowerInvariant()}";
+                if (!string.IsNullOrWhiteSpace(p.AgentUpn)) return $"upn:{p.AgentUpn.Trim().ToLowerInvariant()}";
+                if (!string.IsNullOrWhiteSpace(p.Slug)) return $"slug:{p.Slug.Trim().ToLowerInvariant()}";
+                return $"id:{p.Id:D}";
+            });
+        var profileGroups = profiles
+            .GroupBy(p => profileToGroupKey[p.Id], StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        string? GroupKey(Guid? profileId) =>
+            profileId.HasValue && profileToGroupKey.TryGetValue(profileId.Value, out var key) ? key : null;
+
         var sessionsByAgent = events
             .Where(e => e.AgentTrackingProfileId != null && !string.IsNullOrWhiteSpace(e.SessionId))
-            .GroupBy(e => e.AgentTrackingProfileId!.Value)
-            .ToDictionary(g => g.Key, g => g.Select(x => x.SessionId!).Distinct().Count());
+            .GroupBy(e => GroupKey(e.AgentTrackingProfileId), StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .ToDictionary(g => g.Key!, g => g.Select(x => x.SessionId!).Distinct(StringComparer.OrdinalIgnoreCase).Count(), StringComparer.OrdinalIgnoreCase);
 
         var intentsByAgent = events
-            .Where(e => e.AgentTrackingProfileId != null && e.EventType == "form_start" && e.FormKey != null && e.FormKey.Contains("quote_"))
-            .GroupBy(e => e.AgentTrackingProfileId!.Value)
-            .ToDictionary(g => g.Key, g => g.Count());
+            .Where(e => e.AgentTrackingProfileId != null)
+            .Select(e => new { GroupKey = GroupKey(e.AgentTrackingProfileId), Event = e })
+            .Where(x => !string.IsNullOrWhiteSpace(x.GroupKey))
+            .GroupBy(x => x.GroupKey!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => CountDistinctUnits(g.Select(x => x.Event), e =>
+                    e.EventType == "quote_click" ||
+                    (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey))),
+                StringComparer.OrdinalIgnoreCase);
 
         var leadsByAgent = leads
             .Where(l => l.AgentTrackingProfileId != null)
-            .GroupBy(l => l.AgentTrackingProfileId!.Value)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var conversionsByAgent = SelectCanonicalSuccessEvents(events)
-            .Where(e => e.AgentTrackingProfileId != null)
-            .GroupBy(e => e.AgentTrackingProfileId!.Value)
-            .ToDictionary(g => g.Key, g => g.Count());
+            .GroupBy(l => GroupKey(l.AgentTrackingProfileId), StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .ToDictionary(g => g.Key!, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         var topSourceByAgent = topAttributionRows
-            .Where(r => r.Event.AgentTrackingProfileId != null && !string.IsNullOrWhiteSpace(r.Attribution.UtmSource))
-            .GroupBy(r => new { r.Event.AgentTrackingProfileId, r.Attribution.UtmSource })
-            .Select(g => new { AgentId = g.Key.AgentTrackingProfileId!.Value, Source = g.Key.UtmSource!, Count = g.Count() })
-            .GroupBy(x => x.AgentId)
-            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Count).First().Source);
-
-        var profiles = await _db.AgentTrackingProfiles.AsNoTracking().ToListAsync();
+            .Where(r => r.Event.AgentTrackingProfileId != null)
+            .Select(r => new { GroupKey = GroupKey(r.Event.AgentTrackingProfileId), Source = SourceBucketLabel(r) })
+            .Where(x => !string.IsNullOrWhiteSpace(x.GroupKey))
+            .GroupBy(x => new { x.GroupKey, x.Source })
+            .Select(g => new { g.Key.GroupKey, g.Key.Source, Count = g.Count() })
+            .GroupBy(x => x.GroupKey!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Count).ThenBy(x => x.Source).First().Source, StringComparer.OrdinalIgnoreCase);
 
         var rows = new List<AgentPerformanceRow>();
-        foreach (var profile in profiles)
+        foreach (var (groupKey, groupedProfiles) in profileGroups)
         {
-            var id = profile.Id;
-            var leadsCount = leadsByAgent.TryGetValue(id, out var lc) ? lc : 0;
-            var convCount = conversionsByAgent.TryGetValue(id, out var cc) ? cc : 0;
-            var sessions = sessionsByAgent.TryGetValue(id, out var sc) ? sc : 0;
-            var intents = intentsByAgent.TryGetValue(id, out var ic) ? ic : 0;
+            var representative = groupedProfiles
+                .OrderByDescending(p => !string.IsNullOrWhiteSpace(p.DisplayName))
+                .ThenByDescending(p => p.UpdatedUtc)
+                .First();
+
+            var leadsCount = leadsByAgent.TryGetValue(groupKey, out var lc) ? lc : 0;
+            var convCount = leadsCount;
+            var sessions = sessionsByAgent.TryGetValue(groupKey, out var sc) ? sc : 0;
+            var intents = intentsByAgent.TryGetValue(groupKey, out var ic) ? ic : 0;
 
             var sessionConv = sessions > 0 ? Math.Round((decimal)convCount / sessions * 100, 2) : 0;
             var intentConv = intents > 0 ? Math.Round((decimal)convCount / intents * 100, 2) : 0;
             var lowSample = (sessions > 0 && sessions < LowSampleThreshold) || (intents > 0 && intents < LowSampleThreshold);
             rows.Add(new AgentPerformanceRow
             {
-                AgentTrackingProfileId = id,
-                AgentName = profile.DisplayName ?? profile.AgentUpn ?? profile.Slug,
-                Slug = profile.Slug,
+                AgentTrackingProfileId = representative.Id,
+                AgentName = representative.DisplayName ?? representative.AgentUpn ?? representative.Slug,
+                Slug = representative.Slug,
                 Leads = leadsCount,
                 Conversions = convCount,
                 Sessions = sessions,
                 SessionConversionRate = sessionConv,
                 IntentConversionRate = intentConv,
-                TopSource = topSourceByAgent.TryGetValue(id, out var ts) ? ts : null,
+                TopSource = topSourceByAgent.TryGetValue(groupKey, out var ts) ? ts : null,
                 LowSample = lowSample
             });
         }
@@ -1449,7 +1682,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var rows = sessionFirst
             .GroupBy(r => new
             {
-                Source = string.IsNullOrWhiteSpace(r.Attribution.UtmSource) ? "unattributed" : r.Attribution.UtmSource.Trim(),
+                Source = SourceBucketLabel(r),
                 Medium = r.Attribution.UtmMedium?.Trim() ?? (string?)null,
                 Campaign = r.Attribution.UtmCampaign?.Trim() ?? (string?)null,
                 LandingPage = r.Event.PageKey ?? "unknown"
@@ -1461,9 +1694,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var engaged = sids.Count(sid => engagedBySid.TryGetValue(sid, out var v) && v);
                 var lCount = sids.Sum(sid => leadsBySid.TryGetValue(sid, out var c) ? c : 0);
                 var dwellSamples = sids
-                    .Select(sid => totalDwellBySid.TryGetValue(sid, out var d) ? d : 0)
+                    .Where(sid => totalDwellBySid.ContainsKey(sid))
+                    .Select(sid => totalDwellBySid[sid])
                     .ToList();
-                var avgDwell = RobustAverage(dwellSamples, SessionDurationHardCapMs);
+                double? avgDwell = dwellSamples.Count > 0
+                    ? Math.Round(RobustAverage(dwellSamples, SessionDurationHardCapMs), 0)
+                    : null;
                 var lpLeads = leads.Count(l => l.SourcePageKey == g.Key.LandingPage && !string.IsNullOrWhiteSpace(l.SessionId) && sids.Contains(l.SessionId!));
                 return new SourcePerformanceRow
                 {
@@ -1471,10 +1707,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     Sessions = sessions, EngagedSessions = engaged, VerifiedLeads = lCount,
                     SessionConversionRate = sessions > 0 ? Math.Round((decimal)lCount / sessions * 100, 2) : 0,
                     LandingPageConversionRate = sessions > 0 ? Math.Round((decimal)lpLeads / sessions * 100, 2) : 0,
-                    AvgDwellMs = Math.Round(avgDwell, 0)
+                    AvgDwellMs = avgDwell,
+                    AvgDwellSampleCount = dwellSamples.Count
                 };
             }).OrderByDescending(r => r.Sessions).Take(50).ToList();
-        return new SourcePerformanceDto { Rows = rows, RangeLabel = range.Label };
+        return new SourcePerformanceDto { Rows = rows, RangeLabel = range.Label, TrafficType = trafficType };
     }
 
     public async Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)

@@ -17,6 +17,7 @@ public sealed class TimeRangeRequest
     public TimeGrouping Grouping { get; init; }
     public string Label { get; init; } = "Last 30 Days";
     public string Preset { get; init; } = "30d";
+    public TimeZoneInfo ViewerTimeZone { get; init; } = TimeZoneInfo.Utc;
 
     public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, TimeZoneInfo? viewerTz = null)
     {
@@ -106,7 +107,8 @@ public sealed class TimeRangeRequest
             ToUtc = end,
             Grouping = grouping,
             Label = label,
-            Preset = preset
+            Preset = preset,
+            ViewerTimeZone = tz
         };
     }
 }

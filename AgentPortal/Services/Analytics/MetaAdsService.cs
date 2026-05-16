@@ -47,9 +47,10 @@ public sealed class MetaAdsService : IMetaAdsService
         if (string.IsNullOrWhiteSpace(version)) version = "v21.0";
 
         var client = _httpClientFactory.CreateClient("ResilientDefault");
+        var accountMetadata = await FetchAccountMetadataAsync(client, version, accountId, token, range, ct);
 
         var campaigns = await FetchCampaignDefinitionsAsync(client, version, accountId, token, ct);
-        var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, ct);
+        var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, accountMetadata.TimeZone, ct);
 
         var rows = campaigns
             .Select(c =>
@@ -83,7 +84,10 @@ public sealed class MetaAdsService : IMetaAdsService
         return new MetaCampaignsDto
         {
             AccountId = accountId,
+            AccountName = accountMetadata.AccountName,
             RangeLabel = range.Label,
+            TimeZoneLabel = accountMetadata.TimeZoneLabel,
+            ComparisonNote = $"Clicks prefer landing page views or link clicks when Meta provides them. Meta leads are Meta-reported platform leads; compare them separately from Website Analytics server-confirmed leads and website-attributed leads. Date range is aligned to the Meta account timezone ({accountMetadata.TimeZoneLabel}).",
             SyncedUtc = DateTime.UtcNow,
             Rows = rows
         };
@@ -227,10 +231,10 @@ public sealed class MetaAdsService : IMetaAdsService
         return rows;
     }
 
-    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
+    private async Task<Dictionary<string, MetaCampaignInsight>> FetchCampaignInsightsAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone, CancellationToken ct)
     {
         var map = new Dictionary<string, MetaCampaignInsight>(StringComparer.OrdinalIgnoreCase);
-        string? nextUrl = BuildInsightsUrl(version, accountId, token, range);
+        string? nextUrl = BuildInsightsUrl(version, accountId, token, range, reportTimeZone);
 
         while (!string.IsNullOrWhiteSpace(nextUrl))
         {
@@ -261,7 +265,7 @@ public sealed class MetaAdsService : IMetaAdsService
                         Spend = ParseDecimal(item, "spend"),
                         Impressions = ParseLong(item, "impressions"),
                         Reach = ParseLong(item, "reach"),
-                        Clicks = ParseLong(item, "clicks"),
+                        Clicks = ParsePreferredClicks(item),
                         Ctr = ParseDecimal(item, "ctr"),
                         Cpc = ParseDecimal(item, "cpc"),
                         Cpm = ParseDecimal(item, "cpm"),
@@ -289,13 +293,88 @@ public sealed class MetaAdsService : IMetaAdsService
         return $"https://graph.facebook.com/{version}/act_{accountId}/campaigns?fields={Uri.EscapeDataString(fields)}&limit=500&access_token={Uri.EscapeDataString(token)}";
     }
 
-    private static string BuildInsightsUrl(string version, string accountId, string token, TimeRangeRequest range)
+    private static string BuildInsightsUrl(string version, string accountId, string token, TimeRangeRequest range, TimeZoneInfo reportTimeZone)
     {
         var fields = "campaign_id,campaign_name,spend,impressions,reach,clicks,ctr,cpc,cpm,frequency,actions";
-        var since = range.FromUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var until = range.ToUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var since = TimeZoneInfo.ConvertTimeFromUtc(range.FromUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var until = TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, reportTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         var timeRange = $"{{\"since\":\"{since}\",\"until\":\"{until}\"}}";
         return $"https://graph.facebook.com/{version}/act_{accountId}/insights?level=campaign&fields={Uri.EscapeDataString(fields)}&time_range={Uri.EscapeDataString(timeRange)}&limit=500&access_token={Uri.EscapeDataString(token)}";
+    }
+
+    private async Task<MetaAccountMetadata> FetchAccountMetadataAsync(HttpClient client, string version, string accountId, string token, TimeRangeRequest range, CancellationToken ct)
+    {
+        var fallbackTimeZone = range.ViewerTimeZone ?? TimeZoneInfo.Utc;
+        var metadata = new MetaAccountMetadata
+        {
+            AccountName = null,
+            TimeZone = fallbackTimeZone,
+            TimeZoneLabel = fallbackTimeZone.Id
+        };
+
+        try
+        {
+            var fields = "name,timezone_name,timezone_offset_hours_utc";
+            var url = $"https://graph.facebook.com/{version}/act_{accountId}?fields={Uri.EscapeDataString(fields)}&access_token={Uri.EscapeDataString(token)}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            using var res = await client.SendAsync(req, ct);
+            var json = await res.Content.ReadAsStringAsync(ct);
+            if (!res.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Meta account metadata fetch failed. status={Status} body={Body}", (int)res.StatusCode, TrimForLog(json));
+                return metadata;
+            }
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            metadata.AccountName = root.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+
+            if (root.TryGetProperty("timezone_name", out var tzNameEl))
+            {
+                var tzName = tzNameEl.GetString();
+                if (!string.IsNullOrWhiteSpace(tzName))
+                {
+                    try
+                    {
+                        metadata.TimeZone = TimeZoneInfo.FindSystemTimeZoneById(tzName.Trim());
+                        metadata.TimeZoneLabel = metadata.TimeZone.Id;
+                        return metadata;
+                    }
+                    catch (TimeZoneNotFoundException) { }
+                    catch (InvalidTimeZoneException) { }
+                }
+            }
+
+            if (root.TryGetProperty("timezone_offset_hours_utc", out var offsetEl))
+            {
+                double? offsetHours = offsetEl.ValueKind switch
+                {
+                    JsonValueKind.Number when offsetEl.TryGetDouble(out var num) => num,
+                    JsonValueKind.String when double.TryParse(offsetEl.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var strNum) => strNum,
+                    _ => null
+                };
+
+                if (offsetHours.HasValue)
+                {
+                    var offset = TimeSpan.FromHours(offsetHours.Value);
+                    var direction = offset < TimeSpan.Zero ? "-" : "+";
+                    var absOffset = offset.Duration();
+                    var label = $"Meta Account UTC{direction}{absOffset.Hours:00}:{absOffset.Minutes:00}";
+                    metadata.TimeZone = TimeZoneInfo.CreateCustomTimeZone(
+                        $"meta-account-{accountId}",
+                        offset,
+                        label,
+                        label);
+                    metadata.TimeZoneLabel = label;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Meta account metadata lookup failed for account {AccountId}.", accountId);
+        }
+
+        return metadata;
     }
 
     private static string TrimForLog(string text)
@@ -320,15 +399,40 @@ public sealed class MetaAdsService : IMetaAdsService
         return 0L;
     }
 
+    private static long ParsePreferredClicks(JsonElement obj)
+    {
+        var landingPageViews = ParseActionCount(obj, "landing_page_view");
+        if (landingPageViews > 0) return landingPageViews;
+
+        var linkClicks = ParseActionCount(obj, "link_click", "omni_link_click", "outbound_click", "inline_link_click");
+        if (linkClicks > 0) return linkClicks;
+
+        return ParseLong(obj, "clicks");
+    }
+
     private static long ParseLeadActions(JsonElement obj)
     {
+        return ParseActionCount(
+            obj,
+            "lead",
+            "omni_lead",
+            "lead_grouped",
+            "onsite_conversion.lead_grouped",
+            "offsite_conversion.fb_pixel_lead",
+            "onsite_conversion.lead");
+    }
+
+    private static long ParseActionCount(JsonElement obj, params string[] actionTypes)
+    {
         if (!obj.TryGetProperty("actions", out var actions) || actions.ValueKind != JsonValueKind.Array) return 0L;
+        if (actionTypes == null || actionTypes.Length == 0) return 0L;
+
         long total = 0;
         foreach (var action in actions.EnumerateArray())
         {
             var actionType = action.TryGetProperty("action_type", out var atEl) ? (atEl.GetString() ?? "") : "";
             if (string.IsNullOrWhiteSpace(actionType)) continue;
-            if (!actionType.Contains("lead", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!actionTypes.Any(t => string.Equals(t, actionType, StringComparison.OrdinalIgnoreCase))) continue;
             var value = action.TryGetProperty("value", out var vEl) ? vEl.GetString() : null;
             if (long.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var count))
                 total += count;
@@ -358,5 +462,12 @@ public sealed class MetaAdsService : IMetaAdsService
         public decimal Cpm { get; set; }
         public decimal Frequency { get; set; }
         public long Leads { get; set; }
+    }
+
+    private sealed class MetaAccountMetadata
+    {
+        public string? AccountName { get; set; }
+        public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
+        public string TimeZoneLabel { get; set; } = "UTC";
     }
 }
