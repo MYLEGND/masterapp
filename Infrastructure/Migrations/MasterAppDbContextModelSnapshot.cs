@@ -652,6 +652,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
                     b.Property<string>("UtmContent")
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
@@ -705,6 +709,8 @@ namespace Infrastructure.Migrations
                         .HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
 
                     b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("UtmId");
 
                     b.HasIndex("UtmSource");
 
@@ -1927,6 +1933,18 @@ namespace Infrastructure.Migrations
                     b.Property<string>("MetadataJson")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("MetaAdId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("MetaAdSetId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("MetaCampaignId")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
@@ -1963,6 +1981,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
 
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
                     b.Property<string>("UtmMedium")
                         .HasMaxLength(160)
                         .HasColumnType("nvarchar(160)");
@@ -1987,11 +2009,15 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("InterestType");
 
+                    b.HasIndex("MetaCampaignId");
+
                     b.HasIndex("SourceCtaKey");
 
                     b.HasIndex("SourcePageKey");
 
                     b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("UtmId");
 
                     b.HasIndex("UtmSource");
 
