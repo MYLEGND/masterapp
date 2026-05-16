@@ -207,18 +207,6 @@
     return `Agent: ${name}`;
   }
 
-  function resolveScopeDescription(agentId) {
-    if (!agentId) {
-      return 'Global scope aggregates all tracking profiles and agents.';
-    }
-    if (callerProfileId && String(agentId) === String(callerProfileId)) {
-      return 'Founder Personal shows only founder-owned analytics.';
-    }
-    const agent = findAgentOption(agentId);
-    const name = agent?.name || agent?.slug || 'that agent';
-    return `${name} only. KPI cards, modals, AI, and exports stay isolated to this agent.`;
-  }
-
   function isGlobalScope() {
     return !state.scope.agentProfileId;
   }
@@ -237,7 +225,6 @@
 
   function updateFounderScopeUi() {
     setText('wa-scope-label', `Viewing: ${state.scope.scopeLabel || 'Global'}`);
-    setText('wa-scope-active-desc', resolveScopeDescription(state.scope.agentProfileId));
 
     const globalScope = isGlobalScope();
     const teamBtn = document.getElementById('team-rollup-btn');
@@ -277,13 +264,13 @@
 
     const globalOption = document.createElement('option');
     globalOption.value = '';
-    globalOption.textContent = 'Global — all tracking profiles and agents';
+    globalOption.textContent = 'Global';
     select.appendChild(globalOption);
 
     if (callerProfileId) {
       const founderOption = document.createElement('option');
       founderOption.value = callerProfileId;
-      founderOption.textContent = 'Founder Personal — founder-owned analytics';
+      founderOption.textContent = 'Founder Personal';
       select.appendChild(founderOption);
     }
 

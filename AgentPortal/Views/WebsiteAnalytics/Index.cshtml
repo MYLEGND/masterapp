@@ -121,16 +121,14 @@
             <div class="wa-scope-picker" aria-label="Analytics scope selector">
                 <div class="wa-scope-picker-head">
                     <label class="wa-scope-picker-label" for="wa-scope-select">Analytics Scope</label>
-                    <div class="wa-scope-picker-help">Switch between Global, Founder Personal, or an individual agent without reloading.</div>
                 </div>
                 <select id="wa-scope-select" class="form-select form-select-sm scope-select">
-                    <option value="">Global — all tracking profiles and agents</option>
+                    <option value="">Global</option>
                     @if (callerProfileId.HasValue)
                     {
-                    <option value="@callerProfileId.Value">Founder Personal — founder-owned analytics</option>
+                    <option value="@callerProfileId.Value">Founder Personal</option>
                     }
                 </select>
-                <div class="wa-scope-active-desc" id="wa-scope-active-desc">Current scope updates every analytics surface on this page.</div>
             </div>
             }
             <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
