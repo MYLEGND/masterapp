@@ -4,7 +4,8 @@
     var bookingLink = "https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true";
 
     var quoteKey = TempData["QuoteType"]?.ToString()?.Trim() ?? "";
-    var metaLeadSuccessToken = TempData["MetaLeadSuccessToken"]?.ToString()?.Trim() ?? "";
+    var metaLeadEventId = TempData["MetaLeadEventId"]?.ToString()?.Trim() ?? "";
+    var metaLeadLeadId = TempData["MetaLeadLeadId"]?.ToString()?.Trim() ?? "";
     var metaLeadContentName = quoteKey switch
     {
         "Auto" => "quote_auto",
@@ -24,7 +25,8 @@
         _ => string.Empty
     };
     var shouldTrackMetaLead =
-        !string.IsNullOrWhiteSpace(metaLeadSuccessToken) &&
+        !string.IsNullOrWhiteSpace(metaLeadEventId) &&
+        !string.IsNullOrWhiteSpace(metaLeadLeadId) &&
         !string.IsNullOrWhiteSpace(metaLeadContentName) &&
         !string.IsNullOrWhiteSpace(metaLeadContentCategory);
 
@@ -330,25 +332,70 @@ main.layout-content,
 {
     <script>
     (() => {
-        if (typeof window.fbq !== 'function') return;
-
-        const successToken = @Html.Raw(JsonSerializer.Serialize(metaLeadSuccessToken));
+        const browserAckUrl = '/ThankYou/meta-browser-ack';
+        const leadId = @Html.Raw(JsonSerializer.Serialize(metaLeadLeadId));
+        const eventId = @Html.Raw(JsonSerializer.Serialize(metaLeadEventId));
         const contentName = @Html.Raw(JsonSerializer.Serialize(metaLeadContentName));
         const contentCategory = @Html.Raw(JsonSerializer.Serialize(metaLeadContentCategory));
-        const firedKey = `meta_lead_success_${successToken}`;
+        const firedKey = `meta_lead_success_${eventId}`;
+
+        function notifyBrowserPixelStatus(status, note = '') {
+            if (!leadId || !eventId) {
+                return;
+            }
+
+            const payload = JSON.stringify({
+                leadId,
+                eventId,
+                status,
+                ...(note ? { note } : {})
+            });
+
+            try {
+                if (navigator.sendBeacon) {
+                    const blob = new Blob([payload], { type: 'application/json' });
+                    if (navigator.sendBeacon(browserAckUrl, blob)) {
+                        return;
+                    }
+                }
+            } catch {
+                // Fall through to fetch keepalive below.
+            }
+
+            try {
+                fetch(browserAckUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload,
+                    keepalive: true
+                }).catch(() => {});
+            } catch {
+                // Never interrupt the thank-you experience if Meta tracking fails.
+            }
+        }
 
         try {
             if (window.sessionStorage?.getItem(firedKey)) {
+                notifyBrowserPixelStatus('sent', 'session_storage_dedup');
+                return;
+            }
+
+            if (typeof window.fbq !== 'function') {
+                notifyBrowserPixelStatus('unavailable', 'fbq_unavailable');
                 return;
             }
 
             window.fbq('track', 'Lead', {
                 content_name: contentName,
                 content_category: contentCategory
+            }, {
+                eventID: eventId
             });
 
             window.sessionStorage?.setItem(firedKey, '1');
+            notifyBrowserPixelStatus('sent');
         } catch {
+            notifyBrowserPixelStatus('error', 'fbq_exception');
             // Never interrupt the thank-you experience if Meta tracking fails.
         }
     })();

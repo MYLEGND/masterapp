@@ -7,6 +7,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
 using System.Text.Json;
+using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
@@ -23,10 +24,11 @@ namespace Protect_Website.Controllers
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly ILogger<HealthQuoteController> _logger;
 
         public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, ILogger<HealthQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, ILogger<HealthQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -36,6 +38,7 @@ namespace Protect_Website.Controllers
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
             _db = db;
+            _metaConversionsApi = metaConversionsApi;
             _logger = logger;
         }
 
@@ -117,6 +120,62 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
         return View("~/Views/Quote/Health.cshtml", model);
     }
+
+    var metaLeadEventId = Guid.NewGuid().ToString("N");
+    await MetaLeadTrackingWorkflow.TryPersistAsync(
+        lead,
+        _db,
+        correlationId,
+        "meta_tracking_initialized",
+        _logger,
+        HttpContext?.RequestAborted ?? CancellationToken.None,
+        state =>
+        {
+            state.EventId = metaLeadEventId;
+            state.BrowserPixelStatus = "pending";
+            state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+            state.BrowserPixelNote = null;
+            state.ServerCapiStatus = "pending";
+            state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+            state.ServerCapiNote = null;
+        });
+
+    var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+        new MetaLeadConversionRequest
+        {
+            LeadId = lead.LeadId,
+            CorrelationId = correlationId,
+            EventId = metaLeadEventId,
+            QuoteType = "Health",
+            PageKey = "quote_health",
+            OfferKey = "health",
+            EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+            ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+            ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+            Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+            Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+            Fbclid = lead.Fbclid,
+            Email = lead.Email,
+            Phone = lead.Phone,
+            AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+            EventUtc = lead.CreatedUtc
+        },
+        HttpContext?.RequestAborted ?? CancellationToken.None);
+
+    await MetaLeadTrackingWorkflow.TryPersistAsync(
+        lead,
+        _db,
+        correlationId,
+        "meta_capi_result",
+        _logger,
+        HttpContext?.RequestAborted ?? CancellationToken.None,
+        state =>
+        {
+            state.EventId ??= metaLeadEventId;
+            state.ServerCapiStatus = metaCapiResult.Status;
+            state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+            state.ServerCapiNote = metaCapiResult.Note;
+        });
 
     // ── 2. Send email ──────────────────────────────────────────────────────────
     try
@@ -254,7 +313,8 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
     }
 
     TempData["QuoteType"] = "Health";
-    TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
+    TempData["MetaLeadEventId"] = metaLeadEventId;
+    TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
     return RedirectToAction("Index", "ThankYou");
 }
 

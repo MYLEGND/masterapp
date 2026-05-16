@@ -14,6 +14,7 @@ using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
@@ -30,10 +31,11 @@ namespace Protect_Website.Controllers
         private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly ILogger<AutoQuoteController> _logger;
 
         public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, ILogger<AutoQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -43,6 +45,7 @@ namespace Protect_Website.Controllers
             recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
             _resolver = resolver;
             _db = db;
+            _metaConversionsApi = metaConversionsApi;
             _logger = logger;
         }
 
@@ -154,6 +157,62 @@ namespace Protect_Website.Controllers
                 ViewData["StartStep"] = 5;
                 return View("~/Views/Quote/Auto.cshtml", model);
             }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_tracking_initialized",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = "Auto",
+                    PageKey = "quote_auto",
+                    OfferKey = "auto",
+                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_capi_result",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
 
             // ── 2. Send email ────────────────────────────────────────────────────
             try
@@ -400,7 +459,8 @@ namespace Protect_Website.Controllers
             }
 
             TempData["QuoteType"] = "Auto";
-            TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
+            TempData["MetaLeadEventId"] = metaLeadEventId;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
         }
 

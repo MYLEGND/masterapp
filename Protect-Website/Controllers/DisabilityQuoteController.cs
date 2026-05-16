@@ -7,6 +7,7 @@ using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
 using System.Text.Json;
+using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 
@@ -22,10 +23,11 @@ namespace Protect_Website.Controllers
         private readonly string recipientEmail;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly ILogger<DisabilityQuoteController> _logger;
 
         public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, ILogger<DisabilityQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -34,6 +36,7 @@ namespace Protect_Website.Controllers
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             _resolver = resolver;
             _db = db;
+            _metaConversionsApi = metaConversionsApi;
             _logger = logger;
         }
 
@@ -119,6 +122,62 @@ namespace Protect_Website.Controllers
                     ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message })
                     : View("~/Views/Quote/Disability.cshtml", model);
             }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_tracking_initialized",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = "Disability",
+                    PageKey = "quote_disability",
+                    OfferKey = "disability",
+                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_capi_result",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
 
             // ── 2. Send email ─────────────────────────────────────────────────────
             try
@@ -229,11 +288,18 @@ namespace Protect_Website.Controllers
 
             if (IsAjax())
             {
-                return Ok(new { success = true });
+                return Ok(new
+                {
+                    success = true,
+                    leadId = lead.LeadId.ToString("D"),
+                    metaLeadEventId,
+                    metaCapiStatus = metaCapiResult.Status
+                });
             }
 
             TempData["QuoteType"] = "Disability";
-            TempData["MetaLeadSuccessToken"] = Guid.NewGuid().ToString("N");
+            TempData["MetaLeadEventId"] = metaLeadEventId;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
 }
 
