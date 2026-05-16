@@ -13,6 +13,7 @@
   })();
 
   const shell = document.querySelector('.fa-shell');
+  const canDeleteLeads = shell?.dataset.canDeleteLeads === 'true';
   const state = {
     preset: shell?.dataset.initialPreset || '30d',
     from: null,
@@ -30,6 +31,7 @@
       behaviorSources: null,
       aiSnapshot: null
     },
+    canDeleteLeads,
     agentProfileId: null,
     scope: {
       preset: shell?.dataset.initialPreset || '30d',
@@ -92,6 +94,7 @@
     quote: '/WebsiteAnalytics/quote-funnel',
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
+    deleteLead: '/WebsiteAnalytics/DeleteLead',
     agentPerf: '/WebsiteAnalytics/agent-performance',
     metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
     metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
@@ -392,6 +395,74 @@
 
     note.className = `alert ${isError ? 'alert-danger' : 'alert-warning'} small py-2 px-3 mb-3`;
     note.textContent = `${note.dataset.baseText} ${message}`.trim();
+  }
+
+  function setLeadDeleteFeedback(message, tone = 'success') {
+    const el = document.getElementById('leads-delete-feedback');
+    if (!el) return;
+    if (!message) {
+      el.textContent = '';
+      el.className = 'wa-inline-feedback d-none mb-2';
+      return;
+    }
+
+    el.textContent = message;
+    el.className = `wa-inline-feedback mb-2 ${tone === 'error' ? 'is-error' : 'is-success'}`;
+  }
+
+  function closeLeadContextMenu() {
+    const menu = document.getElementById('leads-row-context-menu');
+    if (!menu) return;
+    menu.hidden = true;
+    menu.style.left = '';
+    menu.style.top = '';
+    delete menu.dataset.leadId;
+    delete menu.dataset.leadLabel;
+  }
+
+  function showLeadContextMenu(x, y, leadId, leadLabel) {
+    const menu = document.getElementById('leads-row-context-menu');
+    if (!menu || !leadId) return;
+
+    menu.dataset.leadId = leadId;
+    menu.dataset.leadLabel = leadLabel || '';
+    menu.hidden = false;
+    menu.style.left = '0px';
+    menu.style.top = '0px';
+
+    const bounds = menu.getBoundingClientRect();
+    const safeLeft = Math.max(8, Math.min(x, window.innerWidth - bounds.width - 8));
+    const safeTop = Math.max(8, Math.min(y, window.innerHeight - bounds.height - 8));
+    menu.style.left = `${safeLeft}px`;
+    menu.style.top = `${safeTop}px`;
+  }
+
+  function removeLeadFromLocalCache(leadId) {
+    if (!state.cache.leads?.leads?.length || !leadId) return;
+    const currentRows = state.cache.leads.leads;
+    const remaining = currentRows.filter(row => String(row.leadId || '') !== String(leadId));
+    if (remaining.length === currentRows.length) return;
+
+    const nextTotal = Math.max(0, Number(state.cache.leads.total || currentRows.length) - 1);
+    state.cache.leads = {
+      ...state.cache.leads,
+      leads: remaining,
+      total: nextTotal,
+      returnedCount: remaining.length,
+      isTruncated: nextTotal > remaining.length
+    };
+    renderLeads(state.cache.leads);
+  }
+
+  function leadDisplayLabel(lead) {
+    if (!lead) return 'Selected lead';
+    const name = asTrimmed(lead.name);
+    if (name) return name;
+    const email = asTrimmed(lead.email);
+    if (email) return email;
+    const phone = asTrimmed(lead.phone);
+    if (phone) return phone;
+    return 'Selected lead';
   }
 
   function renderSummary(data) {
@@ -787,17 +858,38 @@
       const meta = document.getElementById('mod-leads-meta');
       if (meta) meta.textContent = `Most recent (local): ${formatDisplayDate(newest.createdUtc)}`;
     }
-    renderTable('leads-body', data.leads || [], [
-      { render: r => formatDisplayDate(r.createdUtc) },
-      { key: 'name' },
-      { key: 'email' },
-      { key: 'phone' },
-      { key: 'interest' },
-      { key: 'leadSource' },
-      { render: r => r.resolvedSource || '—' },
-      { render: r => `${trafficBadge(r.attribution)} <span class="text-muted small">${r.attribution?.resolutionSource || 'unknown'}</span>`, align: 'text-center' },
-      { render: r => metaTrackingBadge(r.metaTracking), align: 'text-center' }
-    ]);
+    const body = document.getElementById('leads-body');
+    if (!body) return;
+    if (!data.leads || data.leads.length === 0) {
+      body.innerHTML = '<tr><td colspan="9" class="fa-empty">No data in range</td></tr>';
+      closeLeadContextMenu();
+      setText('leads-range-label', data.rangeLabel || '');
+      return;
+    }
+
+    body.innerHTML = (data.leads || []).map((lead) => {
+      const rowClasses = ['wa-lead-row'];
+      const rowAttrs = [];
+      if (state.canDeleteLeads && lead.leadId) {
+        rowClasses.push('wa-lead-row-admin');
+        rowAttrs.push(`data-lead-id="${escapeHtml(lead.leadId)}"`);
+        rowAttrs.push(`data-lead-label="${escapeHtml(leadDisplayLabel(lead))}"`);
+      }
+
+      return `
+        <tr class="${rowClasses.join(' ')}" ${rowAttrs.join(' ')}>
+          <td>${escapeHtml(formatDisplayDate(lead.createdUtc) || '—')}</td>
+          <td>${escapeHtml(lead.name || '—')}</td>
+          <td>${escapeHtml(lead.email || '—')}</td>
+          <td>${escapeHtml(lead.phone || '—')}</td>
+          <td>${escapeHtml(lead.interest || '—')}</td>
+          <td>${escapeHtml(lead.leadSource || '—')}</td>
+          <td>${escapeHtml(lead.resolvedSource || '—')}</td>
+          <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span></td>
+          <td class="text-center">${metaTrackingBadge(lead.metaTracking)}</td>
+        </tr>
+      `;
+    }).join('');
     setText('leads-range-label', data.rangeLabel || '');
   }
 
@@ -877,6 +969,127 @@
         });
       });
     });
+  }
+
+  function initLeadDeleteControls() {
+    if (!state.canDeleteLeads) return;
+
+    const leadsBody = document.getElementById('leads-body');
+    const contextMenu = document.getElementById('leads-row-context-menu');
+    const deleteAction = document.getElementById('leads-context-delete');
+    const confirmModalEl = document.getElementById('deleteLeadConfirmModal');
+    const confirmBtn = document.getElementById('confirm-delete-lead-btn');
+    const reasonInput = document.getElementById('delete-lead-reason');
+    const targetEl = document.getElementById('delete-lead-target');
+    const leadsModalEl = document.getElementById('leadsModal');
+    if (!leadsBody || !contextMenu || !deleteAction || !confirmModalEl || !confirmBtn) return;
+
+    leadsBody.addEventListener('contextmenu', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const row = target.closest('tr[data-lead-id]');
+      if (!row) return;
+      event.preventDefault();
+      setLeadDeleteFeedback('');
+      showLeadContextMenu(
+        event.clientX,
+        event.clientY,
+        row.dataset.leadId || '',
+        row.dataset.leadLabel || ''
+      );
+    });
+
+    deleteAction.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const leadId = contextMenu.dataset.leadId || '';
+      const leadLabel = contextMenu.dataset.leadLabel || '';
+      if (!leadId) {
+        closeLeadContextMenu();
+        return;
+      }
+
+      confirmModalEl.dataset.leadId = leadId;
+      confirmModalEl.dataset.leadLabel = leadLabel;
+
+      if (targetEl) {
+        if (leadLabel) {
+          targetEl.textContent = `Lead: ${leadLabel}`;
+          targetEl.classList.remove('d-none');
+        } else {
+          targetEl.textContent = '';
+          targetEl.classList.add('d-none');
+        }
+      }
+
+      if (reasonInput) {
+        reasonInput.value = '';
+      }
+
+      closeLeadContextMenu();
+      bootstrap.Modal.getOrCreateInstance(confirmModalEl).show();
+    });
+
+    confirmBtn.addEventListener('click', async () => {
+      const leadId = confirmModalEl.dataset.leadId || '';
+      if (!leadId) {
+        setLeadDeleteFeedback('Lead selection expired. Please try again.', 'error');
+        bootstrap.Modal.getInstance(confirmModalEl)?.hide();
+        return;
+      }
+
+      const reason = asTrimmed(reasonInput?.value) || 'Test lead cleanup';
+      const originalLabel = confirmBtn.textContent || 'Yes, delete lead';
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Deleting...';
+
+      try {
+        await fetchPostJson('delete-lead', endpoints.deleteLead, { leadId, reason });
+        removeLeadFromLocalCache(leadId);
+        bootstrap.Modal.getInstance(confirmModalEl)?.hide();
+        setLeadDeleteFeedback('Lead deleted from analytics.');
+        await Promise.allSettled([loadSummary(), loadLeads()]);
+      } catch (err) {
+        const message = (err && err.message) ? err.message : 'Unable to delete lead.';
+        setLeadDeleteFeedback(message, 'error');
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = originalLabel;
+      }
+    });
+
+    confirmModalEl.addEventListener('hidden.bs.modal', () => {
+      if (reasonInput) {
+        reasonInput.value = '';
+      }
+      delete confirmModalEl.dataset.leadId;
+      delete confirmModalEl.dataset.leadLabel;
+      if (targetEl) {
+        targetEl.textContent = '';
+        targetEl.classList.add('d-none');
+      }
+    });
+
+    leadsModalEl?.addEventListener('hidden.bs.modal', () => {
+      closeLeadContextMenu();
+      setLeadDeleteFeedback('');
+    });
+
+    document.addEventListener('click', (event) => {
+      if (contextMenu.hidden) return;
+      if (contextMenu.contains(event.target)) return;
+      closeLeadContextMenu();
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeLeadContextMenu();
+      }
+    });
+
+    window.addEventListener('resize', closeLeadContextMenu);
+    document.addEventListener('scroll', closeLeadContextMenu, true);
   }
 
   function setAiSnapshotStatus(message, tone = 'muted') {
@@ -1801,6 +2014,7 @@
     initRangeControls();
     initModules();
     initTrafficTypeControls();
+    initLeadDeleteControls();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
     attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });

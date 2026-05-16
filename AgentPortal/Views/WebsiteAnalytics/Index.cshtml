@@ -9,13 +9,14 @@
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
     var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
+    var canDeleteAnalyticsLeads = (ViewData["CanDeleteAnalyticsLeads"] as bool?) ?? false;
     var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
     var isFounder = agentOptionsJson != "[]";
 }
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
     <div class="hero-link mb-4 p-4 p-md-5">
     <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
             <div>
@@ -900,6 +901,11 @@
             </div>
         </div>
         <div class="small text-muted mb-2" id="leads-cap-note">Showing latest 200 leads.</div>
+        @if (canDeleteAnalyticsLeads)
+        {
+        <div class="wa-leads-admin-note mb-2" id="leads-delete-note">Right-click a test lead to delete. Deleted leads are excluded from analytics.</div>
+        }
+        <div class="wa-inline-feedback d-none mb-2" id="leads-delete-feedback" role="status" aria-live="polite"></div>
         <table class="table table-sm">
           <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Lead Source</th><th>Resolved Source</th><th>Attribution</th><th>Meta Tracking</th></tr></thead>
           <tbody id="leads-body"></tbody>
@@ -908,6 +914,37 @@
     </div>
   </div>
 </div>
+
+@if (canDeleteAnalyticsLeads)
+{
+<div class="wa-context-menu" id="leads-row-context-menu" hidden>
+  <button type="button" class="wa-context-menu-item" id="leads-context-delete">Delete lead</button>
+</div>
+
+<div class="modal fade fa-modal" id="deleteLeadConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-1">Delete lead?</h5>
+          <div class="fa-muted small">This should only be used for test leads. This action cannot be undone.</div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="wa-delete-lead-target d-none" id="delete-lead-target"></div>
+        <label class="form-label small text-uppercase fw-bold text-warning" for="delete-lead-reason">Delete Reason</label>
+        <input type="text" class="form-control" id="delete-lead-reason" maxlength="500" placeholder="Test lead cleanup" />
+        <div class="fa-muted small mt-2">Optional. Leave blank to use “Test lead cleanup.”</div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-gold" id="confirm-delete-lead-btn">Yes, delete lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+}
 
 <div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
