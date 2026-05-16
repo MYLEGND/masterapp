@@ -113,7 +113,7 @@ public class LeadSnapshotAttributionTests
         Assert.Null(row.UtmCampaign);
 
         // Source composite
-        Assert.Equal("quote_life/hero_cta", row.Source);
+        Assert.Equal("quote_life/hero_cta", row.LeadSource);
         Assert.Equal("quote_life", row.SourcePage);
     }
 

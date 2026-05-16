@@ -6,6 +6,7 @@ using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -93,18 +94,19 @@ internal static class ControllerTestHelpers
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
             {
-                new KeyValuePair<string,string>("GraphProvisioning:TenantId","test-tenant"),
-                new KeyValuePair<string,string>("GraphProvisioning:ClientId","test-client"),
-                new KeyValuePair<string,string>("GraphProvisioning:ClientSecret","secret")
+                new KeyValuePair<string,string?>("GraphProvisioning:TenantId","test-tenant"),
+                new KeyValuePair<string,string?>("GraphProvisioning:ClientId","test-client"),
+                new KeyValuePair<string,string?>("GraphProvisioning:ClientSecret","secret")
             })
             .Build();
         var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
         var timeResolver = Mock.Of<IAgentTimeZoneResolver>();
+        var azureClientEmailSync = Mock.Of<IAzureClientEmailSyncService>();
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, prod, effCtx, execution, commitments)
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync, prod, effCtx, execution, commitments)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
