@@ -31,6 +31,10 @@ public class WebsiteLead
     public DateTime CreatedUtc { get; set; }
     public string Status { get; set; } = "New";
     public string? MetadataJson { get; set; }
+    public bool IsDeleted { get; set; }
+    public DateTime? DeletedAtUtc { get; set; }
+    public string? DeletedByUserId { get; set; }
+    public string? DeleteReason { get; set; }
 
     /// <summary>Facebook click ID (fbclid) captured at lead submission.</summary>
     public string? Fbclid { get; set; }

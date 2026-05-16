@@ -681,6 +681,9 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.Status).HasMaxLength(40).IsRequired();
             e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.IsDeleted).HasDefaultValue(false);
+            e.Property(x => x.DeletedByUserId).HasMaxLength(200);
+            e.Property(x => x.DeleteReason).HasMaxLength(500);
             e.Property(x => x.CreatedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
 

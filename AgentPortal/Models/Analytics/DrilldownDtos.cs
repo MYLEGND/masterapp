@@ -117,6 +117,7 @@ public sealed class LeadAttributionDto
 
 public sealed class LeadSnapshotRow
 {
+    public Guid LeadId { get; set; }
     public DateTime CreatedUtc { get; set; }
     public string Name { get; set; } = "";
     public string Email { get; set; } = "";

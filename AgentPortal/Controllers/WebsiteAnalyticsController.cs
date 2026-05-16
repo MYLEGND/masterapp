@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Security.Claims;
 using System.Text;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
@@ -10,6 +11,7 @@ using AgentPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Shared.Auth;
 
 namespace AgentPortal.Controllers;
 
@@ -71,7 +73,9 @@ namespace AgentPortal.Controllers;
         }
 
         var canViewFounderTeamUi = FounderGuard.IsFounder(User);
+        var canDeleteAnalyticsLeads = CanDeleteAnalyticsLeads();
         ViewData["CanViewFounderTeamUi"] = canViewFounderTeamUi;
+        ViewData["CanDeleteAnalyticsLeads"] = canDeleteAnalyticsLeads;
         if (canViewFounderTeamUi)
         {
             // Ensure founder personal link is root
@@ -202,6 +206,66 @@ namespace AgentPortal.Controllers;
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetLeadsAsync(range, scope, trafficType, limit);
         return Json(result);
+    }
+
+    [HttpPost("DeleteLead")]
+    [HttpPost("/WebsiteAnalytics/DeleteLead")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteLead([FromBody] DeleteLeadRequest? request)
+    {
+        if (!CanDeleteAnalyticsLeads())
+            return Forbid();
+
+        if (request == null || request.LeadId == Guid.Empty)
+            return BadRequest(new { message = "A valid leadId is required." });
+
+        var lead = await _db.WebsiteLeads.FirstOrDefaultAsync(l => l.LeadId == request.LeadId);
+        if (lead == null)
+            return NotFound(new { message = "Lead not found." });
+
+        if (lead.IsDeleted)
+        {
+            return Json(new
+            {
+                ok = true,
+                alreadyDeleted = true,
+                leadId = lead.LeadId
+            });
+        }
+
+        var actorId = (User.GetStableUserId() ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(actorId))
+        {
+            actorId = (User.FindFirstValue(ClaimTypes.Email)
+                ?? User.FindFirstValue("preferred_username")
+                ?? User.FindFirstValue("upn")
+                ?? User.Identity?.Name
+                ?? "unknown").Trim();
+        }
+
+        if (actorId.Length > 200)
+            actorId = actorId[..200];
+
+        var reason = string.IsNullOrWhiteSpace(request.Reason)
+            ? "Test lead cleanup"
+            : request.Reason.Trim();
+        if (reason.Length > 500)
+            reason = reason[..500];
+
+        lead.IsDeleted = true;
+        lead.DeletedAtUtc = DateTime.UtcNow;
+        lead.DeletedByUserId = actorId;
+        lead.DeleteReason = reason;
+
+        await _db.SaveChangesAsync();
+
+        return Json(new
+        {
+            ok = true,
+            leadId = lead.LeadId,
+            deletedAtUtc = lead.DeletedAtUtc,
+            deleteReason = lead.DeleteReason
+        });
     }
 
     [HttpGet("agent-performance")]
@@ -901,6 +965,32 @@ namespace AgentPortal.Controllers;
             return "Founder Personal";
         }
         return string.IsNullOrWhiteSpace(agentName) ? "Agent Scope" : $"Agent: {agentName}";
+    }
+
+    private bool CanDeleteAnalyticsLeads()
+    {
+        if (FounderGuard.IsFounder(User))
+            return true;
+
+        var oid = (User?.FindFirst("oid")?.Value ?? string.Empty).Trim();
+        var upn = (User?.FindFirstValue(ClaimTypes.Email)
+            ?? User?.FindFirstValue("preferred_username")
+            ?? User?.FindFirstValue("upn")
+            ?? User?.Identity?.Name
+            ?? string.Empty).Trim();
+
+        return MatchesConfiguredUser(oid, Environment.GetEnvironmentVariable("LEGEND_ADMIN_OIDS"))
+            || MatchesConfiguredUser(upn, Environment.GetEnvironmentVariable("LEGEND_ADMIN_UPNS"));
+    }
+
+    private static bool MatchesConfiguredUser(string value, string? configuredList)
+    {
+        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(configuredList))
+            return false;
+
+        return configuredList
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(candidate => candidate.Equals(value, StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<string> BuildSnapshotWarnings(SummaryKpiDto summary)

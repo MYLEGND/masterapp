@@ -52,6 +52,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
+            .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .Where(EnvPredicateLeads())
             .Where(HostPredicateLeads())
@@ -68,6 +69,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
+            .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
             .Where(EnvPredicateLeads())
             .Where(HostPredicateLeads())
@@ -1186,6 +1188,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 return new LeadSnapshotRow
                 {
+                    LeadId      = l.LeadId,
                     CreatedUtc  = l.CreatedUtc,
                     Name        = $"{l.FirstName} {l.LastName}".Trim(),
                     Email       = l.Email,
