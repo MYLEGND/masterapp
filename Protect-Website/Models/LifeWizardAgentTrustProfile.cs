@@ -9,4 +9,5 @@ public sealed class LifeWizardAgentTrustProfile
     public string? Npn { get; set; }
     public string? ShortBio { get; set; }
     public string? ProfileImageUrl { get; set; }
+    public string? SchedulingLink { get; set; }
 }
