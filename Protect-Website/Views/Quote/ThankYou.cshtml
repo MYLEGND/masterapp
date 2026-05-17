@@ -67,15 +67,18 @@
     var agentFirstName = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
         ? agentTrustProfile!.FirstName!.Trim()
         : agentDisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "there";
-    var agentBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
+    var hasCustomAgentBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio);
+    var agentBio = hasCustomAgentBio
         ? agentTrustProfile!.ShortBio!.Trim()
-        : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
+        : string.Empty;
     var agentNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
     var bookingLink = !string.IsNullOrWhiteSpace(agentTrustProfile?.SchedulingLink)
         ? agentTrustProfile!.SchedulingLink!.Trim()
         : (Model?.BookingLink ?? string.Empty).Trim();
+    var agentCardHeading = $"{agentFirstName} is now reviewing your request.";
+    var agentCardHelper = $"Your next step will be directly with {agentFirstName}.";
     var headlineText = showAgentTrustCard
         ? "Thanks — I've received your request."
         : "Thanks — we've received your request.";
@@ -229,6 +232,15 @@ main.layout-content,
     margin-bottom: 3px;
 }
 
+.ty-agent-kicker {
+    color: rgba(248,250,252,0.56);
+    font-size: .74rem;
+    font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+
 .ty-agent-display-name {
     color: rgba(248,250,252,0.8);
     font-size: .8rem;
@@ -240,6 +252,14 @@ main.layout-content,
     color: rgba(248,250,252,0.82);
     font-size: .9rem;
     line-height: 1.45;
+}
+
+.ty-agent-note {
+    color: rgba(248,250,252,0.72);
+    font-size: .84rem;
+    font-weight: 760;
+    line-height: 1.45;
+    margin-top: 4px;
 }
 
 .ty-agent-license {
@@ -405,8 +425,10 @@ main.layout-content,
     .ty-agent-identity { min-width: 84px; gap: 7px; }
     .ty-agent-avatar { width: 60px; height: 60px; }
     .ty-agent-name { font-size: 1rem; }
+    .ty-agent-kicker { font-size: .7rem; }
     .ty-agent-display-name { font-size: .75rem; }
     .ty-agent-bio { font-size: .86rem; }
+    .ty-agent-note { font-size: .8rem; }
     .ty-agent-license { font-size: .7rem; margin-top: 7px; }
     .ty-next-box { padding: 14px 14px 12px; }
     .ty-next-list li { font-size: .88rem; }
@@ -423,8 +445,10 @@ main.layout-content,
     .ty-agent-identity { min-width: 76px; gap: 6px; }
     .ty-agent-avatar { width: 56px; height: 56px; }
     .ty-agent-name { font-size: .96rem; }
+    .ty-agent-kicker { font-size: .68rem; }
     .ty-agent-display-name { font-size: .72rem; }
     .ty-agent-bio { font-size: .82rem; }
+    .ty-agent-note { font-size: .77rem; }
     .ty-agent-license { font-size: .68rem; margin-top: 6px; }
     .btn-gold { padding: 12px 15px; font-size: .93rem; min-height: 54px; border-radius: 13px; }
 }
@@ -456,8 +480,13 @@ main.layout-content,
                         <div class="ty-agent-display-name">@agentDisplayName</div>
                     </div>
                     <div>
-                        <div class="ty-agent-name">Hi, I'm @agentFirstName.</div>
-                        <div class="ty-agent-bio">@agentBio</div>
+                        <div class="ty-agent-kicker">Your licensed agent</div>
+                        <div class="ty-agent-name">@agentCardHeading</div>
+                        <div class="ty-agent-note">@agentCardHelper</div>
+                        @if (hasCustomAgentBio)
+                        {
+                            <div class="ty-agent-bio">@agentBio</div>
+                        }
                         @if (!string.IsNullOrWhiteSpace(agentNpn))
                         {
                             <div class="ty-agent-license">Licensed Insurance Professional • License #: @agentNpn</div>
