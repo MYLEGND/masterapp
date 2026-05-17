@@ -91,25 +91,25 @@
         : "Thanks — we've received your request.";
     var detailMessage = quoteKey == "RiskAssessment"
         ? (showAgentTrustCard
-            ? "I've received your assessment. You'll hear from me soon with the clearest next step and what to focus on first."
-            : "Your Risk Assessment form has been securely recorded. We'll review your responses and prepare clear next steps to help you understand your protection gaps.")
+            ? "You'll hear from me soon with the clearest next step and what to focus on first."
+            : "You'll hear from us soon with clear next steps based on what you shared.")
         : (showAgentTrustCard
-            ? "I've received what you shared. You'll hear from me soon with the clearest next step for your situation."
-            : "We'll review what you shared and help you understand what may fit your situation.");
+            ? "You'll hear from me soon with the clearest next step for your situation."
+            : "You'll hear from us soon with the clearest next step for your situation.");
     var nextSteps = showAgentTrustCard
         ? new[]
         {
-            $"I'll personally look over your {quoteDisplayName} request",
-            "We'll talk through pricing, fit, and any questions you want answered"
+            $"I'll review the details you shared about your {quoteDisplayName} request",
+            "We'll talk through pricing, fit, and the questions that matter most to you"
         }
         : new[]
         {
-            $"A licensed team member will review your {quoteDisplayName} request",
-            "We'll keep the conversation simple, clear, and focused on what may fit you"
+            $"A licensed team member will review the details you shared about your {quoteDisplayName} request",
+            "We'll talk through pricing, fit, and the questions that matter most to you"
         };
     var fasterNote = showAgentTrustCard
-        ? $"Want to move faster? Book a time with {agentFirstName} that works best for you."
-        : "Want to move faster? Book a time that works best for you.";
+        ? $"If you'd rather choose a time now, you can book directly with {agentFirstName} below."
+        : "If you'd rather choose a time now, you can book below.";
     var primaryCtaText = showAgentTrustCard
         ? $"Book Your Review With {agentFirstName}"
         : "Schedule Your Call";
