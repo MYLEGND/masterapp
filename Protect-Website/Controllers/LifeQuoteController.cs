@@ -444,6 +444,7 @@ namespace Protect_Website.Controllers
 
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = offerContent.DisplayName;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
 
             // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
             if (IsAjax())
