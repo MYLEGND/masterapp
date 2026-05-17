@@ -29,19 +29,21 @@ namespace AgentPortal.Controllers;
         private readonly IMetaAdsOAuthService _metaAdsOAuth;
         private readonly IMetaAdsConnectionStore _metaAdsConnectionStore;
         private readonly Services.Tracking.IAgentTrackingService _tracking;
+        private readonly IMetaSignalAnalyticsService _metaSignalAnalytics;
         private readonly ILogger<WebsiteAnalyticsController> _logger;
         private readonly Infrastructure.Data.MasterAppDbContext _db;
         private readonly string _founderUpn;
         private readonly IConfiguration _config;
         private readonly EffectiveAgentContext _effectiveContext;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
         {
             _analytics = analytics;
             _metaAds = metaAds;
             _metaAdsOAuth = metaAdsOAuth;
             _metaAdsConnectionStore = metaAdsConnectionStore;
             _tracking = tracking;
+            _metaSignalAnalytics = metaSignalAnalytics;
             _logger = logger;
             _db = db;
             _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
@@ -225,6 +227,27 @@ namespace AgentPortal.Controllers;
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _analytics.GetLeadsAsync(range, scope, trafficType, limit);
+        return Json(result);
+    }
+
+    [HttpGet("meta-signal")]
+    [HttpGet("/website-analytics/meta-signal")]
+    public async Task<IActionResult> MetaSignal(
+        [FromQuery] string? preset,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] bool team = false,
+        [FromQuery] TrafficType trafficType = TrafficType.All,
+        [FromQuery] string? quoteType = null,
+        [FromQuery] string? campaign = null,
+        [FromQuery] string? pageMode = null,
+        [FromQuery] string? scoreTier = null)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _metaSignalAnalytics.GetDashboardAsync(range, scope, trafficType, quoteType, campaign, pageMode, scoreTier, HttpContext.RequestAborted);
+        result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
 
@@ -593,7 +616,9 @@ namespace AgentPortal.Controllers;
                 () => new FormAbandonmentDto { RangeLabel = range.Label },
                 "Form abandonment metrics");
             MetaCampaignsDto? metaCampaigns = null;
+            MetaSignalDashboardDto? metaSignal = null;
             string? activeCampaignWarning = null;
+            string? metaSignalWarning = null;
 
             try
             {
@@ -608,6 +633,16 @@ namespace AgentPortal.Controllers;
             {
                 activeCampaignWarning = "Active campaign performance unavailable due to Meta campaigns fetch error.";
                 _logger.LogWarning(ex, "AI snapshot active campaign section failed unexpectedly.");
+            }
+
+            try
+            {
+                metaSignal = await _metaSignalAnalytics.GetDashboardAsync(range, scope, trafficType, ct: HttpContext.RequestAborted);
+            }
+            catch (Exception ex)
+            {
+                metaSignalWarning = "Meta Signal Intelligence unavailable due to internal error.";
+                _logger.LogWarning(ex, "AI snapshot meta signal section failed unexpectedly.");
             }
 
             var generatedUtc = DateTime.UtcNow;
@@ -638,8 +673,11 @@ namespace AgentPortal.Controllers;
                 warnings.AddRange(partialWarnings);
             if (!string.IsNullOrWhiteSpace(activeCampaignWarning))
                 warnings.Add(activeCampaignWarning);
+            if (!string.IsNullOrWhiteSpace(metaSignalWarning))
+                warnings.Add(metaSignalWarning);
             var snapshotText = BuildAiReviewSnapshotText(
                 metaCampaigns,
+                metaSignal,
                 summary,
                 traffic,
                 quote,
@@ -1272,6 +1310,7 @@ namespace AgentPortal.Controllers;
 
     private static string BuildAiReviewSnapshotText(
         MetaCampaignsDto? metaCampaigns,
+        MetaSignalDashboardDto? metaSignal,
         SummaryKpiDto summary,
         TrafficOverviewDto traffic,
         QuoteFunnelDto quote,
@@ -1379,7 +1418,53 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION C — TRAFFIC HEALTH");
+        Line("SECTION C — META SIGNAL INTELLIGENCE");
+        if (metaSignal == null)
+        {
+            Line("Meta Signal Intelligence unavailable in this snapshot.");
+        }
+        else
+        {
+            Line($"Total signal events: {metaSignal.TotalSignalEvents}");
+            Line($"Total visitors with signal: {metaSignal.TotalVisitors}");
+            Line($"High-intent visitors: {metaSignal.HighIntentVisitors}");
+            Line($"Lead-ready visitors: {metaSignal.LeadReadyVisitors}");
+            Line($"Submitted leads: {metaSignal.SubmittedLeads}");
+            Line($"High-intent abandons: {metaSignal.HighIntentAbandons}");
+            Line($"Contact-step abandons: {metaSignal.ContactStepAbandons}");
+            Line($"Signal-to-lead conversion: {metaSignal.SignalToLeadConversionRate:0.##}%");
+            Line($"Recommended optimization event right now: {Safe(metaSignal.RecommendedOptimizationEvent)}");
+            Line($"Best-performing landing version: {Safe(metaSignal.BestPerformingLandingPageVersion)}");
+            Line($"Worst friction step: {Safe(metaSignal.WorstFrictionStep)}");
+            Line("Visitors by score tier:");
+            var visitorsByTier = metaSignal.VisitorsByScoreTier ?? new List<MetaSignalTierRowDto>();
+            if (visitorsByTier.Count == 0)
+            {
+                Line("No data in range.");
+            }
+            else
+            {
+                foreach (var tier in visitorsByTier)
+                    Line($"- {Safe(tier.ScoreTier)}: {tier.Visitors}");
+            }
+            Line("Event ladder:");
+            var signalLadder = metaSignal.EventLadder ?? new List<MetaSignalLadderRowDto>();
+            if (signalLadder.Count == 0)
+            {
+                Line("No data in range.");
+            }
+            else
+            {
+                foreach (var stage in signalLadder)
+                {
+                    var rateText = stage.ProgressionRate.HasValue ? $"{stage.ProgressionRate.Value:0.##}%" : "—";
+                    Line($"- {Safe(stage.StepLabel)} | visitors {stage.Visitors} | progression {rateText}");
+                }
+            }
+        }
+        Line();
+
+        Line("SECTION D — TRAFFIC HEALTH");
         Line($"Page Views: {summary.PageViews}");
         Line($"Unique Visitors: {summary.UniqueVisitors}");
         Line($"Sessions: {summary.Sessions}");
@@ -1389,7 +1474,7 @@ namespace AgentPortal.Controllers;
         AddKeyCountBlock("Top Campaigns (Top 5):", traffic.TopCampaigns, 5);
         Line();
 
-        Line("SECTION D — FUNNEL HEALTH");
+        Line("SECTION E — FUNNEL HEALTH");
         Line($"Quote Starts: {quote.QuoteStarts}");
         Line($"Quote Form Starts: {quote.QuoteFormStarts}");
         Line($"Successful Quote Submits: {quote.QuoteFormSubmits}");
@@ -1405,7 +1490,7 @@ namespace AgentPortal.Controllers;
             .Take(5)
             .ToList();
 
-        Line("SECTION E — LEAD PICTURE");
+        Line("SECTION F — LEAD PICTURE");
         Line($"Total Leads in Range: {leads.Total}");
         Line("Lead volume by source page (Top 5):");
         if (leadPages.Count == 0)
@@ -1423,7 +1508,7 @@ namespace AgentPortal.Controllers;
         Line($"Top lead source page: {(leadPages.Count > 0 ? $"{Safe(leadPages[0].PageKey)} ({leadPages[0].Leads})" : "No data in range.")}");
         Line();
 
-        Line("SECTION F — PAGE + CTA PERFORMANCE");
+        Line("SECTION G — PAGE + CTA PERFORMANCE");
         Line($"Top Page: {Safe(summary.TopPage)}");
         Line($"Top CTA: {Safe(summary.TopCta)}");
         Line("Top 5 page performance rows:");
@@ -1459,7 +1544,7 @@ namespace AgentPortal.Controllers;
         var topSourceShare = topSourceTotal > 0 ? Math.Round((decimal)topSourceLeadCount / topSourceTotal * 100, 2) : 0;
         var topCampaignShare = topCampaignTotal > 0 ? Math.Round((decimal)topCampaignLeadCount / topCampaignTotal * 100, 2) : 0;
 
-        Line("SECTION G — CAMPAIGN / SOURCE READ");
+        Line("SECTION H — CAMPAIGN / SOURCE READ");
         if (topSources.Any())
         {
             Line($"Top source by events: {Safe(topSources[0].Key)} ({topSources[0].Count})");
@@ -1492,7 +1577,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION H — BEHAVIOR SIGNALS (DIRECTIONAL)");
+        Line("SECTION I — BEHAVIOR SIGNALS (DIRECTIONAL)");
         Line("Avg Time on Top Pages (Top 5):");
         var dwellRows = (timeOnPage.LongestAvgDwell ?? new List<DwellPageRow>()).Take(5).ToList();
         if (dwellRows.Count == 0)
@@ -1542,7 +1627,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION I — DATA QUALITY / CONTEXT NOTES");
+        Line("SECTION J — DATA QUALITY / CONTEXT NOTES");
         Line("- Metrics reflect the currently selected range and current scope.");
         Line("- Behavior signals are directional and should be interpreted with context.");
         Line("- Snapshot excludes sensitive lead details.");
@@ -1556,7 +1641,7 @@ namespace AgentPortal.Controllers;
         }
         Line();
 
-        Line("SECTION J — CHATGPT COPY PROMPT FOOTER");
+        Line("SECTION K — CHATGPT COPY PROMPT FOOTER");
         Line("CHATGPT ANALYSIS REQUEST");
         Line("Analyze this website and ad performance snapshot.");
         Line("Identify:");

@@ -90,6 +90,7 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 else
     builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiDataBuilder>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
 builder.Services.AddHttpClient("OpenAI", c =>

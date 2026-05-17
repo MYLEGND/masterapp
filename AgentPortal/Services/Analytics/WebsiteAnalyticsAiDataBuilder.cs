@@ -18,15 +18,18 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 {
     private readonly IAnalyticsQueryService _analytics;
     private readonly IMetaAdsService _metaAds;
+    private readonly IMetaSignalAnalyticsService _metaSignalAnalytics;
     private readonly ILogger<WebsiteAnalyticsAiDataBuilder> _logger;
 
     public WebsiteAnalyticsAiDataBuilder(
         IAnalyticsQueryService analytics,
         IMetaAdsService metaAds,
+        IMetaSignalAnalyticsService metaSignalAnalytics,
         ILogger<WebsiteAnalyticsAiDataBuilder> logger)
     {
         _analytics = analytics;
         _metaAds  = metaAds;
+        _metaSignalAnalytics = metaSignalAnalytics;
         _logger   = logger;
     }
 
@@ -68,10 +71,12 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         // Meta Ads — active campaigns. SafeLoadAsync catches "not connected" / API errors gracefully.
         var metaAdsTask = SafeLoadAsync("MetaAds", () => _metaAds.GetCampaignsAsync(range, scope, ct),
                               () => new MetaCampaignsDto { RangeLabel = range.Label }, warnings);
+        var metaSignalTask = SafeLoadAsync("MetaSignal", () => _metaSignalAnalytics.GetAiSummaryAsync(range, scope, trafficType, ct),
+                              () => new MetaSignalAiSummaryDto(), warnings);
 
         await Task.WhenAll(
             summaryTask, pagePerfTask, quoteFunnelTask,
-            engagementTask, exitTask, sourceTask, abandonTask, metaAdsTask);
+            engagementTask, exitTask, sourceTask, abandonTask, metaAdsTask, metaSignalTask);
 
         var summary    = await summaryTask;
         var pagePerf   = await pagePerfTask;
@@ -81,6 +86,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var source     = await sourceTask;
         var abandon    = await abandonTask;
         var metaCampaigns = await metaAdsTask;
+        var metaSignal = await metaSignalTask;
 
         _logger.LogInformation(
             "AiDataBuilder results. Sessions={Sessions} UniqueVisitors={UniqueVisitors} VerifiedLeads={VerifiedLeads} " +
@@ -176,7 +182,49 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                     Ctr          = x.Ctr,
                     Cpc          = x.Cpc,
                     Leads        = x.Leads
-                }).ToList()
+                }).ToList(),
+
+            MetaSignal = new MetaSignalAiPayload
+            {
+                TotalSignalEvents = metaSignal.TotalSignalEvents,
+                TotalVisitors = metaSignal.TotalVisitors,
+                HighIntentVisitors = metaSignal.HighIntentVisitors,
+                LeadReadyVisitors = metaSignal.LeadReadyVisitors,
+                SubmittedLeads = metaSignal.SubmittedLeads,
+                HighIntentAbandons = metaSignal.HighIntentAbandons,
+                ContactStepAbandons = metaSignal.ContactStepAbandons,
+                SignalToLeadConversionRate = metaSignal.SignalToLeadConversionRate,
+                RecommendedOptimizationEvent = metaSignal.RecommendedOptimizationEvent,
+                BestPerformingLandingPageVersion = metaSignal.BestPerformingLandingPageVersion,
+                WorstFrictionStep = metaSignal.WorstFrictionStep,
+                VisitorsByScoreTier = (metaSignal.VisitorsByScoreTier ?? new List<MetaSignalTierRowDto>())
+                    .Select(x => new MetaSignalTierAiRow
+                    {
+                        ScoreTier = x.ScoreTier,
+                        Visitors = x.Visitors
+                    }).ToList(),
+                AverageScoreByCampaign = (metaSignal.AverageScoreByCampaign ?? new List<MetaSignalAverageRowDto>())
+                    .Take(5)
+                    .Select(x => new MetaSignalAverageAiRow
+                    {
+                        Label = x.Label,
+                        AverageScore = x.AverageScore
+                    }).ToList(),
+                AverageScoreByPageVariant = (metaSignal.AverageScoreByPageVariant ?? new List<MetaSignalAverageRowDto>())
+                    .Take(5)
+                    .Select(x => new MetaSignalAverageAiRow
+                    {
+                        Label = x.Label,
+                        AverageScore = x.AverageScore
+                    }).ToList(),
+                EventLadder = (metaSignal.EventLadder ?? new List<MetaSignalLadderRowDto>())
+                    .Select(x => new MetaSignalLadderAiRow
+                    {
+                        StepLabel = x.StepLabel,
+                        Visitors = x.Visitors,
+                        ProgressionRate = x.ProgressionRate
+                    }).ToList()
+            }
 
             // Intentionally omitted (non-conversion breakdowns):
             // TopPages, TopSources, TopCampaigns, EntryPages, CtaPerformance,

@@ -2,6 +2,7 @@ using Azure.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.MetaSignal;
 using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,8 +44,10 @@ else
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
+builder.Services.Configure<MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
 builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);

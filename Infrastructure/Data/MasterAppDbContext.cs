@@ -26,6 +26,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
+    public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -302,6 +303,53 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             // Behavior intelligence indexes
             e.HasIndex(x => x.DeviceType);
             e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
+        });
+
+        modelBuilder.Entity<MetaSignalEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CreatedUtc).IsRequired();
+            e.Property(x => x.EventId).IsRequired().HasMaxLength(120);
+            e.Property(x => x.EventName).IsRequired().HasMaxLength(120);
+            e.Property(x => x.EventCategory).HasMaxLength(80);
+            e.Property(x => x.SessionId).HasMaxLength(120);
+            e.Property(x => x.VisitorId).HasMaxLength(120);
+            e.Property(x => x.QuoteType).HasMaxLength(80);
+            e.Property(x => x.PageKey).HasMaxLength(120);
+            e.Property(x => x.EffectivePageKey).HasMaxLength(120);
+            e.Property(x => x.PageVariant).HasMaxLength(80);
+            e.Property(x => x.PageMode).HasMaxLength(80);
+            e.Property(x => x.TrafficType).HasMaxLength(40);
+            e.Property(x => x.StepName).HasMaxLength(120);
+            e.Property(x => x.ScoreTier).HasMaxLength(40);
+            e.Property(x => x.MetaDeduplicationKey).HasMaxLength(220);
+            e.Property(x => x.UtmSource).HasMaxLength(160);
+            e.Property(x => x.UtmMedium).HasMaxLength(160);
+            e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.Referrer).HasMaxLength(500);
+            e.Property(x => x.UserAgentHash).HasMaxLength(128);
+            e.Property(x => x.IpHash).HasMaxLength(128);
+            e.Property(x => x.AgentSlug).HasMaxLength(200);
+            e.Property(x => x.Environment).HasMaxLength(40);
+            e.Property(x => x.Host).HasMaxLength(160);
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+
+            e.HasIndex(x => x.CreatedUtc);
+            e.HasIndex(x => x.SessionId);
+            e.HasIndex(x => x.VisitorId);
+            e.HasIndex(x => x.LeadId);
+            e.HasIndex(x => x.QuoteType);
+            e.HasIndex(x => x.EventName);
+            e.HasIndex(x => x.ScoreTier);
+            e.HasIndex(x => x.TrafficType);
+            e.HasIndex(x => x.UtmCampaign);
+            e.HasIndex(x => x.AgentTrackingProfileId);
+            e.HasIndex(x => x.AgentSlug);
+            e.HasIndex(x => x.EventId).IsUnique();
+            e.HasIndex(x => new { x.SessionId, x.QuoteType, x.CreatedUtc });
+            e.HasIndex(x => new { x.EventName, x.CreatedUtc });
         });
 
         // WEBSITE LEADS

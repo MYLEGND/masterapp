@@ -3,16 +3,22 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
 @{
+    var requestPath = HttpContextAccessor.HttpContext?.Request?.Path.Value ?? string.Empty;
     var trackingProfileId = ViewData["TrackingProfileId"]?.ToString();
     var trackingSlug = ViewData["TrackingSlug"]?.ToString();
     var isFounderPath = ViewData["IsFounderPath"] as bool? ?? false;
-    var isLandingPage = ViewData["IsLandingPage"] as bool? ?? false;
+    var isQuoteLandingRoute =
+        requestPath.Contains("/quote/", StringComparison.OrdinalIgnoreCase) &&
+        requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
+    var isLandingPage = (ViewData["IsLandingPage"] as bool? ?? false) || isQuoteLandingRoute;
+    var isStandaloneQuoteLanding = isLandingPage && requestPath.Contains("/quote/", StringComparison.OrdinalIgnoreCase);
     var pageVariant = (ViewData["PageVariant"]?.ToString() ?? (isLandingPage ? "landing" : "website")).Trim();
     var pageMode = (ViewData["PageMode"]?.ToString() ?? (isLandingPage ? "paid_landing" : "site_mode")).Trim();
     var extraBodyClass = ViewData["BodyClass"]?.ToString() ?? string.Empty;
     var variantClass = string.IsNullOrWhiteSpace(pageVariant) ? "website" : pageVariant.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
     var modeClass = string.IsNullOrWhiteSpace(pageMode) ? "site-mode" : pageMode.Replace(" ", "-").Replace("_", "-").ToLowerInvariant();
-    var bodyClasses = $"{extraBodyClass} {(isLandingPage ? "landing-mode" : "site-mode")} page-variant-{variantClass} page-mode-{modeClass}".Trim();
+    var bodyClasses = $"{extraBodyClass} {(isLandingPage ? "landing-mode" : "site-mode")} page-variant-{variantClass} page-mode-{modeClass} {(isStandaloneQuoteLanding ? "standalone-quote-landing" : string.Empty)}".Trim();
+    var mainClasses = isStandaloneQuoteLanding ? "layout-content" : "container layout-content";
     var legalBasePath = !isFounderPath && !string.IsNullOrWhiteSpace(trackingSlug)
         ? $"/a/{trackingSlug}"
         : string.Empty;
@@ -83,6 +89,11 @@
             padding-bottom: 3rem;
             flex-grow: 1;
             width: 100%;
+        }
+
+        body.standalone-quote-landing main.layout-content {
+            padding-top: .35rem;
+            padding-bottom: 2rem;
         }
 
 footer.footer {
@@ -599,6 +610,8 @@ footer.footer {
 </head>
 
 <body class="@bodyClasses">
+@if (!isStandaloneQuoteLanding)
+{
 <header>
     <nav class="navbar">
         <div class="navbar-top">
@@ -642,8 +655,9 @@ footer.footer {
         }
     </nav>
 </header>
+}
 
-<main class="container layout-content">
+<main class="@mainClasses">
     @RenderBody()
 </main>
 

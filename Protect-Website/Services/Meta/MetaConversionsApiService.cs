@@ -9,6 +9,7 @@ namespace ProtectWebsite.Services.Meta;
 public interface IMetaConversionsApiService
 {
     Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default);
+    Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default);
 }
 
 public sealed class MetaOptions
@@ -40,6 +41,32 @@ public sealed class MetaLeadConversionRequest
     public string? AccessToken { get; init; }
     public string? TestEventCode { get; init; }
     public string? PixelOwnerType { get; init; }
+}
+
+public sealed class MetaConversionsApiEventRequest
+{
+    public Guid? LeadId { get; init; }
+    public Guid CorrelationId { get; init; }
+    public string EventName { get; init; } = string.Empty;
+    public string EventId { get; init; } = string.Empty;
+    public string QuoteType { get; init; } = string.Empty;
+    public string PageKey { get; init; } = string.Empty;
+    public string OfferKey { get; init; } = string.Empty;
+    public string? EventSourceUrl { get; init; }
+    public string? ClientIpAddress { get; init; }
+    public string? ClientUserAgent { get; init; }
+    public string? Fbp { get; init; }
+    public string? Fbc { get; init; }
+    public string? Fbclid { get; init; }
+    public string? Email { get; init; }
+    public string? Phone { get; init; }
+    public bool AllowHashedContactData { get; init; }
+    public DateTime EventUtc { get; init; }
+    public string? PixelId { get; init; }
+    public string? AccessToken { get; init; }
+    public string? TestEventCode { get; init; }
+    public string? PixelOwnerType { get; init; }
+    public IReadOnlyDictionary<string, object?>? CustomData { get; init; }
 }
 
 public sealed class MetaConversionsApiResult
@@ -77,10 +104,50 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     public async Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default)
     {
+        var customData = new Dictionary<string, object?>();
+        if (!string.IsNullOrWhiteSpace(request.PageKey))
+            customData["content_name"] = request.PageKey;
+        if (!string.IsNullOrWhiteSpace(request.OfferKey))
+            customData["content_category"] = request.OfferKey;
+        if (!string.IsNullOrWhiteSpace(request.QuoteType))
+            customData["quote_type"] = request.QuoteType;
+
+        return await SendEventAsync(
+            new MetaConversionsApiEventRequest
+            {
+                LeadId = request.LeadId,
+                CorrelationId = request.CorrelationId,
+                EventName = "Lead",
+                EventId = request.EventId,
+                QuoteType = request.QuoteType,
+                PageKey = request.PageKey,
+                OfferKey = request.OfferKey,
+                EventSourceUrl = request.EventSourceUrl,
+                ClientIpAddress = request.ClientIpAddress,
+                ClientUserAgent = request.ClientUserAgent,
+                Fbp = request.Fbp,
+                Fbc = request.Fbc,
+                Fbclid = request.Fbclid,
+                Email = request.Email,
+                Phone = request.Phone,
+                AllowHashedContactData = request.AllowHashedContactData,
+                EventUtc = request.EventUtc,
+                PixelId = request.PixelId,
+                AccessToken = request.AccessToken,
+                TestEventCode = request.TestEventCode,
+                PixelOwnerType = request.PixelOwnerType,
+                CustomData = customData
+            },
+            cancellationToken);
+    }
+
+    public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
+    {
         var pixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId);
         var accessToken = Normalize(request.AccessToken) ?? Normalize(_options.Value.AccessToken);
         var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
         var pixelOwnerType = Normalize(request.PixelOwnerType);
+        var normalizedEventName = Normalize(request.EventName) ?? "CustomEvent";
 
         if (string.IsNullOrWhiteSpace(pixelId) || string.IsNullOrWhiteSpace(accessToken))
         {
@@ -91,8 +158,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             var skipNote = isAgentTokenMissing ? "agent_token_missing" : "meta_config_missing";
 
             _logger.LogInformation(
-                "MetaCapi [{CorrelationId}]: skipped lead {LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-                request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, status);
+                "MetaCapi [{CorrelationId}]: skipped event={EventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
+                request.CorrelationId, normalizedEventName, request.LeadId, request.QuoteType, request.EventId, status);
 
             return new MetaConversionsApiResult
             {
@@ -109,7 +176,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         var userData = BuildUserData(request);
         var eventPayload = new Dictionary<string, object?>
         {
-            ["event_name"] = "Lead",
+            ["event_name"] = normalizedEventName,
             ["event_time"] = new DateTimeOffset(request.EventUtc).ToUnixTimeSeconds(),
             ["event_id"] = request.EventId,
             ["action_source"] = "website",
@@ -140,8 +207,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogInformation(
-                    "MetaCapi [{CorrelationId}]: sent lead {LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-                    request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, "sent");
+                    "MetaCapi [{CorrelationId}]: sent event={EventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
+                    request.CorrelationId, normalizedEventName, request.LeadId, request.QuoteType, request.EventId, "sent");
 
                 return new MetaConversionsApiResult
                 {
@@ -155,8 +222,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
             var safeNote = BuildSafeErrorNote(responseBody, response.ReasonPhrase);
             _logger.LogWarning(
-                "MetaCapi [{CorrelationId}]: failed lead {LeadId} quoteType={QuoteType} eventId={EventId} status={Status} note={Note}",
-                request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, "failed", safeNote);
+                "MetaCapi [{CorrelationId}]: failed event={EventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status} note={Note}",
+                request.CorrelationId, normalizedEventName, request.LeadId, request.QuoteType, request.EventId, "failed", safeNote);
 
             return new MetaConversionsApiResult
             {
@@ -172,8 +239,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         {
             _logger.LogError(
                 ex,
-                "MetaCapi [{CorrelationId}]: exception lead {LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-                request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, "failed_exception");
+                "MetaCapi [{CorrelationId}]: exception event={EventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
+                request.CorrelationId, normalizedEventName, request.LeadId, request.QuoteType, request.EventId, "failed_exception");
 
             return new MetaConversionsApiResult
             {
@@ -187,7 +254,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         }
     }
 
-    private static Dictionary<string, object?> BuildUserData(MetaLeadConversionRequest request)
+    private static Dictionary<string, object?> BuildUserData(MetaConversionsApiEventRequest request)
     {
         var userData = new Dictionary<string, object?>();
 
@@ -218,7 +285,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         return userData;
     }
 
-    private static Dictionary<string, object?> BuildCustomData(MetaLeadConversionRequest request)
+    private static Dictionary<string, object?> BuildCustomData(MetaConversionsApiEventRequest request)
     {
         var customData = new Dictionary<string, object?>();
 
@@ -227,6 +294,20 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
         if (!string.IsNullOrWhiteSpace(request.OfferKey))
             customData["content_category"] = request.OfferKey;
+
+        if (!string.IsNullOrWhiteSpace(request.QuoteType))
+            customData["quote_type"] = request.QuoteType;
+
+        if (request.CustomData != null)
+        {
+            foreach (var pair in request.CustomData)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value is null)
+                    continue;
+
+                customData[pair.Key] = pair.Value;
+            }
+        }
 
         return customData;
     }

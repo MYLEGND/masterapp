@@ -17,6 +17,7 @@ using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
 using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.MetaSignal;
 using Shared.Meta;
 
 namespace Protect_Website.Controllers
@@ -37,10 +38,11 @@ namespace Protect_Website.Controllers
         private readonly MasterAppDbContext _db;
         private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IMetaSignalIntelligenceService _metaSignalIntelligence;
         private readonly ILogger<LifeQuoteController> _logger;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -53,6 +55,7 @@ namespace Protect_Website.Controllers
             _db = db;
             _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
+            _metaSignalIntelligence = metaSignalIntelligence;
             _logger = logger;
         }
 
@@ -439,6 +442,70 @@ namespace Protect_Website.Controllers
             {
                 _logger.LogError(analyticsEx,
                     "LifeQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                    correlationId, lead.LeadId, model.OfferKey);
+            }
+
+            try
+            {
+                var signalMetadata = JsonSerializer.SerializeToElement(new
+                {
+                    pageVariant = pageMode.PageVariant,
+                    pageMode = pageMode.PageMode,
+                    pagePath = Request?.Path.Value,
+                    protectingWho = model.ProtectingWho ?? model.Answer1,
+                    coverageGoal = model.CoverageGoal ?? model.Answer2,
+                    ageRange = model.AgeRange,
+                    recommendationPrimaryKey = model.RecommendationPrimaryKey,
+                    recommendationPrimaryTitle = model.RecommendationPrimaryTitle,
+                    recommendationSecondaryKey = model.RecommendationSecondaryKey,
+                    recommendationSecondaryTitle = model.RecommendationSecondaryTitle,
+                    requiredContactFieldsComplete = true,
+                    contactStepReached = true,
+                    phoneCompleted = !string.IsNullOrWhiteSpace(model.Phone)
+                });
+
+                await _metaSignalIntelligence.RecordConfirmedLeadAsync(
+                    new MetaSignalConfirmedLeadRequest
+                    {
+                        LeadId = lead.LeadId,
+                        QuoteType = cfg.OfferKey,
+                        PageKey = pageMode.EffectivePageKey,
+                        EffectivePageKey = pageMode.EffectivePageKey,
+                        PageVariant = pageMode.PageVariant,
+                        PageMode = pageMode.PageMode,
+                        Url = model.LandingPageUrl,
+                        Referrer = model.ReferrerUrl,
+                        SessionId = lead.SessionId,
+                        VisitorId = lead.VisitorId,
+                        AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                        AgentSlug = lead.AgentSlug,
+                        UtmSource = lead.UtmSource,
+                        UtmMedium = lead.UtmMedium,
+                        UtmCampaign = lead.UtmCampaign,
+                        UtmId = lead.UtmId,
+                        UtmContent = model.UtmContent,
+                        Fbclid = lead.Fbclid,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                        CreatedUtc = lead.CreatedUtc,
+                        LeadEventId = metaLeadEventId,
+                        LeadMetaServerSent = metaCapiResult.Sent,
+                        LeadMetaServerStatus = metaCapiResult.Status,
+                        LeadMetaServerNote = metaCapiResult.Note,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        AccessToken = resolvedMetaPixel.AccessToken,
+                        TestEventCode = resolvedMetaPixel.TestEventCode,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType,
+                        Metadata = signalMetadata
+                    },
+                    HttpContext,
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+            }
+            catch (Exception signalEx)
+            {
+                _logger.LogError(signalEx,
+                    "LifeQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
                     correlationId, lead.LeadId, model.OfferKey);
             }
 

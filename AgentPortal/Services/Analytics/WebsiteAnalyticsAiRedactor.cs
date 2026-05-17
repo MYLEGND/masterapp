@@ -86,7 +86,8 @@ public static class WebsiteAnalyticsAiRedactor
             SourcePerformance = RedactSources(payload.SourcePerformance, logger),
             FormAbandonment = RedactAbandonment(payload.FormAbandonment, logger),
             TopAbandonedFields = RedactLabelCounts(payload.TopAbandonedFields, "TopAbandonedFields", logger),
-            ActiveCampaigns = RedactCampaigns(payload.ActiveCampaigns, logger)
+            ActiveCampaigns = RedactCampaigns(payload.ActiveCampaigns, logger),
+            MetaSignal = RedactMetaSignal(payload.MetaSignal, logger)
         };
 
         return safe;
@@ -210,6 +211,57 @@ public static class WebsiteAnalyticsAiRedactor
         })
         .Where(x => x.CampaignName != "[redacted]")
         .ToList();
+    }
+
+    private static MetaSignalAiPayload? RedactMetaSignal(MetaSignalAiPayload? payload, ILogger? logger)
+    {
+        if (payload == null) return null;
+
+        return new MetaSignalAiPayload
+        {
+            TotalSignalEvents = payload.TotalSignalEvents,
+            TotalVisitors = payload.TotalVisitors,
+            HighIntentVisitors = payload.HighIntentVisitors,
+            LeadReadyVisitors = payload.LeadReadyVisitors,
+            SubmittedLeads = payload.SubmittedLeads,
+            HighIntentAbandons = payload.HighIntentAbandons,
+            ContactStepAbandons = payload.ContactStepAbandons,
+            SignalToLeadConversionRate = payload.SignalToLeadConversionRate,
+            RecommendedOptimizationEvent = CleanLabel(payload.RecommendedOptimizationEvent, logger, "MetaSignal.RecommendedOptimizationEvent"),
+            BestPerformingLandingPageVersion = CleanLabel(payload.BestPerformingLandingPageVersion, logger, "MetaSignal.BestPerformingLandingPageVersion"),
+            WorstFrictionStep = CleanLabel(payload.WorstFrictionStep, logger, "MetaSignal.WorstFrictionStep"),
+            VisitorsByScoreTier = (payload.VisitorsByScoreTier ?? new List<MetaSignalTierAiRow>())
+                .Select(x => new MetaSignalTierAiRow
+                {
+                    ScoreTier = CleanLabel(x.ScoreTier, logger, "MetaSignal.VisitorsByScoreTier.ScoreTier"),
+                    Visitors = x.Visitors
+                }).ToList(),
+            AverageScoreByCampaign = (payload.AverageScoreByCampaign ?? new List<MetaSignalAverageAiRow>())
+                .Select(x => new MetaSignalAverageAiRow
+                {
+                    Label = CleanLabel(x.Label, logger, "MetaSignal.AverageScoreByCampaign.Label"),
+                    AverageScore = x.AverageScore
+                })
+                .Where(x => x.Label != "[redacted]")
+                .ToList(),
+            AverageScoreByPageVariant = (payload.AverageScoreByPageVariant ?? new List<MetaSignalAverageAiRow>())
+                .Select(x => new MetaSignalAverageAiRow
+                {
+                    Label = CleanLabel(x.Label, logger, "MetaSignal.AverageScoreByPageVariant.Label"),
+                    AverageScore = x.AverageScore
+                })
+                .Where(x => x.Label != "[redacted]")
+                .ToList(),
+            EventLadder = (payload.EventLadder ?? new List<MetaSignalLadderAiRow>())
+                .Select(x => new MetaSignalLadderAiRow
+                {
+                    StepLabel = CleanLabel(x.StepLabel, logger, "MetaSignal.EventLadder.StepLabel"),
+                    Visitors = x.Visitors,
+                    ProgressionRate = x.ProgressionRate
+                })
+                .Where(x => x.StepLabel != "[redacted]")
+                .ToList()
+        };
     }
 
     // ── PII Detection ─────────────────────────────────────────────────────────

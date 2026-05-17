@@ -1,4 +1,6 @@
+@using System.Text.Json
 @model Protect_Website.Models.LifeWizardViewModel
+@inject Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
 
 @{
     var cfg = Model.Config;
@@ -128,10 +130,34 @@
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
     var heroHeadline = "Protect the people who count on you";
-    var heroSubheadline = string.Empty;
+    var heroSubheadline = isLandingView ? "If something happened tomorrow, would they be okay?" : string.Empty;
     var heroTrustNote = "Private • No pressure • Takes less than 30 seconds";
     var step1IntroTitle = string.Empty;
     var step1IntroHelper = string.Empty;
+    var metaSignalOptions = MetaSignalOptionsAccessor.Value;
+    var metaSignalConfigJson = JsonSerializer.Serialize(new
+    {
+        enabled = isPaidLandingExperience && metaSignalOptions.Enabled,
+        sendBrowserEvents = metaSignalOptions.SendBrowserEvents,
+        sendServerEvents = metaSignalOptions.SendServerEvents,
+        persistEvents = metaSignalOptions.PersistEvents,
+        debugMode = metaSignalOptions.DebugMode,
+        highIntentThreshold = metaSignalOptions.HighIntentThreshold,
+        leadReadyThreshold = metaSignalOptions.LeadReadyThreshold,
+        endpoint = Url.Content("~/analytics/meta-signal"),
+        quoteType = cfg.OfferKey,
+        pageKey,
+        effectivePageKey = pageKey,
+        pageVariant,
+        pageMode,
+        agentTrackingProfileId = agentTrustProfile != null ? agentTrustProfile.AgentTrackingProfileId.ToString() : null,
+        agentSlug,
+        formId = "lifeWizardForm",
+        requiredContactFields = usesLeanContactFields
+            ? new[] { "FirstName", "LastName", "Phone", "Email" }
+            : new[] { "FirstName", "LastName", "Phone", "Email", "State" },
+        weights = metaSignalOptions.Weights
+    });
 }
 
 <style>
@@ -323,6 +349,90 @@ body.life-landing header .navbar .nav-link:focus {
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 
+body.life-landing .lq-container {
+    padding: 0;
+}
+body.life-landing .lq-hero-shell {
+    max-width: 760px;
+    margin: 10px auto 16px;
+    padding: 22px 22px 18px;
+}
+body.life-landing .lq-header {
+    margin: 0 0 12px;
+    text-align: left;
+}
+body.life-landing .lq-landing-brand-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+body.life-landing .lq-landing-brand-copy {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+body.life-landing .lq-header h1 {
+    margin: 0;
+    color: #fff6d8;
+    font-size: clamp(1.6rem, 4.2vw, 2.35rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    max-width: 10ch;
+}
+body.life-landing .lq-landing-logo-wrap {
+    width: 68px;
+    height: 68px;
+    flex: 0 0 auto;
+    border-radius: 16px;
+    border: 1.4px solid rgba(199,153,49,0.52);
+    background:
+        radial-gradient(circle at 30% 24%, rgba(243,214,136,0.18), transparent 48%),
+        linear-gradient(180deg, rgba(17,30,53,0.98) 0%, rgba(10,20,38,0.98) 100%);
+    display: grid;
+    place-items: center;
+    box-shadow:
+        0 14px 26px rgba(0,0,0,0.26),
+        inset 0 1px 0 rgba(255,255,255,0.08);
+}
+body.life-landing .lq-landing-logo {
+    width: 42px;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.34));
+}
+body.life-landing .lq-subtext {
+    color: rgba(248,250,252,0.88);
+    font-size: 1rem;
+    font-weight: 760;
+    line-height: 1.34;
+    margin: 10px 0 6px;
+    max-width: 32ch;
+}
+body.life-landing .lq-trust-note {
+    margin-top: 0;
+    text-align: left;
+}
+body.life-landing .lq-step1-panel {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+}
+body.life-landing .lq-step1-panel .lq-step-panel-pad {
+    padding: 0;
+}
+body.life-landing .lq-step1-panel .lq-step-progress-wrap {
+    display: grid !important;
+    gap: 0;
+    margin-bottom: 12px;
+}
+body.life-landing .lq-step1-panel .lq-step-progress-track {
+    display: none;
+}
+body.life-landing .lq-step1-panel .lq-step-question {
+    margin-bottom: 12px;
+}
+
 .lq-step-meta{ display:none; }
 .lq-step-progress{
     display: inline-flex;
@@ -343,7 +453,7 @@ body.life-landing header .navbar .nav-link:focus {
     gap: 8px;
     margin-bottom: 12px;
 }
-.lq-step1-panel .lq-step-progress-wrap{
+body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: none !important;
 }
 .lq-step-progress-wrap .lq-step-progress{ margin-bottom: 0; }
@@ -911,11 +1021,11 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     body.life-landing .lq-container {
-        padding: 2px 8px 12px !important;
+        padding: 0 !important;
     }
     body.life-landing .lq-hero-shell {
         margin: 3px auto 8px !important;
-        padding: 7px 8px 9px !important;
+        padding: 12px 12px 12px !important;
         border-radius: 12px !important;
         border-color: rgba(199,153,49,.34);
         background:
@@ -927,24 +1037,37 @@ body.life-landing header .navbar .nav-link:focus {
     }
 
     body.life-landing .lq-header {
-        margin-top: 2px !important;
-        margin-bottom: 5px !important;
+        margin-top: 0 !important;
+        margin-bottom: 10px !important;
     }
     body.life-landing .lq-header h1 {
-        font-size: clamp(1.12rem, 5.6vw, 1.35rem) !important;
-        line-height: 1.18 !important;
-        margin-bottom: 3px !important;
+        font-size: clamp(1.18rem, 5.7vw, 1.45rem) !important;
+        line-height: 1.08 !important;
+        margin-bottom: 0 !important;
         letter-spacing: -0.2px !important;
+        max-width: none;
     }
     body.life-landing .lq-subtext {
-        font-size: .86rem !important;
-        line-height: 1.3 !important;
-        margin-bottom: 4px !important;
+        font-size: .9rem !important;
+        line-height: 1.32 !important;
+        margin: 8px 0 5px !important;
     }
     body.life-landing .hero-title {
         white-space: normal !important;
         text-wrap: balance;
         overflow-wrap: anywhere;
+    }
+    body.life-landing .lq-landing-brand-row {
+        gap: 10px !important;
+        align-items: center !important;
+    }
+    body.life-landing .lq-landing-logo-wrap {
+        width: 56px !important;
+        height: 56px !important;
+        border-radius: 14px !important;
+    }
+    body.life-landing .lq-landing-logo {
+        width: 34px !important;
     }
 
     body.life-landing .lq-step-panel {
@@ -952,6 +1075,7 @@ body.life-landing header .navbar .nav-link:focus {
         border-radius: 10px;
     }
     body.life-landing .lq-step-panel-pad { padding: 8px !important; }
+    body.life-landing .lq-step1-panel .lq-step-panel-pad { padding: 0 !important; }
     body.life-landing .lq-contact-step .lq-step-title {
         display: block !important;
         margin-bottom: 6px !important;
@@ -967,6 +1091,8 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     body.life-landing .lq-step-progress { font-size: .69rem !important; padding: 3px 8px !important; }
     body.life-landing .lq-step-progress-track { height: 5px !important; }
+    body.life-landing .lq-step1-panel .lq-step-progress-wrap { margin-bottom: 10px !important; }
+    body.life-landing .lq-step1-panel .lq-step-progress-track { display: none !important; }
     body.life-landing .lq-choice-grid { gap: 8px !important; }
     body.life-landing .lq-card {
         min-height: 52px !important;
@@ -1043,6 +1169,13 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-subtext {
         font-size: .8rem !important;
         margin-bottom: 3px !important;
+    }
+    body.life-landing .lq-landing-logo-wrap {
+        width: 50px !important;
+        height: 50px !important;
+    }
+    body.life-landing .lq-landing-logo {
+        width: 30px !important;
     }
 }
 
@@ -1125,7 +1258,21 @@ body.life-landing header .navbar .nav-link:focus {
 <div class="lq-hero-shell">
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-header">
-        <h1 class="hero-title">@heroHeadline</h1>
+        @if (isLandingView)
+        {
+            <div class="lq-landing-brand-row">
+                <div class="lq-landing-brand-copy">
+                    <h1 class="hero-title">@heroHeadline</h1>
+                </div>
+                <div class="lq-landing-logo-wrap" aria-hidden="true">
+                    <img class="lq-landing-logo" src="~/images/company-icons/legend.png" asp-append-version="true" alt="" />
+                </div>
+            </div>
+        }
+        else
+        {
+            <h1 class="hero-title">@heroHeadline</h1>
+        }
         @if (!string.IsNullOrWhiteSpace(heroSubheadline))
         {
             <div class="lq-subtext">@heroSubheadline</div>
@@ -1414,6 +1561,10 @@ body.life-landing header .navbar .nav-link:focus {
 </div>
 </div>
 
+@if (isPaidLandingExperience)
+{
+    <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
+}
 <script>
 (() => {
   const form = document.getElementById('lifeWizardForm');
@@ -1460,6 +1611,7 @@ body.life-landing header .navbar .nav-link:focus {
   const requiredContactFields = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
+  const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze({
     '18-24': 21,
     '25-34': 30,
@@ -1828,6 +1980,7 @@ body.life-landing header .navbar .nav-link:focus {
       const error = getContactFieldError(name);
       if (error) {
         setFieldError(name, error);
+        metaSignal?.trackFieldError(name, { fieldContext: 'contact' });
         firstInvalid ??= form.querySelector(`[name="${name}"]`);
       } else {
         clearFieldError(name);
@@ -2016,8 +2169,22 @@ body.life-landing header .navbar .nav-link:focus {
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
     setActivePanel(previewPanel);
     trackEvent('mini_results_view');
+    metaSignal?.trackRecommendationViewed({
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      ageRange: ageHidden?.value || '',
+      recommendationPrimaryKey: recs.primary.key,
+      recommendationSecondaryKey: recs.secondary.key
+    });
 
     document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
+      metaSignal?.trackStepComplete(2, 'recommendation_complete', {
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        ageRange: ageHidden?.value || '',
+        recommendationPrimaryKey: recs.primary.key,
+        recommendationSecondaryKey: recs.secondary.key
+      });
       previewPanel.remove();
       showStep2(true);
     });
@@ -2028,6 +2195,12 @@ body.life-landing header .navbar .nav-link:focus {
     clearProcessingTimer(false);
     setActivePanel(step2Panel);
     trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
+    metaSignal?.trackContactStepReached({
+      handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      ageRange: ageHidden?.value || ''
+    });
     if (shouldScroll) {
       scrollIntoViewAndFocus(step2Heading || step2Panel, true);
     }
@@ -2048,16 +2221,19 @@ body.life-landing header .navbar .nav-link:focus {
     showChoiceError('err-step1-coverage-goal', !goal);
 
     if (!protecting) {
+      metaSignal?.trackFieldError('ProtectingWho', { fieldContext: 'discovery' });
       showStep1(0, true);
       form.querySelector('input[name="ProtectingWho"]')?.focus();
       return false;
     }
     if (!goal) {
+      metaSignal?.trackFieldError('CoverageGoal', { fieldContext: 'discovery' });
       showStep1(1, true);
       form.querySelector('input[name="CoverageGoal"]')?.focus();
       return false;
     }
     if (!hasValidAge) {
+      metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
       showStep1(2, true);
       form.querySelector('input[name="AgeBracket"]')?.focus();
       return false;
@@ -2087,6 +2263,11 @@ body.life-landing header .navbar .nav-link:focus {
         showChoiceError(errorId, false);
         syncStepOneAnswersFromUI();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
+        metaSignal?.trackLeadFormStart({
+          protectingWho: groupName === 'ProtectingWho' ? radio.value : answer1Hidden?.value || '',
+          coverageGoal: groupName === 'CoverageGoal' ? radio.value : answer2Hidden?.value || '',
+          ageRange: ageHidden?.value || ''
+        });
         queueMicroAdvance(expectedStep, nextStep);
       });
       radio.closest('label')?.addEventListener('click', () => {
@@ -2104,6 +2285,11 @@ body.life-landing header .navbar .nav-link:focus {
       showChoiceError('err-step1-coverage-goal', false);
       syncStepOneAnswersFromUI();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      metaSignal?.trackLeadFormStart({
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: radio.value,
+        ageRange: ageHidden?.value || ''
+      });
       if (!step1Panel.hidden && currentMicroStep === 1) {
         clearAutoAdvanceTimer();
         autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
@@ -2111,6 +2297,7 @@ body.life-landing header .navbar .nav-link:focus {
     });
   });
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
+    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: 'goal' });
     showStep1(1, true);
   });
 
@@ -2119,6 +2306,11 @@ body.life-landing header .navbar .nav-link:focus {
       showChoiceError('err-step1-age', false);
       syncStepOneAnswersFromUI();
       trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
+      metaSignal?.trackLeadFormStart({
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        ageRange: radio.value
+      });
       queueProcessingAdvanceFromAgeSelection();
     });
     radio.closest('label')?.addEventListener('click', () => {
@@ -2129,6 +2321,7 @@ body.life-landing header .navbar .nav-link:focus {
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
     btn.addEventListener('click', () => {
+      metaSignal?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${btn.getAttribute('data-step1-back') || '0'}` });
       const target = Number.parseInt(btn.getAttribute('data-step1-back') || '0', 10);
       showMicroStep(Number.isFinite(target) ? target : 0, true);
     });
@@ -2145,11 +2338,17 @@ body.life-landing header .navbar .nav-link:focus {
       age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
+    metaSignal?.trackStepComplete(1, 'discovery_complete', {
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      ageRange: ageHidden?.value || ''
+    });
     showProcessingBridge(true);
   });
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
+    metaSignal?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
     showStep1(2, true);
   });
 
@@ -2228,6 +2427,13 @@ body.life-landing header .navbar .nav-link:focus {
       ageRange: ageHidden.value,
       protectFocus: focusHidden.value
     });
+    metaSignal?.trackSubmitAttempt({
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      ageRange: ageHidden?.value || '',
+      requiredContactFieldsComplete: true,
+      contactStepReached: true
+    });
 
     const thankYouPath = (() => {
       const parts = location.pathname.split('/').filter(Boolean);
@@ -2243,6 +2449,7 @@ body.life-landing header .navbar .nav-link:focus {
       const responseBody = await res.json().catch(() => ({}));
       const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
+      metaSignal?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
       form._trackSubmitSuccess?.();
       await flushSuccessTracking(leadId, metaLeadEventId);
       window.location.href = thankYouPath;

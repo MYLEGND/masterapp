@@ -1,0 +1,105 @@
+using System.Text.Json;
+
+namespace ProtectWebsite.Services.MetaSignal;
+
+public sealed class MetaSignalAttributionPayload
+{
+    public string? UtmSource { get; set; }
+    public string? UtmMedium { get; set; }
+    public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
+    public string? UtmContent { get; set; }
+    public string? Fbclid { get; set; }
+    public string? MetaCampaignId { get; set; }
+    public string? MetaAdSetId { get; set; }
+    public string? MetaAdId { get; set; }
+}
+
+public sealed class MetaSignalScorePayload
+{
+    public int IntentScore { get; set; }
+    public int EngagementScore { get; set; }
+    public int QualificationScore { get; set; }
+    public int FrictionScore { get; set; }
+    public int TotalSignalScore { get; set; }
+}
+
+public sealed class MetaSignalIngestRequest
+{
+    public string EventName { get; set; } = string.Empty;
+    public string EventId { get; set; } = string.Empty;
+    public string QuoteType { get; set; } = string.Empty;
+    public string? PageKey { get; set; }
+    public string? EffectivePageKey { get; set; }
+    public string? PageVariant { get; set; }
+    public string? PageMode { get; set; }
+    public string? EventCategory { get; set; }
+    public int? StepNumber { get; set; }
+    public string? StepName { get; set; }
+    public string? Url { get; set; }
+    public string? Referrer { get; set; }
+    public string? SessionId { get; set; }
+    public string? VisitorId { get; set; }
+    public Guid? AgentTrackingProfileId { get; set; }
+    public string? AgentSlug { get; set; }
+    public bool BrowserEventSent { get; set; }
+    public string? ScoreTier { get; set; }
+    public MetaSignalScorePayload? Score { get; set; }
+    public MetaSignalAttributionPayload? Attribution { get; set; }
+    public JsonElement Metadata { get; set; }
+}
+
+public sealed class MetaSignalConfirmedLeadRequest
+{
+    public Guid LeadId { get; set; }
+    public string QuoteType { get; set; } = string.Empty;
+    public string PageKey { get; set; } = string.Empty;
+    public string EffectivePageKey { get; set; } = string.Empty;
+    public string? PageVariant { get; set; }
+    public string PageMode { get; set; } = string.Empty;
+    public string? Url { get; set; }
+    public string? Referrer { get; set; }
+    public string? SessionId { get; set; }
+    public string? VisitorId { get; set; }
+    public Guid? AgentTrackingProfileId { get; set; }
+    public string? AgentSlug { get; set; }
+    public string? UtmSource { get; set; }
+    public string? UtmMedium { get; set; }
+    public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
+    public string? UtmContent { get; set; }
+    public string? Fbclid { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public bool AllowHashedContactData { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public string LeadEventId { get; set; } = string.Empty;
+    public bool LeadMetaServerSent { get; set; }
+    public string? LeadMetaServerStatus { get; set; }
+    public string? LeadMetaServerNote { get; set; }
+    public string? PixelId { get; set; }
+    public string? AccessToken { get; set; }
+    public string? TestEventCode { get; set; }
+    public string? PixelOwnerType { get; set; }
+    public JsonElement Metadata { get; set; }
+}
+
+public sealed class MetaSignalProcessResult
+{
+    public bool Accepted { get; set; }
+    public bool Skipped { get; set; }
+    public bool Duplicate { get; set; }
+    public string EventName { get; set; } = string.Empty;
+    public string EventId { get; set; } = string.Empty;
+    public string ScoreTier { get; set; } = string.Empty;
+    public int IntentScore { get; set; }
+    public int EngagementScore { get; set; }
+    public int QualificationScore { get; set; }
+    public int FrictionScore { get; set; }
+    public int TotalSignalScore { get; set; }
+    public bool MetaBrowserSent { get; set; }
+    public bool MetaServerSent { get; set; }
+    public string MetaServerStatus { get; set; } = "not_attempted";
+    public string? MetaServerNote { get; set; }
+    public string? DeduplicationKey { get; set; }
+}

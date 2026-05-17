@@ -155,6 +155,9 @@ public sealed class AiSafeAnalyticsPayload
 
     // Meta Ads — active campaigns only (Status == ACTIVE from Meta API), ordered by spend desc
     public List<AiCampaignRow> ActiveCampaigns { get; set; } = new();
+
+    // Meta Signal Intelligence
+    public MetaSignalAiPayload? MetaSignal { get; set; }
 }
 
 // ── Nested safe row types ─────────────────────────────────────────────────────
@@ -226,4 +229,42 @@ public sealed class AiCampaignRow
     public decimal Ctr { get; set; }
     public decimal Cpc { get; set; }
     public long Leads { get; set; }
+}
+
+public sealed class MetaSignalAiPayload
+{
+    public int TotalSignalEvents { get; set; }
+    public int TotalVisitors { get; set; }
+    public int HighIntentVisitors { get; set; }
+    public int LeadReadyVisitors { get; set; }
+    public int SubmittedLeads { get; set; }
+    public int HighIntentAbandons { get; set; }
+    public int ContactStepAbandons { get; set; }
+    public decimal SignalToLeadConversionRate { get; set; }
+    public string RecommendedOptimizationEvent { get; set; } = "";
+    public string BestPerformingLandingPageVersion { get; set; } = "";
+    public string WorstFrictionStep { get; set; } = "";
+    public List<MetaSignalTierAiRow> VisitorsByScoreTier { get; set; } = new();
+    public List<MetaSignalAverageAiRow> AverageScoreByCampaign { get; set; } = new();
+    public List<MetaSignalAverageAiRow> AverageScoreByPageVariant { get; set; } = new();
+    public List<MetaSignalLadderAiRow> EventLadder { get; set; } = new();
+}
+
+public sealed class MetaSignalTierAiRow
+{
+    public string ScoreTier { get; set; } = "";
+    public int Visitors { get; set; }
+}
+
+public sealed class MetaSignalAverageAiRow
+{
+    public string Label { get; set; } = "";
+    public decimal AverageScore { get; set; }
+}
+
+public sealed class MetaSignalLadderAiRow
+{
+    public string StepLabel { get; set; } = "";
+    public int Visitors { get; set; }
+    public decimal? ProgressionRate { get; set; }
 }

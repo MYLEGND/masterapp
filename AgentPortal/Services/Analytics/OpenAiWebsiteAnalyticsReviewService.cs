@@ -37,18 +37,22 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "  • The summary's FIRST sentence MUST reference ad performance " +
         "(e.g., spend level, click volume, whether ads are converting).\n\n" +
 
-        "STEP 2 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
+        "STEP 2 — META SIGNAL INTELLIGENCE: analyze high-intent visitors, lead-ready visitors, signal-to-lead conversion, contact-step abandons, and the recommended optimization event.\n\n" +
 
-        "STEP 3 — QUOTE FUNNEL: drop-off from starts → form starts → submits.\n\n" +
+        "STEP 3 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
 
-        "STEP 4 — BEHAVIOR: session duration, quick-exit rate, engaged session rate.\n\n" +
+        "STEP 4 — QUOTE FUNNEL: drop-off from starts → form starts → submits.\n\n" +
 
-        "STEP 5 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
+        "STEP 5 — BEHAVIOR: session duration, quick-exit rate, engaged session rate.\n\n" +
+
+        "STEP 6 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
 
         "STRICT RULES:\n" +
         "  • NEVER skip ads analysis, even if the data shows zero spend or zero clicks.\n" +
         "  • NEVER give generic CRO advice before completing Step 1.\n" +
-        "  • ALWAYS clearly separate: Ad problem vs Landing page problem vs Form problem.\n" +
+        "  • ALWAYS clearly separate: Ad problem vs Signal-quality problem vs Landing page problem vs Form problem.\n" +
+        "  • If the metaSignal section shows many high-intent or lead-ready visitors but very few submitted leads, you MUST call out contact-step or form friction as a likely bottleneck.\n" +
+        "  • If submitted Lead volume is low but lead-ready or high-intent volume is healthy, recommend the best Meta optimization event from the payload instead of defaulting to Lead.\n" +
         "  • If campaign data shows clicks but zero website leads, output: " +
         "'Ad traffic is present but not converting — primary issue is landing page or funnel, not traffic generation.'\n" +
         "  • Be blunt. No padding. Return ONLY: " +

@@ -30,6 +30,7 @@
       leads: null,
       agentPerf: null,
       traffic: null,
+      metaSignal: null,
       metaCampaigns: null,
       behaviorSources: null,
       aiSnapshot: null
@@ -49,8 +50,15 @@
       quoteModal: 'all',
       convModal: 'all',
       leadsModal: 'all',
+      metaSignalModal: 'all',
       aiReviewSnapshotModal: 'all',
       behaviorModal: 'all'
+    },
+    metaSignalFilters: {
+      quoteType: '',
+      campaign: '',
+      pageMode: '',
+      scoreTier: ''
     }
   };
   const agentOptions = (() => {
@@ -97,6 +105,7 @@
     quote: '/WebsiteAnalytics/quote-funnel',
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
+    metaSignal: '/WebsiteAnalytics/meta-signal',
     deleteLead: '/WebsiteAnalytics/DeleteLead',
     agentPerf: '/WebsiteAnalytics/agent-performance',
     metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
@@ -1009,7 +1018,8 @@
     ctaPerfModal:  'ctaperf-active-mode',
     quoteModal:    'quote-active-mode',
     convModal:     'conv-active-mode',
-    leadsModal:    'leads-active-mode'
+    leadsModal:    'leads-active-mode',
+    metaSignalModal: 'metasignal-active-mode'
   };
 
   // Traffic type UI controls and modal header update
@@ -1040,6 +1050,24 @@
           updateTrafficTypeHeader(modalId);
           refreshOpenModal();
         });
+      });
+    });
+  }
+
+  function initMetaSignalFilterControls() {
+    [
+      ['metasignal-quote-filter', 'quoteType'],
+      ['metasignal-campaign-filter', 'campaign'],
+      ['metasignal-page-mode-filter', 'pageMode'],
+      ['metasignal-score-tier-filter', 'scoreTier']
+    ].forEach(([id, key]) => {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.addEventListener('change', () => {
+        state.metaSignalFilters[key] = select.value || '';
+        if (state.openModal === 'metaSignalModal') {
+          loadMetaSignal();
+        }
       });
     });
   }
@@ -1507,6 +1535,109 @@
       setText('leads-total', '—');
       setText('leads-cap-note', message);
       setTableMessage('leads-body', 9, message, 'text-danger');
+      console.error(err);
+    }
+  }
+
+  function populateSelectOptions(id, options, selectedValue, allLabel) {
+    const select = document.getElementById(id);
+    if (!select) return;
+
+    const currentValue = selectedValue ?? '';
+    const normalizedOptions = Array.isArray(options) ? options.filter(Boolean) : [];
+    select.innerHTML = '';
+
+    const allOption = document.createElement('option');
+    allOption.value = '';
+    allOption.textContent = allLabel;
+    select.appendChild(allOption);
+
+    normalizedOptions.forEach((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = value;
+      if (String(value) === String(currentValue)) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  }
+
+  function renderMetaSignal(data) {
+    state.cache.metaSignal = data;
+    setText('metasignal-range-label', data.rangeLabel || '');
+    setText('metasignal-total-events', data.totalSignalEvents ?? 0);
+    setText('metasignal-total-visitors', data.totalVisitors ?? 0);
+    setText('metasignal-high-intent', data.highIntentVisitors ?? 0);
+    setText('metasignal-lead-ready', data.leadReadyVisitors ?? 0);
+    setText('metasignal-submitted', data.submittedLeads ?? 0);
+    setText('metasignal-high-intent-abandons', data.highIntentAbandons ?? 0);
+    setText('metasignal-contact-abandons', data.contactStepAbandons ?? 0);
+    setText('metasignal-signal-conv', `${data.signalToLeadConversionRate ?? 0}%`);
+    setText('metasignal-optimize', data.recommendedOptimizationEvent || '—');
+    setText('metasignal-best-variant', data.bestPerformingLandingPageVersion || '—');
+    setText('metasignal-worst-friction', data.worstFrictionStep || '—');
+
+    populateSelectOptions('metasignal-quote-filter', data.availableQuoteTypes, state.metaSignalFilters.quoteType, 'All Quote Types');
+    populateSelectOptions('metasignal-campaign-filter', data.availableCampaigns, state.metaSignalFilters.campaign, 'All Campaigns');
+    populateSelectOptions('metasignal-page-mode-filter', data.availablePageModes, state.metaSignalFilters.pageMode, 'All Page Modes');
+    populateSelectOptions('metasignal-score-tier-filter', data.availableScoreTiers, state.metaSignalFilters.scoreTier, 'All Score Tiers');
+
+    renderTable('metasignal-quote-body', data.eventsByQuoteType || [], [
+      { key: 'label' },
+      { key: 'value', align: 'text-end' }
+    ]);
+    renderTable('metasignal-campaign-body', data.eventsByCampaign || [], [
+      { key: 'label' },
+      { key: 'value', align: 'text-end' }
+    ]);
+    renderTable('metasignal-tier-body', data.visitorsByScoreTier || [], [
+      { key: 'scoreTier' },
+      { key: 'visitors', align: 'text-end' }
+    ]);
+    renderTable('metasignal-campaign-score-body', data.averageScoreByCampaign || [], [
+      { key: 'label' },
+      { render: row => `${row.averageScore}`, align: 'text-end' }
+    ]);
+    renderTable('metasignal-pagevariant-score-body', data.averageScoreByPageVariant || [], [
+      { key: 'label' },
+      { render: row => `${row.averageScore}`, align: 'text-end' }
+    ]);
+    renderTable('metasignal-ladder-body', data.eventLadder || [], [
+      { key: 'stepLabel' },
+      { key: 'visitors', align: 'text-end' },
+      { render: row => row.progressionRate == null ? '—' : `${row.progressionRate}%`, align: 'text-end' }
+    ]);
+    renderTable('metasignal-friction-body', data.frictionHotspots || [], [
+      { key: 'label' },
+      { key: 'count', align: 'text-end' }
+    ]);
+  }
+
+  async function loadMetaSignal() {
+    try {
+      const params = {
+        ...rangeParams({ modal: 'metaSignalModal' }),
+        ...(state.metaSignalFilters.quoteType ? { quoteType: state.metaSignalFilters.quoteType } : {}),
+        ...(state.metaSignalFilters.campaign ? { campaign: state.metaSignalFilters.campaign } : {}),
+        ...(state.metaSignalFilters.pageMode ? { pageMode: state.metaSignalFilters.pageMode } : {}),
+        ...(state.metaSignalFilters.scoreTier ? { scoreTier: state.metaSignalFilters.scoreTier } : {})
+      };
+      const data = await fetchJson('metaSignal', endpoints.metaSignal, params);
+      if (!data) return;
+      renderMetaSignal(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Intelligence.';
+      setText('metasignal-range-label', 'Unavailable');
+      [
+        ['metasignal-quote-body', 2],
+        ['metasignal-campaign-body', 2],
+        ['metasignal-tier-body', 2],
+        ['metasignal-campaign-score-body', 2],
+        ['metasignal-pagevariant-score-body', 2],
+        ['metasignal-ladder-body', 3],
+        ['metasignal-friction-body', 2]
+      ].forEach(([id, colspan]) => setTableMessage(id, colspan, message, 'text-danger'));
       console.error(err);
     }
   }
@@ -2039,6 +2170,7 @@
       case 'quoteModal': loadQuote(); break;
       case 'convModal': loadConv(); break;
       case 'leadsModal': loadLeads(); break;
+      case 'metaSignalModal': loadMetaSignal(); break;
       case 'agentPerfModal': loadAgentPerf(); break;
       case 'metaCampaignsModal': loadMetaCampaigns(); break;
       case 'behaviorModal': loadBehavior(); break;
@@ -2061,6 +2193,7 @@
       'mod-quote': 'quoteModal',
       'mod-conv': 'convModal',
       'mod-leads': 'leadsModal',
+      'mod-meta-signal': 'metaSignalModal',
       'mod-behavior': 'behaviorModal'
     };
     if (isFounder) {
@@ -2116,6 +2249,7 @@
     initRangeControls();
     initModules();
     initTrafficTypeControls();
+    initMetaSignalFilterControls();
     initLeadDeleteControls();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
@@ -2123,6 +2257,7 @@
     attachModal('quoteModal', () => { updateTrafficTypeHeader('quoteModal'); loadQuote(); });
     attachModal('convModal', () => { updateTrafficTypeHeader('convModal'); loadConv(); });
     attachModal('leadsModal', () => { updateTrafficTypeHeader('leadsModal'); loadLeads(); });
+    attachModal('metaSignalModal', () => { updateTrafficTypeHeader('metaSignalModal'); loadMetaSignal(); });
     attachModal('metaCampaignsModal', loadMetaCampaigns);
     attachModal('behaviorModal', loadBehavior);
     attachModal('aiReviewSnapshotModal', loadAiReviewSnapshot);
