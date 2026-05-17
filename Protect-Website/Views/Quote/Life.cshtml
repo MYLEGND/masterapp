@@ -214,41 +214,58 @@ body.life-landing header .navbar .nav-link:focus {
 }
 
 .btn-gold {
-    background: linear-gradient(175deg, #efc86f, #c08b21);
-    color: #1c1303;
-    font-weight: 900;
-    padding: 13px 24px;
-    border-radius: 12px;
-    font-size: 1.02rem;
-    border: 2px solid #f1cf80;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #f3d688 0%, #e2ba5d 38%, #c69025 100%);
+    color: #211503;
+    font-weight: 920;
+    padding: 14px 22px;
+    border-radius: 14px;
+    font-size: 1rem;
+    line-height: 1.14;
+    border: 1px solid #f1cf80;
     box-shadow:
-        0 14px 32px rgba(0,0,0,0.28),
-        0 0 0 2px rgba(241,207,128,0.26);
-    transition: opacity 0.15s, transform 0.12s, box-shadow .15s ease, filter .15s ease;
-    text-transform: uppercase;
-    letter-spacing: .35px;
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 14px 28px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(241,207,128,0.20);
+    transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s ease, filter .18s ease, background .18s ease;
+    text-transform: none;
+    letter-spacing: .01em;
     cursor: pointer;
-    min-height: 52px;
-    text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+    min-height: 56px;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.24);
+    text-align: center;
+    text-wrap: balance;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 .btn-gold:hover {
-    opacity: 0.98;
-    color: #1c1303;
-    transform: translateY(-1px);
+    color: #211503;
+    transform: translateY(-2px) scale(1.006);
     box-shadow:
-        0 18px 40px rgba(0,0,0,.32),
-        0 0 0 2px rgba(241,207,128,0.34);
-    filter: saturate(1.05);
+        inset 0 1px 0 rgba(255,255,255,0.40),
+        0 18px 34px rgba(0,0,0,.32),
+        0 0 0 1px rgba(241,207,128,0.28),
+        0 0 22px rgba(226,186,93,0.18);
+    filter: saturate(1.03) brightness(1.01);
 }
 .btn-gold:active {
-    transform: translateY(0);
+    color: #211503;
+    transform: translateY(0) scale(0.992);
     box-shadow:
-        0 8px 20px rgba(0,0,0,.30),
-        0 0 0 2px rgba(241,207,128,0.28);
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        0 8px 18px rgba(0,0,0,.28),
+        0 0 0 1px rgba(241,207,128,0.22);
 }
 .btn-gold:focus-visible {
     outline: 3px solid rgba(248,227,170,0.95);
     outline-offset: 2px;
+}
+#step1Continue,
+#continueToContactBtn,
+#submitLife {
+    text-wrap: balance;
 }
 .text-gold { color: #c79931; }
 
@@ -452,13 +469,21 @@ body.life-landing header .navbar .nav-link:focus {
     color: #f8fafc;
     margin-bottom: 10px;
 }
-#lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
+.lq-step-question {
     font-size: 1.28rem;
     font-weight: 940;
     line-height: 1.12;
     letter-spacing: -0.02em;
     color: #fff6d8;
     margin-bottom: 8px;
+}
+.lq-step-kicker {
+    font-size: .82rem;
+    font-weight: 820;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: rgba(248,250,252,0.62);
+    margin-bottom: 6px;
 }
 .lq-choice-grid {
     display: grid;
@@ -746,9 +771,13 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-inner-block { padding: 14px 12px 10px; }
     .lq-step-title { font-size: 1.02rem; margin-bottom: 4px; }
     .lq-step-helper { margin-bottom: 8px; font-size: .88rem; line-height: 1.32; }
-    #lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
+    .lq-step-question {
         font-size: 1.16rem;
         margin-bottom: 7px;
+    }
+    .lq-step-kicker {
+        font-size: .76rem;
+        margin-bottom: 5px;
     }
     .lq-step-progress-wrap { gap: 7px; margin-bottom: 10px; }
     .lq-step-progress { font-size: .71rem; padding: 3px 8px; }
@@ -759,7 +788,7 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-step-actions { margin-top: 10px; }
     .lq-step-actions.dual { align-items: stretch; gap: 8px; }
     .lq-step-actions.dual .btn-ghost { min-height: 44px; padding: 9px 12px; }
-    .lq-step-actions.dual .btn-gold { min-height: 52px; }
+    .lq-step-actions.dual .btn-gold { min-height: 56px; }
     .lq-processing-bridge { margin: 10px 0 6px; }
     .lq-value-list { gap: 8px; margin: 4px 0 10px; }
     .lq-value-item { font-size: .86rem; padding: 9px 10px; }
@@ -781,7 +810,7 @@ body.life-landing header .navbar .nav-link:focus {
     .form-control, .form-select { padding: 8px 10px; margin-bottom: 4px; }
     .lq-reach-note { font-size: .84rem; margin-bottom: 7px; }
     .lq-submit-row { margin-top: 8px; }
-    .btn-gold { padding: 12px 20px; }
+    .btn-gold { padding: 13px 18px; }
 }
 
 /* ── Phone-only tightening (≤480px) ─────────────────────────────────────── */
@@ -814,9 +843,13 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-inner-block { padding: 10px 10px 8px !important; }
     .lq-step-title { font-size: 1rem !important; }
     .lq-step-helper { font-size: .84rem !important; margin-bottom: 7px !important; }
-    #lifeStep1Panel [data-micro-step="0"] .lq-choice-label {
+    .lq-step-question {
         font-size: 1.08rem !important;
         margin-bottom: 6px !important;
+    }
+    .lq-step-kicker {
+        font-size: .72rem !important;
+        margin-bottom: 4px !important;
     }
     .lq-step-progress-wrap { gap: 6px !important; margin-bottom: 8px !important; }
     .lq-step-progress { font-size: .68rem !important; padding: 3px 7px !important; }
@@ -830,7 +863,7 @@ body.life-landing header .navbar .nav-link:focus {
         min-height: 42px;
         padding: 8px 10px;
     }
-    .lq-step-actions.dual .btn-gold { min-height: 50px !important; }
+    .lq-step-actions.dual .btn-gold { min-height: 54px !important; }
     .lq-value-item { font-size: .87rem; padding: 10px; }
     .lq-processing-track { height: 9px; }
     #step2BackBtn { min-width: 108px; margin-top: 8px; }
@@ -845,7 +878,12 @@ body.life-landing header .navbar .nav-link:focus {
     .lq-agent-license { font-size: .68rem; margin-top: 6px; }
     .form-control, .form-select { padding: 8px 10px !important; font-size: .9rem !important; margin-bottom: 5px !important; }
     .lq-field label { font-size: .88rem !important; }
-    .btn-gold { padding: 11px 16px !important; font-size: .95rem !important; }
+    .btn-gold {
+        padding: 12px 15px !important;
+        font-size: .93rem !important;
+        min-height: 54px !important;
+        border-radius: 13px !important;
+    }
 }
 
 @@media (max-width: 430px){
@@ -942,7 +980,7 @@ body.life-landing header .navbar .nav-link:focus {
         min-height: 42px !important;
         padding: 8px 11px !important;
     }
-    body.life-landing .lq-step-actions.dual .btn-gold { min-height: 50px !important; }
+    body.life-landing .lq-step-actions.dual .btn-gold { min-height: 54px !important; }
     body.life-landing .lq-processing-bridge { margin: 8px 0 5px !important; }
     body.life-landing .lq-value-list { gap: 8px !important; margin: 4px 0 10px !important; }
     body.life-landing .lq-value-note { font-size: .82rem !important; margin-bottom: 2px !important; }
@@ -972,13 +1010,14 @@ body.life-landing header .navbar .nav-link:focus {
     body.life-landing .lq-field label { font-size: .86rem !important; }
     body.life-landing .lq-submit-row { margin-top: 8px !important; }
     body.life-landing .btn-gold {
-        padding: 11px 14px !important;
-        font-size: .93rem !important;
-        min-height: 52px !important;
-        border-width: 2px !important;
+        padding: 12px 14px !important;
+        font-size: .92rem !important;
+        min-height: 54px !important;
+        border-width: 1px !important;
         box-shadow:
+            inset 0 1px 0 rgba(255,255,255,0.34),
             0 12px 24px rgba(0,0,0,.30),
-            0 0 0 2px rgba(241,207,128,0.30) !important;
+            0 0 0 1px rgba(241,207,128,0.24) !important;
     }
     body.life-landing .lq-reach-note {
         font-size: .84rem !important;
@@ -1150,7 +1189,7 @@ body.life-landing header .navbar .nav-link:focus {
 
                 <div class="lq-micro-step" data-micro-step="0">
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
-                        <div class="lq-choice-label" id="lbl-step1-protect">@protectStep.Question</div>
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-protect">@protectStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in protectStep.Options)
                             {
@@ -1169,7 +1208,7 @@ body.life-landing header .navbar .nav-link:focus {
 
                 <div class="lq-micro-step" data-micro-step="1" hidden>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
-                        <div class="lq-choice-label" id="lbl-step1-goal">@goalStep.Question</div>
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-goal">@goalStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in goalStep.Options)
                             {
@@ -1188,9 +1227,9 @@ body.life-landing header .navbar .nav-link:focus {
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="2" hidden>
-                    <div class="lq-choice-label">Let's tailor this to you</div>
+                    <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                     <div class="lq-choice-group">
-                        <div style="font-weight:700;font-size:.9rem;color:rgba(248,250,252,0.72);margin-bottom:8px;" id="lbl-step1-age">@ageStep.Question</div>
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
                             <label class="lq-card">
                                 <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
