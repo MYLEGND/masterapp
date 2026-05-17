@@ -71,36 +71,41 @@
     var agentBio = hasCustomAgentBio
         ? agentTrustProfile!.ShortBio!.Trim()
         : string.Empty;
+    var normalizedAgentBio = string.IsNullOrWhiteSpace(agentBio)
+        ? string.Empty
+        : agentBio.Replace('’', '\'').Trim().ToLowerInvariant();
+    var shouldShowAgentBio =
+        hasCustomAgentBio &&
+        normalizedAgentBio != "i'll personally help you understand what options may fit your situation and answer any questions you have." &&
+        normalizedAgentBio != "i will personally help you understand what options may fit your situation and answer any questions you have.";
     var agentNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
     var bookingLink = !string.IsNullOrWhiteSpace(agentTrustProfile?.SchedulingLink)
         ? agentTrustProfile!.SchedulingLink!.Trim()
         : (Model?.BookingLink ?? string.Empty).Trim();
-    var agentCardHeading = $"{agentFirstName} is now reviewing your request.";
-    var agentCardHelper = $"Your next step will be directly with {agentFirstName}.";
+    var agentCardHeading = $"{agentDisplayName} is your point of contact.";
+    var agentCardHelper = $"If you book below, you'll be meeting directly with {agentFirstName}.";
     var headlineText = showAgentTrustCard
         ? "Thanks — I've received your request."
         : "Thanks — we've received your request.";
     var detailMessage = quoteKey == "RiskAssessment"
         ? (showAgentTrustCard
-            ? "I'll personally review your assessment and help you understand the protection gaps, priorities, and next steps that may matter most."
+            ? "I've received your assessment. You'll hear from me soon with the clearest next step and what to focus on first."
             : "Your Risk Assessment form has been securely recorded. We'll review your responses and prepare clear next steps to help you understand your protection gaps.")
         : (showAgentTrustCard
-            ? "I'll personally review what you shared and help you understand what may fit your situation."
+            ? "I've received what you shared. You'll hear from me soon with the clearest next step for your situation."
             : "We'll review what you shared and help you understand what may fit your situation.");
     var nextSteps = showAgentTrustCard
         ? new[]
         {
-            $"I'll personally review your {quoteDisplayName} request",
-            "I'll help you understand what may fit your situation and answer any questions you have",
-            $"If you'd like to move faster, you can book time with {agentFirstName} below"
+            $"I'll personally look over your {quoteDisplayName} request",
+            "We'll talk through pricing, fit, and any questions you want answered"
         }
         : new[]
         {
             $"A licensed team member will review your {quoteDisplayName} request",
-            "We'll keep the conversation simple, clear, and focused on what may fit you",
-            "If you'd like to move faster, you can book a time below"
+            "We'll keep the conversation simple, clear, and focused on what may fit you"
         };
     var fasterNote = showAgentTrustCard
         ? $"Want to move faster? Book a time with {agentFirstName} that works best for you."
@@ -483,7 +488,7 @@ main.layout-content,
                         <div class="ty-agent-kicker">Your licensed agent</div>
                         <div class="ty-agent-name">@agentCardHeading</div>
                         <div class="ty-agent-note">@agentCardHelper</div>
-                        @if (hasCustomAgentBio)
+                        @if (shouldShowAgentBio)
                         {
                             <div class="ty-agent-bio">@agentBio</div>
                         }
