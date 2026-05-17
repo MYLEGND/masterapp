@@ -392,6 +392,27 @@ static string ResolveDevSqlite(string contentRootPath)
 
 var configuredDb = ResolveMasterDb(builder.Configuration);
 var useSqlServer = IsSqlServerConn(configuredDb) && !IsSqliteConn(configuredDb);
+var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+var useSqlServerInDevelopment = string.Equals(
+        builder.Configuration["Database:UseSqlServerInDevelopment"],
+        "true",
+        StringComparison.OrdinalIgnoreCase)
+    || string.Equals(
+        Environment.GetEnvironmentVariable("MASTERAPP_DEV_USE_SQLSERVER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+if (builder.Environment.IsDevelopment() &&
+    !isAzureAppService &&
+    useSqlServer &&
+    !useSqlServerInDevelopment)
+{
+    Console.WriteLine(
+        "[INFO] Development environment detected with a SQL Server connection string available. " +
+        "Falling back to local SQLite by default so local startup is not blocked by remote SQL access. " +
+        "Set MASTERAPP_DEV_USE_SQLSERVER=true to opt back into SQL Server locally.");
+    useSqlServer = false;
+}
 
 // Resolve SQLite path: on Azure App Service use persistent %HOME%/data/ storage;
 // on local dev use ContentRootPath/App_Data/.
@@ -449,7 +470,6 @@ if (string.IsNullOrWhiteSpace(ownerEmail) &&
 // If WEBSITE_SITE_NAME is set, we are in a hosted/deployed environment and must have
 // a SQL Server connection string. A missing or misconfigured connection string must
 // produce a hard startup failure, not a silent SQLite fallback.
-var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
 if (!useSqlServer && isAzureAppService)
 {
     throw new InvalidOperationException(

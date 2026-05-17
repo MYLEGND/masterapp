@@ -1,6 +1,7 @@
 using System.Data.Common;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AgentPortal.Services;
 
@@ -13,16 +14,24 @@ public sealed class MigrationHealthHostedService : IHostedService
 {
     private readonly IServiceProvider _services;
     private readonly ILogger<MigrationHealthHostedService> _logger;
+    private readonly IHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
 
     private static readonly string[] CriticalTables =
     {
         "ActionItems", "ActionLogs", "Blockers", "DecisionRecords", "Commitments", "AnalyticsEvents"
     };
 
-    public MigrationHealthHostedService(IServiceProvider services, ILogger<MigrationHealthHostedService> logger)
+    public MigrationHealthHostedService(
+        IServiceProvider services,
+        ILogger<MigrationHealthHostedService> logger,
+        IHostEnvironment environment,
+        IConfiguration configuration)
     {
         _services = services;
         _logger = logger;
+        _environment = environment;
+        _configuration = configuration;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -31,26 +40,57 @@ public sealed class MigrationHealthHostedService : IHostedService
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
 
         var provider = db.Database.ProviderName ?? "unknown";
-        var pending = await db.Database.GetPendingMigrationsAsync(cancellationToken);
-        _logger.LogInformation("DB provider {Provider}; pending migrations: {PendingCount}", provider, pending.Count());
-
-        if (db.Database.IsSqlite())
+        try
         {
-            var dataSource = db.Database.GetDbConnection().DataSource;
-            _logger.LogInformation("SQLite data source: {DataSource}", dataSource);
-        }
+            var pending = await db.Database.GetPendingMigrationsAsync(cancellationToken);
+            _logger.LogInformation("DB provider {Provider}; pending migrations: {PendingCount}", provider, pending.Count());
 
-        foreach (var table in CriticalTables)
-        {
-            var exists = await TableExistsAsync(db, table, cancellationToken);
-            if (!exists)
+            if (db.Database.IsSqlite())
             {
-                _logger.LogWarning("Critical table missing: {Table}. Apply migrations for provider {Provider}.", table, provider);
+                var dataSource = db.Database.GetDbConnection().DataSource;
+                _logger.LogInformation("SQLite data source: {DataSource}", dataSource);
             }
+
+            foreach (var table in CriticalTables)
+            {
+                var exists = await TableExistsAsync(db, table, cancellationToken);
+                if (!exists)
+                {
+                    _logger.LogWarning("Critical table missing: {Table}. Apply migrations for provider {Provider}.", table, provider);
+                }
+            }
+        }
+        catch (Exception ex) when (ShouldSuppressStartupFailure(db, ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "Migration health check skipped during local development because the configured database is currently unreachable. " +
+                "The app will continue starting in non-strict mode.");
         }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private bool ShouldSuppressStartupFailure(MasterAppDbContext db, Exception ex)
+    {
+        if (!_environment.IsDevelopment() || IsStrictMigrationsEnabled())
+        {
+            return false;
+        }
+
+        if (!db.Database.IsSqlServer())
+        {
+            return false;
+        }
+
+        return ex is DbException or TimeoutException or InvalidOperationException || ex.InnerException is DbException;
+    }
+
+    private bool IsStrictMigrationsEnabled()
+    {
+        return string.Equals(_configuration["Migrations:Strict"], "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Environment.GetEnvironmentVariable("MIGRATION_STRICT"), "true", StringComparison.OrdinalIgnoreCase);
+    }
 
     private async Task<bool> TableExistsAsync(
         MasterAppDbContext db,

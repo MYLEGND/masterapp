@@ -742,6 +742,195 @@ namespace Infrastructure.Migrations
                     b.ToTable("AnalyticsEvents");
                 });
 
+            modelBuilder.Entity("Domain.Entities.MetaSignalEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("AgentSlug")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("AgentTrackingProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EffectivePageKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("EngagementScore")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Environment")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("EventCategory")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("FbclidPresent")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("FbcPresent")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("FbpPresent")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("FrictionScore")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("FunnelStep")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("IpHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<int>("IntentScore")
+                        .HasColumnType("int");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("MetaBrowserSent")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MetaDeduplicationKey")
+                        .HasMaxLength(220)
+                        .HasColumnType("nvarchar(220)");
+
+                    b.Property<bool>("MetaServerSent")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PageKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("PageMode")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("PageVariant")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<int>("QualificationScore")
+                        .HasColumnType("int");
+
+                    b.Property<string>("QuoteType")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("Referrer")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("ScoreTier")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("StepName")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<int>("TotalSignalScore")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TrafficType")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("UserAgentHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("UtmContent")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("VisitorId")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentSlug");
+
+                    b.HasIndex("AgentTrackingProfileId");
+
+                    b.HasIndex("CreatedUtc");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.HasIndex("EventName");
+
+                    b.HasIndex("LeadId");
+
+                    b.HasIndex("QuoteType");
+
+                    b.HasIndex("ScoreTier");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("TrafficType");
+
+                    b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("VisitorId");
+
+                    b.HasIndex("EventName", "CreatedUtc");
+
+                    b.HasIndex("SessionId", "QuoteType", "CreatedUtc");
+
+                    b.ToTable("MetaSignalEvents");
+                });
+
             modelBuilder.Entity("Domain.Entities.Blocker", b =>
                 {
                     b.Property<Guid>("Id")
