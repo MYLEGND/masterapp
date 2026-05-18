@@ -129,9 +129,9 @@
     var finalSubmitButtonText = showAgentTrustCard
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
-    var heroHeadline = "Protect the people who count on you";
-    var heroSubheadline = isLandingView ? "If something happened tomorrow, would they be okay?" : string.Empty;
-    var heroTrustNote = "Private • No pressure • Takes less than 30 seconds";
+    var heroHeadline = "See what life insurance options may fit your situation";
+    var heroSubheadline = isLandingView ? "Answer a few quick questions to review personalized options." : string.Empty;
+    var heroTrustNote = "Quick • Private • No obligation";
     var step1IntroTitle = string.Empty;
     var step1IntroHelper = string.Empty;
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
@@ -212,7 +212,7 @@ body.life-landing header .navbar .nav-link:focus {
     border-radius: 18px;
     /* Deeper drop-shadow + 1px inner top edge for glass/depth cue */
     box-shadow:
-        0 32px 60px rgba(0,0,0,0.42),
+        0 24px 46px rgba(0,0,0,0.34),
         inset 0 1px 0 rgba(199,153,49,0.09);
     padding: 18px 18px 14px 18px;
     max-width: 980px;
@@ -271,7 +271,7 @@ body.life-landing header .navbar .nav-link:focus {
     transform: translateY(-2px) scale(1.006);
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.40),
-        0 18px 34px rgba(0,0,0,.32),
+        0 14px 26px rgba(0,0,0,.26),
         0 0 0 1px rgba(241,207,128,0.28),
         0 0 22px rgba(226,186,93,0.18);
     filter: saturate(1.03) brightness(1.01);
@@ -538,7 +538,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     background: #122541;
     border: 1.5px solid rgba(199,153,49,.44);
     border-radius: 12px;
-    box-shadow: 0 20px 44px rgba(0,0,0,0.38);
+    box-shadow: 0 16px 34px rgba(0,0,0,0.30);
     animation: lqFadeIn 0.22s ease;
     position: relative;
 }
@@ -1253,6 +1253,12 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-rec-desc { font-size: .85rem; }
     .lq-rec-bullets li { font-size: .82rem; }
 }
+
+/* Paid landing friction reduction */
+body.life-landing .lq-step1-panel .lq-step-progress-wrap{
+    display:none !important;
+}
+
 </style>
 
 <div class="lq-hero-shell">
@@ -1412,13 +1418,13 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
                 <div class="lq-step-progress">Preparing</div>
-                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Analyzing your situation...</div>
+                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Preparing your personalized options...</div>
                 <div class="lq-step-helper">We’re identifying what actually fits your situation — not guessing.</div>
                 <div class="lq-processing-bridge" aria-hidden="true">
                     <div class="lq-processing-track">
                         <div class="lq-processing-fill" id="lifeProcessingFill"></div>
                     </div>
-                    <div class="lq-processing-note">Matching you with the right protection strategy...</div>
+                    <div class="lq-processing-note">Reviewing options that may fit your situation...</div>
                 </div>
             </div>
         </div>
