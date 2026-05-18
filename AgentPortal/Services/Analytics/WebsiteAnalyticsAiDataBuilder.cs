@@ -88,6 +88,11 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var metaCampaigns = await metaAdsTask;
         var metaSignal = await metaSignalTask;
 
+        if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
+        {
+            warnings.Add(metaSignal.LearningScopeNote);
+        }
+
         _logger.LogInformation(
             "AiDataBuilder results. Sessions={Sessions} UniqueVisitors={UniqueVisitors} VerifiedLeads={VerifiedLeads} " +
             "QuoteStarts={QuoteStarts} QuoteFormStarts={QuoteFormStarts} QuoteFormSubmits={QuoteFormSubmits}",
@@ -186,6 +191,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 
             MetaSignal = new MetaSignalAiPayload
             {
+                LearningScopeNote = metaSignal.LearningScopeNote,
                 TotalSignalEvents = metaSignal.TotalSignalEvents,
                 TotalVisitors = metaSignal.TotalVisitors,
                 HighIntentVisitors = metaSignal.HighIntentVisitors,

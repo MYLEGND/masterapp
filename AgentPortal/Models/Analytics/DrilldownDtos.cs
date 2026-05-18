@@ -113,6 +113,12 @@ public sealed class LeadAttributionDto
     public TrafficType TrafficType { get; set; }
     /// <summary>lead | session | visitor | unknown</summary>
     public string ResolutionSource { get; set; } = "unknown";
+    /// <summary>True when attribution indicates paid Meta traffic specifically.</summary>
+    public bool IsMetaAttributedPaid { get; set; }
+    /// <summary>True when this lead is excluded from Meta learning readiness.</summary>
+    public bool ExcludedFromMetaLearningReadiness { get; set; }
+    /// <summary>Human-readable explanation for inclusion/exclusion.</summary>
+    public string MetaLearningReason { get; set; } = "";
 }
 
 public sealed class LeadSnapshotRow

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace AgentPortal.Models.Analytics;
@@ -7,6 +8,8 @@ public sealed class MetaSignalDashboardDto
     public string RangeLabel { get; set; } = "";
     public string ScopeLabel { get; set; } = "";
     public string TrafficFilterLabel { get; set; } = "";
+    public string LearningScopeNote { get; set; } = "";
+    public bool HasEligiblePaidMetaTraffic { get; set; }
     public int TotalSignalEvents { get; set; }
     public int TotalVisitors { get; set; }
     public int HighIntentVisitors { get; set; }
@@ -15,6 +18,8 @@ public sealed class MetaSignalDashboardDto
     public int SubmitAttemptsWithoutLead { get; set; }
     public int HighIntentAbandons { get; set; }
     public int ContactStepAbandons { get; set; }
+    public int ExcludedSignalEvents { get; set; }
+    public int ExcludedSignalVisitors { get; set; }
     public decimal SignalToLeadConversionRate { get; set; }
     public string RecommendedOptimizationEvent { get; set; } = "LeadFormStart";
     public string BestPerformingLandingPageVersion { get; set; } = "—";
@@ -30,6 +35,7 @@ public sealed class MetaSignalDashboardDto
     public List<MetaSignalAverageRowDto> AverageScoreByPageVariant { get; set; } = new();
     public List<MetaSignalLadderRowDto> EventLadder { get; set; } = new();
     public List<MetaSignalFrictionRowDto> FrictionHotspots { get; set; } = new();
+    public List<MetaSignalDiagnosticEventRowDto> RecentDiagnostics { get; set; } = new();
 }
 
 public sealed class MetaSignalValueRowDto
@@ -64,8 +70,26 @@ public sealed class MetaSignalFrictionRowDto
     public int Count { get; set; }
 }
 
+public sealed class MetaSignalDiagnosticEventRowDto
+{
+    public DateTime CreatedUtc { get; set; }
+    public string EventName { get; set; } = "";
+    public string QuoteType { get; set; } = "";
+    public string? CampaignLabel { get; set; }
+    public string TrafficType { get; set; } = "";
+    public bool IsPaidMetaAttributed { get; set; }
+    public bool IsNonPaidOrManual { get; set; }
+    public bool ExcludedFromMetaLearningReadiness { get; set; }
+    public bool BrowserPixelSent { get; set; }
+    public bool ServerCapiSent { get; set; }
+    public bool DeduplicationEventIdPresent { get; set; }
+    public string? MetaServerStatus { get; set; }
+    public string LearningReason { get; set; } = "";
+}
+
 public sealed class MetaSignalAiSummaryDto
 {
+    public string LearningScopeNote { get; set; } = "";
     public int TotalSignalEvents { get; set; }
     public int TotalVisitors { get; set; }
     public int HighIntentVisitors { get; set; }

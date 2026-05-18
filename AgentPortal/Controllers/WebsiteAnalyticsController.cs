@@ -1425,6 +1425,8 @@ namespace AgentPortal.Controllers;
         }
         else
         {
+            if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
+                Line(metaSignal.LearningScopeNote);
             Line($"Total signal events: {metaSignal.TotalSignalEvents}");
             Line($"Total visitors with signal: {metaSignal.TotalVisitors}");
             Line($"High-intent visitors: {metaSignal.HighIntentVisitors}");
@@ -1433,6 +1435,8 @@ namespace AgentPortal.Controllers;
             Line($"Submit attempts without confirmed lead: {metaSignal.SubmitAttemptsWithoutLead}");
             Line($"High-intent abandons: {metaSignal.HighIntentAbandons}");
             Line($"Contact-step abandons: {metaSignal.ContactStepAbandons}");
+            Line($"Excluded signal events: {metaSignal.ExcludedSignalEvents}");
+            Line($"Excluded signal visitors: {metaSignal.ExcludedSignalVisitors}");
             Line($"Signal-to-lead conversion: {metaSignal.SignalToLeadConversionRate:0.##}%");
             Line($"Recommended optimization event right now: {Safe(metaSignal.RecommendedOptimizationEvent)}");
             Line($"Best-performing landing version: {Safe(metaSignal.BestPerformingLandingPageVersion)}");
@@ -1452,7 +1456,7 @@ namespace AgentPortal.Controllers;
             var signalLadder = metaSignal.EventLadder ?? new List<MetaSignalLadderRowDto>();
             if (signalLadder.Count == 0)
             {
-                Line("No data in range.");
+                Line("No paid Meta-attributed funnel progression in range.");
             }
             else
             {
@@ -1701,7 +1705,7 @@ namespace AgentPortal.Controllers;
                 var med  = e.UtmMedium?.Trim();
                 var camp = e.UtmCampaign?.Trim();
                 var fb   = e.Fbclid?.Trim();
-                var t    = TrafficAttribution.Classify(src, med, camp, fb);
+                var t    = TrafficAttribution.Classify(src, med, camp, fb, metaCampaignId: e.MetaCampaignId, metaAdSetId: e.MetaAdSetId, metaAdId: e.MetaAdId);
                 return new { e.EventType, e.SessionId, t };
             })
             .ToList();
@@ -1718,7 +1722,7 @@ namespace AgentPortal.Controllers;
             .ToList();
 
         var leadBuckets = allLeads
-            .GroupBy(l => TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid))
+            .GroupBy(l => TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid, metaCampaignId: l.MetaCampaignId, metaAdSetId: l.MetaAdSetId, metaAdId: l.MetaAdId))
             .OrderByDescending(g => g.Count())
             .Select(g => new
             {

@@ -494,7 +494,7 @@
         <div class="meta-signal-header-copy">
           <div class="meta-signal-kicker">Intelligence Overview</div>
           <h5 class="modal-title mb-0">Meta Signal Intelligence</h5>
-          <div class="meta-signal-subtitle">Score quality, high-intent drop-off, campaign signal strength, and optimization readiness.</div>
+          <div class="meta-signal-subtitle">Paid Meta learning readiness, high-intent drop-off, campaign signal strength, and exclusion diagnostics.</div>
         </div>
         <div class="meta-signal-header-actions">
           <div class="meta-signal-range-chip">
@@ -503,16 +503,22 @@
           </div>
           <div class="meta-signal-traffic-controls">
             <div class="btn-group btn-group-sm meta-signal-toggle-group" role="group" aria-label="Traffic Type">
-              <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="all">All Traffic</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="paid">Ads Only</button>
               <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
             </div>
-            <span class="badge meta-signal-mode-badge" id="metasignal-active-mode">Viewing: All Traffic</span>
+            <span class="badge meta-signal-mode-badge" id="metasignal-active-mode">Viewing: Ads Only</span>
           </div>
         </div>
         <button type="button" class="btn-close btn-close-white meta-signal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body meta-signal-body">
+        <section class="meta-signal-section">
+          <div class="alert alert-warning small py-2 px-3 mb-0" id="metasignal-scope-note">
+            Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.
+          </div>
+        </section>
+
         <section class="meta-signal-section meta-signal-filter-panel">
           <div class="meta-signal-section-head">
             <div>
@@ -597,6 +603,14 @@
             <div class="meta-signal-stat-card is-danger">
               <div class="meta-signal-stat-label">Contact-Step Abandons</div>
               <div class="meta-signal-stat-value" id="metasignal-contact-abandons">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Excluded Signal Events</div>
+              <div class="meta-signal-stat-value" id="metasignal-excluded-events">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Excluded Signal Visitors</div>
+              <div class="meta-signal-stat-value" id="metasignal-excluded-visitors">0</div>
             </div>
           </div>
         </section>
@@ -752,6 +766,32 @@
                 </table>
               </div>
             </article>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Recent Diagnostics</h6>
+              <p class="mb-0">Audit whether recent signal rows were paid Meta-attributed, excluded, and successfully mirrored to browser/server tracking.</p>
+            </div>
+          </div>
+          <div class="table-responsive meta-signal-table-wrap">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>When (Local)</th>
+                  <th>Event</th>
+                  <th>Traffic / Campaign</th>
+                  <th>Learning</th>
+                  <th>Reason</th>
+                  <th class="text-center">Browser Pixel</th>
+                  <th class="text-center">Server CAPI</th>
+                  <th class="text-center">Dedup ID</th>
+                </tr>
+              </thead>
+              <tbody id="metasignal-diagnostics-body"><tr><td colspan="8" class="fa-empty">Loading…</td></tr></tbody>
+            </table>
           </div>
         </section>
       </div>

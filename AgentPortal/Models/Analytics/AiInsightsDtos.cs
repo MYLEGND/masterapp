@@ -233,6 +233,7 @@ public sealed class AiCampaignRow
 
 public sealed class MetaSignalAiPayload
 {
+    public string LearningScopeNote { get; set; } = "";
     public int TotalSignalEvents { get; set; }
     public int TotalVisitors { get; set; }
     public int HighIntentVisitors { get; set; }

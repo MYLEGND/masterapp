@@ -502,7 +502,24 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.MetaAdId);
 
     private static TrafficType Classify(EventAttributionSnapshot snapshot) =>
-        TrafficAttribution.Classify(snapshot.UtmSource, snapshot.UtmMedium, snapshot.UtmCampaign, snapshot.Fbclid);
+        TrafficAttribution.Classify(
+            snapshot.UtmSource,
+            snapshot.UtmMedium,
+            snapshot.UtmCampaign,
+            snapshot.Fbclid,
+            metaCampaignId: snapshot.MetaCampaignId,
+            metaAdSetId: snapshot.MetaAdSetId,
+            metaAdId: snapshot.MetaAdId);
+
+    private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
+        TrafficAttribution.IsMetaAttributedPaid(
+            snapshot.UtmSource,
+            snapshot.UtmMedium,
+            snapshot.UtmCampaign,
+            snapshot.Fbclid,
+            snapshot.MetaCampaignId,
+            snapshot.MetaAdSetId,
+            snapshot.MetaAdId);
 
     private static Dictionary<string, EventAttributionSnapshot> BuildSessionAttributionMap(List<AnalyticsEvent> events)
     {
@@ -614,12 +631,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? MetaCampaignId,
         string? MetaAdSetId,
         string? MetaAdId,
+        string? PageMode,
         MetaLeadTrackingState? MetaTracking);
 
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
 
         try
         {
@@ -638,11 +656,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 ReadString("MetaCampaignId"),
                 ReadString("MetaAdSetId"),
                 ReadString("MetaAdId"),
+                ReadString("PageMode"),
                 MetaLeadTrackingJson.Read(lead.MetadataJson));
         }
         catch
         {
-            return new LeadMetadataSnapshot(null, null, null, null, null, null, null);
+            return new LeadMetadataSnapshot(null, null, null, null, null, null, null, null);
         }
     }
 
@@ -684,12 +703,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return (direct, "unknown");
     }
 
-    private static string SourceBucketLabel(AttributedEventRow row)
+    private static string SourceBucketLabel(EventAttributionSnapshot attribution, TrafficType trafficType)
     {
-        if (!string.IsNullOrWhiteSpace(row.Attribution.UtmSource))
-            return row.Attribution.UtmSource!.Trim();
+        if (!string.IsNullOrWhiteSpace(attribution.UtmSource))
+            return attribution.UtmSource!.Trim();
 
-        return row.TrafficType switch
+        if (IsMetaAttributedPaid(attribution))
+            return "Meta Ads";
+
+        return trafficType switch
         {
             TrafficType.Direct => "Direct",
             TrafficType.Organic => "Organic",
@@ -699,10 +721,39 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         };
     }
 
+    private static string SourceBucketLabel(AttributedEventRow row) =>
+        SourceBucketLabel(row.Attribution, row.TrafficType);
+
+    private static string CampaignBucketLabel(EventAttributionSnapshot attribution) =>
+        !string.IsNullOrWhiteSpace(attribution.UtmCampaign)
+            ? attribution.UtmCampaign!.Trim()
+            : !string.IsNullOrWhiteSpace(attribution.MetaCampaignId)
+                ? attribution.MetaCampaignId!.Trim()
+                : !string.IsNullOrWhiteSpace(attribution.UtmId)
+                    ? attribution.UtmId!.Trim()
+                    : "(none)";
+
     private static string CampaignBucketLabel(AttributedEventRow row) =>
-        !string.IsNullOrWhiteSpace(row.Attribution.UtmCampaign)
-            ? row.Attribution.UtmCampaign!.Trim()
-            : "(none)";
+        CampaignBucketLabel(row.Attribution);
+
+    private static string ResolveMetaLearningReason(string? pageMode, EventAttributionSnapshot attribution, TrafficType trafficType)
+    {
+        if (!string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
+            return "Excluded: not a paid landing experience.";
+
+        if (IsMetaAttributedPaid(attribution))
+            return "Included: paid Meta-attributed traffic.";
+
+        return trafficType switch
+        {
+            TrafficType.PaidAds => "Excluded: paid traffic, but not Meta-attributed.",
+            TrafficType.Direct => "Excluded: direct/manual traffic.",
+            TrafficType.Organic => "Excluded: organic traffic.",
+            TrafficType.Referral => "Excluded: referral/social traffic.",
+            TrafficType.Unknown => "Excluded: unattributed traffic.",
+            _ => "Excluded from Meta learning readiness."
+        };
+    }
 
     private static string BuildLeadUnitKey(WebsiteLead lead)
     {
@@ -1208,6 +1259,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var classified = Classify(resolved.Attribution);
                 var metadata = SnapshotFromLeadMetadata(l);
                 var metaTracking = metadata.MetaTracking;
+                var isMetaAttributedPaid = IsMetaAttributedPaid(resolved.Attribution);
+                var isPaidLandingExperience = string.Equals(metadata.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
+                var metaLearningReason = ResolveMetaLearningReason(metadata.PageMode, resolved.Attribution, classified);
+                var excludedFromMetaLearning = !(isPaidLandingExperience && isMetaAttributedPaid);
                 var browserPixelSent = string.Equals(metaTracking?.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 var resolvedUtmId = resolved.Attribution.UtmId;
@@ -1235,9 +1290,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     MetaCampaignId = leadMetaCampaignId,
                     MetaAdSetId = leadMetaAdSetId,
                     MetaAdId    = leadMetaAdId,
-                    ResolvedSource = resolved.Attribution.UtmSource,
+                    ResolvedSource = SourceBucketLabel(resolved.Attribution, classified),
                     ResolvedMedium = resolved.Attribution.UtmMedium,
-                    ResolvedCampaign = resolved.Attribution.UtmCampaign,
+                    ResolvedCampaign = CampaignBucketLabel(resolved.Attribution),
                     ResolvedUtmId = resolvedUtmId,
                     ResolvedContent = resolved.Attribution.UtmContent,
                     ResolvedTerm = resolved.Attribution.UtmTerm,
@@ -1253,7 +1308,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         IsPaid    = classified == TrafficType.PaidAds,
                         IsNonPaid = classified == TrafficType.Direct || classified == TrafficType.Organic || classified == TrafficType.Referral,
                         TrafficType = classified,
-                        ResolutionSource = resolved.ResolutionSource
+                        ResolutionSource = resolved.ResolutionSource,
+                        IsMetaAttributedPaid = isMetaAttributedPaid,
+                        ExcludedFromMetaLearningReadiness = excludedFromMetaLearning,
+                        MetaLearningReason = metaLearningReason
                     },
                     MetaTracking = metaTracking == null
                         ? null

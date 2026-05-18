@@ -32,6 +32,7 @@ public interface IMetaSignalAnalyticsService
 
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
+    private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
     private readonly MasterAppDbContext _db;
 
     public MetaSignalAnalyticsService(MasterAppDbContext db)
@@ -94,7 +95,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .Where(x => string.IsNullOrWhiteSpace(pageMode) || string.Equals(x.PageMode, pageMode.Trim(), StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var visitorSummariesBeforeScoreFilter = BuildVisitorSummaries(structurallyFilteredRows);
+        var visitorSummariesBeforeScoreFilter = BuildVisitorSummaries(structurallyFilteredRows.Where(IsMetaLearningEligible));
         var availableScoreTiers = visitorSummariesBeforeScoreFilter
             .Select(x => x.ScoreTier)
             .Where(x => !string.IsNullOrWhiteSpace(x))
@@ -139,6 +140,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var dashboard = await GetDashboardAsync(range, scope, trafficType, ct: ct);
         return new MetaSignalAiSummaryDto
         {
+            LearningScopeNote = dashboard.LearningScopeNote,
             TotalSignalEvents = dashboard.TotalSignalEvents,
             TotalVisitors = dashboard.TotalVisitors,
             HighIntentVisitors = dashboard.HighIntentVisitors,
@@ -167,7 +169,9 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         List<string> availablePageModes,
         List<string> availableScoreTiers)
     {
-        var visitorSummaries = BuildVisitorSummaries(rows);
+        var eligibleRows = rows.Where(IsMetaLearningEligible).ToList();
+        var excludedRows = rows.Where(x => !IsMetaLearningEligible(x)).ToList();
+        var visitorSummaries = BuildVisitorSummaries(eligibleRows);
         var highIntentVisitors = visitorSummaries.Count(x => x.IsHighIntent);
         var leadReadyVisitors = visitorSummaries.Count(x => x.IsLeadReady);
         var submittedVisitors = visitorSummaries.Count(x => x.LeadSubmitted);
@@ -175,7 +179,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var highIntentAbandons = visitorSummaries.Count(x => x.HighIntentAbandon && !x.LeadSubmitted);
         var contactStepAbandons = visitorSummaries.Count(x => x.ContactStepAbandon && !x.LeadSubmitted);
 
-        var eventsByQuoteType = rows
+        var eventsByQuoteType = eligibleRows
             .GroupBy(x => Normalize(x.QuoteType) ?? "unknown")
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
@@ -186,7 +190,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             })
             .ToList();
 
-        var eventsByCampaign = rows
+        var eventsByCampaign = eligibleRows
             .GroupBy(x => ResolveCampaignLabel(x) ?? "Unattributed")
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
@@ -207,7 +211,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             })
             .ToList();
 
-        var averageScoreByCampaign = rows
+        var averageScoreByCampaign = eligibleRows
             .GroupBy(x => ResolveCampaignLabel(x) ?? "Unattributed")
             .OrderByDescending(g => g.Average(x => x.TotalSignalScore))
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
@@ -218,7 +222,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             })
             .ToList();
 
-        var averageScoreByPageVariant = rows
+        var averageScoreByPageVariant = eligibleRows
             .GroupBy(x => Normalize(x.PageVariant) ?? Normalize(x.EffectivePageKey) ?? Normalize(x.PageKey) ?? "default")
             .OrderByDescending(g => g.Average(x => x.TotalSignalScore))
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
@@ -229,17 +233,21 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             })
             .ToList();
 
-        var ladder = BuildEventLadder(rows);
-        var frictionHotspots = BuildFrictionHotspots(rows);
-        var bestVariant = ResolveBestVariant(rows);
-        var recommendedOptimizationEvent = ResolveRecommendedOptimizationEvent(ladder, leadReadyVisitors, submittedVisitors, highIntentVisitors);
-        var worstFrictionStep = ResolveWorstFrictionStep(ladder, frictionHotspots);
+        var ladder = eligibleRows.Count == 0 ? new List<MetaSignalLadderRowDto>() : BuildEventLadder(eligibleRows);
+        var frictionHotspots = eligibleRows.Count == 0 ? new List<MetaSignalFrictionRowDto>() : BuildFrictionHotspots(eligibleRows);
+        var bestVariant = eligibleRows.Count == 0 ? "—" : ResolveBestVariant(eligibleRows);
+        var recommendedOptimizationEvent = eligibleRows.Count == 0
+            ? "No paid Meta-attributed funnel progression"
+            : ResolveRecommendedOptimizationEvent(ladder, leadReadyVisitors, submittedVisitors, highIntentVisitors);
+        var worstFrictionStep = eligibleRows.Count == 0 ? "—" : ResolveWorstFrictionStep(ladder, frictionHotspots);
 
         return new MetaSignalDashboardDto
         {
             RangeLabel = range.Label,
             TrafficFilterLabel = trafficFilterLabel,
-            TotalSignalEvents = rows.Count,
+            LearningScopeNote = LearningScopeNoteText,
+            HasEligiblePaidMetaTraffic = eligibleRows.Count > 0,
+            TotalSignalEvents = eligibleRows.Count,
             TotalVisitors = visitorSummaries.Count,
             HighIntentVisitors = highIntentVisitors,
             LeadReadyVisitors = leadReadyVisitors,
@@ -247,6 +255,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             SubmitAttemptsWithoutLead = submitAttemptsWithoutLead,
             HighIntentAbandons = highIntentAbandons,
             ContactStepAbandons = contactStepAbandons,
+            ExcludedSignalEvents = excludedRows.Count,
+            ExcludedSignalVisitors = CountDistinctVisitors(excludedRows),
             SignalToLeadConversionRate = visitorSummaries.Count == 0 ? 0 : Math.Round((submittedVisitors * 100m) / visitorSummaries.Count, 2),
             RecommendedOptimizationEvent = recommendedOptimizationEvent,
             BestPerformingLandingPageVersion = bestVariant,
@@ -261,7 +271,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             AverageScoreByCampaign = averageScoreByCampaign,
             AverageScoreByPageVariant = averageScoreByPageVariant,
             EventLadder = ladder,
-            FrictionHotspots = frictionHotspots
+            FrictionHotspots = frictionHotspots,
+            RecentDiagnostics = BuildRecentDiagnostics(rows)
         };
     }
 
@@ -404,7 +415,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             TrafficType.NonPaid => query.Where(x =>
                 x.TrafficType == nameof(TrafficType.Organic) ||
                 x.TrafficType == nameof(TrafficType.Direct) ||
-                x.TrafficType == nameof(TrafficType.Referral)),
+                x.TrafficType == nameof(TrafficType.Referral) ||
+                x.TrafficType == nameof(TrafficType.Unknown)),
             TrafficType.Organic => query.Where(x => x.TrafficType == nameof(TrafficType.Organic)),
             TrafficType.Direct => query.Where(x => x.TrafficType == nameof(TrafficType.Direct)),
             TrafficType.Referral => query.Where(x => x.TrafficType == nameof(TrafficType.Referral)),
@@ -413,11 +425,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         };
     }
 
-    private static string BuildTrafficFilterLabel(TrafficType trafficType) => trafficType switch
-    {
-        TrafficType.NonPaid => "Non-Ads Only (Organic + Referral + Direct)",
-        _ => TrafficAttribution.BucketLabel(trafficType)
-    };
+    private static string BuildTrafficFilterLabel(TrafficType trafficType) =>
+        TrafficAttribution.BucketLabel(trafficType);
 
     private static string ResolveFrictionLabel(MetaSignalEvent row)
     {
@@ -558,6 +567,93 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                Normalize(row.UtmId);
     }
 
+    private static List<MetaSignalDiagnosticEventRowDto> BuildRecentDiagnostics(IReadOnlyCollection<MetaSignalEvent> rows)
+    {
+        return rows
+            .OrderByDescending(x => x.CreatedUtc)
+            .Take(30)
+            .Select(row =>
+            {
+                var attribution = ResolveAttributionSnapshot(row);
+                var isMetaAttributedPaid = IsMetaAttributedPaid(attribution);
+                var excluded = !IsMetaLearningEligible(row);
+                var trafficType = Normalize(row.TrafficType) ?? "Unknown";
+                return new MetaSignalDiagnosticEventRowDto
+                {
+                    CreatedUtc = row.CreatedUtc,
+                    EventName = row.EventName,
+                    QuoteType = Normalize(row.QuoteType) ?? "unknown",
+                    CampaignLabel = ResolveCampaignLabel(row),
+                    TrafficType = trafficType,
+                    IsPaidMetaAttributed = isMetaAttributedPaid,
+                    IsNonPaidOrManual = !isMetaAttributedPaid && trafficType is nameof(TrafficType.Direct) or nameof(TrafficType.Organic) or nameof(TrafficType.Referral) or nameof(TrafficType.Unknown),
+                    ExcludedFromMetaLearningReadiness = excluded,
+                    BrowserPixelSent = row.MetaBrowserSent,
+                    ServerCapiSent = row.MetaServerSent,
+                    DeduplicationEventIdPresent = !string.IsNullOrWhiteSpace(row.EventId),
+                    MetaServerStatus = ReadStringMetadata(row.MetadataJson, "metaServerStatus"),
+                    LearningReason = ResolveLearningReason(row, attribution)
+                };
+            })
+            .ToList();
+    }
+
+    private static int CountDistinctVisitors(IEnumerable<MetaSignalEvent> rows) =>
+        rows.Select(GetVisitorKey)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+    private static MetaSignalAttributionSnapshot ResolveAttributionSnapshot(MetaSignalEvent row)
+    {
+        return new MetaSignalAttributionSnapshot(
+            Normalize(row.UtmSource) ?? ReadResolvedAttributionString(row.MetadataJson, "utmSource"),
+            Normalize(row.UtmMedium) ?? ReadResolvedAttributionString(row.MetadataJson, "utmMedium"),
+            Normalize(row.UtmCampaign) ?? ReadResolvedAttributionString(row.MetadataJson, "utmCampaign"),
+            Normalize(row.UtmId) ?? ReadResolvedAttributionString(row.MetadataJson, "utmId"),
+            ReadResolvedAttributionString(row.MetadataJson, "metaCampaignId"),
+            ReadResolvedAttributionString(row.MetadataJson, "metaAdSetId"),
+            ReadResolvedAttributionString(row.MetadataJson, "metaAdId"),
+            row.FbclidPresent ? "present" : null);
+    }
+
+    private static bool IsMetaAttributedPaid(MetaSignalAttributionSnapshot attribution) =>
+        TrafficAttribution.IsMetaAttributedPaid(
+            attribution.UtmSource,
+            attribution.UtmMedium,
+            attribution.UtmCampaign,
+            attribution.Fbclid,
+            attribution.MetaCampaignId,
+            attribution.MetaAdSetId,
+            attribution.MetaAdId);
+
+    private static bool IsMetaLearningEligible(MetaSignalEvent row)
+    {
+        if (!string.Equals(Normalize(row.PageMode), "paid_landing", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return IsMetaAttributedPaid(ResolveAttributionSnapshot(row));
+    }
+
+    private static string ResolveLearningReason(MetaSignalEvent row, MetaSignalAttributionSnapshot attribution)
+    {
+        if (!string.Equals(Normalize(row.PageMode), "paid_landing", StringComparison.OrdinalIgnoreCase))
+            return "Excluded: not a paid landing experience.";
+
+        if (IsMetaAttributedPaid(attribution))
+            return "Included: paid Meta-attributed traffic.";
+
+        return Normalize(row.TrafficType) switch
+        {
+            nameof(TrafficType.PaidAds) => "Excluded: paid traffic, but not Meta-attributed.",
+            nameof(TrafficType.Direct) => "Excluded: direct/manual traffic.",
+            nameof(TrafficType.Organic) => "Excluded: organic traffic.",
+            nameof(TrafficType.Referral) => "Excluded: referral/social traffic.",
+            nameof(TrafficType.Unknown) => "Excluded: unattributed traffic.",
+            _ => "Excluded from Meta learning readiness."
+        };
+    }
+
     private static string? ReadResolvedAttributionString(string? metadataJson, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
@@ -664,4 +760,14 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             LeadSubmitted ||
             LeadReadySignal;
     }
+
+    private sealed record MetaSignalAttributionSnapshot(
+        string? UtmSource,
+        string? UtmMedium,
+        string? UtmCampaign,
+        string? UtmId,
+        string? MetaCampaignId,
+        string? MetaAdSetId,
+        string? MetaAdId,
+        string? Fbclid);
 }

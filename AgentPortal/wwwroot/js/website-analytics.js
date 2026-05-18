@@ -50,7 +50,7 @@
       quoteModal: 'all',
       convModal: 'all',
       leadsModal: 'all',
-      metaSignalModal: 'all',
+      metaSignalModal: 'paid',
       aiReviewSnapshotModal: 'all',
       behaviorModal: 'all'
     },
@@ -901,6 +901,7 @@
 
   function trafficBadge(attribution) {
     if (!attribution) return '';
+    if (attribution.isMetaAttributedPaid) return '<span class="badge badge-paid">Meta Paid</span>';
     switch (attribution.trafficType) {
       case 'PaidAds': return '<span class="badge badge-paid">Paid Ads</span>';
       case 'Direct': return '<span class="badge badge-nonpaid">Direct</span>';
@@ -908,6 +909,14 @@
       case 'Referral': return '<span class="badge badge-nonpaid">Referral</span>';
       default: return '<span class="badge bg-secondary">Unknown</span>';
     }
+  }
+
+  function metaLearningBadge(attribution) {
+    if (!attribution) return '<span class="text-muted small">Meta learning: unknown</span>';
+    const label = attribution.excludedFromMetaLearningReadiness ? 'Excluded' : 'Included';
+    const tone = attribution.excludedFromMetaLearningReadiness ? 'text-warning' : 'text-success';
+    const reason = attribution.metaLearningReason ? `<div class="text-muted small">${escapeHtml(attribution.metaLearningReason)}</div>` : '';
+    return `<div class="${tone} small fw-semibold">Meta learning: ${label}</div>${reason}`;
   }
 
   function renderLeads(data) {
@@ -948,7 +957,7 @@
           <td>${escapeHtml(lead.interest || '—')}</td>
           <td>${escapeHtml(lead.leadSource || '—')}</td>
           <td>${escapeHtml(lead.resolvedSource || '—')}${leadAttributionIdSummary(lead)}</td>
-          <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span></td>
+          <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span>${metaLearningBadge(lead.attribution)}</td>
           <td class="text-center">${metaTrackingBadge(lead.metaTracking)}</td>
         </tr>
       `;
@@ -1009,7 +1018,8 @@
 
     const browserStatus = escapeHtml(metaTracking.browserPixelStatus || 'unknown');
     const serverStatus = escapeHtml(metaTracking.serverCapiStatus || 'unknown');
-    return `<span class="badge ${badgeClass}">${label}</span><div class="text-muted small">eid ${shortEventId}</div><div class="text-muted small">pixel ${shortPixelId} · ${pixelOwnerType}</div><div class="text-muted small">b:${browserStatus} / s:${serverStatus}</div>`;
+    const dedupLabel = metaTracking.metaLeadEventId ? 'yes' : 'no';
+    return `<span class="badge ${badgeClass}">${label}</span><div class="text-muted small">eid ${shortEventId} · dedup id ${dedupLabel}</div><div class="text-muted small">pixel ${shortPixelId} · ${pixelOwnerType}</div><div class="text-muted small">b:${browserStatus} / s:${serverStatus}</div>`;
   }
   // Maps each modal id to the badge <span> id that shows "Viewing: ..."
   const trafficTypeBadgeIds = {
@@ -1566,6 +1576,7 @@
   function renderMetaSignal(data) {
     state.cache.metaSignal = data;
     setText('metasignal-range-label', data.rangeLabel || '');
+    setText('metasignal-scope-note', data.learningScopeNote || '');
     setText('metasignal-total-events', data.totalSignalEvents ?? 0);
     setText('metasignal-total-visitors', data.totalVisitors ?? 0);
     setText('metasignal-high-intent', data.highIntentVisitors ?? 0);
@@ -1574,6 +1585,8 @@
     setText('metasignal-submit-attempts-no-lead', data.submitAttemptsWithoutLead ?? 0);
     setText('metasignal-high-intent-abandons', data.highIntentAbandons ?? 0);
     setText('metasignal-contact-abandons', data.contactStepAbandons ?? 0);
+    setText('metasignal-excluded-events', data.excludedSignalEvents ?? 0);
+    setText('metasignal-excluded-visitors', data.excludedSignalVisitors ?? 0);
     setText('metasignal-signal-conv', `${data.signalToLeadConversionRate ?? 0}%`);
     setText('metasignal-optimize', data.recommendedOptimizationEvent || '—');
     setText('metasignal-best-variant', data.bestPerformingLandingPageVersion || '—');
@@ -1604,14 +1617,33 @@
       { key: 'label' },
       { render: row => `${row.averageScore}`, align: 'text-end' }
     ]);
-    renderTable('metasignal-ladder-body', data.eventLadder || [], [
-      { key: 'stepLabel' },
-      { key: 'visitors', align: 'text-end' },
-      { render: row => row.progressionRate == null ? '—' : `${row.progressionRate}%`, align: 'text-end' }
-    ]);
+    if (!data.hasEligiblePaidMetaTraffic) {
+      setTableMessage(
+        'metasignal-ladder-body',
+        3,
+        'No paid Meta-attributed funnel progression exists in this slice. General website funnel activity may still appear in Quote Funnel and Conversion Center.',
+        'fa-empty'
+      );
+    } else {
+      renderTable('metasignal-ladder-body', data.eventLadder || [], [
+        { key: 'stepLabel' },
+        { key: 'visitors', align: 'text-end' },
+        { render: row => row.progressionRate == null ? '—' : `${row.progressionRate}%`, align: 'text-end' }
+      ]);
+    }
     renderTable('metasignal-friction-body', data.frictionHotspots || [], [
       { key: 'label' },
       { key: 'count', align: 'text-end' }
+    ]);
+    renderTable('metasignal-diagnostics-body', data.recentDiagnostics || [], [
+      { render: row => escapeHtml(formatDisplayDate(row.createdUtc) || '—') },
+      { render: row => `${escapeHtml(row.eventName || '—')}<div class="text-muted small">${escapeHtml(row.quoteType || '—')}</div>` },
+      { render: row => `${escapeHtml(row.trafficType || 'Unknown')}${row.campaignLabel ? `<div class="text-muted small">${escapeHtml(row.campaignLabel)}</div>` : ''}` },
+      { render: row => row.excludedFromMetaLearningReadiness ? '<span class="badge bg-warning text-dark">Excluded</span>' : '<span class="badge bg-success">Included</span>' },
+      { render: row => escapeHtml(row.learningReason || '—') },
+      { render: row => row.browserPixelSent ? '<span class="badge bg-primary">Sent</span>' : '<span class="badge bg-secondary">No</span>', align: 'text-center' },
+      { render: row => row.serverCapiSent ? '<span class="badge bg-info text-dark">Sent</span>' : '<span class="badge bg-secondary">No</span>', align: 'text-center' },
+      { render: row => row.deduplicationEventIdPresent ? '<span class="badge bg-success">Yes</span>' : '<span class="badge bg-secondary">No</span>', align: 'text-center' }
     ]);
   }
 
@@ -1630,6 +1662,7 @@
     } catch (err) {
       const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Intelligence.';
       setText('metasignal-range-label', 'Unavailable');
+      setText('metasignal-scope-note', message);
       [
         ['metasignal-quote-body', 2],
         ['metasignal-campaign-body', 2],
@@ -1637,7 +1670,8 @@
         ['metasignal-campaign-score-body', 2],
         ['metasignal-pagevariant-score-body', 2],
         ['metasignal-ladder-body', 3],
-        ['metasignal-friction-body', 2]
+        ['metasignal-friction-body', 2],
+        ['metasignal-diagnostics-body', 8]
       ].forEach(([id, colspan]) => setTableMessage(id, colspan, message, 'text-danger'));
       console.error(err);
     }

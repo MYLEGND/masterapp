@@ -47,6 +47,10 @@ namespace AgentPortal.Services.Analytics
             "facebook", "fb", "meta", "instagram", "tiktok", "youtube", "linkedin",
             "reddit", "x", "twitter", "pinterest", "nextdoor", "partner", "newsletter"
         };
+        private static readonly HashSet<string> MetaSources = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "facebook", "fb", "meta", "instagram", "facebook_ads", "instagram_ads", "meta_ads"
+        };
 
         private static string? Normalize(string? value) =>
             string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -66,15 +70,24 @@ namespace AgentPortal.Services.Analytics
             string? utmMedium,
             string? utmCampaign,
             string? fbclid,
-            string? referrerHost = null)
+            string? referrerHost = null,
+            string? metaCampaignId = null,
+            string? metaAdSetId = null,
+            string? metaAdId = null)
         {
             utmSource = Normalize(utmSource);
             utmMedium = Normalize(utmMedium);
             utmCampaign = Normalize(utmCampaign);
             fbclid = Normalize(fbclid);
             referrerHost = NormalizeHost(referrerHost);
+            metaCampaignId = Normalize(metaCampaignId);
+            metaAdSetId = Normalize(metaAdSetId);
+            metaAdId = Normalize(metaAdId);
 
-            if (!string.IsNullOrWhiteSpace(fbclid))
+            if (!string.IsNullOrWhiteSpace(fbclid) ||
+                !string.IsNullOrWhiteSpace(metaCampaignId) ||
+                !string.IsNullOrWhiteSpace(metaAdSetId) ||
+                !string.IsNullOrWhiteSpace(metaAdId))
                 return TrafficType.PaidAds;
 
             if (!string.IsNullOrWhiteSpace(utmMedium))
@@ -108,6 +121,36 @@ namespace AgentPortal.Services.Analytics
             }
 
             return TrafficType.Unknown;
+        }
+
+        public static bool IsMetaAttributedPaid(
+            string? utmSource,
+            string? utmMedium,
+            string? utmCampaign,
+            string? fbclid,
+            string? metaCampaignId = null,
+            string? metaAdSetId = null,
+            string? metaAdId = null)
+        {
+            var source = Normalize(utmSource);
+            var medium = Normalize(utmMedium);
+
+            if (!string.IsNullOrWhiteSpace(Normalize(fbclid)) ||
+                !string.IsNullOrWhiteSpace(Normalize(metaCampaignId)) ||
+                !string.IsNullOrWhiteSpace(Normalize(metaAdSetId)) ||
+                !string.IsNullOrWhiteSpace(Normalize(metaAdId)))
+            {
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(source) &&
+                MetaSources.Contains(source) &&
+                (string.IsNullOrWhiteSpace(medium) || PaidMediums.Contains(medium)))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         public static bool MatchesFilter(TrafficType rowType, TrafficType filter)
