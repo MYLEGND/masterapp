@@ -759,17 +759,28 @@
 </div>
 
 <div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h5 class="modal-title mb-0">Behavior Intelligence</h5>
-          <div class="fa-muted small" id="bhvr-range-label"></div>
-          <div class="fa-muted small">Methodology update: timing/exit metrics changed in April 2026; prior snapshots may not be directly comparable.</div>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Journey Read</div>
+            <h5 class="modal-title mb-0">Behavior Intelligence</h5>
+            <div class="wa-modal-subtitle">Read dwell time, exits, session depth, and source quality in one place before deciding where friction is actually happening.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="bhvr-range-label"></span>
+            </div>
+            <div class="wa-modal-note-chip">Methodology updated April 2026</div>
+          </div>
         </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <div class="wa-modal-note">Timing and exit metrics changed in April 2026, so older snapshots may not compare one-for-one with the current view.</div>
+        <section class="wa-modal-section wa-modal-tabs-section">
 
         <!-- Tab Nav -->
         <ul class="nav nav-tabs bhvr-tabs d-flex mb-0" id="bhvr-nav" role="tablist">
@@ -969,8 +980,9 @@
           </div>
 
         </div><!-- /tab-content -->
+        </section>
       </div>
-      <div class="modal-footer border-0 justify-content-between">
+      <div class="modal-footer wa-modal-footer border-0 justify-content-between">
         <button class="btn btn-sm fa-export-btn" id="export-behavior">Export Sources CSV</button>
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
@@ -979,21 +991,34 @@
 </div>
 
 <div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">Traffic Overview · <span id="traffic-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Reach</div>
+            <h5 class="modal-title mb-0">Traffic Overview</h5>
+            <div class="wa-modal-subtitle">See where sessions are entering, which sources are feeding them, and what recent activity is defining the current traffic mix.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="traffic-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="traffic-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="traffic-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="row g-3">
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Pages</h6>
@@ -1031,7 +1056,8 @@
             <thead><tr><th>When (Local)</th><th>Event</th><th>Page</th><th>Element</th></tr></thead>
             <tbody id="traffic-activity-body"></tbody>
         </table>
-        </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>
@@ -1039,18 +1065,33 @@
 @if(isFounder)
 {
 <div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Agent Performance · <span id="agentperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Founder View</div>
+            <h5 class="modal-title mb-0">Agent Performance</h5>
+            <div class="wa-modal-subtitle">Compare lead volume, conversion quality, and source strength across agents without leaving the analytics workbench.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="agentperf-range-label"></span>
+            </div>
+            <div class="wa-modal-note-chip">Founder-only comparison</div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="fa-muted mb-2">Founder-only cross-agent comparison. Low-sample rows are flagged.</div>
         <table class="table table-sm align-middle">
             <thead><tr><th>Agent</th><th>Slug</th><th class="text-end">Leads</th><th class="text-end">Conversions</th><th class="text-end">Session Conv</th><th class="text-end">Intent Conv</th><th>Top Source</th><th>Notes</th></tr></thead>
             <tbody id="agentperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
@@ -1058,71 +1099,112 @@
 }
 
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">Page Performance · <span id="pageperf-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Destinations</div>
+            <h5 class="modal-title mb-0">Page Performance</h5>
+            <div class="wa-modal-subtitle">Compare view volume, CTA engagement, and lead yield page by page to see which destinations are doing real work.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="pageperf-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="pageperf-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="pageperf-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <table class="table table-sm">
             <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Lead / View %</th></tr></thead>
             <tbody id="pageperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">CTA Performance · <span id="ctaperf-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Actions</div>
+            <h5 class="modal-title mb-0">CTA Performance</h5>
+            <div class="wa-modal-subtitle">Review which calls to action are earning clicks, unique sessions, and real downstream lead outcomes.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="ctaperf-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="ctaperf-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="ctaperf-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <table class="table table-sm">
             <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Raw Clicks</th><th class="text-end">Unique Click Sessions</th><th class="text-end">Leads</th><th class="text-end">Click→Lead %</th></tr></thead>
             <tbody id="ctaperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">Quote Funnel · <span id="quote-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Funnel Read</div>
+            <h5 class="modal-title mb-0">Quote Funnel</h5>
+            <div class="wa-modal-subtitle">Move from top-line starts to stage progression and abandonment signals without losing the session-level story.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="quote-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="quote-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="quote-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section wa-modal-tabs-section">
         <ul class="nav nav-tabs mb-3" id="quoteTabs" role="tablist">
           <li class="nav-item" role="presentation">
             <button class="nav-link active" id="quote-funnel-tab" data-bs-toggle="tab" data-bs-target="#quote-funnel-panel" type="button" role="tab">Funnel</button>
@@ -1191,27 +1273,41 @@
             <div class="small text-muted" id="abandon-consent-note"></div>
           </div>
         </div>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">Conversion Center · <span id="conv-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Lead Audit</div>
+            <h5 class="modal-title mb-0">Conversion Center</h5>
+            <div class="wa-modal-subtitle">Confirm whether traffic is turning into intent, sessions are turning into leads, and server-confirmed outcomes are keeping pace.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="conv-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="conv-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="conv-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
             <div>
                 <div class="fa-kpi-title">Intent Conversion</div>
@@ -1236,27 +1332,41 @@
             <thead><tr><th>When (Local)</th><th>Event</th><th>Page</th><th>CTA</th></tr></thead>
             <tbody id="conv-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <h5 class="modal-title">Leads Snapshot · <span id="leads-range-label"></span></h5>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Operations</div>
+            <h5 class="modal-title mb-0">Leads Snapshot</h5>
+            <div class="wa-modal-subtitle">Review the latest captured leads with attribution context, source resolution, and Meta tracking details in one operational view.</div>
           </div>
-          <span class="badge bg-secondary ms-2" id="leads-active-mode">Viewing: All Traffic</span>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="leads-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="leads-active-mode">Viewing: All Traffic</span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fa-kpi-title">Total Leads</div>
             <div class="d-flex align-items-center gap-3">
@@ -1274,6 +1384,7 @@
           <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Lead Source</th><th>Resolved Source</th><th>Attribution</th><th>Meta Tracking</th></tr></thead>
           <tbody id="leads-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
@@ -1286,22 +1397,27 @@
 </div>
 
 <div class="modal fade fa-modal" id="deleteLeadConfirmModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h5 class="modal-title mb-1">Delete lead?</h5>
-          <div class="fa-muted small">This should only be used for test leads. This action cannot be undone.</div>
+  <div class="modal-dialog modal-dialog-centered wa-modal-dialog wa-modal-dialog-compact">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Admin Action</div>
+            <h5 class="modal-title mb-1">Delete lead?</h5>
+            <div class="wa-modal-subtitle">Only use this for test leads. This action is permanent and the removed lead will be excluded from analytics.</div>
+          </div>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="wa-delete-lead-target d-none" id="delete-lead-target"></div>
         <label class="form-label small text-uppercase fw-bold text-warning" for="delete-lead-reason">Delete Reason</label>
         <input type="text" class="form-control" id="delete-lead-reason" maxlength="500" placeholder="Test lead cleanup" />
         <div class="fa-muted small mt-2">Optional. Leave blank to use “Test lead cleanup.”</div>
+        </section>
       </div>
-      <div class="modal-footer border-0">
+      <div class="modal-footer wa-modal-footer border-0">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-gold" id="confirm-delete-lead-btn">Yes, delete lead</button>
       </div>
@@ -1311,27 +1427,32 @@
 }
 
 <div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div>
-          <h5 class="modal-title mb-1">AI Review Snapshot</h5>
-          <div class="fa-muted small">A clean copy-ready performance summary for the current analytics range and scope, including active campaign performance. No data is sent anywhere until you choose to paste it externally.</div>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Operator Brief</div>
+            <h5 class="modal-title mb-1">AI Review Snapshot</h5>
+            <div class="wa-modal-subtitle">A clean, copy-ready performance summary for the current range and scope. Nothing is sent anywhere until you choose to paste it externally.</div>
+          </div>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        <div class="d-flex flex-wrap align-items-center gap-3 mb-2 small">
-          <div><span class="text-warning">Generated:</span> <span id="ai-snapshot-generated">—</span></div>
-          <div><span class="text-warning">Range:</span> <span id="ai-snapshot-range">—</span></div>
-          <div><span class="text-warning">Scope:</span> <span id="ai-snapshot-scope">—</span></div>
-          <div><span class="text-warning">Traffic:</span> <span id="ai-snapshot-traffic">—</span></div>
-        </div>
-        <div class="fa-muted small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
-        <div id="ai-snapshot-render" aria-live="polite"></div>
-        <textarea id="ai-snapshot-text" class="d-none" rows="22" readonly spellcheck="false"></textarea>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+          <div class="wa-modal-meta-strip mb-2 small">
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Generated</span><span class="wa-modal-meta-value" id="ai-snapshot-generated">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Range</span><span class="wa-modal-meta-value" id="ai-snapshot-range">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Scope</span><span class="wa-modal-meta-value" id="ai-snapshot-scope">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Traffic</span><span class="wa-modal-meta-value" id="ai-snapshot-traffic">—</span></div>
+          </div>
+          <div class="fa-muted small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
+          <div id="ai-snapshot-render" aria-live="polite"></div>
+          <textarea id="ai-snapshot-text" class="d-none" rows="22" readonly spellcheck="false"></textarea>
+        </section>
       </div>
-      <div class="modal-footer border-0 justify-content-between">
+      <div class="modal-footer wa-modal-footer border-0 justify-content-between">
         <button type="button" class="btn btn-sm fa-export-btn" id="ai-snapshot-copy">Copy</button>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-outline-light" id="ai-snapshot-refresh">Refresh</button>
@@ -1343,19 +1464,32 @@
 </div>
 
 <div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable meta-campaigns-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <div class="d-flex align-items-center gap-2">
-            <h5 class="modal-title mb-0">Meta Ads Campaigns · <span id="meta-campaigns-range-label"></span></h5>
-            <span class="fa-chip d-none" id="meta-campaigns-account-chip">Not connected</span>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable meta-campaigns-dialog wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Paid Media</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h5 class="modal-title mb-0">Meta Ads Campaigns</h5>
+                <span class="fa-chip d-none" id="meta-campaigns-account-chip">Not connected</span>
+            </div>
+            <div class="wa-modal-subtitle">Compare Meta-reported campaign performance against server-confirmed website leads and look for attribution gaps worth investigating.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="meta-campaigns-range-label"></span>
+            </div>
+          </div>
         </div>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div class="fa-muted">Account: <span class="fa-meta-strong" id="meta-campaigns-account">—</span></div>
-            <div class="fa-muted">Last sync: <span id="meta-campaigns-synced">—</span></div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+        <div class="wa-modal-meta-strip mb-3">
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Account</span><span class="wa-modal-meta-value fa-meta-strong" id="meta-campaigns-account">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Last Sync</span><span class="wa-modal-meta-value" id="meta-campaigns-synced">—</span></div>
         </div>
         <div class="alert alert-warning small py-2 px-3 mb-3" id="meta-campaigns-note">
             Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay. Campaign date ranges are aligned to the Meta account timezone when available.
@@ -1387,6 +1521,7 @@
                 </tbody>
             </table>
         </div>
+        </section>
       </div>
     </div>
   </div>
