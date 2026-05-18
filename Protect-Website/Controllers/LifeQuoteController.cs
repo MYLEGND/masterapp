@@ -375,13 +375,15 @@ namespace Protect_Website.Controllers
                     var userCredential  = new ClientSecretCredential(tenantId, clientId, clientSecret);
                     var userGraphClient = new GraphServiceClient(userCredential);
 
+                    var attachedAgentFirstName = (await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None))?.FirstName;
+
                     var userMessage = new Message
                     {
                         Subject = $"Your Recommendation Summary — {websiteName}",
                         Body = new ItemBody
                         {
                             ContentType = BodyType.Html,
-                            Content = BuildUserSummaryEmailBody(model, cfg)
+                            Content = BuildUserSummaryEmailBody(model, cfg, attachedAgentFirstName)
                         },
                         ToRecipients = new List<Recipient>
                         {
@@ -767,7 +769,7 @@ namespace Protect_Website.Controllers
             return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
 
-        private static string BuildUserSummaryEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
+        private static string BuildUserSummaryEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg, string? attachedAgentFirstName)
         {
             // Resolve a human-readable label for a code value using the step options.
             static string? ResolveLabel(IReadOnlyList<LifeWizardOption>? options, string? code)
@@ -797,8 +799,14 @@ namespace Protect_Website.Controllers
             rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
 
             rows.Section("What Happens Next");
+            var hasAttachedAgentFirstName =
+                !string.IsNullOrWhiteSpace(attachedAgentFirstName) &&
+                !string.Equals(attachedAgentFirstName.Trim(), "there", StringComparison.OrdinalIgnoreCase);
+            var nextStepContactName = hasAttachedAgentFirstName
+                ? attachedAgentFirstName!.Trim()
+                : "One of our licensed representatives";
             rows.RowHtml("", @"<div style=""color:rgba(249,250,251,0.78);font-size:14px;line-height:1.6;"">
-  One of our licensed representatives will be in touch shortly to walk you through your options
+  " + WebUtility.HtmlEncode(nextStepContactName) + @" will be in touch shortly to walk you through your options
   and answer any questions you may have. There is no obligation — just a straightforward
   conversation about what may fit your situation.
 </div>");
