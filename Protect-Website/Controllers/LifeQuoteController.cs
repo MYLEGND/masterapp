@@ -26,6 +26,9 @@ namespace Protect_Website.Controllers
     public class LifeQuoteController : Controller
     {
         private static readonly IReadOnlyDictionary<string, LifeWizardConfig> WizardConfigs = BuildConfigs();
+        private const string WebsitePageVariant = "website";
+        private const string LandingPageVariant = "landing";
+        private const string EmotionalContinuityLandingVariant = "emotional_continuity_v1";
 
         private readonly string tenantId;
         private readonly string clientId;
@@ -102,7 +105,11 @@ namespace Protect_Website.Controllers
         private async Task<IActionResult> RenderWizard(string offerKey, bool isLandingPage = false)
         {
             var cfg = GetWizardConfig(offerKey);
-            var mode = ResolvePageMode(cfg, isLandingPage, model: null);
+            var mode = ResolvePageMode(
+                cfg,
+                isLandingPage,
+                model: null,
+                requestedLandingVariant: isLandingPage ? ResolveLandingVariantFromRequest(cfg) : null);
             var vm = await BuildWizardViewModelAsync(cfg, new LifeQuoteFormModel
             {
                 FirstName = "",
@@ -119,7 +126,7 @@ namespace Protect_Website.Controllers
         private async Task<IActionResult> SubmitInternal(LifeQuoteFormModel model, string offerKey)
         {
             var cfg = GetWizardConfig(offerKey);
-            var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
+            var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
@@ -1101,29 +1108,103 @@ namespace Protect_Website.Controllers
             };
         }
 
-        private static string BuildVariantPageKey(string basePageKey, bool isLandingPage) =>
-            isLandingPage ? $"{basePageKey}_landing" : basePageKey;
-
-        private static WizardPageMode ResolvePageMode(LifeWizardConfig cfg, bool isLandingPage, LifeQuoteFormModel? model)
+        private string? ResolveLandingVariantFromRequest(LifeWizardConfig cfg)
         {
-            var requestedVariant = model?.PageVariant?.Trim();
+            var requestedVariant = Request?.Query["variant"].ToString();
+            return NormalizeLandingVariantToken(requestedVariant, cfg.OfferKey);
+        }
+
+        private static string BuildVariantPageKey(string basePageKey, bool isLandingPage, string? landingVariant = null)
+        {
+            if (!isLandingPage)
+                return basePageKey;
+
+            var normalizedLandingVariant = NormalizeLandingVariantKey(landingVariant);
+            return string.IsNullOrWhiteSpace(normalizedLandingVariant) ||
+                   string.Equals(normalizedLandingVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase)
+                ? $"{basePageKey}_landing"
+                : $"{basePageKey}_landing_{normalizedLandingVariant}";
+        }
+
+        private static WizardPageMode ResolvePageMode(
+            LifeWizardConfig cfg,
+            bool isLandingPage,
+            LifeQuoteFormModel? model,
+            string? requestedLandingVariant)
+        {
+            var postedVariant = NormalizeLandingVariantToken(model?.PageVariant, cfg.OfferKey);
             var requestedMode = model?.PageMode?.Trim();
             var postedPageKey = model?.PageKey?.Trim();
             var landingRoutePath = GetLandingRoutePath(cfg.OfferKey);
+            var inferredLandingVariant = InferLandingVariantFromPageKey(cfg.PageKey, postedPageKey, cfg.OfferKey);
+            var resolvedLandingVariant =
+                NormalizeLandingVariantToken(requestedLandingVariant, cfg.OfferKey) ??
+                postedVariant ??
+                inferredLandingVariant;
+            var resolvedPaidLandingVariant = string.Equals(resolvedLandingVariant, WebsitePageVariant, StringComparison.OrdinalIgnoreCase)
+                ? null
+                : resolvedLandingVariant;
 
             var isLandingRequested =
                 isLandingPage ||
-                string.Equals(requestedVariant, "landing", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(requestedMode, "paid_landing", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(postedPageKey, BuildVariantPageKey(cfg.PageKey, true), StringComparison.OrdinalIgnoreCase) ||
+                !string.IsNullOrWhiteSpace(resolvedPaidLandingVariant) ||
                 IsLandingRouteForOffer(model?.LandingPageUrl, landingRoutePath);
+
+            var pageVariant = isLandingRequested
+                ? resolvedPaidLandingVariant ?? LandingPageVariant
+                : WebsitePageVariant;
 
             return new WizardPageMode(
                 IsLandingPage: isLandingRequested,
-                PageVariant: isLandingRequested ? "landing" : "website",
+                PageVariant: pageVariant,
                 PageMode: isLandingRequested ? "paid_landing" : "site_mode",
-                EffectivePageKey: BuildVariantPageKey(cfg.PageKey, isLandingRequested)
+                EffectivePageKey: BuildVariantPageKey(cfg.PageKey, isLandingRequested, pageVariant)
             );
+        }
+
+        private static string? InferLandingVariantFromPageKey(string basePageKey, string? pageKey, string offerKey)
+        {
+            if (string.IsNullOrWhiteSpace(pageKey))
+                return null;
+
+            var normalizedPageKey = pageKey.Trim();
+            var landingPrefix = $"{basePageKey}_landing";
+            if (string.Equals(normalizedPageKey, landingPrefix, StringComparison.OrdinalIgnoreCase))
+                return LandingPageVariant;
+
+            if (!normalizedPageKey.StartsWith(landingPrefix + "_", StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var suffix = normalizedPageKey[(landingPrefix.Length + 1)..];
+            return NormalizeLandingVariantToken(suffix, offerKey);
+        }
+
+        private static string? NormalizeLandingVariantToken(string? variant, string offerKey)
+        {
+            var normalizedVariant = NormalizeLandingVariantKey(variant);
+            if (string.IsNullOrWhiteSpace(normalizedVariant))
+                return null;
+
+            if (string.Equals(normalizedVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase))
+                return LandingPageVariant;
+
+            if (string.Equals(normalizedVariant, WebsitePageVariant, StringComparison.OrdinalIgnoreCase))
+                return WebsitePageVariant;
+
+            return string.Equals(LifeOfferResolver.Normalize(offerKey), LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(normalizedVariant, EmotionalContinuityLandingVariant, StringComparison.OrdinalIgnoreCase)
+                ? EmotionalContinuityLandingVariant
+                : null;
+        }
+
+        private static string? NormalizeLandingVariantKey(string? variant)
+        {
+            if (string.IsNullOrWhiteSpace(variant))
+                return null;
+
+            var normalized = variant.Trim().ToLowerInvariant();
+            return normalized.Length == 0 ? null : normalized;
         }
 
         private static bool IsLandingRouteForOffer(string? landingPageUrl, string landingRoutePath)
