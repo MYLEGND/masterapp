@@ -166,9 +166,7 @@
         agentTrackingProfileId = agentTrustProfile != null ? agentTrustProfile.AgentTrackingProfileId.ToString() : null,
         agentSlug,
         formId = "lifeWizardForm",
-        requiredContactFields = usesLeanContactFields
-            ? new[] { "FirstName", "LastName", "Phone", "Email" }
-            : new[] { "FirstName", "LastName", "Phone", "Email", "State" },
+        requiredContactFields = new[] { "FirstName", "Phone" },
         weights = metaSignalOptions.Weights
     });
 }
@@ -1700,9 +1698,9 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="LastName">Last Name <span style="color:#f87171">*</span></label>
+                                <label for="LastName">Last Name (optional)</label>
                                 <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
-                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
+                                <div class="lq-field-err" id="err-LastName"></div>
                             </div>
                         </div>
                         <div class="lq-field-row two full">
@@ -1712,16 +1710,16 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Email">Email <span style="color:#f87171">*</span></label>
+                                <label for="Email">Email (optional)</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
-                                <div class="lq-field-err" id="err-Email">Please enter your email.</div>
+                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
                         </div>
                         @if (!usesLeanContactFields)
                         {
                             <div class="lq-field-row full">
                                 <div class="lq-field">
-                                    <label for="State">What state do you live in? (Optional) <span style="color:#f87171">*</span></label>
+                                    <label for="State">What state do you live in? (optional)</label>
                                     <select id="State" name="State" class="form-select" autocomplete="address-level1" data-selected="@form.State">
                                         <option value="">Select your state</option>
                                         <option value="AL">Alabama</option>
@@ -1776,7 +1774,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                                         <option value="WI">Wisconsin</option>
                                         <option value="WY">Wyoming</option>
                                     </select>
-                                    <div class="lq-field-err" id="err-State">Please select your state.</div>
+                                    <div class="lq-field-err" id="err-State"></div>
                                 </div>
                             </div>
                         }
@@ -1845,7 +1843,8 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
   const ageRangeInputs = Array.from(form.querySelectorAll('input[name="AgeBracket"]'));
-  const requiredContactFields = usesLeanContactFields
+  const requiredContactFields = ['FirstName', 'Phone'];
+  const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
@@ -1870,7 +1869,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     stateSelect.value = stateSelect.dataset.selected;
   }
 
-  requiredContactFields.forEach((name) => {
+  contactFieldNames.forEach((name) => {
     const el = form.querySelector(`[name="${name}"]`);
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
       return;
@@ -2197,14 +2196,26 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     }
 
     const value = asTrimmed(el.value);
+    if (name === 'Email') {
+      if (!value) {
+        return '';
+      }
+
+      if (el instanceof HTMLInputElement && !el.checkValidity()) {
+        return 'Please enter a valid email address.';
+      }
+
+      return '';
+    }
+
+    if (name === 'LastName') {
+      return '';
+    }
+
     if (!value) {
       return name === 'State'
         ? 'Please select your state.'
         : `Please enter your ${name === 'Email' ? 'email' : name === 'Phone' ? 'phone' : name === 'FirstName' ? 'first name' : 'last name'}.`;
-    }
-
-    if (name === 'Email' && el instanceof HTMLInputElement && !el.checkValidity()) {
-      return 'Please enter a valid email address.';
     }
 
     return '';
@@ -2223,6 +2234,15 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
         clearFieldError(name);
       }
     });
+
+    const optionalEmailError = getContactFieldError('Email');
+    if (optionalEmailError) {
+      setFieldError('Email', optionalEmailError);
+      metaSignal?.trackFieldError('Email', { fieldContext: 'contact' });
+      firstInvalid ??= form.querySelector('[name="Email"]');
+    } else {
+      clearFieldError('Email');
+    }
 
     if (focusFirst && firstInvalid instanceof HTMLElement) {
       firstInvalid.focus();

@@ -6,18 +6,16 @@ namespace Protect_Website.Models
     {
         // ===================== PERSONAL INFO =====================
         [Required(ErrorMessage = "First Name is required")]
-        public required string FirstName { get; set; }
+        public string FirstName { get; set; } = "";
 
-        [Required(ErrorMessage = "Last Name is required")]
-        public required string LastName { get; set; }
+        public string? LastName { get; set; }
 
-        [Required(ErrorMessage = "Email is required")]
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public string? Email { get; set; }
 
         [Required(ErrorMessage = "Phone is required")]
         [Phone(ErrorMessage = "Invalid phone number")]
-        public required string Phone { get; set; }
+        public string Phone { get; set; } = "";
 
         public string? State { get; set; }
 

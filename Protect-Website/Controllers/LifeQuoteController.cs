@@ -121,6 +121,18 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model);
             NormalizeDiscoveryAnswers(model);
+            if (string.IsNullOrWhiteSpace(model.LastName))
+            {
+                model.LastName = null;
+                ModelState.Remove(nameof(LifeQuoteFormModel.LastName));
+            }
+
+            if (string.IsNullOrWhiteSpace(model.Email))
+            {
+                model.Email = null;
+                ModelState.Remove(nameof(LifeQuoteFormModel.Email));
+            }
+
             if (model.Age.HasValue && (model.Age.Value < 18 || model.Age.Value > 85))
             {
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.Age), "Age must be between 18 and 85.");
