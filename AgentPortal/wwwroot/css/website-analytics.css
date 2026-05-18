@@ -3339,8 +3339,12 @@ body {
 }
 
 .fa-modules {
-    gap: .75rem;
+    gap: .95rem .8rem;
     margin-top: 0;
+}
+
+.fa-modules + .fa-modules {
+    margin-top: .95rem;
 }
 
 .fa-modules-priority {
@@ -3352,9 +3356,9 @@ body {
 }
 
 .fa-module {
-    gap: .55rem;
-    min-height: 128px;
-    padding: .88rem .95rem .78rem;
+    gap: .4rem;
+    min-height: 106px;
+    padding: .72rem .82rem .66rem;
     border-radius: 14px;
     box-shadow:
         0 16px 30px rgba(0,0,0,.18),
@@ -3377,7 +3381,7 @@ body {
 }
 
 .fa-module-head {
-    gap: .5rem;
+    gap: .35rem;
 }
 
 .fa-module-kicker {
@@ -3388,8 +3392,8 @@ body {
 
 .fa-module h5,
 .fa-module-support h5 {
-    font-size: 1rem;
-    line-height: 1.12;
+    font-size: .96rem;
+    line-height: 1.08;
 }
 
 .fa-module-sequence {
@@ -3400,17 +3404,17 @@ body {
 
 .fa-module-feature,
 .fa-module-support {
-    min-height: 128px;
+    min-height: 106px;
 }
 
 .fa-module .fa-module-meta,
 .fa-module-feature .fa-module-meta {
-    font-size: .78rem !important;
-    line-height: 1.32;
+    font-size: .74rem !important;
+    line-height: 1.22;
 }
 
 .fa-trend-bar {
-    margin-top: auto;
+    margin-top: .38rem;
     height: 4px;
 }
 
