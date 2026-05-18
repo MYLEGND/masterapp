@@ -7,8 +7,8 @@ public sealed class MetaSignalIntelligenceOptions
     public bool SendServerEvents { get; set; } = true;
     public bool PersistEvents { get; set; } = true;
     public bool DebugMode { get; set; }
-    public int HighIntentThreshold { get; set; } = 60;
-    public int LeadReadyThreshold { get; set; } = 80;
+    public int HighIntentThreshold { get; set; } = 70;
+    public int LeadReadyThreshold { get; set; } = 90;
     public MetaSignalScoreWeights Weights { get; set; } = new();
 }
 

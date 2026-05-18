@@ -238,6 +238,7 @@ public sealed class MetaSignalAiPayload
     public int HighIntentVisitors { get; set; }
     public int LeadReadyVisitors { get; set; }
     public int SubmittedLeads { get; set; }
+    public int SubmitAttemptsWithoutLead { get; set; }
     public int HighIntentAbandons { get; set; }
     public int ContactStepAbandons { get; set; }
     public decimal SignalToLeadConversionRate { get; set; }

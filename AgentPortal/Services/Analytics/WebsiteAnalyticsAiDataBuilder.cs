@@ -191,6 +191,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                 HighIntentVisitors = metaSignal.HighIntentVisitors,
                 LeadReadyVisitors = metaSignal.LeadReadyVisitors,
                 SubmittedLeads = metaSignal.SubmittedLeads,
+                SubmitAttemptsWithoutLead = metaSignal.SubmitAttemptsWithoutLead,
                 HighIntentAbandons = metaSignal.HighIntentAbandons,
                 ContactStepAbandons = metaSignal.ContactStepAbandons,
                 SignalToLeadConversionRate = metaSignal.SignalToLeadConversionRate,

@@ -1430,6 +1430,7 @@ namespace AgentPortal.Controllers;
             Line($"High-intent visitors: {metaSignal.HighIntentVisitors}");
             Line($"Lead-ready visitors: {metaSignal.LeadReadyVisitors}");
             Line($"Submitted leads: {metaSignal.SubmittedLeads}");
+            Line($"Submit attempts without confirmed lead: {metaSignal.SubmitAttemptsWithoutLead}");
             Line($"High-intent abandons: {metaSignal.HighIntentAbandons}");
             Line($"Contact-step abandons: {metaSignal.ContactStepAbandons}");
             Line($"Signal-to-lead conversion: {metaSignal.SignalToLeadConversionRate:0.##}%");

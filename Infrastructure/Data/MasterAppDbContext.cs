@@ -342,6 +342,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.HasIndex(x => x.LeadId);
             e.HasIndex(x => x.QuoteType);
             e.HasIndex(x => x.EventName);
+            e.HasIndex(x => x.PageMode);
             e.HasIndex(x => x.ScoreTier);
             e.HasIndex(x => x.TrafficType);
             e.HasIndex(x => x.UtmCampaign);

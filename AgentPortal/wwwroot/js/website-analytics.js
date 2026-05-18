@@ -1571,6 +1571,7 @@
     setText('metasignal-high-intent', data.highIntentVisitors ?? 0);
     setText('metasignal-lead-ready', data.leadReadyVisitors ?? 0);
     setText('metasignal-submitted', data.submittedLeads ?? 0);
+    setText('metasignal-submit-attempts-no-lead', data.submitAttemptsWithoutLead ?? 0);
     setText('metasignal-high-intent-abandons', data.highIntentAbandons ?? 0);
     setText('metasignal-contact-abandons', data.contactStepAbandons ?? 0);
     setText('metasignal-signal-conv', `${data.signalToLeadConversionRate ?? 0}%`);

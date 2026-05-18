@@ -575,7 +575,10 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 !string.IsNullOrWhiteSpace(x.UtmMedium) ||
                 !string.IsNullOrWhiteSpace(x.UtmCampaign) ||
                 !string.IsNullOrWhiteSpace(x.UtmId) ||
-                x.FbclidPresent)
+                x.FbclidPresent ||
+                !string.IsNullOrWhiteSpace(ReadResolvedAttributionValue(x.MetadataJson, "metaCampaignId")) ||
+                !string.IsNullOrWhiteSpace(ReadResolvedAttributionValue(x.MetadataJson, "metaAdSetId")) ||
+                !string.IsNullOrWhiteSpace(ReadResolvedAttributionValue(x.MetadataJson, "metaAdId")))
             .OrderBy(x => x.CreatedUtc)
             .Select(ResolvedAttribution.FromEvent)
             .FirstOrDefault(x => x.HasSignal);
@@ -767,11 +770,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             friction += w.HighIntentAbandon;
 
         var intentScore = Math.Clamp(qualification + (int)Math.Round(engagement * 0.4m) + friction, 0, 120);
-        var totalScore = Math.Clamp(engagement + qualification + friction, 0, 120);
-        if (!state.LeadSubmitted)
-            totalScore = Math.Min(99, totalScore);
-        else
-            totalScore = Math.Max(100, totalScore);
+        var totalScore = ApplyBehaviorScoreCap(Math.Clamp(engagement + qualification + friction, 0, 120), state);
 
         return new MetaSignalScoreResult
         {
@@ -780,8 +779,25 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             QualificationScore = qualification,
             FrictionScore = friction,
             TotalSignalScore = totalScore,
-            ScoreTier = ResolveScoreTier(totalScore)
+            ScoreTier = ResolveScoreTier(state)
         };
+    }
+
+    private static int ApplyBehaviorScoreCap(int totalScore, SignalAccumulator state)
+    {
+        if (state.LeadSubmitted)
+            return Math.Max(100, totalScore);
+        if (state.SubmitAttempted || state.RequiredContactFieldsCompleted)
+            return Math.Min(99, totalScore);
+        if (state.ContactStepReached || state.ContactInputStarted || state.PhoneCompleted)
+            return Math.Min(89, totalScore);
+        if (state.RecommendationViewed)
+            return Math.Min(79, totalScore);
+        if (state.CompletedSteps.Contains(1) || state.FirstQuestionAnswered)
+            return Math.Min(64, totalScore);
+        if (state.Stayed5Seconds || state.Stayed15Seconds || state.MeaningfulScroll)
+            return Math.Min(39, totalScore);
+        return Math.Min(19, totalScore);
     }
 
     private async Task<ResolvedMetaPixelContext> ResolvePixelContextAsync(Guid? agentTrackingProfileId, string? agentSlug, CancellationToken cancellationToken)
@@ -807,7 +823,6 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             ["qualification_score"] = row.QualificationScore,
             ["friction_score"] = row.FrictionScore,
             ["traffic_type"] = row.TrafficType,
-            ["session_id"] = row.SessionId,
             ["utm_source"] = row.UtmSource,
             ["utm_medium"] = row.UtmMedium,
             ["utm_campaign"] = row.UtmCampaign,
@@ -909,7 +924,14 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     private static string ResolveEventCategory(string eventName) => eventName switch
     {
         "ViewContent" => "page",
-        "LeadFormStart" or "FunnelStepComplete" or "RecommendationViewed" or "ContactStepReached" => "funnel",
+        "LeadFormStart" or
+        "FunnelStepComplete" or
+        "RecommendationViewed" or
+        "ContactStepReached" or
+        "ContactInputStarted" or
+        "PhoneFieldCompleted" or
+        "RequiredContactFieldsCompleted" or
+        "SubmitAttempt" => "funnel",
         "HighIntentLeadSignal" or "LeadReadySignal" => "threshold",
         "Lead" or "QualifiedLead" => "conversion",
         "AbandonedHighIntentLead" => "abandon",
@@ -972,15 +994,46 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         _ => 0
     };
 
-    private static string ResolveScoreTier(int totalSignalScore) => totalSignalScore switch
+    private static string ResolveScoreTier(SignalAccumulator state)
     {
-        < 20 => "ColdVisitor",
-        < 40 => "EngagedVisitor",
-        < 60 => "FunnelStarter",
-        < 80 => "HighIntentVisitor",
-        < 100 => "LeadReadyVisitor",
-        _ => "SubmittedLead"
-    };
+        if (state.LeadSubmitted)
+            return "SubmittedLead";
+        if (state.SubmitAttempted || state.RequiredContactFieldsCompleted)
+            return "SubmitAttempter";
+        if (state.ContactStepReached || state.ContactInputStarted || state.PhoneCompleted)
+            return "ContactStepViewer";
+        if (state.RecommendationViewed)
+            return "RecommendationViewer";
+        if (state.CompletedSteps.Contains(1) || state.FirstQuestionAnswered)
+            return "FunnelStarter";
+        if (state.Stayed5Seconds || state.Stayed15Seconds || state.MeaningfulScroll)
+            return "EngagedVisitor";
+        return "ColdVisitor";
+    }
+
+    private static string? ReadResolvedAttributionValue(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty("resolvedAttribution", out var resolvedAttribution) ||
+                resolvedAttribution.ValueKind != JsonValueKind.Object ||
+                !resolvedAttribution.TryGetProperty(propertyName, out var property) ||
+                property.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return Normalize(property.GetString());
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static bool TryReadString(JsonElement metadata, string propertyName, out string? value)
     {
@@ -1151,7 +1204,10 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         public ResolvedAttribution WithTrafficType()
         {
-            return this with { TrafficType = ClassifyTrafficType(UtmSource, UtmMedium, UtmCampaign, Fbclid) };
+            return this with
+            {
+                TrafficType = ClassifyTrafficType(UtmSource, UtmMedium, UtmCampaign, Fbclid, MetaCampaignId, MetaAdSetId, MetaAdId)
+            };
         }
 
         public static ResolvedAttribution FromRequest(MetaSignalAttributionPayload? payload)
@@ -1177,26 +1233,37 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         {
             return new ResolvedAttribution
             {
-                UtmSource = Normalize(row.UtmSource),
-                UtmMedium = Normalize(row.UtmMedium),
-                UtmCampaign = Normalize(row.UtmCampaign),
-                UtmId = Normalize(row.UtmId),
-                UtmContent = Normalize(row.UtmContent),
+                UtmSource = Normalize(row.UtmSource) ?? ReadResolvedAttributionValue(row.MetadataJson, "utmSource"),
+                UtmMedium = Normalize(row.UtmMedium) ?? ReadResolvedAttributionValue(row.MetadataJson, "utmMedium"),
+                UtmCampaign = Normalize(row.UtmCampaign) ?? ReadResolvedAttributionValue(row.MetadataJson, "utmCampaign"),
+                UtmId = Normalize(row.UtmId) ?? ReadResolvedAttributionValue(row.MetadataJson, "utmId"),
+                UtmContent = Normalize(row.UtmContent) ?? ReadResolvedAttributionValue(row.MetadataJson, "utmContent"),
                 Fbclid = row.FbclidPresent ? "present" : null,
-                MetaCampaignId = null,
-                MetaAdSetId = null,
-                MetaAdId = null
+                MetaCampaignId = ReadResolvedAttributionValue(row.MetadataJson, "metaCampaignId"),
+                MetaAdSetId = ReadResolvedAttributionValue(row.MetadataJson, "metaAdSetId"),
+                MetaAdId = ReadResolvedAttributionValue(row.MetadataJson, "metaAdId")
             };
         }
     }
 
-    private static string ClassifyTrafficType(string? utmSource, string? utmMedium, string? utmCampaign, string? fbclid)
+    private static string ClassifyTrafficType(
+        string? utmSource,
+        string? utmMedium,
+        string? utmCampaign,
+        string? fbclid,
+        string? metaCampaignId,
+        string? metaAdSetId,
+        string? metaAdId)
     {
         var source = Normalize(utmSource)?.ToLowerInvariant();
         var medium = Normalize(utmMedium)?.ToLowerInvariant();
         var campaign = Normalize(utmCampaign)?.ToLowerInvariant();
+        var hasMetaIds =
+            !string.IsNullOrWhiteSpace(Normalize(metaCampaignId)) ||
+            !string.IsNullOrWhiteSpace(Normalize(metaAdSetId)) ||
+            !string.IsNullOrWhiteSpace(Normalize(metaAdId));
 
-        if (!string.IsNullOrWhiteSpace(fbclid))
+        if (!string.IsNullOrWhiteSpace(fbclid) || hasMetaIds)
             return "PaidAds";
         if (medium is "cpc" or "ppc" or "paid" or "paidsearch" or "display" or "paid_social" or "social_paid" or "remarketing" or "retargeting" or "paid_search" or "paid-social")
             return "PaidAds";

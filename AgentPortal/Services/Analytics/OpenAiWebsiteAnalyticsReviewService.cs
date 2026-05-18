@@ -37,7 +37,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "  • The summary's FIRST sentence MUST reference ad performance " +
         "(e.g., spend level, click volume, whether ads are converting).\n\n" +
 
-        "STEP 2 — META SIGNAL INTELLIGENCE: analyze high-intent visitors, lead-ready visitors, signal-to-lead conversion, contact-step abandons, and the recommended optimization event.\n\n" +
+        "STEP 2 — META SIGNAL INTELLIGENCE: analyze high-intent visitors, lead-ready visitors, submit attempts without confirmed lead, signal-to-lead conversion, contact-step abandons, and the recommended optimization event.\n\n" +
 
         "STEP 3 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
 
@@ -52,6 +52,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "  • NEVER give generic CRO advice before completing Step 1.\n" +
         "  • ALWAYS clearly separate: Ad problem vs Signal-quality problem vs Landing page problem vs Form problem.\n" +
         "  • If the metaSignal section shows many high-intent or lead-ready visitors but very few submitted leads, you MUST call out contact-step or form friction as a likely bottleneck.\n" +
+        "  • If submitAttemptsWithoutLead is elevated, you MUST call out validation friction, technical submission failure, or contact-step trust issues as likely causes.\n" +
         "  • If submitted Lead volume is low but lead-ready or high-intent volume is healthy, recommend the best Meta optimization event from the payload instead of defaulting to Lead.\n" +
         "  • If campaign data shows clicks but zero website leads, output: " +
         "'Ad traffic is present but not converting — primary issue is landing page or funnel, not traffic generation.'\n" +

@@ -912,6 +912,8 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("LeadId");
 
+                    b.HasIndex("PageMode");
+
                     b.HasIndex("QuoteType");
 
                     b.HasIndex("ScoreTier");

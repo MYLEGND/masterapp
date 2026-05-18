@@ -334,8 +334,8 @@
       agentSlug: asTrimmed(rawConfig?.agentSlug),
       formId: asTrimmed(rawConfig?.formId) || 'lifeWizardForm',
       requiredContactFields: Array.isArray(rawConfig?.requiredContactFields) ? rawConfig.requiredContactFields : ['FirstName', 'LastName', 'Phone', 'Email'],
-      highIntentThreshold: Number(rawConfig?.highIntentThreshold || 60),
-      leadReadyThreshold: Number(rawConfig?.leadReadyThreshold || 80),
+      highIntentThreshold: Number(rawConfig?.highIntentThreshold || 70),
+      leadReadyThreshold: Number(rawConfig?.leadReadyThreshold || 90),
       weights: Object.assign({}, DEFAULT_WEIGHTS, rawConfig?.weights || {})
     };
 
@@ -547,13 +547,46 @@
       }
     }
 
-    function resolveScoreTier(totalSignalScore) {
-      if (totalSignalScore < 20) return 'ColdVisitor';
-      if (totalSignalScore < 40) return 'EngagedVisitor';
-      if (totalSignalScore < 60) return 'FunnelStarter';
-      if (totalSignalScore < 80) return 'HighIntentVisitor';
-      if (totalSignalScore < 100) return 'LeadReadyVisitor';
-      return 'SubmittedLead';
+    function resolveScoreTier() {
+      if (state.leadSubmitted) return 'SubmittedLead';
+      if (state.submitAttempted || state.requiredContactFieldsCompleted) return 'SubmitAttempter';
+      if (state.contactStepReached || state.contactInputStarted || state.phoneCompleted) return 'ContactStepViewer';
+      if (state.recommendationViewed) return 'RecommendationViewer';
+      if (state.completedSteps['1'] || state.firstQuestionAnswered) return 'FunnelStarter';
+      if (state.stayed5Seconds || state.stayed15Seconds || state.meaningfulScroll) return 'EngagedVisitor';
+      return 'ColdVisitor';
+    }
+
+    function applyBehaviorScoreCap(totalSignalScore) {
+      if (state.leadSubmitted) return Math.max(100, totalSignalScore);
+      if (state.submitAttempted || state.requiredContactFieldsCompleted) return Math.min(99, totalSignalScore);
+      if (state.contactStepReached || state.contactInputStarted || state.phoneCompleted) return Math.min(89, totalSignalScore);
+      if (state.recommendationViewed) return Math.min(79, totalSignalScore);
+      if (state.completedSteps['1'] || state.firstQuestionAnswered) return Math.min(64, totalSignalScore);
+      if (state.stayed5Seconds || state.stayed15Seconds || state.meaningfulScroll) return Math.min(39, totalSignalScore);
+      return Math.min(19, totalSignalScore);
+    }
+
+    function resolveTrafficType(attribution) {
+      const source = asTrimmed(attribution?.utmSource).toLowerCase();
+      const medium = asTrimmed(attribution?.utmMedium).toLowerCase();
+      const campaign = asTrimmed(attribution?.utmCampaign).toLowerCase();
+      const hasMetaIds = Boolean(
+        asTrimmed(attribution?.metaCampaignId) ||
+        asTrimmed(attribution?.metaAdSetId) ||
+        asTrimmed(attribution?.metaAdId)
+      );
+
+      if (asTrimmed(attribution?.fbclid) || hasMetaIds) return 'PaidAds';
+      if (['cpc', 'ppc', 'paid', 'paidsearch', 'display', 'paid_social', 'social_paid', 'remarketing', 'retargeting', 'paid_search', 'paid-social'].includes(medium)) return 'PaidAds';
+      if (['adwords', 'googleads', 'google_ads', 'gads', 'bingads', 'meta_ads', 'facebook_ads', 'instagram_ads', 'paidsearch', 'display', 'paid_social', 'cpc', 'ppc', 'remarketing', 'retargeting'].includes(source)) return 'PaidAds';
+      if (['organic', 'seo', 'organic_search'].includes(medium)) return 'Organic';
+      if (['(none)', 'direct'].includes(medium)) return 'Direct';
+      if (['referral', 'partner'].includes(medium)) return 'Referral';
+      if (['google', 'bing', 'yahoo', 'duckduckgo', 'brave', 'ecosia', 'search'].includes(source)) return 'Organic';
+      if (['facebook', 'fb', 'meta', 'instagram', 'tiktok', 'youtube', 'linkedin', 'reddit', 'x', 'twitter', 'pinterest', 'nextdoor', 'partner', 'newsletter'].includes(source)) return 'Referral';
+      if (!source && !medium && !campaign) return 'Direct';
+      return 'Unknown';
     }
 
     function computeScore() {
@@ -589,12 +622,7 @@
       if (state.highIntentAbandon) friction += config.weights.HighIntentAbandon;
 
       const intentScore = Math.max(0, Math.min(120, qualification + Math.round(engagement * 0.4) + friction));
-      let totalSignalScore = Math.max(0, Math.min(120, engagement + qualification + friction));
-      if (!state.leadSubmitted) {
-        totalSignalScore = Math.min(99, totalSignalScore);
-      } else {
-        totalSignalScore = Math.max(100, totalSignalScore);
-      }
+      const totalSignalScore = applyBehaviorScoreCap(Math.max(0, Math.min(120, engagement + qualification + friction)));
 
       return {
         intentScore,
@@ -602,15 +630,19 @@
         qualificationScore: qualification,
         frictionScore: friction,
         totalSignalScore,
-        scoreTier: resolveScoreTier(totalSignalScore)
+        scoreTier: resolveScoreTier()
       };
     }
 
     function buildPixelPayload(eventName, stepNumber, stepName, score) {
+      const attribution = resolveAttribution();
       const payload = {
         quote_type: state.quoteType,
         page_key: state.effectivePageKey || state.pageKey,
-        traffic_type: document.body?.dataset?.pageMode === 'paid_landing' ? 'PaidAds' : undefined,
+        page_variant: state.pageVariant || undefined,
+        page_mode: state.pageMode || undefined,
+        traffic_type: resolveTrafficType(attribution),
+        campaign_key: attribution.utmCampaign || attribution.metaCampaignId || undefined,
         score_tier: score.scoreTier,
         total_signal_score: score.totalSignalScore
       };
@@ -735,7 +767,19 @@
     }
 
     function maybeFireThresholdEvents(score) {
-      if (!state.submitted && score.totalSignalScore >= config.highIntentThreshold && !state.fired['threshold-high-intent']) {
+      const highIntentSatisfied =
+        !state.submitted &&
+        !state.rapidBounce &&
+        score.totalSignalScore >= config.highIntentThreshold &&
+        (
+          state.recommendationViewed ||
+          state.contactStepReached ||
+          state.contactInputStarted ||
+          state.requiredContactFieldsCompleted ||
+          state.submitAttempted
+        );
+
+      if (highIntentSatisfied && !state.fired['threshold-high-intent']) {
         void emitSignal('HighIntentLeadSignal', {
           onceKey: 'threshold-high-intent',
           metadata: {
@@ -747,9 +791,10 @@
 
       const leadReadySatisfied =
         !state.submitted &&
+        state.contactStepReached &&
         (
-          score.totalSignalScore >= config.leadReadyThreshold ||
-          state.requiredContactFieldsCompleted
+          state.requiredContactFieldsCompleted ||
+          state.submitAttempted
         );
 
       if (leadReadySatisfied && !state.fired['threshold-lead-ready']) {
@@ -785,12 +830,12 @@
         });
       }
 
-      const score = computeScore();
       const shouldTrackAbandon =
-        score.totalSignalScore >= config.highIntentThreshold ||
+        state.recommendationViewed ||
         state.contactStepReached ||
         state.contactInputStarted ||
-        state.requiredContactFieldsCompleted;
+        state.requiredContactFieldsCompleted ||
+        state.submitAttempted;
 
       if (!shouldTrackAbandon || state.fired['abandon-high-intent']) {
         return;
@@ -994,11 +1039,6 @@
       }
 
       window.addEventListener('pagehide', maybeTrackAbandon);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-          maybeTrackAbandon();
-        }
-      });
 
       debug('Initialized', {
         sessionId: state.sessionId,

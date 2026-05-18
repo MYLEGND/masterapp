@@ -224,6 +224,7 @@ public static class WebsiteAnalyticsAiRedactor
             HighIntentVisitors = payload.HighIntentVisitors,
             LeadReadyVisitors = payload.LeadReadyVisitors,
             SubmittedLeads = payload.SubmittedLeads,
+            SubmitAttemptsWithoutLead = payload.SubmitAttemptsWithoutLead,
             HighIntentAbandons = payload.HighIntentAbandons,
             ContactStepAbandons = payload.ContactStepAbandons,
             SignalToLeadConversionRate = payload.SignalToLeadConversionRate,

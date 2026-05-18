@@ -1415,7 +1415,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
 }
 
 #metaSignalModal .meta-signal-secondary-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 #metaSignalModal .meta-signal-stat-card,

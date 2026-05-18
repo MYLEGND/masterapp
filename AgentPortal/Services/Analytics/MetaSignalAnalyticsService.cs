@@ -33,14 +33,10 @@ public interface IMetaSignalAnalyticsService
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
     private readonly MasterAppDbContext _db;
-    private readonly ILogger<MetaSignalAnalyticsService> _logger;
 
-    public MetaSignalAnalyticsService(
-        MasterAppDbContext db,
-        ILogger<MetaSignalAnalyticsService> logger)
+    public MetaSignalAnalyticsService(MasterAppDbContext db)
     {
         _db = db;
-        _logger = logger;
     }
 
     public async Task<MetaSignalDashboardDto> GetDashboardAsync(
@@ -77,7 +73,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .ToList();
 
         var availableCampaigns = baseRows
-            .Select(x => Normalize(x.UtmCampaign))
+            .Select(ResolveCampaignLabel)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Select(x => x!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -92,23 +88,46 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var availableScoreTiers = baseRows
-            .Select(x => Normalize(x.ScoreTier))
+        var structurallyFilteredRows = baseRows
+            .Where(x => string.IsNullOrWhiteSpace(quoteType) || string.Equals(x.QuoteType, quoteType.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(campaign) || string.Equals(ResolveCampaignLabel(x), campaign.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(x => string.IsNullOrWhiteSpace(pageMode) || string.Equals(x.PageMode, pageMode.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var visitorSummariesBeforeScoreFilter = BuildVisitorSummaries(structurallyFilteredRows);
+        var availableScoreTiers = visitorSummariesBeforeScoreFilter
+            .Select(x => x.ScoreTier)
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Select(x => x!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(x => ScoreTierOrder(x))
+            .OrderBy(ScoreTierOrder)
             .ThenBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var rows = baseRows
-            .Where(x => string.IsNullOrWhiteSpace(quoteType) || string.Equals(x.QuoteType, quoteType.Trim(), StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(campaign) || string.Equals(x.UtmCampaign, campaign.Trim(), StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(pageMode) || string.Equals(x.PageMode, pageMode.Trim(), StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(scoreTier) || string.Equals(x.ScoreTier, scoreTier.Trim(), StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var filteredVisitorKeys = string.IsNullOrWhiteSpace(scoreTier)
+            ? null
+            : visitorSummariesBeforeScoreFilter
+                .Where(x => string.Equals(x.ScoreTier, scoreTier.Trim(), StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.VisitorKey)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        return BuildDashboard(rows, range, trafficType, availableQuoteTypes, availableCampaigns, availablePageModes, availableScoreTiers);
+        var rows = filteredVisitorKeys == null
+            ? structurallyFilteredRows
+            : structurallyFilteredRows
+                .Where(x =>
+                {
+                    var visitorKey = GetVisitorKey(x);
+                    return !string.IsNullOrWhiteSpace(visitorKey) && filteredVisitorKeys.Contains(visitorKey);
+                })
+                .ToList();
+
+        return BuildDashboard(
+            rows,
+            range,
+            BuildTrafficFilterLabel(trafficType),
+            availableQuoteTypes,
+            availableCampaigns,
+            availablePageModes,
+            availableScoreTiers);
     }
 
     public async Task<MetaSignalAiSummaryDto> GetAiSummaryAsync(
@@ -125,6 +144,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             HighIntentVisitors = dashboard.HighIntentVisitors,
             LeadReadyVisitors = dashboard.LeadReadyVisitors,
             SubmittedLeads = dashboard.SubmittedLeads,
+            SubmitAttemptsWithoutLead = dashboard.SubmitAttemptsWithoutLead,
             HighIntentAbandons = dashboard.HighIntentAbandons,
             ContactStepAbandons = dashboard.ContactStepAbandons,
             SignalToLeadConversionRate = dashboard.SignalToLeadConversionRate,
@@ -141,47 +161,19 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
     private MetaSignalDashboardDto BuildDashboard(
         IReadOnlyCollection<MetaSignalEvent> rows,
         TimeRangeRequest range,
-        TrafficType trafficType,
+        string trafficFilterLabel,
         List<string> availableQuoteTypes,
         List<string> availableCampaigns,
         List<string> availablePageModes,
         List<string> availableScoreTiers)
     {
-        var visitorGroups = rows
-            .GroupBy(GetVisitorKey)
-            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
-            .ToList();
-
-        var visitorTierRows = visitorGroups
-            .Select(g =>
-            {
-                var maxScore = g.Max(x => x.TotalSignalScore);
-                return new
-                {
-                    VisitorKey = g.Key,
-                    Score = maxScore,
-                    ScoreTier = ResolveScoreTier(maxScore)
-                };
-            })
-            .ToList();
-
-        var highIntentVisitors = visitorTierRows.Count(x => string.Equals(x.ScoreTier, "HighIntentVisitor", StringComparison.OrdinalIgnoreCase));
-        var leadReadyVisitors = visitorTierRows.Count(x => string.Equals(x.ScoreTier, "LeadReadyVisitor", StringComparison.OrdinalIgnoreCase));
-        var submittedVisitors = visitorTierRows.Count(x => string.Equals(x.ScoreTier, "SubmittedLead", StringComparison.OrdinalIgnoreCase));
-
-        var highIntentAbandons = rows
-            .Where(x => string.Equals(x.EventName, "AbandonedHighIntentLead", StringComparison.OrdinalIgnoreCase))
-            .Select(GetVisitorKey)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
-
-        var contactStepAbandons = rows
-            .Where(x => string.Equals(x.EventName, "AbandonedHighIntentLead", StringComparison.OrdinalIgnoreCase) && ReadBoolMetadata(x.MetadataJson, "contactStepAbandon"))
-            .Select(GetVisitorKey)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
+        var visitorSummaries = BuildVisitorSummaries(rows);
+        var highIntentVisitors = visitorSummaries.Count(x => x.IsHighIntent);
+        var leadReadyVisitors = visitorSummaries.Count(x => x.IsLeadReady);
+        var submittedVisitors = visitorSummaries.Count(x => x.LeadSubmitted);
+        var submitAttemptsWithoutLead = visitorSummaries.Count(x => x.SubmitAttempted && !x.LeadSubmitted);
+        var highIntentAbandons = visitorSummaries.Count(x => x.HighIntentAbandon && !x.LeadSubmitted);
+        var contactStepAbandons = visitorSummaries.Count(x => x.ContactStepAbandon && !x.LeadSubmitted);
 
         var eventsByQuoteType = rows
             .GroupBy(x => Normalize(x.QuoteType) ?? "unknown")
@@ -195,7 +187,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .ToList();
 
         var eventsByCampaign = rows
-            .GroupBy(x => Normalize(x.UtmCampaign) ?? "Unattributed")
+            .GroupBy(x => ResolveCampaignLabel(x) ?? "Unattributed")
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new MetaSignalValueRowDto
@@ -205,7 +197,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             })
             .ToList();
 
-        var visitorsByScoreTier = visitorTierRows
+        var visitorsByScoreTier = visitorSummaries
             .GroupBy(x => x.ScoreTier)
             .OrderBy(g => ScoreTierOrder(g.Key))
             .Select(g => new MetaSignalTierRowDto
@@ -216,8 +208,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             .ToList();
 
         var averageScoreByCampaign = rows
-            .Where(x => !string.IsNullOrWhiteSpace(x.UtmCampaign))
-            .GroupBy(x => x.UtmCampaign!)
+            .GroupBy(x => ResolveCampaignLabel(x) ?? "Unattributed")
             .OrderByDescending(g => g.Average(x => x.TotalSignalScore))
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new MetaSignalAverageRowDto
@@ -242,22 +233,24 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var frictionHotspots = BuildFrictionHotspots(rows);
         var bestVariant = ResolveBestVariant(rows);
         var recommendedOptimizationEvent = ResolveRecommendedOptimizationEvent(ladder, leadReadyVisitors, submittedVisitors, highIntentVisitors);
+        var worstFrictionStep = ResolveWorstFrictionStep(ladder, frictionHotspots);
 
         return new MetaSignalDashboardDto
         {
             RangeLabel = range.Label,
-            TrafficFilterLabel = TrafficAttribution.BucketLabel(trafficType),
+            TrafficFilterLabel = trafficFilterLabel,
             TotalSignalEvents = rows.Count,
-            TotalVisitors = visitorGroups.Count,
+            TotalVisitors = visitorSummaries.Count,
             HighIntentVisitors = highIntentVisitors,
             LeadReadyVisitors = leadReadyVisitors,
             SubmittedLeads = submittedVisitors,
+            SubmitAttemptsWithoutLead = submitAttemptsWithoutLead,
             HighIntentAbandons = highIntentAbandons,
             ContactStepAbandons = contactStepAbandons,
-            SignalToLeadConversionRate = visitorGroups.Count == 0 ? 0 : Math.Round((submittedVisitors * 100m) / visitorGroups.Count, 2),
+            SignalToLeadConversionRate = visitorSummaries.Count == 0 ? 0 : Math.Round((submittedVisitors * 100m) / visitorSummaries.Count, 2),
             RecommendedOptimizationEvent = recommendedOptimizationEvent,
             BestPerformingLandingPageVersion = bestVariant,
-            WorstFrictionStep = frictionHotspots.FirstOrDefault()?.Label ?? "—",
+            WorstFrictionStep = worstFrictionStep,
             AvailableQuoteTypes = availableQuoteTypes,
             AvailableCampaigns = availableCampaigns,
             AvailablePageModes = availablePageModes,
@@ -278,11 +271,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         {
             ("view_content", "View Content", x => string.Equals(x.EventName, "ViewContent", StringComparison.OrdinalIgnoreCase)),
             ("lead_form_start", "Lead Form Start", x => string.Equals(x.EventName, "LeadFormStart", StringComparison.OrdinalIgnoreCase)),
-            ("step_1_complete", "Step 1 Complete", x => string.Equals(x.EventName, "FunnelStepComplete", StringComparison.OrdinalIgnoreCase) && x.FunnelStep == 1),
+            ("discovery_complete", "Discovery Complete", x => string.Equals(x.EventName, "FunnelStepComplete", StringComparison.OrdinalIgnoreCase) && x.FunnelStep == 1),
             ("recommendation_viewed", "Recommendation Viewed", x => string.Equals(x.EventName, "RecommendationViewed", StringComparison.OrdinalIgnoreCase)),
             ("contact_step_reached", "Contact Step Reached", x => string.Equals(x.EventName, "ContactStepReached", StringComparison.OrdinalIgnoreCase)),
-            ("high_intent", "High Intent", x => string.Equals(x.EventName, "HighIntentLeadSignal", StringComparison.OrdinalIgnoreCase)),
-            ("lead_ready", "Lead Ready", x => string.Equals(x.EventName, "LeadReadySignal", StringComparison.OrdinalIgnoreCase)),
+            ("submit_attempt", "Submit Attempt", x => string.Equals(x.EventName, "SubmitAttempt", StringComparison.OrdinalIgnoreCase)),
             ("lead", "Submitted Lead", x => string.Equals(x.EventName, "Lead", StringComparison.OrdinalIgnoreCase))
         };
 
@@ -322,7 +314,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 string.Equals(x.EventName, "DeadClick", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(x.EventName, "RageClick", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(x.EventName, "RapidBounce", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(x => ResolveFrictionLabel(x))
+            .GroupBy(ResolveFrictionLabel)
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
             .Select(g => new MetaSignalFrictionRowDto
@@ -374,12 +366,33 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         int submittedVisitors,
         int highIntentVisitors)
     {
+        var leadFormStarts = ladder.FirstOrDefault(x => x.StepKey == "lead_form_start")?.Visitors ?? 0;
+        var recommendationVisitors = ladder.FirstOrDefault(x => x.StepKey == "recommendation_viewed")?.Visitors ?? 0;
         var contactStepVisitors = ladder.FirstOrDefault(x => x.StepKey == "contact_step_reached")?.Visitors ?? 0;
+
         if (submittedVisitors >= 25) return "Lead";
-        if (leadReadyVisitors >= 35) return "LeadReadySignal";
-        if (contactStepVisitors >= 40) return "ContactStepReached";
-        if (highIntentVisitors >= 25) return "HighIntentLeadSignal";
+        if (leadReadyVisitors >= 20) return "LeadReadySignal";
+        if (contactStepVisitors >= 20) return "ContactStepReached";
+        if (highIntentVisitors >= 15) return "HighIntentLeadSignal";
+        if (recommendationVisitors >= 15) return "RecommendationViewed";
+        if (leadFormStarts >= 15) return "LeadFormStart";
         return "LeadFormStart";
+    }
+
+    private static string ResolveWorstFrictionStep(
+        IReadOnlyCollection<MetaSignalLadderRowDto> ladder,
+        IReadOnlyCollection<MetaSignalFrictionRowDto> frictionHotspots)
+    {
+        var worstStage = ladder
+            .Where(x => x.ProgressionRate.HasValue)
+            .OrderBy(x => x.ProgressionRate!.Value)
+            .ThenBy(x => x.Visitors)
+            .FirstOrDefault();
+
+        if (worstStage != null)
+            return worstStage.StepLabel;
+
+        return frictionHotspots.FirstOrDefault()?.Label ?? "—";
     }
 
     private static IQueryable<MetaSignalEvent> ApplyTrafficFilter(IQueryable<MetaSignalEvent> query, TrafficType trafficType)
@@ -388,7 +401,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         {
             TrafficType.All => query,
             TrafficType.PaidAds => query.Where(x => x.TrafficType == nameof(TrafficType.PaidAds)),
-            TrafficType.NonPaid => query.Where(x => x.TrafficType != nameof(TrafficType.PaidAds)),
+            TrafficType.NonPaid => query.Where(x =>
+                x.TrafficType == nameof(TrafficType.Organic) ||
+                x.TrafficType == nameof(TrafficType.Direct) ||
+                x.TrafficType == nameof(TrafficType.Referral)),
             TrafficType.Organic => query.Where(x => x.TrafficType == nameof(TrafficType.Organic)),
             TrafficType.Direct => query.Where(x => x.TrafficType == nameof(TrafficType.Direct)),
             TrafficType.Referral => query.Where(x => x.TrafficType == nameof(TrafficType.Referral)),
@@ -396,6 +412,12 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             _ => query
         };
     }
+
+    private static string BuildTrafficFilterLabel(TrafficType trafficType) => trafficType switch
+    {
+        TrafficType.NonPaid => "Non-Ads Only (Organic + Referral + Direct)",
+        _ => TrafficAttribution.BucketLabel(trafficType)
+    };
 
     private static string ResolveFrictionLabel(MetaSignalEvent row)
     {
@@ -414,26 +436,151 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return row.EventName;
     }
 
-    private static string ResolveScoreTier(int score) => score switch
+    private static List<VisitorSignalSummary> BuildVisitorSummaries(IEnumerable<MetaSignalEvent> rows)
     {
-        < 20 => "ColdVisitor",
-        < 40 => "EngagedVisitor",
-        < 60 => "FunnelStarter",
-        < 80 => "HighIntentVisitor",
-        < 100 => "LeadReadyVisitor",
-        _ => "SubmittedLead"
-    };
+        return rows
+            .GroupBy(GetVisitorKey)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .Select(g =>
+            {
+                var summary = new VisitorSignalSummary
+                {
+                    VisitorKey = g.Key!,
+                    MaxTotalSignalScore = g.Max(x => x.TotalSignalScore)
+                };
+
+                foreach (var row in g)
+                {
+                    ApplyRowToVisitorSummary(summary, row);
+                }
+
+                summary.ScoreTier = ResolveVisitorScoreTier(summary);
+                return summary;
+            })
+            .ToList();
+    }
+
+    private static void ApplyRowToVisitorSummary(VisitorSignalSummary summary, MetaSignalEvent row)
+    {
+        if (ReadBoolMetadata(row.MetadataJson, "contactStepReached"))
+            summary.ContactStepReached = true;
+        if (ReadBoolMetadata(row.MetadataJson, "contactInputStarted"))
+            summary.ContactInputStarted = true;
+        if (ReadBoolMetadata(row.MetadataJson, "phoneCompleted"))
+            summary.PhoneCompleted = true;
+        if (ReadBoolMetadata(row.MetadataJson, "requiredContactFieldsComplete"))
+            summary.RequiredContactFieldsCompleted = true;
+        if (ReadBoolMetadata(row.MetadataJson, "contactStepAbandon"))
+            summary.ContactStepAbandon = true;
+
+        switch (row.EventName)
+        {
+            case "SessionEngaged5s":
+            case "SessionEngaged15s":
+            case "MeaningfulScroll":
+                summary.Engaged = true;
+                break;
+            case "LeadFormStart":
+                summary.FunnelStarted = true;
+                break;
+            case "FunnelStepComplete":
+                if (row.FunnelStep == 1)
+                    summary.FunnelStarted = true;
+                break;
+            case "RecommendationViewed":
+                summary.RecommendationViewed = true;
+                break;
+            case "ContactStepReached":
+                summary.ContactStepReached = true;
+                break;
+            case "ContactInputStarted":
+                summary.ContactInputStarted = true;
+                break;
+            case "PhoneFieldCompleted":
+                summary.PhoneCompleted = true;
+                break;
+            case "RequiredContactFieldsCompleted":
+                summary.RequiredContactFieldsCompleted = true;
+                break;
+            case "SubmitAttempt":
+                summary.SubmitAttempted = true;
+                break;
+            case "HighIntentLeadSignal":
+                summary.HighIntentSignal = true;
+                break;
+            case "LeadReadySignal":
+                summary.LeadReadySignal = true;
+                break;
+            case "AbandonedHighIntentLead":
+                summary.HighIntentAbandon = true;
+                break;
+            case "Lead":
+            case "QualifiedLead":
+                summary.LeadSubmitted = true;
+                break;
+        }
+    }
+
+    private static string ResolveVisitorScoreTier(VisitorSignalSummary summary)
+    {
+        if (summary.LeadSubmitted)
+            return "SubmittedLead";
+        if (summary.SubmitAttempted || summary.RequiredContactFieldsCompleted || summary.LeadReadySignal)
+            return "SubmitAttempter";
+        if (summary.ContactStepReached || summary.ContactInputStarted || summary.PhoneCompleted)
+            return "ContactStepViewer";
+        if (summary.RecommendationViewed || summary.HighIntentSignal)
+            return "RecommendationViewer";
+        if (summary.FunnelStarted)
+            return "FunnelStarter";
+        if (summary.Engaged)
+            return "EngagedVisitor";
+        return "ColdVisitor";
+    }
 
     private static int ScoreTierOrder(string? scoreTier) => Normalize(scoreTier) switch
     {
         "ColdVisitor" => 1,
         "EngagedVisitor" => 2,
         "FunnelStarter" => 3,
-        "HighIntentVisitor" => 4,
-        "LeadReadyVisitor" => 5,
-        "SubmittedLead" => 6,
+        "RecommendationViewer" => 4,
+        "ContactStepViewer" => 5,
+        "SubmitAttempter" => 6,
+        "SubmittedLead" => 7,
         _ => 99
     };
+
+    private static string? ResolveCampaignLabel(MetaSignalEvent row)
+    {
+        return Normalize(row.UtmCampaign) ??
+               ReadResolvedAttributionString(row.MetadataJson, "utmCampaign") ??
+               ReadResolvedAttributionString(row.MetadataJson, "metaCampaignId") ??
+               Normalize(row.UtmId);
+    }
+
+    private static string? ReadResolvedAttributionString(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty("resolvedAttribution", out var resolvedAttribution) ||
+                resolvedAttribution.ValueKind != JsonValueKind.Object ||
+                !resolvedAttribution.TryGetProperty(propertyName, out var property) ||
+                property.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return Normalize(property.GetString());
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private static string? GetVisitorKey(MetaSignalEvent row)
     {
@@ -480,5 +627,41 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         {
             return null;
         }
+    }
+
+    private sealed class VisitorSignalSummary
+    {
+        public string VisitorKey { get; init; } = string.Empty;
+        public int MaxTotalSignalScore { get; init; }
+        public bool Engaged { get; set; }
+        public bool FunnelStarted { get; set; }
+        public bool RecommendationViewed { get; set; }
+        public bool ContactStepReached { get; set; }
+        public bool ContactInputStarted { get; set; }
+        public bool PhoneCompleted { get; set; }
+        public bool RequiredContactFieldsCompleted { get; set; }
+        public bool SubmitAttempted { get; set; }
+        public bool LeadSubmitted { get; set; }
+        public bool HighIntentSignal { get; set; }
+        public bool LeadReadySignal { get; set; }
+        public bool HighIntentAbandon { get; set; }
+        public bool ContactStepAbandon { get; set; }
+        public string ScoreTier { get; set; } = "ColdVisitor";
+
+        public bool IsHighIntent =>
+            RecommendationViewed ||
+            ContactStepReached ||
+            ContactInputStarted ||
+            PhoneCompleted ||
+            RequiredContactFieldsCompleted ||
+            SubmitAttempted ||
+            LeadSubmitted ||
+            HighIntentSignal;
+
+        public bool IsLeadReady =>
+            RequiredContactFieldsCompleted ||
+            SubmitAttempted ||
+            LeadSubmitted ||
+            LeadReadySignal;
     }
 }
