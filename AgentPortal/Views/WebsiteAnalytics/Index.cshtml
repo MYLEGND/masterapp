@@ -412,127 +412,270 @@
 }
 <!-- Modals -->
 <div class="modal fade fa-modal" id="metaSignalModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header align-items-center">
-        <div>
-          <h5 class="modal-title mb-0">Meta Signal Intelligence · <span id="metasignal-range-label"></span></h5>
-          <div class="fa-muted small">Score quality, high-intent drop-off, campaign signal strength, and optimization readiness.</div>
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable meta-signal-dialog">
+    <div class="modal-content meta-signal-shell">
+      <div class="modal-header meta-signal-header">
+        <div class="meta-signal-header-copy">
+          <div class="meta-signal-kicker">Intelligence Overview</div>
+          <h5 class="modal-title mb-0">Meta Signal Intelligence</h5>
+          <div class="meta-signal-subtitle">Score quality, high-intent drop-off, campaign signal strength, and optimization readiness.</div>
         </div>
-        <div class="ms-3">
-          <div class="btn-group btn-group-sm" role="group" aria-label="Traffic Type">
-            <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
-            <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+        <div class="meta-signal-header-actions">
+          <div class="meta-signal-range-chip">
+            <span class="meta-signal-range-label">Range</span>
+            <span class="meta-signal-range-value" id="metasignal-range-label"></span>
           </div>
-          <span class="badge bg-secondary ms-2" id="metasignal-active-mode">Viewing: All Traffic</span>
+          <div class="meta-signal-traffic-controls">
+            <div class="btn-group btn-group-sm meta-signal-toggle-group" role="group" aria-label="Traffic Type">
+              <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+            </div>
+            <span class="badge meta-signal-mode-badge" id="metasignal-active-mode">Viewing: All Traffic</span>
+          </div>
         </div>
-        <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        <button type="button" class="btn-close btn-close-white meta-signal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
-        <div class="row g-2 mb-3">
-          <div class="col-md-3">
-            <label class="form-label small text-warning mb-1" for="metasignal-quote-filter">Quote Type</label>
-            <select class="form-select form-select-sm" id="metasignal-quote-filter">
-              <option value="">All Quote Types</option>
-            </select>
+      <div class="modal-body meta-signal-body">
+        <section class="meta-signal-section meta-signal-filter-panel">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Refine View</h6>
+              <p class="mb-0">Filter the signal set before comparing intent quality, campaign strength, and drop-off behavior.</p>
+            </div>
           </div>
-          <div class="col-md-3">
-            <label class="form-label small text-warning mb-1" for="metasignal-campaign-filter">Campaign</label>
-            <select class="form-select form-select-sm" id="metasignal-campaign-filter">
-              <option value="">All Campaigns</option>
-            </select>
+          <div class="meta-signal-filter-grid">
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-quote-filter">Quote Type</label>
+              <select class="form-select form-select-sm" id="metasignal-quote-filter">
+                <option value="">All Quote Types</option>
+              </select>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-campaign-filter">Campaign</label>
+              <select class="form-select form-select-sm" id="metasignal-campaign-filter">
+                <option value="">All Campaigns</option>
+              </select>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-page-mode-filter">Page Mode</label>
+              <select class="form-select form-select-sm" id="metasignal-page-mode-filter">
+                <option value="">All Page Modes</option>
+              </select>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-score-tier-filter">Score Tier</label>
+              <select class="form-select form-select-sm" id="metasignal-score-tier-filter">
+                <option value="">All Score Tiers</option>
+              </select>
+            </div>
           </div>
-          <div class="col-md-3">
-            <label class="form-label small text-warning mb-1" for="metasignal-page-mode-filter">Page Mode</label>
-            <select class="form-select form-select-sm" id="metasignal-page-mode-filter">
-              <option value="">All Page Modes</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small text-warning mb-1" for="metasignal-score-tier-filter">Score Tier</label>
-            <select class="form-select form-select-sm" id="metasignal-score-tier-filter">
-              <option value="">All Score Tiers</option>
-            </select>
-          </div>
-        </div>
+        </section>
 
-        <div class="row row-cols-2 row-cols-lg-4 g-2 mb-3">
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Signal Events</div><div class="fa-kpi-value" id="metasignal-total-events">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Signal Visitors</div><div class="fa-kpi-value" id="metasignal-total-visitors">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">High Intent</div><div class="fa-kpi-value" id="metasignal-high-intent">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Lead Ready</div><div class="fa-kpi-value" id="metasignal-lead-ready">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Submitted Leads</div><div class="fa-kpi-value" id="metasignal-submitted">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">High-Intent Abandons</div><div class="fa-kpi-value" id="metasignal-high-intent-abandons">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Contact-Step Abandons</div><div class="fa-kpi-value" id="metasignal-contact-abandons">0</div></div></div>
-          <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Signal → Lead</div><div class="fa-kpi-value" id="metasignal-signal-conv">0%</div></div></div>
-        </div>
+        <section class="meta-signal-section meta-signal-metrics">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Signal Health</h6>
+              <p class="mb-0">A clean read on the funnel: volume first, then intent quality, then handoff and loss points.</p>
+            </div>
+          </div>
+          <div class="meta-signal-primary-grid">
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Signal Events</div>
+              <div class="meta-signal-stat-value" id="metasignal-total-events">0</div>
+              <div class="meta-signal-stat-note">All qualifying signal events in the current slice.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Signal Visitors</div>
+              <div class="meta-signal-stat-value" id="metasignal-total-visitors">0</div>
+              <div class="meta-signal-stat-note">Unique visitors producing signal activity.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">High Intent</div>
+              <div class="meta-signal-stat-value" id="metasignal-high-intent">0</div>
+              <div class="meta-signal-stat-note">Visitors showing stronger purchase readiness.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Lead Ready</div>
+              <div class="meta-signal-stat-value" id="metasignal-lead-ready">0</div>
+              <div class="meta-signal-stat-note">Visitors reaching the lead-ready threshold.</div>
+            </div>
+          </div>
+          <div class="meta-signal-secondary-grid">
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Submitted Leads</div>
+              <div class="meta-signal-stat-value" id="metasignal-submitted">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Signal → Lead</div>
+              <div class="meta-signal-stat-value" id="metasignal-signal-conv">0%</div>
+            </div>
+            <div class="meta-signal-stat-card is-danger">
+              <div class="meta-signal-stat-label">High-Intent Abandons</div>
+              <div class="meta-signal-stat-value" id="metasignal-high-intent-abandons">0</div>
+            </div>
+            <div class="meta-signal-stat-card is-danger">
+              <div class="meta-signal-stat-label">Contact-Step Abandons</div>
+              <div class="meta-signal-stat-value" id="metasignal-contact-abandons">0</div>
+            </div>
+          </div>
+        </section>
 
-        <div class="row g-3 mb-3">
-          <div class="col-lg-4"><div class="kpi-card subtle"><div class="fa-kpi-title">Optimize For</div><div class="fa-kpi-value" style="font-size:1rem;" id="metasignal-optimize">—</div></div></div>
-          <div class="col-lg-4"><div class="kpi-card subtle"><div class="fa-kpi-title">Best Landing Version</div><div class="fa-kpi-value" style="font-size:1rem;" id="metasignal-best-variant">—</div></div></div>
-          <div class="col-lg-4"><div class="kpi-card subtle"><div class="fa-kpi-title">Worst Friction Step</div><div class="fa-kpi-value" style="font-size:1rem;" id="metasignal-worst-friction">—</div></div></div>
-        </div>
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">What To Act On</h6>
+              <p class="mb-0">Keep the summary recommendations visible so you can decide what to tune without digging through every table first.</p>
+            </div>
+          </div>
+          <div class="meta-signal-insight-grid">
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Optimize For</div>
+              <div class="meta-signal-insight-value" id="metasignal-optimize">—</div>
+            </div>
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Best Landing Version</div>
+              <div class="meta-signal-insight-value" id="metasignal-best-variant">—</div>
+            </div>
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Worst Friction Step</div>
+              <div class="meta-signal-insight-value" id="metasignal-worst-friction">—</div>
+            </div>
+          </div>
+        </section>
 
-        <div class="row g-3">
-          <div class="col-lg-6">
-            <h6 class="text-warning">Signal Events by Quote Type</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Quote Type</th><th class="text-end">Events</th></tr></thead>
-              <tbody id="metasignal-quote-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Distribution</h6>
+              <p class="mb-0">Where the signal volume is coming from across quote types and campaigns.</p>
+            </div>
           </div>
-          <div class="col-lg-6">
-            <h6 class="text-warning">Signal Events by Campaign</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
-              <tbody id="metasignal-campaign-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-two">
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Signal Events by Quote Type</h6>
+                  <p class="mb-0">Compare event concentration by quote intent.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Quote Type</th><th class="text-end">Events</th></tr></thead>
+                  <tbody id="metasignal-quote-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Signal Events by Campaign</h6>
+                  <p class="mb-0">Spot which campaigns are generating meaningful signal.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
+                  <tbody id="metasignal-campaign-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
           </div>
-        </div>
+        </section>
 
-        <div class="row g-3 mt-1">
-          <div class="col-lg-4">
-            <h6 class="text-warning">Visitors by Score Tier</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Tier</th><th class="text-end">Visitors</th></tr></thead>
-              <tbody id="metasignal-tier-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Score Quality</h6>
+              <p class="mb-0">Read the quality mix first, then compare score averages across campaigns and landing variants.</p>
+            </div>
           </div>
-          <div class="col-lg-4">
-            <h6 class="text-warning">Average Score by Campaign</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Campaign</th><th class="text-end">Avg Score</th></tr></thead>
-              <tbody id="metasignal-campaign-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-three">
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Visitors by Score Tier</h6>
+                  <p class="mb-0">The current quality distribution of signal visitors.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Tier</th><th class="text-end">Visitors</th></tr></thead>
+                  <tbody id="metasignal-tier-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Average Score by Campaign</h6>
+                  <p class="mb-0">Signal strength by campaign.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Campaign</th><th class="text-end">Avg Score</th></tr></thead>
+                  <tbody id="metasignal-campaign-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Average Score by Page Variant</h6>
+                  <p class="mb-0">Signal quality by landing page version.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Variant</th><th class="text-end">Avg Score</th></tr></thead>
+                  <tbody id="metasignal-pagevariant-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
           </div>
-          <div class="col-lg-4">
-            <h6 class="text-warning">Average Score by Page Variant</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Variant</th><th class="text-end">Avg Score</th></tr></thead>
-              <tbody id="metasignal-pagevariant-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
-          </div>
-        </div>
+        </section>
 
-        <div class="row g-3 mt-1">
-          <div class="col-lg-8">
-            <h6 class="text-warning">Event Ladder Drop-Off</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Step</th><th class="text-end">Visitors</th><th class="text-end">Progression</th></tr></thead>
-              <tbody id="metasignal-ladder-body"><tr><td colspan="3" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Friction &amp; Progression</h6>
+              <p class="mb-0">Use the ladder to find where users stall, then confirm the most repeated friction hotspots beside it.</p>
+            </div>
           </div>
-          <div class="col-lg-4">
-            <h6 class="text-warning">Friction Hotspots</h6>
-            <table class="table table-sm">
-              <thead><tr><th>Hotspot</th><th class="text-end">Count</th></tr></thead>
-              <tbody id="metasignal-friction-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
-            </table>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-focus">
+            <article class="meta-signal-panel meta-signal-panel-wide">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Event Ladder Drop-Off</h6>
+                  <p class="mb-0">Step-by-step progression through the signal journey.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Step</th><th class="text-end">Visitors</th><th class="text-end">Progression</th></tr></thead>
+                  <tbody id="metasignal-ladder-body"><tr><td colspan="3" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Friction Hotspots</h6>
+                  <p class="mb-0">The most repeated issues stopping forward motion.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Hotspot</th><th class="text-end">Count</th></tr></thead>
+                  <tbody id="metasignal-friction-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
           </div>
-        </div>
+        </section>
       </div>
-      <div class="modal-footer">
+      <div class="modal-footer meta-signal-footer">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
