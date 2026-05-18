@@ -123,10 +123,10 @@
             : "Your Agent");
     var finalStepHeading = "Where should I send your personalized review?";
     var finalStepHelper = showAgentTrustCard
-        ? "I’ll use this to help prepare options that may fit your situation. No pressure."
-        : "I’ll help guide you through what may fit based on what you shared.";
+        ? "I’ll use this to take a look and explain what may fit. No pressure."
+        : "I’ll take a look and explain what may fit based on what you shared.";
     var agentTrustHeadline = $"You’ll hear directly from {agentDirectContactName}.";
-    var agentTrustBio = "I’ll review what you shared and help you understand what may fit your situation.";
+    var agentTrustBio = "I’ll review what you shared and explain what may fit.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
@@ -2398,7 +2398,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
             <div class="lq-rec-title">${recs.secondary.title}</div>
           </div>
           <div class="lq-reach-note" style="margin-top:12px;">
-            We'll walk through your options and pricing clearly on the next step.
+            Next, I’ll take a look and explain what may fit.
           </div>
           <div class="lq-step-actions">
             <button type="button" class="btn-gold w-100" id="continueToContactBtn">Continue & Review My Options</button>
