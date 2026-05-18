@@ -116,19 +116,23 @@
     var agentGreetingName = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
         ? agentTrustProfile!.FirstName!.Trim()
         : agentDisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "there";
-    var finalStepHeading = showAgentTrustCard
-        ? "You're almost done, I'll help you understand what may fit."
-        : "You're almost done, we'll help you understand what may fit.";
-    var finalStepHelper = showAgentTrustCard ? string.Empty : "Share the best way to reach you and we'll walk through what may fit your situation.";
-    var agentTrustBio = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
-        ? agentTrustProfile!.ShortBio!.Trim()
-        : "I'll personally help you understand what options may fit your situation and answer any questions you have.";
+    var agentDirectContactName = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
+        ? agentTrustProfile!.FirstName!.Trim()
+        : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
+            ? agentTrustProfile!.DisplayName!.Trim()
+            : "Your Agent");
+    var finalStepHeading = "Where should I send your personalized review?";
+    var finalStepHelper = showAgentTrustCard
+        ? "I’ll use this to help prepare options that may fit your situation. No pressure."
+        : "I’ll help guide you through what may fit based on what you shared.";
+    var agentTrustHeadline = $"You’ll hear directly from {agentDirectContactName}.";
+    var agentTrustBio = "I’ll review what you shared and help you understand what may fit your situation.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
     var finalSubmitButtonText = showAgentTrustCard
-        ? $"Review My Options With {agentGreetingName}"
-        : cfg.SubmitButtonText;
+        ? $"Get My Review From {agentDirectContactName}"
+        : "Get My Personalized Review";
     var heroHeadline = "See what protection options may fit your family’s needs.";
     var heroSubheadline = isLandingView ? "Answer a few quick questions to review personalized options. No pressure. No obligation." : string.Empty;
     var heroTrustNote = "Quick • Private • No obligation";
@@ -1681,7 +1685,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                                         <div class="lq-agent-display-name">@agentDisplayName</div>
                                     </div>
                                     <div>
-                                        <div class="lq-agent-name">Hi, I'm @agentGreetingName.</div>
+                                        <div class="lq-agent-name">@agentTrustHeadline</div>
                                         <div class="lq-agent-bio">@agentTrustBio</div>
                                         @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
                                         {
@@ -1781,7 +1785,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">Simple review • You decide what happens next</div>
+                            <div class="lq-trust-note">No pressure. You decide what happens next.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
