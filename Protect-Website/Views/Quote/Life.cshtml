@@ -129,8 +129,8 @@
     var finalSubmitButtonText = showAgentTrustCard
         ? $"Review My Options With {agentGreetingName}"
         : cfg.SubmitButtonText;
-    var heroHeadline = "See what life insurance options may fit your situation";
-    var heroSubheadline = isLandingView ? "Answer a few quick questions to review personalized options." : string.Empty;
+    var heroHeadline = "See what protection options may fit your family’s needs.";
+    var heroSubheadline = isLandingView ? "Answer a few quick questions to review personalized options. No pressure. No obligation." : string.Empty;
     var heroTrustNote = "Quick • Private • No obligation";
     var step1IntroTitle = string.Empty;
     var step1IntroHelper = string.Empty;
@@ -1336,6 +1336,24 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     }
 }
 
+/* Desktop ad-to-landing continuity optimization */
+@@media (min-width: 768px) {
+
+    .lq-header::after{
+        content: "Licensed professional • No pressure guidance";
+        display:block;
+        margin-top:10px;
+        color:rgba(248,250,252,.72);
+        font-size:.82rem;
+        font-weight:700;
+        letter-spacing:.02em;
+    }
+
+    .lq-header h1{
+        max-width:22ch !important;
+    }
+}
+
 </style>
 
 <div class="lq-hero-shell">
@@ -1486,7 +1504,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See What Fits Me</button>
+                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See What Fits You</button>
                     </div>
                 </div>
             </div>
