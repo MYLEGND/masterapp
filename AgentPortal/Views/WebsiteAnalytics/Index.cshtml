@@ -210,7 +210,7 @@
               <div class="wa-modal-header-actions">
                 <div class="wa-modal-range-chip">
                   <span class="wa-modal-range-label">Registry Base URL</span>
-                  <span class="wa-modal-range-value">@landingRoutesBaseUrl</span>
+                  <span class="wa-modal-range-value" id="landing-routes-base-url">@landingRoutesBaseUrl</span>
                 </div>
                 <div class="wa-modal-note-chip">Suggested Meta destination URLs included</div>
               </div>
@@ -221,7 +221,7 @@
             <div class="wa-modal-note">Compare the listed effective page keys in Page Performance using Ads Only traffic.</div>
             <section class="wa-modal-section landing-routes-section">
               <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
-              <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the public Protect website base URL.</div>
+              <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the active website scope link, including agent-specific <code>/a/[agent]</code> paths when applicable.</div>
               <div id="product-links-list"></div>
             </section>
           </div>

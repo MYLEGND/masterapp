@@ -2546,16 +2546,12 @@
 
   // ── Product-specific links (discovered paid landing routes) ───────────────
   function normalizeLandingRoutes(routes) {
+    const activeBaseLink = resolveLandingRouteBaseLink();
+
     return (Array.isArray(routes) ? routes : [])
       .filter(route => route && route.isActive !== false)
       .map(route => {
-        const availableVariants = Array.isArray(route.availableVariants)
-          ? route.availableVariants.filter(variant => variant && variant.isActive !== false)
-          : [];
-        const controlVariant = availableVariants.find(variant => variant.isControl)
-          || availableVariants[0]
-          || null;
-        return {
+        const normalizedRoute = {
           key: route.key || '',
           displayName: route.displayName || route.key || 'Landing Route',
           basePath: route.basePath || '',
@@ -2563,14 +2559,102 @@
           pageMode: route.pageMode || '',
           defaultPageVariant: route.defaultPageVariant || 'landing',
           effectivePageKeys: Array.isArray(route.effectivePageKeys) ? route.effectivePageKeys : [],
-          availableVariants,
-          controlUrl: route.controlUrl || controlVariant?.url || '',
           notes: route.notes || '',
           comparisonHelperText: route.comparisonHelperText || '',
           isPaidLanding: route.isPaidLanding !== false
         };
+
+        const availableVariants = Array.isArray(route.availableVariants)
+          ? route.availableVariants
+            .filter(variant => variant && variant.isActive !== false)
+            .map(variant => {
+              const scopedUrl = buildScopedLandingVariantUrl(activeBaseLink, normalizedRoute, variant);
+              return {
+                ...variant,
+                url: scopedUrl,
+                suggestedMetaDestinationUrl: scopedUrl
+              };
+            })
+          : [];
+
+        const controlVariant = availableVariants.find(variant => variant.isControl)
+          || availableVariants[0]
+          || null;
+
+        return {
+          ...normalizedRoute,
+          availableVariants,
+          controlUrl: controlVariant?.url || buildScopedLandingRouteUrl(activeBaseLink, normalizedRoute.basePath) || route.controlUrl || ''
+        };
       })
       .filter(route => route.controlUrl || route.availableVariants.length > 0);
+  }
+
+  function resolveLandingRouteBaseLink() {
+    return currentBaseLink() || landingRoutesBaseUrl || '';
+  }
+
+  function extractAgentPathPrefix(baseLink) {
+    if (!baseLink) return '';
+
+    try {
+      const { pathname } = new URL(baseLink);
+      const segments = pathname.split('/').filter(Boolean);
+      if (segments.length >= 2 && segments[0].toLowerCase() === 'a' && segments[1]) {
+        return `/a/${segments[1]}`;
+      }
+    } catch {
+      // ignore invalid URL and fall back below
+    }
+
+    return '';
+  }
+
+  function buildScopedLandingRouteUrl(baseLink, basePath) {
+    const normalizedBasePath = String(basePath || '').trim();
+    const effectiveBaseLink = String(baseLink || '').trim();
+    if (!normalizedBasePath || !effectiveBaseLink) return '';
+
+    const routePath = normalizedBasePath.startsWith('/') ? normalizedBasePath : `/${normalizedBasePath}`;
+
+    try {
+      const url = new URL(effectiveBaseLink);
+      const agentPrefix = extractAgentPathPrefix(effectiveBaseLink);
+      url.pathname = `${agentPrefix}${routePath}`.replace(/\/{2,}/g, '/');
+      url.search = '';
+      url.hash = '';
+      return url.toString();
+    } catch {
+      return '';
+    }
+  }
+
+  function appendLandingVariantQuery(url, variantToken) {
+    const absoluteUrl = String(url || '').trim();
+    const normalizedVariant = String(variantToken || '').trim();
+    if (!absoluteUrl || !normalizedVariant) return absoluteUrl;
+
+    try {
+      const builder = new URL(absoluteUrl);
+      builder.searchParams.set('variant', normalizedVariant);
+      return builder.toString();
+    } catch {
+      const joiner = absoluteUrl.includes('?') ? '&' : '?';
+      return `${absoluteUrl}${joiner}variant=${encodeURIComponent(normalizedVariant)}`;
+    }
+  }
+
+  function buildScopedLandingVariantUrl(baseLink, route, variant) {
+    const controlUrl = buildScopedLandingRouteUrl(baseLink, route?.basePath || '');
+    if (!controlUrl) {
+      return variant?.url || variant?.suggestedMetaDestinationUrl || '';
+    }
+
+    const defaultVariant = String(route?.defaultPageVariant || 'landing').trim().toLowerCase();
+    const variantToken = String(variant?.variant || route?.defaultPageVariant || 'landing').trim();
+    const isControl = !!variant?.isControl || variantToken.toLowerCase() === defaultVariant;
+
+    return isControl ? controlUrl : appendLandingVariantQuery(controlUrl, variantToken);
   }
 
   function truncateUrl(url) {
@@ -2702,39 +2786,62 @@
     const modal = document.getElementById('landingRoutesModal');
     const list = document.getElementById('product-links-list');
     const display = document.getElementById('product-link-display');
+    const baseUrlEl = document.getElementById('landing-routes-base-url');
     if (!list) return;
 
-    const activeRoutes = normalizeLandingRoutes(landingRoutes);
-    list.innerHTML = renderLandingRouteCards(activeRoutes);
+    const renderProductLinks = () => {
+      const activeBaseLink = resolveLandingRouteBaseLink() || landingRoutesBaseUrl || '';
+      const activeRoutes = normalizeLandingRoutes(landingRoutes);
+      list.innerHTML = renderLandingRouteCards(activeRoutes);
+      if (baseUrlEl) {
+        baseUrlEl.textContent = activeBaseLink || '—';
+      }
+    };
 
-    list.addEventListener('click', e => {
-      const copyBtn = e.target.closest('.product-link-copy');
-      const openBtn = e.target.closest('.product-link-open');
-      if (!copyBtn && !openBtn) return;
-      const url = (copyBtn || openBtn).dataset.linkUrl || '';
-      if (!url) return;
-      if (display) display.value = url;
-      if (copyBtn) {
-        copyToClipboard(url);
-        copyBtn.textContent = 'Copied!';
-        setTimeout(() => { copyBtn.textContent = 'Copy URL'; }, 1500);
-      }
-      if (openBtn) {
-        window.open(url, '_blank', 'noopener');
-      }
-    });
+    renderProductLinks();
 
-    modal?.addEventListener('hidden.bs.modal', () => {
-      if (display) {
-        display.value = '';
-      }
-    });
+    if (!list.dataset.wired) {
+      list.addEventListener('click', e => {
+        const copyBtn = e.target.closest('.product-link-copy');
+        const openBtn = e.target.closest('.product-link-open');
+        if (!copyBtn && !openBtn) return;
+        const url = (copyBtn || openBtn).dataset.linkUrl || '';
+        if (!url) return;
+        if (display) display.value = url;
+        if (copyBtn) {
+          copyToClipboard(url);
+          copyBtn.textContent = 'Copied!';
+          setTimeout(() => { copyBtn.textContent = 'Copy URL'; }, 1500);
+        }
+        if (openBtn) {
+          window.open(url, '_blank', 'noopener');
+        }
+      });
+
+      modal?.addEventListener('hidden.bs.modal', () => {
+        if (display) {
+          display.value = '';
+        }
+      });
+
+      list.dataset.wired = 'true';
+    }
+
+    list._rerenderProductLinks = renderProductLinks;
+  }
+
+  function rerenderProductLinks() {
+    const list = document.getElementById('product-links-list');
+    const renderProductLinks = list?._rerenderProductLinks;
+    if (typeof renderProductLinks === 'function') {
+      renderProductLinks();
+    }
   }
 
   function currentBaseLink() {
     const agentId = state.scope.agentProfileId;
     if (agentId && agentOptions && agentOptions.length) {
-      const match = agentOptions.find(a => a.id === agentId);
+      const match = agentOptions.find(a => String(a?.id || '') === String(agentId));
       if (match?.primaryUrl) return match.primaryUrl;
     }
     return shell?.dataset.personalLink || '';
@@ -2763,5 +2870,6 @@
     if (baseCopy) baseCopy.dataset.link = base;
     const baseOpen = document.getElementById('growth-open-base');
     if (baseOpen) baseOpen.href = base;
+    rerenderProductLinks();
   }
 })();
