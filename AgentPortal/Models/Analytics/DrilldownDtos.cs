@@ -201,6 +201,15 @@ public sealed class ValidationFrictionRow
     public string? QuoteType { get; set; }
 }
 
+public sealed class BounceBeforeFunnelStartRow
+{
+    public string QuoteType { get; set; } = "";
+    public int ExitCount { get; set; }
+    public int Engaged5sPlusCount { get; set; }
+    public int Engaged15sPlusCount { get; set; }
+    public double AvgDwellMs { get; set; }
+}
+
 public sealed class FormAbandonSummaryRow
 {
     public string QuoteType { get; set; } = "";
@@ -215,12 +224,18 @@ public sealed class FormAbandonSummaryRow
 public sealed class FormAbandonmentDto
 {
     public List<FormAbandonSummaryRow> Summary { get; set; } = new();
+    public List<BounceBeforeFunnelStartRow> BounceBeforeFunnelStart { get; set; } = new();
     public List<TopAbandonedFieldRow> TopAbandonedFields { get; set; } = new();
     public List<LastCompletedFieldRow> TopLastCompletedFields { get; set; } = new();
     public List<ValidationFrictionRow> ValidationFriction { get; set; } = new();
+    public int BounceBeforeFunnelStartCount { get; set; }
+    public int FunnelAbandonCount { get; set; }
+    public int ContactStepAbandonCount { get; set; }
+    public int ValidationFrictionAbandonCount { get; set; }
     /// <summary>Count of abandons where submit was attempted at least once before leaving.</summary>
     public int ConsentFrictionCount { get; set; }
     public int StartSignalGapQuoteTypeCount { get; set; }
     public string? DataQualityNote { get; set; }
+    public string? QualificationNote { get; set; }
     public string RangeLabel { get; set; } = "";
 }

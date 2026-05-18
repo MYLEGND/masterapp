@@ -2164,6 +2164,46 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     return Number.isFinite(mapped) ? String(mapped) : '';
   }
 
+  const formTrackingKey = form.dataset.formKey || pageKey;
+  const TRACKED_FIELD_NAME_MAP = Object.freeze({
+    ProtectingWho: 'step_1_choice',
+    CoverageGoal: 'step_2_choice',
+    AgeBracket: 'age_range',
+    FirstName: 'first_name',
+    LastName: 'last_name',
+    Phone: 'phone',
+    Email: 'email',
+    State: 'state',
+  });
+
+  function resolveTrackedFieldName(name) {
+    return TRACKED_FIELD_NAME_MAP[name] || String(name || 'unknown').trim().toLowerCase();
+  }
+
+  function trackQuoteFieldError(name, errorType, fieldContext) {
+    const trackedFieldName = resolveTrackedFieldName(name);
+    window.legendFormTracking?.trackFieldError(formTrackingKey, trackedFieldName, errorType, '@cfg.OfferKey');
+
+    if (!window.legendFormTracking && typeof window.legendTrack === 'function') {
+      window.legendTrack({
+        EventType: 'form_field_error',
+        FormKey: formTrackingKey,
+        FieldName: trackedFieldName,
+        MetadataJson: JSON.stringify({
+          errorType,
+          fieldContext,
+          pageVariant,
+          pageMode,
+        }),
+      });
+    }
+  }
+
+  function clearQuoteFieldError(name) {
+    const trackedFieldName = resolveTrackedFieldName(name);
+    window.legendFormTracking?.clearFieldError(formTrackingKey, trackedFieldName);
+  }
+
   function showChoiceError(errorId, show) {
     const el = document.getElementById(errorId);
     if (!el) return;
@@ -2182,6 +2222,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
 
   function clearFieldError(name) {
     const el = document.getElementById(`err-${name}`);
+    clearQuoteFieldError(name);
     if (!el) return;
     if (el.dataset.defaultText) {
       el.textContent = el.dataset.defaultText;
@@ -2221,6 +2262,14 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     return '';
   }
 
+  function resolveContactErrorType(name, error) {
+    if (name === 'Email' && /valid email/i.test(error || '')) {
+      return 'invalid_email';
+    }
+
+    return 'required_missing';
+  }
+
   function validateContactFields(focusFirst = false) {
     let firstInvalid = null;
 
@@ -2228,6 +2277,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
       const error = getContactFieldError(name);
       if (error) {
         setFieldError(name, error);
+        trackQuoteFieldError(name, resolveContactErrorType(name, error), 'contact');
         metaSignal?.trackFieldError(name, { fieldContext: 'contact' });
         firstInvalid ??= form.querySelector(`[name="${name}"]`);
       } else {
@@ -2238,6 +2288,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     const optionalEmailError = getContactFieldError('Email');
     if (optionalEmailError) {
       setFieldError('Email', optionalEmailError);
+      trackQuoteFieldError('Email', resolveContactErrorType('Email', optionalEmailError), 'contact');
       metaSignal?.trackFieldError('Email', { fieldContext: 'contact' });
       firstInvalid ??= form.querySelector('[name="Email"]');
     } else {
@@ -2481,18 +2532,21 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     showChoiceError('err-step1-coverage-goal', !goal);
 
     if (!protecting) {
+      trackQuoteFieldError('ProtectingWho', 'required_missing', 'discovery');
       metaSignal?.trackFieldError('ProtectingWho', { fieldContext: 'discovery' });
       showStep1(0, true);
       form.querySelector('input[name="ProtectingWho"]')?.focus();
       return false;
     }
     if (!goal) {
+      trackQuoteFieldError('CoverageGoal', 'required_missing', 'discovery');
       metaSignal?.trackFieldError('CoverageGoal', { fieldContext: 'discovery' });
       showStep1(1, true);
       form.querySelector('input[name="CoverageGoal"]')?.focus();
       return false;
     }
     if (!hasValidAge) {
+      trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
       metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
       showStep1(2, true);
       form.querySelector('input[name="AgeBracket"]')?.focus();
@@ -2521,6 +2575,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     form.querySelectorAll(`input[name="${groupName}"]`).forEach((radio) => {
       radio.addEventListener('change', () => {
         showChoiceError(errorId, false);
+        clearQuoteFieldError(groupName);
         syncStepOneAnswersFromUI();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         metaSignal?.trackLeadFormStart({
@@ -2543,6 +2598,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
   form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       showChoiceError('err-step1-coverage-goal', false);
+      clearQuoteFieldError('CoverageGoal');
       syncStepOneAnswersFromUI();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
       metaSignal?.trackLeadFormStart({
@@ -2564,6 +2620,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
   ageRangeInputs.forEach((radio) => {
     radio.addEventListener('change', () => {
       showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('AgeBracket');
       syncStepOneAnswersFromUI();
       trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
       metaSignal?.trackLeadFormStart({

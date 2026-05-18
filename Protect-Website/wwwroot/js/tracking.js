@@ -637,6 +637,70 @@
   // Instrument all quote forms on the page
   document.querySelectorAll('form[data-form-key]').forEach(wireFormTracking);
 
+  function ensureFormTrackState(formKey) {
+    if (!formKey) return null;
+    let state = _formTrackStateByKey.get(formKey);
+    if (state) return state;
+
+    state = {
+      started: false,
+      submitted: false,
+      submitAttempted: false,
+      firstInteractionAt: null,
+      lastFocusedField: null,
+      lastCompletedField: null,
+      focusedFields: new Set(),
+      completedFields: new Set(),
+      errorsSeen: new Set(),
+      consentInteracted: false,
+      abandonFired: false,
+    };
+    _formTrackStateByKey.set(formKey, state);
+    return state;
+  }
+
+  function trackCustomFieldError(formKey, fieldName, errorType, quoteTypeOverride) {
+    const normalizedField = (fieldName || '').trim();
+    const normalizedErrorType = (errorType || 'validation_error').trim();
+    if (!formKey || !normalizedField) return;
+
+    const state = ensureFormTrackState(formKey);
+    if (state) {
+      if (!state.started) {
+        state.started = true;
+        state.firstInteractionAt = state.firstInteractionAt || Date.now();
+      }
+      const key = `${normalizedField}:${normalizedErrorType}`;
+      if (state.errorsSeen.has(key)) return;
+      state.errorsSeen.add(key);
+    }
+
+    sendEvent({
+      EventType: 'form_field_error',
+      FormKey: formKey,
+      QuoteType: quoteTypeOverride || formQuoteType(formKey),
+      FieldName: normalizedField,
+      MetadataJson: JSON.stringify({
+        errorType: normalizedErrorType,
+        source: 'custom_validation',
+      }),
+    });
+  }
+
+  function clearTrackedFieldError(formKey, fieldName) {
+    const normalizedField = (fieldName || '').trim();
+    if (!formKey || !normalizedField) return;
+
+    const state = ensureFormTrackState(formKey);
+    if (!state) return;
+
+    Array.from(state.errorsSeen).forEach(key => {
+      if (key.startsWith(normalizedField + ':')) {
+        state.errorsSeen.delete(key);
+      }
+    });
+  }
+
   function fireExitSignals() {
     firePageExit();
     _formAbandonCallbacks.forEach(function (cb) { try { cb(); } catch { /* swallow */ } });
@@ -733,6 +797,10 @@
   });
 
   window.legendTrack = (payload) => sendEvent(payload);
+  window.legendFormTracking = {
+    trackFieldError: trackCustomFieldError,
+    clearFieldError: clearTrackedFieldError,
+  };
   function getAttribution() {
     const attribution = resolveCurrentSessionAttribution({}, getSessionId());
     return {

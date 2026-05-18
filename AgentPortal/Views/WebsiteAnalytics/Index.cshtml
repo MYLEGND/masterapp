@@ -1289,6 +1289,30 @@
           <!-- Abandonment Tab -->
           <div class="tab-pane fade" id="quote-abandon-panel" role="tabpanel">
             <div id="abandon-loading" class="text-muted small py-3 text-center" style="display:none">Loading…</div>
+            <div class="row g-3 mb-3">
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Bounce Before Start</div>
+                <div class="fa-kpi-value" id="abandon-bounce-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Funnel Abandons</div>
+                <div class="fa-kpi-value" id="abandon-funnel-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Contact-Step Abandons</div>
+                <div class="fa-kpi-value" id="abandon-contact-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Validation Friction Abandons</div>
+                <div class="fa-kpi-value" id="abandon-validation-count">0</div>
+              </div>
+            </div>
+            <div class="small text-muted mb-3" id="abandon-qualification-note"></div>
+            <h6 class="text-warning">Bounce Before Funnel Start</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Type</th><th class="text-end">Exits</th><th class="text-end">Engaged 5s+</th><th class="text-end">Engaged 15s+</th><th class="text-end">Avg Dwell</th></tr></thead>
+                <tbody id="abandon-bounce-body"></tbody>
+            </table>
             <!-- Summary by quote type -->
             <h6 class="text-warning">Abandonment by Quote Type</h6>
             <table class="table table-sm mb-3">

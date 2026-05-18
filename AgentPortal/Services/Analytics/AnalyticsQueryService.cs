@@ -329,6 +329,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                string.Equals(e.SubmitOutcome, "error", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsQuoteScopeEvent(AnalyticsEvent e)
+    {
+        return IsQuoteFormKey(e.FormKey) ||
+               IsQuoteFormKey(e.FormId) ||
+               IsQuoteFormKey(e.PageKey) ||
+               !string.IsNullOrWhiteSpace(ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey));
+    }
+
+    private static bool IsQuoteFunnelInteractionEvent(AnalyticsEvent e)
+    {
+        return e.EventType == "form_start" ||
+               e.EventType == "form_field_focus" ||
+               e.EventType == "form_field_complete" ||
+               e.EventType == "form_field_error" ||
+               e.EventType == "form_abandon" ||
+               e.EventType == "life_step2_view" ||
+               IsQuoteSubmitAttempt(e) ||
+               IsOfficialLeadSuccessEvent(e);
+    }
+
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
     {
         if (!string.IsNullOrWhiteSpace(e.SessionId))
@@ -1928,23 +1948,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var relevantEventTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "form_abandon",
-            "form_start",
-            "form_field_error",
-            "lead_form_submit_success",
-            "form_submit",
-            "website_lead_submitted"
-        };
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
-            .Where(r => relevantEventTypes.Contains(r.Event.EventType))
             .Select(r => r.Event)
+            .Where(IsQuoteScopeEvent)
             .ToList();
 
         var successfulSubmitKeys = SelectCanonicalSuccessEvents(events)
-            .Select(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey))
+            .Select(BuildSuccessUnitKey)
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -1952,15 +1963,19 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e => e.EventType == "form_abandon")
             .Where(e =>
             {
-                var key = BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey);
-                return key == null || !successfulSubmitKeys.Contains(key);
+                var key = BuildSuccessUnitKey(e);
+                return string.IsNullOrWhiteSpace(key) || !successfulSubmitKeys.Contains(key);
             })
-            .GroupBy(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(e => BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderByDescending(e => e.EventUtc).First())
             .ToList();
+        var abandonKeys = abandonEvents
+            .Select(BuildSuccessUnitKey)
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var startEvents = events
             .Where(e => e.EventType == "form_start")
-            .GroupBy(e => BuildSessionFormKey(e.SessionId, e.FormKey ?? e.FormId, e.QuoteType, e.PageKey) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(e => BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderBy(e => e.EventUtc).First())
             .ToList();
         var errorEvents = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName)).ToList();
@@ -2080,15 +2095,80 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         // Consent friction: abandons where consentInteracted = false and submitAttempted = true
         var consentFriction = parsed.Count(p => p.SubmitAttempted && !p.ConsentInteracted);
 
+        var unitDiagnostics = events
+            .GroupBy(BuildSuccessUnitKey, StringComparer.OrdinalIgnoreCase)
+            .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+            .Select(g =>
+            {
+                var quoteType = g
+                    .Select(e => ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey))
+                    .FirstOrDefault(qt => !string.IsNullOrWhiteSpace(qt))
+                    ?? "unknown";
+
+                var lastExit = g
+                    .Where(e => e.EventType == "page_exit" && IsQuoteFormKey(e.PageKey))
+                    .OrderByDescending(e => e.EventUtc)
+                    .FirstOrDefault();
+
+                return new
+                {
+                    QuoteType = quoteType,
+                    HasLandingView = g.Any(e => e.EventType == "page_view" && IsQuoteFormKey(e.PageKey)),
+                    HasPageExit = lastExit != null,
+                    ExitDwellMs = (double)(lastExit?.DwellMilliseconds ?? 0),
+                    ExitEngagedMs = (double)(lastExit?.EngagedMilliseconds ?? 0),
+                    HadFunnelInteraction = g.Any(IsQuoteFunnelInteractionEvent),
+                    HadFormAbandon = abandonKeys.Contains(g.Key),
+                    HadContactStepView = g.Any(e => e.EventType == "life_step2_view"),
+                    HadValidationError = g.Any(e => e.EventType == "form_field_error"),
+                    HadLeadSuccess = successfulSubmitKeys.Contains(g.Key)
+                };
+            })
+            .ToList();
+
+        var bounceBeforeStartUnits = unitDiagnostics
+            .Where(u => u.HasLandingView && u.HasPageExit && !u.HadFunnelInteraction && !u.HadLeadSuccess)
+            .ToList();
+        var bounceBeforeStartRows = bounceBeforeStartUnits
+            .GroupBy(u => u.QuoteType, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new BounceBeforeFunnelStartRow
+            {
+                QuoteType = g.Key,
+                ExitCount = g.Count(),
+                Engaged5sPlusCount = g.Count(x => (x.ExitEngagedMs > 0 ? x.ExitEngagedMs : x.ExitDwellMs) >= 5000),
+                Engaged15sPlusCount = g.Count(x => (x.ExitEngagedMs > 0 ? x.ExitEngagedMs : x.ExitDwellMs) >= 15000),
+                AvgDwellMs = Math.Round(g.Average(x => x.ExitDwellMs), 0)
+            })
+            .OrderByDescending(r => r.ExitCount)
+            .ToList();
+
+        var funnelAbandonCount = unitDiagnostics.Count(u => u.HadFormAbandon && !u.HadContactStepView);
+        var contactStepAbandonCount = unitDiagnostics.Count(u => u.HadFormAbandon && u.HadContactStepView);
+        var validationFrictionAbandonCount = unitDiagnostics.Count(u => u.HadFormAbandon && u.HadValidationError);
+
+        if (summary.Count == 0 && bounceBeforeStartRows.Count > 0)
+        {
+            const string noAbandonMessage = "No explicit form_abandon events were recorded in this slice. These abandonment tables only populate after a quote form is started and the visitor later exits without a confirmed lead.";
+            dataQualityNote = string.IsNullOrWhiteSpace(dataQualityNote)
+                ? noAbandonMessage
+                : $"{dataQualityNote} {noAbandonMessage}";
+        }
+
         return new FormAbandonmentDto
         {
             Summary = summary,
+            BounceBeforeFunnelStart = bounceBeforeStartRows,
             TopAbandonedFields = topAbandoned,
             TopLastCompletedFields = topLastCompleted,
             ValidationFriction = validationFriction,
+            BounceBeforeFunnelStartCount = bounceBeforeStartUnits.Count,
+            FunnelAbandonCount = funnelAbandonCount,
+            ContactStepAbandonCount = contactStepAbandonCount,
+            ValidationFrictionAbandonCount = validationFrictionAbandonCount,
             ConsentFrictionCount = consentFriction,
             StartSignalGapQuoteTypeCount = startSignalGapQuoteTypeCount,
             DataQualityNote = dataQualityNote,
+            QualificationNote = "Bounce Before Funnel Start counts quote landing exits with no form start, field interaction, submit attempt, or lead. Funnel Abandon counts explicit form_abandon exits after the funnel starts but before the contact step. Contact-step Abandon counts explicit form_abandon exits after the contact step is viewed. Validation Friction Abandon counts explicit form_abandon exits on sessions that also logged one or more form_field_error events.",
             RangeLabel = range.Label
         };
     }

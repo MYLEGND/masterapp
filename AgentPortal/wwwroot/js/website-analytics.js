@@ -745,6 +745,18 @@
 
   function renderAbandonment(data) {
     if (!data) return;
+    setText('abandon-bounce-count', data.bounceBeforeFunnelStartCount ?? 0);
+    setText('abandon-funnel-count', data.funnelAbandonCount ?? 0);
+    setText('abandon-contact-count', data.contactStepAbandonCount ?? 0);
+    setText('abandon-validation-count', data.validationFrictionAbandonCount ?? 0);
+    setText('abandon-qualification-note', data.qualificationNote || '');
+    renderTable('abandon-bounce-body', data.bounceBeforeFunnelStart || [], [
+      { render: r => prettifyQuoteType(r.quoteType) },
+      { key: 'exitCount', align: 'text-end' },
+      { key: 'engaged5sPlusCount', align: 'text-end' },
+      { key: 'engaged15sPlusCount', align: 'text-end' },
+      { key: 'avgDwellMs', align: 'text-end', fmt: v => formatMs(v) }
+    ]);
     renderTable('abandon-summary-body', data.summary || [], [
       { render: r => prettifyQuoteType(r.quoteType) },
       { key: 'abandons', align: 'text-end' },
@@ -772,6 +784,9 @@
     if (note) {
       const notes = [];
       if (data.dataQualityNote) notes.push(data.dataQualityNote);
+      if ((data.summary || []).length === 0 && (data.bounceBeforeFunnelStartCount || 0) > 0) {
+        notes.push('These sessions exited before any tracked form interaction, so they are shown as bounces rather than form abandons.');
+      }
       if (data.consentFrictionCount > 0) {
         notes.push(`Consent friction: ${data.consentFrictionCount} session(s) attempted submit without interacting with the consent checkbox.`);
       }
@@ -1466,8 +1481,11 @@
       setText('quote-range-label', 'Unavailable');
       setTableMessage('quote-type-body', 2, message, 'text-danger');
       setTableMessage('quote-stage-body', 2, message, 'text-danger');
-      setTableMessage('abandon-summary-body', 4, message, 'text-danger');
-      setTableMessage('abandon-fields-body', 2, message, 'text-danger');
+      setTableMessage('abandon-bounce-body', 5, message, 'text-danger');
+      setTableMessage('abandon-summary-body', 6, message, 'text-danger');
+      setTableMessage('abandon-fields-body', 3, message, 'text-danger');
+      setTableMessage('abandon-last-completed-body', 3, message, 'text-danger');
+      setTableMessage('abandon-validation-body', 3, message, 'text-danger');
       console.error(err);
     }
   }
