@@ -2616,10 +2616,10 @@
             <div class="landing-route-key">${escapeHtml(variant.effectivePageKey || '—')}</div>
           </td>
           <td>
-            <a class="landing-route-url" href="${landingUrl}" target="_blank" rel="noopener">${escapeHtml(truncateUrl(variant.url || ''))}</a>
+            <a class="landing-route-url" href="${landingUrl}" target="_blank" rel="noopener">${escapeHtml(variant.url || '—')}</a>
           </td>
           <td>
-            <a class="landing-route-url" href="${suggestedUrl}" target="_blank" rel="noopener">${escapeHtml(truncateUrl(variant.suggestedMetaDestinationUrl || variant.url || ''))}</a>
+            <a class="landing-route-url" href="${suggestedUrl}" target="_blank" rel="noopener">${escapeHtml(variant.suggestedMetaDestinationUrl || variant.url || '—')}</a>
           </td>
           <td>
             <div class="product-link-actions landing-route-actions">
@@ -2699,27 +2699,13 @@
   }
 
   function wireProductLinks() {
-    const toggle = document.getElementById('product-links-toggle');
-    const section = document.getElementById('product-links-section');
+    const modal = document.getElementById('landingRoutesModal');
     const list = document.getElementById('product-links-list');
     const display = document.getElementById('product-link-display');
-    if (!toggle || !section || !list) return;
+    if (!list) return;
 
     const activeRoutes = normalizeLandingRoutes(landingRoutes);
-    list.innerHTML = `
-      <div class="landing-route-registry-meta">
-        <span class="landing-route-registry-label">Registry Base URL</span>
-        <span class="landing-route-registry-value">${escapeHtml(landingRoutesBaseUrl || 'https://protect.mylegnd.com')}</span>
-      </div>
-      ${renderLandingRouteCards(activeRoutes)}
-    `;
-
-    // Toggle expand/collapse
-    toggle.addEventListener('click', () => {
-      const isOpen = !section.hidden;
-      section.hidden = isOpen;
-      toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
-    });
+    list.innerHTML = renderLandingRouteCards(activeRoutes);
 
     list.addEventListener('click', e => {
       const copyBtn = e.target.closest('.product-link-copy');
@@ -2735,6 +2721,12 @@
       }
       if (openBtn) {
         window.open(url, '_blank', 'noopener');
+      }
+    });
+
+    modal?.addEventListener('hidden.bs.modal', () => {
+      if (display) {
+        display.value = '';
       }
     });
   }

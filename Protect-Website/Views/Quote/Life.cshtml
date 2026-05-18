@@ -462,6 +462,7 @@ body.life-landing header .navbar .nav-link:focus {
     font-size: .9rem;
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
+.lq-hero-rail { width: 100%; }
 
 body.life-landing .lq-container {
     padding: 0;
@@ -1540,44 +1541,99 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     }
 }
 
+/* Emotional continuity desktop rail alignment */
+@@media (min-width: 768px) {
+    body.page-variant-emotional-continuity-v1.life-landing .lq-hero-rail {
+        position: relative;
+        max-width: 690px;
+        margin: 0 auto 14px;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-header {
+        margin-bottom: 12px !important;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-landing-brand-row {
+        display: block;
+        position: relative;
+        min-height: 86px;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-landing-brand-copy {
+        max-width: none;
+        padding-right: 118px;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-landing-logo-wrap {
+        position: absolute;
+        top: 4px;
+        right: 0;
+        width: 72px;
+        height: 72px;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-header h1 {
+        max-width: 11ch !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        font-size: clamp(1.95rem, 3.8vw, 2.55rem) !important;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-subtext {
+        max-width: 29ch;
+        margin: 12px 0 8px !important;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing .lq-trust-note {
+        margin-bottom: 0 !important;
+    }
+
+    body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
+        max-width: 320px;
+        margin: 0 0 16px;
+    }
+}
+
 </style>
 
 <div class="lq-hero-shell">
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
-    <div class="lq-header">
-        @if (isLandingView)
-        {
-            <div class="lq-landing-brand-row">
-                <div class="lq-landing-brand-copy">
-                    <h1 class="hero-title">@heroHeadline</h1>
-                </div>
-                <div class="lq-landing-logo-wrap" aria-hidden="true">
-                    <img class="lq-landing-logo" src="~/images/company-icons/legend.png" asp-append-version="true" alt="" />
-                </div>
-            </div>
-        }
-        else
-        {
-            <h1 class="hero-title">@heroHeadline</h1>
-        }
-        @if (!string.IsNullOrWhiteSpace(heroSubheadline))
-        {
-            <div class="lq-subtext">@heroSubheadline</div>
-        }
-        <div class="lq-trust-note">@heroTrustNote</div>
-    </div>
-    <div class="lq-human-strip@(isEmotionalContinuityVariant ? " lq-human-strip-soft" : string.Empty)" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
-        <div class="lq-human-strip-avatar" aria-hidden="true">
-            @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
+    <div class="lq-hero-rail">
+        <div class="lq-header">
+            @if (isLandingView)
             {
-                <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                <div class="lq-landing-brand-row">
+                    <div class="lq-landing-brand-copy">
+                        <h1 class="hero-title">@heroHeadline</h1>
+                    </div>
+                    <div class="lq-landing-logo-wrap" aria-hidden="true">
+                        <img class="lq-landing-logo" src="~/images/company-icons/legend.png" asp-append-version="true" alt="" />
+                    </div>
+                </div>
             }
-            <span class="lq-human-strip-fallback" @(!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl) ? "hidden" : null)>@heroTrustPersonInitials</span>
+            else
+            {
+                <h1 class="hero-title">@heroHeadline</h1>
+            }
+            @if (!string.IsNullOrWhiteSpace(heroSubheadline))
+            {
+                <div class="lq-subtext">@heroSubheadline</div>
+            }
+            <div class="lq-trust-note">@heroTrustNote</div>
         </div>
-        <div class="lq-human-strip-copy">
-            <div class="lq-human-strip-name">@heroTrustPersonName</div>
-            <div class="lq-human-strip-role">@heroTrustPersonRole</div>
-            <div class="lq-human-strip-note">@heroTrustPersonSupport</div>
+        <div class="lq-human-strip@(isEmotionalContinuityVariant ? " lq-human-strip-soft" : string.Empty)" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
+            <div class="lq-human-strip-avatar" aria-hidden="true">
+                @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
+                {
+                    <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                }
+                <span class="lq-human-strip-fallback" @(!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl) ? "hidden" : null)>@heroTrustPersonInitials</span>
+            </div>
+            <div class="lq-human-strip-copy">
+                <div class="lq-human-strip-name">@heroTrustPersonName</div>
+                <div class="lq-human-strip-role">@heroTrustPersonRole</div>
+                <div class="lq-human-strip-note">@heroTrustPersonSupport</div>
+            </div>
         </div>
     </div>
 

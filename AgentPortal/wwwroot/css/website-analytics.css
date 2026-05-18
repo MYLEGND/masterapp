@@ -847,10 +847,10 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     letter-spacing: .02em;
 }
 .product-links-toggle::after {
-    content: ' ▾';
+    content: ' ↗';
 }
 .product-links-toggle[aria-expanded="true"]::after {
-    content: ' ▴';
+    content: ' ↗';
 }
 .product-links-section {
     margin-top: 10px;
@@ -1207,6 +1207,88 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     box-shadow: 0 6px 14px rgba(0,0,0,.08);
 }
 
+.landing-routes-dialog {
+    max-width: min(1600px, calc(100vw - 1.5rem));
+}
+
+.landing-routes-shell {
+    min-height: min(88vh, 980px);
+}
+
+.landing-routes-body {
+    gap: 1rem;
+}
+
+.landing-routes-section {
+    min-height: 0;
+}
+
+.landing-routes-selected {
+    flex: 1 1 780px;
+    min-width: min(100%, 420px);
+}
+
+.landing-routes-selected-label {
+    display: block;
+    margin-bottom: .42rem;
+    color: rgba(199,153,49,.82);
+    font-size: .68rem;
+    font-weight: 900;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.landing-routes-footer {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.landing-routes-dialog .product-link-display {
+    min-height: 44px;
+}
+
+.landing-routes-dialog .landing-route-card {
+    margin-bottom: 14px;
+}
+
+.landing-routes-dialog .landing-route-control-copy {
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+}
+
+.landing-routes-dialog .landing-route-control-copy .landing-route-url {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    min-width: max-content;
+}
+
+.landing-routes-dialog .landing-route-table-wrap {
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
+}
+
+.landing-routes-dialog .landing-route-table {
+    width: max-content;
+    min-width: 1480px;
+}
+
+.landing-routes-dialog .landing-route-table th:nth-child(4),
+.landing-routes-dialog .landing-route-table th:nth-child(5),
+.landing-routes-dialog .landing-route-table td:nth-child(4),
+.landing-routes-dialog .landing-route-table td:nth-child(5),
+.landing-routes-dialog .landing-route-table td:nth-child(6) {
+    white-space: nowrap;
+}
+
+.landing-routes-dialog .landing-route-table td:nth-child(4) .landing-route-url,
+.landing-routes-dialog .landing-route-table td:nth-child(5) .landing-route-url {
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
 @media (max-width: 575.98px) {
     .landing-route-card-head,
     .landing-route-control-shell {
@@ -1223,6 +1305,13 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     .product-link-actions {
         width: 100%;
         flex-wrap: wrap;
+    }
+    .landing-routes-footer {
+        align-items: stretch;
+    }
+    .landing-routes-selected {
+        flex-basis: 100%;
+        min-width: 0;
     }
 }
 

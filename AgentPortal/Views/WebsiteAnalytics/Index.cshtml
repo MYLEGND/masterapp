@@ -44,22 +44,14 @@
                         <div class="hero-link-badge">Live Link</div>
                     </div>
                     <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                    <div class="hero-link-note">Open or copy the live site, then expand the paid landing registry to launch control pages and active test variants.</div>
+                    <div class="hero-link-note">Open or copy the live site, then launch the paid landing registry to review control pages and active test variants in a wider workspace.</div>
                     <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
                         <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
                         <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
                     </div>
-                    <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
+                    <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" data-bs-toggle="modal" data-bs-target="#landingRoutesModal" aria-controls="landingRoutesModal">
                         Explore Paid Landing Routes
                     </button>
-                    <div class="product-links-section" id="product-links-section" hidden>
-                        <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
-                        <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the public Protect website base URL.</div>
-                        <div id="product-links-list"></div>
-                        <div class="mt-2">
-                            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected landing URL" aria-label="Selected landing link" />
-                        </div>
-                    </div>
                 </div>
 
                 <div class="hero-link-panel hero-link-panel-meta">
@@ -204,6 +196,45 @@
     <form id="meta-disconnect-form" method="post" class="d-none">
       @Html.AntiForgeryToken()
     </form>
+
+    <div class="modal fade fa-modal" id="landingRoutesModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog landing-routes-dialog">
+        <div class="modal-content wa-modal-shell landing-routes-shell">
+          <div class="modal-header wa-modal-header">
+            <div class="wa-modal-header-main">
+              <div class="wa-modal-header-copy">
+                <div class="wa-modal-kicker">Launch Registry</div>
+                <h5 class="modal-title mb-0">Paid Landing Routes + Test Variants</h5>
+                <div class="wa-modal-subtitle">View every discovered control page and active test variant in one wide workspace. Horizontal and vertical scrolling remain available whenever the registry grows.</div>
+              </div>
+              <div class="wa-modal-header-actions">
+                <div class="wa-modal-range-chip">
+                  <span class="wa-modal-range-label">Registry Base URL</span>
+                  <span class="wa-modal-range-value">@landingRoutesBaseUrl</span>
+                </div>
+                <div class="wa-modal-note-chip">Suggested Meta destination URLs included</div>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body wa-modal-body landing-routes-body">
+            <div class="wa-modal-note">Compare the listed effective page keys in Page Performance using Ads Only traffic.</div>
+            <section class="wa-modal-section landing-routes-section">
+              <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
+              <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the public Protect website base URL.</div>
+              <div id="product-links-list"></div>
+            </section>
+          </div>
+          <div class="modal-footer wa-modal-footer landing-routes-footer">
+            <div class="landing-routes-selected">
+              <label class="landing-routes-selected-label" for="product-link-display">Selected landing URL</label>
+              <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected landing URL" aria-label="Selected landing link" />
+            </div>
+            <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div class="wa-methodology-note mb-3" id="wa-methodology-note">
         <div class="wa-methodology-body">Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.</div>
