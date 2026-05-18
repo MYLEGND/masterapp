@@ -122,9 +122,7 @@
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
     var finalStepHeading = "Where should I send your personalized review?";
-    var finalStepHelper = showAgentTrustCard
-        ? "I’ll use this to take a look and explain what may fit. No pressure."
-        : "I’ll take a look and explain what may fit based on what you shared.";
+    var finalStepHelper = string.Empty;
     var agentTrustHeadline = $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = "I’ll review what you shared and explain what may fit.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
