@@ -22,181 +22,185 @@
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
 <div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
-    <div class="hero-link mb-4 p-4 p-md-5">
-        <div class="hero-link-top">
-            <div class="hero-link-intro">
-                <div class="hero-link-kicker">Shared Command Area</div>
-                <h3 class="hero-link-title">Marketing Links</h3>
-                <div class="hero-link-subtitle text-silver">Open the website, manage Meta Ads, and jump into behavior review fast.</div>
+    <div class="wa-command-surface mb-3">
+        <div class="hero-link p-4 p-md-5">
+            <div class="hero-link-top">
+                <div class="hero-link-intro">
+                    <div class="hero-link-kicker">Shared Command Area</div>
+                    <h3 class="hero-link-title">Marketing Links</h3>
+                    <div class="hero-link-subtitle text-silver">Open the website, manage Meta Ads, and jump into behavior review fast.</div>
+                </div>
+            </div>
+
+            <div class="hero-link-grid">
+                <div class="hero-link-panel hero-link-panel-website">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Website Link</div>
+                            <div class="hero-link-panel-title">Primary site link</div>
+                        </div>
+                        <div class="hero-link-badge">Live Link</div>
+                    </div>
+                    <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+                    <div class="hero-link-note">Open or copy the live site, or expand product-specific landing links.</div>
+                    <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
+                        <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
+                        <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
+                    </div>
+                    <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
+                        Explore Product-Specific Links
+                    </button>
+                    <div class="product-links-section" id="product-links-section" hidden>
+                        <div class="product-links-header">Website + Ad Landing Quote Links</div>
+                        <div id="product-links-list"></div>
+                        <div class="mt-2">
+                            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected product URL" aria-label="Selected product link" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-link-panel hero-link-panel-meta">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Meta Ads</div>
+                            <div class="hero-link-panel-title">Campaign command area</div>
+                        </div>
+                        <div class="hero-link-badge">Campaigns</div>
+                    </div>
+                    <div class="text-silver hero-link-help">Review spend, open campaigns, or connect the account for shared analysis.</div>
+                    <div class="small" id="meta-connection-status">Checking connection…</div>
+                    <div class="hero-link-meta-actions">
+                        <a class="btn btn-gold hero-link-meta-btn"
+                           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
+                           target="_blank"
+                           rel="noopener">
+                            Open Meta Ads Manager
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                id="meta-campaigns-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#metaCampaignsModal">
+                            Campaigns
+                        </button>
+                        <a class="btn btn-outline-light hero-link-meta-btn"
+                           id="meta-connect-btn"
+                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                            Connect Meta Ads
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                id="meta-disconnect-btn"
+                                style="display:none;">
+                            Disconnect
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hero-link-panel hero-link-panel-intel">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Behavior Intelligence</div>
+                            <div class="hero-link-panel-title">Behavior + AI review</div>
+                        </div>
+                        <div class="hero-link-badge">AI Review</div>
+                    </div>
+                    <div class="text-silver hero-link-help">Launch behavior analysis fast or copy an AI review snapshot.</div>
+                    <div class="hero-link-meta-actions">
+                        <button type="button"
+                                class="btn btn-gold hero-link-meta-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#behaviorModal">
+                            Open Behavior Intelligence
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                data-ai-drawer-trigger>
+                            Open AI Review
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                id="ai-review-snapshot-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#aiReviewSnapshotModal">
+                            Copy Review Snapshot
+                        </button>
+                    </div>
+                </div>
+
             </div>
         </div>
 
-        <div class="hero-link-grid">
-            <div class="hero-link-panel hero-link-panel-website">
-                <div class="hero-link-panel-head">
-                    <div>
-                        <div class="hero-link-label">Website Link</div>
-                        <div class="hero-link-panel-title">Primary site link</div>
-                    </div>
-                    <div class="hero-link-badge">Live Link</div>
+        <div class="wa-command-dashboard">
+            <div class="wa-page-header">
+                <div class="wa-header-copy">
+                    <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
+                    <h2 class="wa-header-title">Website Analytics</h2>
+                    <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
                 </div>
-                <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                <div class="hero-link-note">Open or copy the live site, or expand product-specific landing links.</div>
-                <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
-                    <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
-                    <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
-                </div>
-                <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
-                    Explore Product-Specific Links
-                </button>
-                <div class="product-links-section" id="product-links-section" hidden>
-                    <div class="product-links-header">Website + Ad Landing Quote Links</div>
-                    <div id="product-links-list"></div>
-                    <div class="mt-2">
-                        <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected product URL" aria-label="Selected product link" />
+                <div class="wa-header-right">
+                    <div class="wa-tz-chip wa-scope-chip">
+                        <span class="wa-scope-chip-kicker">Viewing</span>
+                        <span class="wa-scope-chip-value" id="wa-scope-label">@initialScopeLabel</span>
                     </div>
+                    @if (canViewFounderTeamUi)
+                    {
+                    <div class="wa-scope-picker" aria-label="Analytics scope selector">
+                        <div class="wa-scope-picker-head">
+                            <label class="wa-scope-picker-label" for="wa-scope-select">Scope</label>
+                        </div>
+                        <div class="wa-scope-select-shell">
+                            <select id="wa-scope-select" class="form-select form-select-sm scope-select">
+                                <option value="">Global</option>
+                                @if (callerProfileId.HasValue)
+                                {
+                                <option value="@callerProfileId.Value">Founder Personal</option>
+                                }
+                            </select>
+                        </div>
+                    </div>
+                    }
+                    <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
+                    <div class="fa-env-badge" id="fa-env-label"></div>
+                    @if(canViewFounderTeamUi)
+                    {
+                    <button class="btn btn-sm wa-team-btn" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal">
+                        Team Performance
+                    </button>
+                    }
                 </div>
             </div>
 
-            <div class="hero-link-panel hero-link-panel-meta">
-                <div class="hero-link-panel-head">
-                    <div>
-                        <div class="hero-link-label">Meta Ads</div>
-                        <div class="hero-link-panel-title">Campaign command area</div>
+            <div class="control-bar">
+                <div class="control-bar-group control-bar-presets">
+                    <div class="control-bar-label">Quick Range</div>
+                    <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Quick range presets">
+                        <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
+                        <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
+                        <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
+                        <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
+                        <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
                     </div>
-                    <div class="hero-link-badge">Campaigns</div>
                 </div>
-                <div class="text-silver hero-link-help">Review spend, open campaigns, or connect the account for shared analysis.</div>
-                <div class="small" id="meta-connection-status">Checking connection…</div>
-                <div class="hero-link-meta-actions">
-                    <a class="btn btn-gold hero-link-meta-btn"
-                       href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
-                       target="_blank"
-                       rel="noopener">
-                        Open Meta Ads Manager
-                    </a>
-                    <button type="button"
-                            class="btn btn-outline-light hero-link-meta-btn"
-                            id="meta-campaigns-open"
-                            data-bs-toggle="modal"
-                            data-bs-target="#metaCampaignsModal">
-                        Campaigns
-                    </button>
-                    <a class="btn btn-outline-light hero-link-meta-btn"
-                       id="meta-connect-btn"
-                       href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
-                        Connect Meta Ads
-                    </a>
-                    <button type="button"
-                            class="btn btn-outline-light hero-link-meta-btn"
-                            id="meta-disconnect-btn"
-                            style="display:none;">
-                        Disconnect
-                    </button>
+                <div class="control-bar-group control-bar-custom">
+                    <div class="control-bar-label">Custom Window</div>
+                    <div class="date-group d-flex align-items-center gap-2 flex-fill">
+                        <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
+                        <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
+                        <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply Range</button>
+                    </div>
+                </div>
+                <div class="control-bar-group control-bar-status">
+                    <div class="control-bar-label">Status</div>
+                    <div id="fa-range-error" class="control-bar-status-text"></div>
                 </div>
             </div>
-
-            <div class="hero-link-panel hero-link-panel-intel">
-                <div class="hero-link-panel-head">
-                    <div>
-                        <div class="hero-link-label">Behavior Intelligence</div>
-                        <div class="hero-link-panel-title">Behavior + AI review</div>
-                    </div>
-                    <div class="hero-link-badge">AI Review</div>
-                </div>
-                <div class="text-silver hero-link-help">Launch behavior analysis fast or copy an AI review snapshot.</div>
-                <div class="hero-link-meta-actions">
-                    <button type="button"
-                            class="btn btn-gold hero-link-meta-btn"
-                            data-bs-toggle="modal"
-                            data-bs-target="#behaviorModal">
-                        Open Behavior Intelligence
-                    </button>
-                    <button type="button"
-                            class="btn btn-outline-light hero-link-meta-btn"
-                            data-ai-drawer-trigger>
-                        Open AI Review
-                    </button>
-                    <button type="button"
-                            class="btn btn-outline-light hero-link-meta-btn"
-                            id="ai-review-snapshot-btn"
-                            data-bs-toggle="modal"
-                            data-bs-target="#aiReviewSnapshotModal">
-                        Copy Review Snapshot
-                    </button>
-                </div>
-            </div>
-
         </div>
     </div>
 
     <form id="meta-disconnect-form" method="post" class="d-none">
       @Html.AntiForgeryToken()
     </form>
-
-    <div class="wa-page-header mb-3">
-        <div class="wa-header-copy">
-            <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
-            <h2 class="wa-header-title">Website Analytics</h2>
-            <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
-        </div>
-        <div class="wa-header-right">
-            <div class="wa-tz-chip wa-scope-chip">
-                <span class="wa-scope-chip-kicker">Viewing</span>
-                <span class="wa-scope-chip-value" id="wa-scope-label">@initialScopeLabel</span>
-            </div>
-            @if (canViewFounderTeamUi)
-            {
-            <div class="wa-scope-picker" aria-label="Analytics scope selector">
-                <div class="wa-scope-picker-head">
-                    <label class="wa-scope-picker-label" for="wa-scope-select">Scope</label>
-                </div>
-                <div class="wa-scope-select-shell">
-                    <select id="wa-scope-select" class="form-select form-select-sm scope-select">
-                        <option value="">Global</option>
-                        @if (callerProfileId.HasValue)
-                        {
-                        <option value="@callerProfileId.Value">Founder Personal</option>
-                        }
-                    </select>
-                </div>
-            </div>
-            }
-            <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
-            <div class="fa-env-badge" id="fa-env-label"></div>
-            @if(canViewFounderTeamUi)
-            {
-            <button class="btn btn-sm wa-team-btn" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal">
-                Team Performance
-            </button>
-            }
-        </div>
-    </div>
-
-    <div class="control-bar mb-3">
-        <div class="control-bar-group control-bar-presets">
-            <div class="control-bar-label">Quick Range</div>
-            <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Quick range presets">
-                <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
-                <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
-                <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
-                <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
-                <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
-            </div>
-        </div>
-        <div class="control-bar-group control-bar-custom">
-            <div class="control-bar-label">Custom Window</div>
-            <div class="date-group d-flex align-items-center gap-2 flex-fill">
-                <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
-                <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
-                <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply Range</button>
-            </div>
-        </div>
-        <div class="control-bar-group control-bar-status">
-            <div class="control-bar-label">Status</div>
-            <div id="fa-range-error" class="control-bar-status-text"></div>
-        </div>
-    </div>
 
     <div class="wa-methodology-note mb-3" id="wa-methodology-note">
         <div class="wa-methodology-body">Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.</div>

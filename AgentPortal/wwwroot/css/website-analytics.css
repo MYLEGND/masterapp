@@ -3002,6 +3002,88 @@ body {
         linear-gradient(180deg, #f7f8fb 0%, #eef2f7 100%);
 }
 
+.wa-command-surface {
+    position: relative;
+    display: grid;
+    gap: 1rem;
+    padding: 1.15rem 1.2rem 1.05rem;
+    border-radius: 22px;
+    border: 1.5px solid rgba(166,128,35,.9);
+    background:
+        radial-gradient(920px 320px at -4% 0%, rgba(199,153,49,.12), transparent 55%),
+        radial-gradient(760px 300px at 104% 0%, rgba(55,91,154,.18), transparent 58%),
+        linear-gradient(158deg, #0b1530 0%, #0f1d3c 52%, #0b1530 100%);
+    box-shadow:
+        0 28px 56px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.05),
+        inset 0 0 0 1px rgba(199,153,49,.08);
+    overflow: hidden;
+}
+
+.wa-command-surface::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,0) 26%),
+        radial-gradient(540px 200px at 84% 100%, rgba(199,153,49,.08), transparent 65%);
+    pointer-events: none;
+}
+
+.wa-command-surface > * {
+    position: relative;
+    z-index: 1;
+}
+
+.wa-command-dashboard {
+    display: grid;
+    gap: .9rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(199,153,49,.2);
+}
+
+.wa-command-surface .hero-link,
+.wa-command-surface .wa-page-header,
+.wa-command-surface .control-bar {
+    margin: 0 !important;
+}
+
+.wa-command-surface .hero-link {
+    padding: 0 !important;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.wa-command-surface .hero-link::before {
+    display: none;
+}
+
+.wa-command-surface .wa-page-header {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.wa-command-surface .wa-header-copy {
+    max-width: 44rem;
+}
+
+.wa-command-surface .control-bar {
+    padding: .9rem 1rem;
+    border: 1px solid rgba(199,153,49,.18);
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,.015) 100%),
+        rgba(8,15,34,.3);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.04),
+        0 14px 28px rgba(0,0,0,.14);
+}
+
 .hero-link {
     padding: 1.15rem 1.2rem !important;
 }
@@ -3419,6 +3501,10 @@ body {
 }
 
 @media (min-width: 768px) {
+    .wa-command-surface {
+        padding: 1.25rem 1.35rem 1.15rem;
+    }
+
     .hero-link {
         padding: 1.25rem 1.35rem !important;
     }
@@ -3450,6 +3536,16 @@ body {
 }
 
 @media (max-width: 991.98px) {
+    .wa-command-surface {
+        gap: .9rem;
+        padding: 1rem 1.05rem .95rem;
+    }
+
+    .wa-command-dashboard {
+        gap: .8rem;
+        padding-top: .9rem;
+    }
+
     .hero-link-top {
         align-items: flex-start;
         flex-direction: column;
@@ -3482,6 +3578,17 @@ body {
 }
 
 @media (max-width: 767.98px) {
+    .wa-command-surface {
+        gap: .85rem;
+        padding: .95rem;
+        border-radius: 16px;
+    }
+
+    .wa-command-dashboard {
+        gap: .75rem;
+        padding-top: .8rem;
+    }
+
     .hero-link,
     .wa-page-header,
     .control-bar,
@@ -3525,6 +3632,15 @@ body {
     .wa-page-header,
     .control-bar {
         padding: 1rem;
+    }
+
+    .wa-command-surface .hero-link,
+    .wa-command-surface .wa-page-header {
+        padding: 0 !important;
+    }
+
+    .wa-command-surface .control-bar {
+        padding: .85rem;
     }
 
     .hero-link-title,
