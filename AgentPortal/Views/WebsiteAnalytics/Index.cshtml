@@ -23,89 +23,114 @@
 
 <div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
     <div class="hero-link mb-4 p-4 p-md-5">
-    <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 mb-3">
-            <div>
-        <h4 class="mb-1 fw-bold text-gold">Marketing Links</h4>
-        <div class="text-silver">Use this shared command area for your website traffic link and Meta Ads management.</div>
+        <div class="hero-link-top">
+            <div class="hero-link-intro">
+                <div class="hero-link-kicker">Website Analytics Workspace</div>
+                <h3 class="hero-link-title">Command center for links, campaigns, and intelligence reviews</h3>
+                <div class="hero-link-subtitle text-silver">Use this shared control area to launch the website, manage Meta Ads, and move directly into the best analysis tool for the question you need to answer.</div>
             </div>
-    </div>
+            <div class="hero-link-summary" aria-label="Command center highlights">
+                <div class="hero-link-summary-chip">Website access</div>
+                <div class="hero-link-summary-chip">Campaign actions</div>
+                <div class="hero-link-summary-chip">AI + behavior review</div>
+            </div>
+        </div>
 
-    <div class="hero-link-grid">
-      <div class="hero-link-panel">
-        <div class="hero-link-label">Website Link</div>
-        <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-        <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Website link actions">
-          <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
-          <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
-        </div>
-        <button type="button" class="btn btn-outline-light btn-sm w-100 mt-2 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
-          Product-Specific Links
-        </button>
-        <div class="product-links-section" id="product-links-section" hidden>
-          <div class="product-links-header">Website + Ad Landing Quote Links</div>
-          <div id="product-links-list"></div>
-          <div class="mt-2">
-            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected product URL" aria-label="Selected product link" />
-          </div>
-        </div>
+        <div class="hero-link-grid">
+            <div class="hero-link-panel hero-link-panel-website">
+                <div class="hero-link-panel-head">
+                    <div>
+                        <div class="hero-link-label">Website Link</div>
+                        <div class="hero-link-panel-title">Primary traffic destination</div>
+                    </div>
+                    <div class="hero-link-badge">Live Link</div>
+                </div>
+                <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+                <div class="hero-link-note">Open the live site fast, copy the base URL for placement work, or expand product-specific landing links for quote campaigns.</div>
+                <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
+                    <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
+                    <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
+                </div>
+                <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
+                    Explore Product-Specific Links
+                </button>
+                <div class="product-links-section" id="product-links-section" hidden>
+                    <div class="product-links-header">Website + Ad Landing Quote Links</div>
+                    <div id="product-links-list"></div>
+                    <div class="mt-2">
+                        <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected product URL" aria-label="Selected product link" />
+                    </div>
+                </div>
             </div>
 
-      <div class="hero-link-panel hero-link-panel-meta">
-        <div class="hero-link-label">Meta Ads</div>
-        <div class="text-silver hero-link-help">Open Ads Manager to review campaigns, spend, and performance.</div>
-        <div class="small mt-2" id="meta-connection-status">Checking connection…</div>
-        <div class="hero-link-meta-actions mt-2">
-            <a class="btn btn-outline-light hero-link-meta-btn"
-               id="meta-connect-btn"
-               href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
-              Connect Meta Ads
-            </a>
-          <button type="button"
-              class="btn btn-outline-light hero-link-meta-btn"
-              id="meta-campaigns-open"
-              data-bs-toggle="modal"
-              data-bs-target="#metaCampaignsModal">
-            Campaigns
-          </button>
-          <a class="btn btn-gold hero-link-meta-btn"
-             href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
-             target="_blank"
-             rel="noopener">
-            Open Meta Ads Manager
-          </a>
-            <button type="button"
-                    class="btn btn-outline-light hero-link-meta-btn"
-                    id="meta-disconnect-btn"
-                    style="display:none;">
-                Disconnect
-            </button>
-        </div>
-      </div>
+            <div class="hero-link-panel hero-link-panel-meta">
+                <div class="hero-link-panel-head">
+                    <div>
+                        <div class="hero-link-label">Meta Ads</div>
+                        <div class="hero-link-panel-title">Campaign command area</div>
+                    </div>
+                    <div class="hero-link-badge">Campaigns</div>
+                </div>
+                <div class="text-silver hero-link-help">Open Ads Manager to review spend, move into campaign detail, or connect the account for richer shared analysis.</div>
+                <div class="small" id="meta-connection-status">Checking connection…</div>
+                <div class="hero-link-meta-actions">
+                    <a class="btn btn-gold hero-link-meta-btn"
+                       href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
+                       target="_blank"
+                       rel="noopener">
+                        Open Meta Ads Manager
+                    </a>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn"
+                            id="meta-campaigns-open"
+                            data-bs-toggle="modal"
+                            data-bs-target="#metaCampaignsModal">
+                        Campaigns
+                    </button>
+                    <a class="btn btn-outline-light hero-link-meta-btn"
+                       id="meta-connect-btn"
+                       href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                        Connect Meta Ads
+                    </a>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn"
+                            id="meta-disconnect-btn"
+                            style="display:none;">
+                        Disconnect
+                    </button>
+                </div>
+            </div>
 
-      <div class="hero-link-panel">
-        <div class="hero-link-label">Behavior Intelligence</div>
-        <div class="text-silver hero-link-help">Analyze visitor engagement, dwell time, exit patterns, and source attribution.</div>
-        <div class="hero-link-meta-actions mt-2">
-          <button type="button"
-              class="btn btn-outline-light hero-link-meta-btn"
-              data-ai-drawer-trigger>
-            AI Review
-          </button>
-          <button type="button"
-              class="btn btn-outline-light hero-link-meta-btn"
-              id="ai-review-snapshot-btn"
-              data-bs-toggle="modal"
-              data-bs-target="#aiReviewSnapshotModal">
-            Copy AI Review Snapshot
-          </button>
-          <button type="button"
-              class="btn btn-gold hero-link-meta-btn"
-              data-bs-toggle="modal"
-              data-bs-target="#behaviorModal">
-            Open Behavior Intelligence
-          </button>
-        </div>
-      </div>
+            <div class="hero-link-panel hero-link-panel-intel">
+                <div class="hero-link-panel-head">
+                    <div>
+                        <div class="hero-link-label">Behavior Intelligence</div>
+                        <div class="hero-link-panel-title">Visitor learning tools</div>
+                    </div>
+                    <div class="hero-link-badge">AI Review</div>
+                </div>
+                <div class="text-silver hero-link-help">Analyze engagement, dwell time, exits, journey patterns, and attribution in the order most useful for learning and action.</div>
+                <div class="hero-link-meta-actions">
+                    <button type="button"
+                            class="btn btn-gold hero-link-meta-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#behaviorModal">
+                        Open Behavior Intelligence
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn"
+                            data-ai-drawer-trigger>
+                        Open AI Review
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn"
+                            id="ai-review-snapshot-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#aiReviewSnapshotModal">
+                        Copy Review Snapshot
+                    </button>
+                </div>
+            </div>
 
         </div>
     </div>
@@ -115,10 +140,11 @@
     </form>
 
     <div class="wa-page-header mb-3">
-        <div>
+        <div class="wa-header-copy">
             <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
             <h2 class="wa-header-title">Website Analytics</h2>
             <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
+            <div class="wa-header-lead">Start with the top-line health signals, then move into the intelligence modules below to find friction, learning, and next actions.</div>
         </div>
         <div class="wa-header-right">
             <div class="wa-tz-chip wa-scope-chip">
@@ -146,168 +172,276 @@
             <div class="fa-env-badge" id="fa-env-label"></div>
             @if(canViewFounderTeamUi)
             {
-            <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
-                    style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
+            <button class="btn btn-sm wa-team-btn" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal">
                 Team Performance
             </button>
             }
         </div>
     </div>
 
-    <div class="control-bar d-flex flex-nowrap align-items-center gap-3 mb-3">
-        <div class="btn-group btn-group-sm flex-shrink-0" role="group">
-            <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
-            <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
-            <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
-            <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
-            <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
+    <div class="control-bar mb-3">
+        <div class="control-bar-group control-bar-presets">
+            <div class="control-bar-label">Quick Range</div>
+            <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Quick range presets">
+                <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
+                <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
+                <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
+                <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
+                <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
+            </div>
         </div>
-        <div class="date-group d-flex align-items-center gap-2 flex-fill">
-            <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
-            <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
-            <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Custom</button>
+        <div class="control-bar-group control-bar-custom">
+            <div class="control-bar-label">Custom Window</div>
+            <div class="date-group d-flex align-items-center gap-2 flex-fill">
+                <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
+                <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
+                <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply Range</button>
+            </div>
         </div>
-        <div id="fa-range-error" class="text-danger small"></div>
+        <div class="control-bar-group control-bar-status">
+            <div class="control-bar-label">Status</div>
+            <div id="fa-range-error" class="control-bar-status-text"></div>
+        </div>
     </div>
 
-    <div class="alert alert-warning small py-2 px-3 mb-3" id="wa-methodology-note">
-        Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.
+    <div class="wa-methodology-note mb-3" id="wa-methodology-note">
+        <div class="wa-methodology-kicker">Methodology Note</div>
+        <div class="wa-methodology-body">Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.</div>
     </div>
 
-    <div class="row row-cols-1 row-cols-md-4 row-cols-lg-8 g-3 fa-kpi-grid">
-        <div class="col">
-            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="pageviews" role="button" tabindex="0" aria-label="Page Views — click to view detail" title="Click to view Page Views detail">
+    <section class="wa-section wa-kpi-stage" aria-labelledby="wa-kpi-title">
+        <div class="wa-section-head">
+            <div>
+                <div class="wa-section-kicker">Performance Snapshot</div>
+                <h3 class="wa-section-title" id="wa-kpi-title">Core Metrics</h3>
+                <div class="wa-section-sub">Read the top-line health first, then use the context cards to decide where to investigate next.</div>
+            </div>
+        </div>
+        <div class="fa-kpi-grid fa-kpi-grid-primary">
+            <div>
+                <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="pageviews" role="button" tabindex="0" aria-label="Page Views — click to view detail" title="Click to view Page Views detail">
                 <div class="fa-kpi-title">Page Views <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-pageviews">0</div>
                 <div class="fa-kpi-delta" id="kpi-pv-delta"></div>
                 <div class="fa-spark" id="kpi-pv-spark"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="visitors" role="button" tabindex="0" aria-label="Unique Visitors — click to view detail" title="Click to view Unique Visitors detail">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="visitors" role="button" tabindex="0" aria-label="Unique Visitors — click to view detail" title="Click to view Unique Visitors detail">
                 <div class="fa-kpi-title">Unique Visitors <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-visitors">0</div>
                 <div class="fa-kpi-delta" id="kpi-vis-delta"></div>
                 <div class="fa-spark" id="kpi-vis-spark"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="sessions" role="button" tabindex="0" aria-label="Sessions — click to view detail" title="Click to view Sessions detail">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="sessions" role="button" tabindex="0" aria-label="Sessions — click to view detail" title="Click to view Sessions detail">
                 <div class="fa-kpi-title">Sessions <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-sessions">0</div>
                 <div class="fa-kpi-delta" id="kpi-ses-delta"></div>
                 <div class="fa-spark" id="kpi-ses-spark"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card kpi-card-clickable" data-kpi-card data-metric="leads" role="button" tabindex="0" aria-label="Leads — click to view detail" title="Click to view Leads detail">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="leads" role="button" tabindex="0" aria-label="Leads — click to view detail" title="Click to view Leads detail">
                 <div class="fa-kpi-title">Leads <span class="kpi-card-drill-hint">↗</span></div>
                 <div class="fa-kpi-value" id="kpi-leads">0</div>
                 <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
                 <div class="fa-spark" id="kpi-leads-spark"></div>
             </div>
+            </div>
         </div>
-        <div class="col">
-            <div class="kpi-card">
+        <div class="fa-kpi-grid fa-kpi-grid-secondary">
+            <div>
+                <div class="kpi-card kpi-card-secondary kpi-card-conversion">
                 <div class="fa-kpi-title">Intent Conversion</div>
                 <div class="fa-kpi-value" id="kpi-intent">—</div>
                 <div class="fa-kpi-sub" id="kpi-intent-sub">Quote Submits / Quote Starts</div>
                 <div class="fa-kpi-warning" id="kpi-intent-warning"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-secondary kpi-card-conversion">
                 <div class="fa-kpi-title">Session Conversion Rate</div>
                 <div class="fa-kpi-value" id="kpi-session">0%</div>
                 <div class="fa-kpi-sub">Converted Sessions / Sessions</div>
                 <div class="fa-kpi-warning" id="kpi-session-warning"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-secondary kpi-card-context">
                 <div class="fa-kpi-title">Top Page</div>
                 <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
                 <div class="fa-kpi-sub">Most viewed</div>
             </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
+            </div>
+            <div>
+                <div class="kpi-card kpi-card-secondary kpi-card-context">
                 <div class="fa-kpi-title">Top CTA</div>
                 <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
                 <div class="fa-kpi-sub">Most clicked</div>
             </div>
         </div>
-    </div>
+        </div>
+    </section>
 
-    <!-- Modules -->
-    <div class="fa-modules row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
-        <div class="col">
-            <div class="fa-module" id="mod-traffic">
-                <h5>Traffic Overview</h5>
-                <div class="fa-module-meta" id="mod-traffic-meta">Views, sessions, visitors · click to drill in</div>
-                <div class="fa-trend-bar"></div>
+    <section class="wa-section wa-workbench" aria-labelledby="wa-workbench-title">
+        <div class="wa-section-head">
+            <div>
+                <div class="wa-section-kicker">Analysis Workbench</div>
+                <h3 class="wa-section-title" id="wa-workbench-title">Where agents should read next</h3>
+                <div class="wa-section-sub">The first row is ordered for fast learning and optimization. The second row holds supporting detail and reference views.</div>
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-page">
-                <h5>Page Performance</h5>
-                <div class="fa-module-meta" id="mod-page-meta">Top pages and conversions</div>
-                <div class="fa-trend-bar"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-cta">
-                <h5>CTA Performance</h5>
-                <div class="fa-module-meta" id="mod-cta-meta">Clicks by CTA</div>
-                <div class="fa-trend-bar"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-quote">
-                <h5>Quote Funnel</h5>
-                <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
-                <div class="fa-trend-bar"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-conv">
-                <h5>Conversion Center</h5>
-                <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
-                <div class="fa-trend-bar"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-leads">
-                <h5>Leads Snapshot</h5>
-                <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
-                <div class="fa-trend-bar"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-meta-signal">
-                <h5>Meta Signal Intelligence</h5>
+
+        <div class="fa-modules fa-modules-priority">
+            <div class="fa-module fa-module-feature fa-module-signal" id="mod-meta-signal" role="button" tabindex="0" aria-label="Open Meta Signal Intelligence">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">01 · Paid Intent Read</div>
+                        <h5>Meta Signal Intelligence</h5>
+                    </div>
+                    <div class="fa-module-sequence">Start Here</div>
+                </div>
                 <div class="fa-module-meta" id="mod-meta-signal-meta">High-intent tiers, abandon points, and optimization readiness</div>
+                <div class="fa-module-foot">
+                    <span>Best first read for Meta learning quality</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
                 <div class="fa-trend-bar"></div>
             </div>
-        </div>
-        <div class="col">
-            <div class="fa-module" id="mod-behavior">
-                <h5>Behavior Intelligence</h5>
+
+            <div class="fa-module fa-module-feature fa-module-behavior" id="mod-behavior" role="button" tabindex="0" aria-label="Open Behavior Intelligence">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">02 · Journey Read</div>
+                        <h5>Behavior Intelligence</h5>
+                    </div>
+                    <div class="fa-module-sequence">Next</div>
+                </div>
                 <div class="fa-module-meta" id="mod-behavior-meta">Dwell time, exits, journey &amp; source attribution</div>
+                <div class="fa-module-foot">
+                    <span>Use after Meta Signal to explain why visitors stall</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            <div class="fa-module fa-module-feature fa-module-quote" id="mod-quote" role="button" tabindex="0" aria-label="Open Quote Funnel">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">03 · Funnel Read</div>
+                        <h5>Quote Funnel</h5>
+                    </div>
+                    <div class="fa-module-sequence">Audit</div>
+                </div>
+                <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
+                <div class="fa-module-foot">
+                    <span>Check step progression and drop-off in the quote path</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            <div class="fa-module fa-module-feature fa-module-conv" id="mod-conv" role="button" tabindex="0" aria-label="Open Conversion Center">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">04 · Lead Audit</div>
+                        <h5>Conversion Center</h5>
+                    </div>
+                    <div class="fa-module-sequence">Confirm</div>
+                </div>
+                <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
+                <div class="fa-module-foot">
+                    <span>Verify captured lead volume and conversion outcomes</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
                 <div class="fa-trend-bar"></div>
             </div>
         </div>
-        @if(isFounder)
-        {
-        <div class="col">
-            <div class="fa-module" id="mod-agentperf">
-                <h5>Agent Performance</h5>
+
+        <div class="wa-section-divider" aria-hidden="true">Supporting detail</div>
+
+        <div class="fa-modules fa-modules-support">
+            <div class="fa-module fa-module-support" id="mod-traffic" role="button" tabindex="0" aria-label="Open Traffic Overview">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">Reach</div>
+                        <h5>Traffic Overview</h5>
+                    </div>
+                </div>
+                <div class="fa-module-meta" id="mod-traffic-meta">Views, sessions, visitors · click to drill in</div>
+                <div class="fa-module-foot">
+                    <span>Traffic shape and source mix</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            <div class="fa-module fa-module-support" id="mod-leads" role="button" tabindex="0" aria-label="Open Leads Snapshot">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">Operations</div>
+                        <h5>Leads Snapshot</h5>
+                    </div>
+                </div>
+                <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
+                <div class="fa-module-foot">
+                    <span>Review the most recent captured records</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            <div class="fa-module fa-module-support" id="mod-page" role="button" tabindex="0" aria-label="Open Page Performance">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">Destinations</div>
+                        <h5>Page Performance</h5>
+                    </div>
+                </div>
+                <div class="fa-module-meta" id="mod-page-meta">Top pages and conversions</div>
+                <div class="fa-module-foot">
+                    <span>See which destinations pull the strongest engagement</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            <div class="fa-module fa-module-support" id="mod-cta" role="button" tabindex="0" aria-label="Open CTA Performance">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">Actions</div>
+                        <h5>CTA Performance</h5>
+                    </div>
+                </div>
+                <div class="fa-module-meta" id="mod-cta-meta">Clicks by CTA</div>
+                <div class="fa-module-foot">
+                    <span>Compare which calls-to-action earn the click</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
+                <div class="fa-trend-bar"></div>
+            </div>
+
+            @if(isFounder)
+            {
+            <div class="fa-module fa-module-support fa-module-muted" id="mod-agentperf" role="button" tabindex="0" aria-label="Open Agent Performance">
+                <div class="fa-module-head">
+                    <div>
+                        <div class="fa-module-kicker">Founder View</div>
+                        <h5>Agent Performance</h5>
+                    </div>
+                </div>
                 <div class="fa-module-meta" id="mod-agentperf-meta">Top performers · founder only</div>
+                <div class="fa-module-foot">
+                    <span>Cross-agent comparison and rollup reference</span>
+                    <span class="fa-module-arrow">↗</span>
+                </div>
                 <div class="fa-trend-bar"></div>
             </div>
+            }
         </div>
-        }
-    </div>
+    </section>
 </div>
 
 @if (canViewFounderTeamUi)

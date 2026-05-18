@@ -2203,11 +2203,19 @@
     Object.entries(map).forEach(([cardId, modalId]) => {
       const card = document.getElementById(cardId);
       if (!card) return;
-      card.addEventListener('click', () => {
+      const openModal = () => {
         const modalEl = document.getElementById(modalId);
         if (!modalEl) return;
         const bsModal = new bootstrap.Modal(modalEl);
         bsModal.show();
+      };
+      card.addEventListener('click', openModal);
+      card.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') {
+          return;
+        }
+        event.preventDefault();
+        openModal();
       });
     });
   }
