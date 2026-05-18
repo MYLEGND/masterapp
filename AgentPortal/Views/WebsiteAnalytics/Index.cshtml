@@ -17,11 +17,13 @@
     var canDeleteAnalyticsLeads = (ViewData["CanDeleteAnalyticsLeads"] as bool?) ?? false;
     var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
     var isFounder = agentOptionsJson != "[]";
+    var landingRoutesJson = ViewData["LandingRoutesJson"] as string ?? "[]";
+    var landingRoutesBaseUrl = ViewData["LandingRoutesBaseUrl"] as string ?? string.Empty;
 }
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
     <div class="wa-command-surface mb-3">
         <div class="hero-link p-4 p-md-5">
             <div class="hero-link-top">
@@ -42,19 +44,20 @@
                         <div class="hero-link-badge">Live Link</div>
                     </div>
                     <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                    <div class="hero-link-note">Open or copy the live site, or expand product-specific landing links.</div>
+                    <div class="hero-link-note">Open or copy the live site, then expand the paid landing registry to launch control pages and active test variants.</div>
                     <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
                         <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
                         <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
                     </div>
                     <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" aria-expanded="false" aria-controls="product-links-section">
-                        Explore Product-Specific Links
+                        Explore Paid Landing Routes
                     </button>
                     <div class="product-links-section" id="product-links-section" hidden>
-                        <div class="product-links-header">Website + Ad Landing Quote Links</div>
+                        <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
+                        <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the public Protect website base URL.</div>
                         <div id="product-links-list"></div>
                         <div class="mt-2">
-                            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected product URL" aria-label="Selected product link" />
+                            <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected landing URL" aria-label="Selected landing link" />
                         </div>
                     </div>
                 </div>

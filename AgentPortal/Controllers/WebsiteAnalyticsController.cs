@@ -30,13 +30,14 @@ namespace AgentPortal.Controllers;
         private readonly IMetaAdsConnectionStore _metaAdsConnectionStore;
         private readonly Services.Tracking.IAgentTrackingService _tracking;
         private readonly IMetaSignalAnalyticsService _metaSignalAnalytics;
+        private readonly ILandingRouteDiscoveryService _landingRouteDiscovery;
         private readonly ILogger<WebsiteAnalyticsController> _logger;
         private readonly Infrastructure.Data.MasterAppDbContext _db;
         private readonly string _founderUpn;
         private readonly IConfiguration _config;
         private readonly EffectiveAgentContext _effectiveContext;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -44,6 +45,7 @@ namespace AgentPortal.Controllers;
             _metaAdsConnectionStore = metaAdsConnectionStore;
             _tracking = tracking;
             _metaSignalAnalytics = metaSignalAnalytics;
+            _landingRouteDiscovery = landingRouteDiscovery;
             _logger = logger;
             _db = db;
             _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
@@ -84,6 +86,14 @@ namespace AgentPortal.Controllers;
         ViewData["InitialScopeProfileId"] = scope.ScopeType == ScopeType.Agent
             ? scope.AgentTrackingProfileId
             : null;
+        var landingRoutes = _landingRouteDiscovery.GetAllRoutes();
+        ViewData["LandingRoutesBaseUrl"] = _landingRouteDiscovery.GetBaseUrl();
+        ViewData["LandingRoutesJson"] = System.Text.Json.JsonSerializer.Serialize(
+            landingRoutes,
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
 
         var callerProfile = await GetCallerProfileAsync();
         if (callerProfile != null)
@@ -101,7 +111,7 @@ namespace AgentPortal.Controllers;
         if (canViewFounderTeamUi)
         {
             // Ensure founder personal link is root
-            var rootBase = _config["Protect:PublicBaseUrl"] ?? "https://protect.mylegnd.com";
+            var rootBase = _landingRouteDiscovery.GetBaseUrl();
             ViewData["PersonalLink"] = rootBase.EndsWith("/") ? rootBase : rootBase + "/";
             ViewData["PersonalLinkAlt"] = null;
 

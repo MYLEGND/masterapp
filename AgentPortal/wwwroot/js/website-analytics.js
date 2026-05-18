@@ -17,6 +17,16 @@
 
   const shell = document.querySelector('.fa-shell');
   const canDeleteLeads = shell?.dataset.canDeleteLeads === 'true';
+  const landingRoutes = (() => {
+    const raw = shell?.dataset.landingRoutes || '[]';
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
+  const landingRoutesBaseUrl = shell?.dataset.landingRoutesBaseUrl || '';
   const state = {
     preset: initialPreset,
     from: initialFrom,
@@ -2534,49 +2544,158 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  // ── Product-specific links (website + paid landing) ───────────────────────
-  const PRODUCT_ROUTE_GROUPS = [
-    { key: 'life', label: 'Life Insurance', websiteRoute: 'Quote/Life', adLandingRoute: 'Quote/Life/landing' },
-    { key: 'mortgage', label: 'Mortgage Protection', websiteRoute: 'Quote/Mortgage-Protection', adLandingRoute: 'Quote/Mortgage-Protection/landing' },
-    { key: 'term', label: 'Term Life', websiteRoute: 'Quote/Term-Life', adLandingRoute: 'Quote/Term-Life/landing' },
-    { key: 'wholelife', label: 'Whole Life', websiteRoute: 'Quote/Whole-Life', adLandingRoute: 'Quote/Whole-Life/landing' },
-    { key: 'finalexpense', label: 'Final Expense', websiteRoute: 'Quote/Final-Expense', adLandingRoute: 'Quote/Final-Expense/landing' },
-    { key: 'iul', label: 'Indexed Universal Life (IUL)', websiteRoute: 'Quote/IUL', adLandingRoute: 'Quote/IUL/landing' }
-  ];
+  // ── Product-specific links (discovered paid landing routes) ───────────────
+  function normalizeLandingRoutes(routes) {
+    return (Array.isArray(routes) ? routes : [])
+      .filter(route => route && route.isActive !== false)
+      .map(route => {
+        const availableVariants = Array.isArray(route.availableVariants)
+          ? route.availableVariants.filter(variant => variant && variant.isActive !== false)
+          : [];
+        const controlVariant = availableVariants.find(variant => variant.isControl)
+          || availableVariants[0]
+          || null;
+        return {
+          key: route.key || '',
+          displayName: route.displayName || route.key || 'Landing Route',
+          basePath: route.basePath || '',
+          quoteType: route.quoteType || '',
+          pageMode: route.pageMode || '',
+          defaultPageVariant: route.defaultPageVariant || 'landing',
+          effectivePageKeys: Array.isArray(route.effectivePageKeys) ? route.effectivePageKeys : [],
+          availableVariants,
+          controlUrl: route.controlUrl || controlVariant?.url || '',
+          notes: route.notes || '',
+          comparisonHelperText: route.comparisonHelperText || '',
+          isPaidLanding: route.isPaidLanding !== false
+        };
+      })
+      .filter(route => route.controlUrl || route.availableVariants.length > 0);
+  }
 
-  const PRODUCT_LINK_VARIANTS = PRODUCT_ROUTE_GROUPS.reduce((rows, group) => {
-    rows.push({
-      id: `${group.key}_website`,
-      label: `${group.label} — Website`,
-      intentLabel: 'Website Link',
-      route: group.websiteRoute,
-      variantType: 'website',
-      isAdLanding: false
-    });
-    if (group.adLandingRoute) {
-      rows.push({
-        id: `${group.key}_ad_landing`,
-        label: `${group.label} — Ad Landing`,
-        intentLabel: 'Ad Landing Link',
-        route: group.adLandingRoute,
-        variantType: 'landing',
-        isAdLanding: true
-      });
-    }
-    return rows;
-  }, []);
+  function truncateUrl(url) {
+    const value = String(url || '');
+    if (value.length <= 72) return value;
+    return `${value.slice(0, 69)}...`;
+  }
 
-  function buildProductUrl(baseLink, route) {
-    if (!baseLink) return '';
-    if (!route) return '';
-    try {
-      const base = baseLink.endsWith('/') ? baseLink : baseLink + '/';
-      return new URL(route, base).toString();
-    } catch {
-      const clean = baseLink.replace(/\/$/, '');
-      const normalizedRoute = String(route || '').replace(/^\/+/, '');
-      return normalizedRoute ? `${clean}/${normalizedRoute}` : clean;
+  function renderLandingVariantRows(route) {
+    const variants = route.availableVariants;
+    if (!variants.length) {
+      return `
+        <tr>
+          <td colspan="6">
+            <div class="landing-route-empty">No active variants are configured for this route yet.</div>
+          </td>
+        </tr>
+      `;
     }
+
+    return variants.map((variant) => {
+      const toneClass = variant.isControl ? 'link-website' : 'link-landing';
+      const badge = variant.isControl
+        ? '<span class="badge-landing badge-control">CONTROL</span>'
+        : '<span class="badge-landing">TEST</span>';
+      const description = variant.description
+        ? `<div class="landing-route-row-description">${escapeHtml(variant.description)}</div>`
+        : '';
+      const landingUrl = escapeHtml(variant.url || '');
+      const suggestedUrl = escapeHtml(variant.suggestedMetaDestinationUrl || variant.url || '');
+      const buttonUrl = escapeHtml(variant.url || '');
+
+      return `
+        <tr>
+          <td>
+            <div class="landing-route-variant-name">${escapeHtml(variant.displayName || variant.variant || 'Variant')}${badge}</div>
+            ${description}
+          </td>
+          <td>
+            <span class="landing-route-pill">${escapeHtml(variant.variant || route.defaultPageVariant || 'landing')}</span>
+          </td>
+          <td>
+            <div class="landing-route-key">${escapeHtml(variant.effectivePageKey || '—')}</div>
+          </td>
+          <td>
+            <a class="landing-route-url" href="${landingUrl}" target="_blank" rel="noopener">${escapeHtml(truncateUrl(variant.url || ''))}</a>
+          </td>
+          <td>
+            <a class="landing-route-url" href="${suggestedUrl}" target="_blank" rel="noopener">${escapeHtml(truncateUrl(variant.suggestedMetaDestinationUrl || variant.url || ''))}</a>
+          </td>
+          <td>
+            <div class="product-link-actions landing-route-actions">
+              <button type="button" class="product-link-copy ${toneClass}" data-link-url="${buttonUrl}">Copy URL</button>
+              <button type="button" class="product-link-open ${toneClass}" data-link-url="${buttonUrl}">Open URL</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function renderLandingRouteCards(routes) {
+    if (!routes.length) {
+      return `
+        <div class="landing-route-empty">
+          No active paid landing routes were discovered. Add routes under <code>LandingRoutes</code> in app settings to populate this panel.
+        </div>
+      `;
+    }
+
+    return routes.map((route) => {
+      const routeMeta = [
+        route.quoteType ? `Quote Type: ${escapeHtml(route.quoteType)}` : '',
+        route.pageMode ? `Page Mode: ${escapeHtml(route.pageMode)}` : '',
+        route.basePath ? `Base Path: ${escapeHtml(route.basePath)}` : ''
+      ].filter(Boolean).join(' • ');
+      const notes = route.notes
+        ? `<div class="landing-route-notes">${escapeHtml(route.notes)}</div>`
+        : '';
+      const comparison = route.comparisonHelperText
+        ? `<div class="landing-route-compare">${escapeHtml(route.comparisonHelperText)}</div>`
+        : '';
+      const controlButtonUrl = escapeHtml(route.controlUrl || '');
+
+      return `
+        <article class="landing-route-card">
+          <div class="landing-route-card-head">
+            <div>
+              <div class="landing-route-title">${escapeHtml(route.displayName)}</div>
+              <div class="landing-route-meta">${routeMeta}</div>
+            </div>
+            <div class="landing-route-badge">${route.isPaidLanding ? 'Paid Landing' : 'Landing Route'}</div>
+          </div>
+          <div class="landing-route-control-shell">
+            <div class="landing-route-control-copy">
+              <div class="landing-route-control-label">Control URL</div>
+              <a class="landing-route-url" href="${escapeHtml(route.controlUrl || '')}" target="_blank" rel="noopener">${escapeHtml(route.controlUrl || '—')}</a>
+            </div>
+            <div class="product-link-actions landing-route-actions">
+              <button type="button" class="product-link-copy link-website" data-link-url="${controlButtonUrl}">Copy URL</button>
+              <button type="button" class="product-link-open link-website" data-link-url="${controlButtonUrl}">Open URL</button>
+            </div>
+          </div>
+          ${notes}
+          ${comparison}
+          <div class="landing-route-table-wrap">
+            <table class="landing-route-table">
+              <thead>
+                <tr>
+                  <th>Offer / Variant</th>
+                  <th>Page Variant</th>
+                  <th>Effective Page Key</th>
+                  <th>Landing URL</th>
+                  <th>Suggested Meta Destination URL</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderLandingVariantRows(route)}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      `;
+    }).join('');
   }
 
   function wireProductLinks() {
@@ -2586,25 +2705,14 @@
     const display = document.getElementById('product-link-display');
     if (!toggle || !section || !list) return;
 
-    // Render product rows
-    list.innerHTML = PRODUCT_LINK_VARIANTS.map(v => {
-      const toneClass = v.isAdLanding ? 'link-landing' : 'link-website';
-      const badge = v.isAdLanding ? `<span class="badge-landing">AD</span>` : '';
-      const helper = v.isAdLanding ? `<span class="product-link-helper">Optimized for campaigns</span>` : '';
-      return (
-      `<div class="product-link-row ${toneClass}" data-link-tone="${v.variantType}">` +
-        `<div class="product-link-copyblock">` +
-          `<span class="product-link-label">${v.label}${badge}</span>` +
-          `<span class="product-link-intent">${v.intentLabel}</span>` +
-          `${helper}` +
-        `</div>` +
-        `<div class="product-link-actions">` +
-          `<button type="button" class="product-link-open ${toneClass}" data-link-id="${v.id}">Open</button>` +
-          `<button type="button" class="product-link-copy ${toneClass}" data-link-id="${v.id}">Copy</button>` +
-        `</div>` +
-      `</div>`
-      );
-    }).join('');
+    const activeRoutes = normalizeLandingRoutes(landingRoutes);
+    list.innerHTML = `
+      <div class="landing-route-registry-meta">
+        <span class="landing-route-registry-label">Registry Base URL</span>
+        <span class="landing-route-registry-value">${escapeHtml(landingRoutesBaseUrl || 'https://protect.mylegnd.com')}</span>
+      </div>
+      ${renderLandingRouteCards(activeRoutes)}
+    `;
 
     // Toggle expand/collapse
     toggle.addEventListener('click', () => {
@@ -2613,20 +2721,17 @@
       toggle.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
     });
 
-    // Copy on click — URL built fresh from current base link so agent scope changes are reflected
     list.addEventListener('click', e => {
       const copyBtn = e.target.closest('.product-link-copy');
       const openBtn = e.target.closest('.product-link-open');
       if (!copyBtn && !openBtn) return;
-      const linkId = (copyBtn || openBtn).dataset.linkId;
-      const selectedLink = PRODUCT_LINK_VARIANTS.find(v => v.id === linkId);
-      if (!selectedLink) return;
-      const url = buildProductUrl(currentBaseLink(), selectedLink.route);
+      const url = (copyBtn || openBtn).dataset.linkUrl || '';
+      if (!url) return;
       if (display) display.value = url;
       if (copyBtn) {
         copyToClipboard(url);
         copyBtn.textContent = 'Copied!';
-        setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
+        setTimeout(() => { copyBtn.textContent = 'Copy URL'; }, 1500);
       }
       if (openBtn) {
         window.open(url, '_blank', 'noopener');
