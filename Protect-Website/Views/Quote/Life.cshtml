@@ -1499,7 +1499,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
         }
         <div class="lq-trust-note">@heroTrustNote</div>
     </div>
-    <div class="lq-human-strip" role="note" aria-label="Licensed professional guidance">
+    <div class="lq-human-strip" id="lifeHeroTrustStrip" role="note" aria-label="Licensed professional guidance" @(showContactStepByDefault ? "hidden" : "")>
         <div class="lq-human-strip-avatar" aria-hidden="true">
             @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
             {
@@ -1812,6 +1812,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
+  const heroTrustStrip = document.getElementById('lifeHeroTrustStrip');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
@@ -2253,6 +2254,9 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
       if (!panel) return;
       panel.hidden = panel !== activePanel;
     });
+    if (heroTrustStrip) {
+      heroTrustStrip.hidden = activePanel === step2Panel;
+    }
   }
 
   function scrollIntoViewAndFocus(target, shouldFocus = false) {
