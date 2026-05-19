@@ -135,20 +135,20 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
-    var finalStepHeading = isPaidLandingExperience ? "Want help reviewing this?" : "Where should I send your personalized review?";
-    var finalStepHelper = isPaidLandingExperience
+    var finalStepHeading = isContactFirstEducationVariant ? "Want help reviewing this?" : "Where should I send your personalized review?";
+    var finalStepHelper = isContactFirstEducationVariant
         ? $"Send your info and {agentDirectContactName} will walk through what may fit. No obligation."
         : string.Empty;
-    var agentTrustHeadline = isPaidLandingExperience
+    var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
-    var agentTrustBio = isPaidLandingExperience
+    var agentTrustBio = isContactFirstEducationVariant
         ? "Send your info and I’ll walk through what may fit. No obligation."
         : "I’ll review what you shared and explain what may fit.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
-    var finalSubmitButtonText = isPaidLandingExperience
+    var finalSubmitButtonText = isContactFirstEducationVariant
         ? (!string.IsNullOrWhiteSpace(agentDirectContactName)
             ? $"Have {agentDirectContactName} Walk Me Through This"
             : "Help Me Review This")
