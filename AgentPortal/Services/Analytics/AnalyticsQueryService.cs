@@ -339,12 +339,59 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static bool IsQuoteFunnelInteractionEvent(AnalyticsEvent e)
     {
-        return e.EventType == "form_start" ||
+        return IsQuoteFunnelStartSignalEvent(e) ||
                e.EventType == "form_field_focus" ||
                e.EventType == "form_field_complete" ||
                e.EventType == "form_field_error" ||
                e.EventType == "form_abandon" ||
-               e.EventType == "life_step2_view" ||
+               IsQuoteSubmitAttempt(e) ||
+               IsOfficialLeadSuccessEvent(e);
+    }
+
+    private static bool IsQuoteEarlyDiscoveryInteractionEvent(AnalyticsEvent e)
+    {
+        return e.EventType == "life_step1_protecting_select" ||
+               e.EventType == "life_step1_goal_select" ||
+               e.EventType == "life_step1_coverage_select" ||
+               e.EventType == "life_step1_tobacco_select" ||
+               e.EventType == "step1_age_entered";
+    }
+
+    private static bool IsQuoteDiscoveryCompleteEvent(AnalyticsEvent e)
+    {
+        return e.EventType == "life_step1_age_continue";
+    }
+
+    private static bool IsQuoteRecommendationViewedEvent(AnalyticsEvent e)
+    {
+        return e.EventType == "recommendation_generated" ||
+               e.EventType == "mini_results_view" ||
+               e.EventType == "estimate_results_viewed";
+    }
+
+    private static bool IsQuoteContactStepReachedEvent(AnalyticsEvent e)
+    {
+        return e.EventType == "life_step2_view" ||
+               e.EventType == "estimate_contact_continue";
+    }
+
+    private static bool IsQuoteFunnelStartSignalEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return e.EventType == "lead_form_start" ||
+               e.EventType == "life_general_form_start" ||
+               e.EventType == "life_term_form_start" ||
+               e.EventType == "life_whole_form_start" ||
+               e.EventType == "life_finalexpense_form_start" ||
+               e.EventType == "life_mp_form_start" ||
+               e.EventType == "life_iul_form_start" ||
+               (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)) ||
+               IsQuoteEarlyDiscoveryInteractionEvent(e) ||
+               IsQuoteDiscoveryCompleteEvent(e) ||
+               IsQuoteRecommendationViewedEvent(e) ||
+               IsQuoteContactStepReachedEvent(e) ||
                IsQuoteSubmitAttempt(e) ||
                IsOfficialLeadSuccessEvent(e);
     }
@@ -878,7 +925,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
-        int quoteFormStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
+        int quoteFormStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
         int quoteFormSubmits = verifiedLeads;
         int quoteStarts = CountQuoteIntentStarts(events);
         int convertedSessions = CountConvertedSessions(leads);
@@ -1146,7 +1193,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
 
         int starts = CountQuoteIntentStarts(events);
-        int formStarts = CountDistinctUnits(events, e => e.EventType == "form_start" && IsQuoteFormKey(e.FormKey));
+        int formStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
         int submitAttempts = CountDistinctUnits(events, IsQuoteSubmitAttempt);
         int formSubmits = leads.Count;
 
@@ -1172,20 +1219,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var stageMetrics = new List<QuoteStageMetricRow>
         {
             new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => e.EventType == "page_view" && IsQuoteFormKey(e.PageKey)) },
-            new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, e =>
-                e.EventType == "life_general_form_start" ||
-                e.EventType == "life_term_form_start" ||
-                e.EventType == "life_whole_form_start" ||
-                e.EventType == "life_finalexpense_form_start" ||
-                e.EventType == "life_mp_form_start" ||
-                e.EventType == "life_iul_form_start" ||
-                (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey))) },
+            new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
             new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select") },
             new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select") },
             new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue") },
             new() { StageKey = "processing_viewed", Label = "Processing Bridge Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_processing_bridge_view") },
-            new() { StageKey = "recommendation_viewed", Label = "Recommendation Generated / Viewed", Count = CountDistinctUnits(events, e => e.EventType == "recommendation_generated" || e.EventType == "mini_results_view") },
-            new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_step2_view") },
+            new() { StageKey = "recommendation_viewed", Label = "Recommendation Generated / Viewed", Count = CountDistinctUnits(events, IsQuoteRecommendationViewedEvent) },
+            new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = CountDistinctUnits(events, IsQuoteContactStepReachedEvent) },
             new() { StageKey = "submit_attempted", Label = "Submit Attempted", Count = submitAttempts },
             new() { StageKey = "server_confirmed_leads", Label = "Server-confirmed Leads", Count = formSubmits }
         }.Where(x => x.Count > 0).ToList();
@@ -1974,7 +2014,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var startEvents = events
-            .Where(e => e.EventType == "form_start")
+            .Where(IsQuoteFunnelStartSignalEvent)
             .GroupBy(e => BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderBy(e => e.EventUtc).First())
             .ToList();
@@ -2059,7 +2099,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
         var startSignalGapQuoteTypeCount = summary.Count(r => r.StartSignalMissing);
         var dataQualityNote = startSignalGapQuoteTypeCount > 0
-            ? "Some quote types have form_abandon events but no form_start denominator in-range; abandon rate is shown as — for those rows."
+            ? "Some quote types have form_abandon events but no derived funnel-start denominator in-range; abandon rate is shown as — for those rows."
             : null;
 
         // Top last-focused fields (where drop-off happens)
@@ -2119,7 +2159,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     ExitEngagedMs = (double)(lastExit?.EngagedMilliseconds ?? 0),
                     HadFunnelInteraction = g.Any(IsQuoteFunnelInteractionEvent),
                     HadFormAbandon = abandonKeys.Contains(g.Key),
-                    HadContactStepView = g.Any(e => e.EventType == "life_step2_view"),
+                    HadContactStepView = g.Any(IsQuoteContactStepReachedEvent),
                     HadValidationError = g.Any(e => e.EventType == "form_field_error"),
                     HadLeadSuccess = successfulSubmitKeys.Contains(g.Key)
                 };
@@ -2148,7 +2188,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         if (summary.Count == 0 && bounceBeforeStartRows.Count > 0)
         {
-            const string noAbandonMessage = "No explicit form_abandon events were recorded in this slice. These abandonment tables only populate after a quote form is started and the visitor later exits without a confirmed lead.";
+            const string noAbandonMessage = "No explicit form_abandon events were recorded in this slice. These abandonment tables only populate after a quote funnel starts and the visitor later exits without a confirmed lead.";
             dataQualityNote = string.IsNullOrWhiteSpace(dataQualityNote)
                 ? noAbandonMessage
                 : $"{dataQualityNote} {noAbandonMessage}";
@@ -2168,7 +2208,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             ConsentFrictionCount = consentFriction,
             StartSignalGapQuoteTypeCount = startSignalGapQuoteTypeCount,
             DataQualityNote = dataQualityNote,
-            QualificationNote = "Bounce Before Funnel Start counts quote landing exits with no form start, field interaction, submit attempt, or lead. Funnel Abandon counts explicit form_abandon exits after the funnel starts but before the contact step. Contact-step Abandon counts explicit form_abandon exits after the contact step is viewed. Validation Friction Abandon counts explicit form_abandon exits on sessions that also logged one or more form_field_error events.",
+            QualificationNote = "Bounce Before Funnel Start counts quote landing exits with no derived funnel start, field interaction, submit attempt, or lead. Funnel Abandon counts explicit form_abandon exits after the funnel starts but before the contact step. Contact-step Abandon counts explicit form_abandon exits after the contact step is viewed. Validation Friction Abandon counts explicit form_abandon exits on sessions that also logged one or more form_field_error events.",
             RangeLabel = range.Label
         };
     }

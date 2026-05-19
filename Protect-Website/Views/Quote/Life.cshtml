@@ -131,17 +131,23 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
-    var finalStepHeading = "Where should I send your personalized review?";
-    var finalStepHelper = string.Empty;
-    var agentTrustHeadline = $"You’ll hear directly from {agentDirectContactName}.";
-    var agentTrustBio = "I’ll review what you shared and explain what may fit.";
+    var finalStepHeading = isPaidLandingExperience ? "Want help reviewing this?" : "Where should I send your personalized review?";
+    var finalStepHelper = isPaidLandingExperience
+        ? $"Send your info and {agentDirectContactName} will walk through what may fit. No obligation."
+        : string.Empty;
+    var agentTrustHeadline = isPaidLandingExperience
+        ? $"You’ll hear directly from {agentDirectContactName}."
+        : $"You’ll hear directly from {agentDirectContactName}.";
+    var agentTrustBio = isPaidLandingExperience
+        ? "Send your info and I’ll walk through what may fit. No obligation."
+        : "I’ll review what you shared and explain what may fit.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
-    var finalSubmitButtonText = isContactFirstEducationVariant
+    var finalSubmitButtonText = isPaidLandingExperience
         ? (!string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My Options"
-            : "Have My Options Reviewed")
+            ? $"Have {agentDirectContactName} Walk Me Through This"
+            : "Help Me Review This")
         : showAgentTrustCard
         ? $"Get My Review From {agentDirectContactName}"
         : "Get My Personalized Review";
@@ -2715,7 +2721,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                             <div class="lq-contact-first-proof-copy">
                                 <div class="lq-contact-first-proof-kicker">Personal guidance</div>
                                 <div class="lq-contact-first-proof-title">@contactFirstTrustIntroLine</div>
-                                <p class="lq-contact-first-proof-text">Life insurance can be confusing. I’ll personally walk through your options and explain what may fit before you make any decisions.</p>
+                                <p class="lq-contact-first-proof-text">Life insurance can feel like a lot. If you want help reviewing this, I’ll walk through what may fit and answer questions. No obligation.</p>
                             </div>
                         </div>
 
@@ -2933,7 +2939,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     </div>
                                     <div class="lq-step-actions">
                                         <div class="lq-submit-row">
-                                            <div class="lq-trust-note">No pressure. You decide what happens next.</div>
+                                            <div class="lq-trust-note">Want help reviewing this? Send your info and I’ll walk through what may fit. No obligation.</div>
                                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                         </div>
                                         <div class="lq-error" id="lifeError"></div>
@@ -2944,7 +2950,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                             </div>
                             <div class="lq-contact-first-next-note" aria-labelledby="lifeEducationNextTitle">
                                 <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">What happens next</div>
-                                <p class="lq-contact-first-next-copy">@agentDirectContactName reviews what you share and follows up personally to help you understand what may fit. No obligation.</p>
+                                <p class="lq-contact-first-next-copy">If you’d like help reviewing this, @agentDirectContactName can walk through what may fit and answer questions. No obligation.</p>
                                 @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
                                 {
                                     <div class="lq-contact-first-next-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
@@ -3313,7 +3319,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">No pressure. You decide what happens next.</div>
+                            <div class="lq-trust-note">Want help reviewing this? Send your info and I’ll walk through what may fit. No obligation.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -3570,6 +3576,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   function normalizedAgeFromRange(ageRange) {
     const mapped = AGE_RANGE_TO_NUMERIC[ageRange];
     return Number.isFinite(mapped) ? String(mapped) : '';
+  }
+
+  function buildMetaProgressMetadata(extra = {}) {
+    return Object.assign({
+      protectingWho: answer1Hidden?.value || '',
+      coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
+      ageRange: ageHidden?.value || ''
+    }, extra);
+  }
+
+  async function ensureMetaLeadFormStart(extra = {}) {
+    if (!metaSignal?.trackLeadFormStart) {
+      return null;
+    }
+
+    return metaSignal.trackLeadFormStart(buildMetaProgressMetadata(extra));
   }
 
   function clearEstimatePreviewCache() {
@@ -3925,7 +3949,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       syncStepOneAnswersFromUI();
       try {
         const preview = await previewPromise;
-        showMiniResultsPreview(preview);
+        await showMiniResultsPreview(preview);
       } catch {
         trackEvent('estimate_results_error', {
           protectingWho: answer1Hidden?.value || '',
@@ -3939,7 +3963,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }, PROCESSING_BRIDGE_MS + 80);
   }
 
-  function showMiniResultsPreview(preview) {
+  async function showMiniResultsPreview(preview) {
     const existing = document.getElementById('lifeMiniResultsPanel');
     if (existing) existing.remove();
 
@@ -3975,15 +3999,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
       secondaryEstimatedHigh: secondary.estimatedHighMonthly || ''
     });
-    metaSignal?.trackRecommendationViewed({
-      protectingWho: answer1Hidden?.value || '',
-      coverageGoal: answer2Hidden?.value || '',
-      coverageAmount: coverageAmountHidden?.value || '',
-      tobaccoUse: answer3Hidden?.value || '',
-      ageRange: ageHidden?.value || '',
+    await ensureMetaLeadFormStart();
+    metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
       recommendationPrimaryKey: primary.policyKey || '',
       recommendationSecondaryKey: secondary.policyKey || ''
-    });
+    }));
 
     document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
       trackEvent('estimate_contact_continue', {
@@ -3997,11 +4017,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         estimatedHigh: primary.estimatedHighMonthly || ''
       });
       metaSignal?.trackStepComplete(2, 'recommendation_complete', {
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: answer2Hidden?.value || '',
-        coverageAmount: coverageAmountHidden?.value || '',
-        tobaccoUse: answer3Hidden?.value || '',
-        ageRange: ageHidden?.value || '',
+        ...buildMetaProgressMetadata(),
         recommendationPrimaryKey: primary.policyKey || '',
         recommendationSecondaryKey: secondary.policyKey || ''
       });
@@ -4010,19 +4026,15 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     });
   }
 
-  function showStep2(shouldScroll = true) {
+  async function showStep2(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(false);
     setActivePanel(step2Panel);
     trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
-    metaSignal?.trackContactStepReached({
-      handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
-      protectingWho: answer1Hidden?.value || '',
-      coverageGoal: answer2Hidden?.value || '',
-      coverageAmount: coverageAmountHidden?.value || '',
-      tobaccoUse: answer3Hidden?.value || '',
-      ageRange: ageHidden?.value || ''
-    });
+    await ensureMetaLeadFormStart();
+    metaSignal?.trackContactStepReached(buildMetaProgressMetadata({
+      handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
+    }));
     if (shouldScroll) {
       scrollIntoViewAndFocus(step2Heading || step2Panel, true);
     }
@@ -4145,13 +4157,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         clearEstimatePreviewCache();
         syncStepOneAnswersFromUI();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
-        metaSignal?.trackLeadFormStart({
-          protectingWho: groupName === 'ProtectingWho' ? radio.value : answer1Hidden?.value || '',
-          coverageGoal: groupName === 'CoverageGoal' ? radio.value : answer2Hidden?.value || '',
-          coverageAmount: groupName === 'CoverageAmountOption' ? radio.value : coverageAmountHidden?.value || '',
-          tobaccoUse: groupName === 'TobaccoUse' ? radio.value : answer3Hidden?.value || '',
-          ageRange: ageHidden?.value || ''
-        });
+        void ensureMetaLeadFormStart();
         queueMicroAdvance(expectedStep, nextStep);
       });
       radio.closest('label')?.addEventListener('click', () => {
@@ -4171,13 +4177,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
-      metaSignal?.trackLeadFormStart({
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: radio.value,
-        coverageAmount: coverageAmountHidden?.value || '',
-        tobaccoUse: answer3Hidden?.value || '',
-        ageRange: ageHidden?.value || ''
-      });
+      void ensureMetaLeadFormStart();
       if (!step1Panel.hidden && currentMicroStep === 1) {
         clearAutoAdvanceTimer();
         autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
@@ -4199,13 +4199,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
-      metaSignal?.trackLeadFormStart({
-        protectingWho: answer1Hidden?.value || '',
-        coverageGoal: answer2Hidden?.value || '',
-        coverageAmount: coverageAmountHidden?.value || '',
-        tobaccoUse: answer3Hidden?.value || '',
-        ageRange: radio.value
-      });
+      void ensureMetaLeadFormStart();
       queueProcessingAdvanceFromAgeSelection();
     });
     radio.closest('label')?.addEventListener('click', () => {
@@ -4235,13 +4229,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
-    metaSignal?.trackStepComplete(1, 'discovery_complete', {
-      protectingWho: answer1Hidden?.value || '',
-      coverageGoal: answer2Hidden?.value || '',
-      coverageAmount: coverageAmountHidden?.value || '',
-      tobaccoUse: answer3Hidden?.value || '',
-      ageRange: ageHidden?.value || ''
-    });
+    if (metaSignal?.trackDiscoveryComplete) {
+      metaSignal.trackDiscoveryComplete(buildMetaProgressMetadata());
+    } else {
+      metaSignal?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
+    }
     showProcessingBridge(true);
   });
 
@@ -4324,15 +4316,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       recommendationPrimaryKey: estimatePreview?.primary?.policyKey || recPrimaryKeyEl?.value || '',
       recommendationSecondaryKey: estimatePreview?.secondary?.policyKey || recSecondaryKeyEl?.value || ''
     });
-    metaSignal?.trackSubmitAttempt({
-      protectingWho: answer1Hidden?.value || '',
-      coverageGoal: answer2Hidden?.value || '',
-      coverageAmount: coverageAmountHidden?.value || '',
-      tobaccoUse: answer3Hidden?.value || '',
-      ageRange: ageHidden?.value || '',
+    metaSignal?.trackSubmitAttempt(buildMetaProgressMetadata({
       requiredContactFieldsComplete: true,
       contactStepReached: true
-    });
+    }));
 
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
