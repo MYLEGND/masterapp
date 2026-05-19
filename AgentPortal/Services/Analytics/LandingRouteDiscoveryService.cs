@@ -61,6 +61,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
 
         return routes
             .OrderByDescending(x => x.IsActive)
+            .ThenBy(ResolveRouteSortOrder)
             .ThenBy(x => x.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
@@ -437,6 +438,21 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
         };
     }
 
+    private static int ResolveRouteSortOrder(LandingRouteDefinition route)
+    {
+        var quoteType = NormalizeToken(route?.QuoteType);
+        return quoteType switch
+        {
+            "life" => 0,
+            "whole_life" => 1,
+            "term_life" => 2,
+            "final_expense" => 3,
+            "mortgage_protection" => 4,
+            "iul" => 5,
+            _ => int.MaxValue
+        };
+    }
+
     private static string ResolveVariantDisplayName(string variant, bool isControl)
     {
         if (isControl)
@@ -473,7 +489,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 PageMode = "paid_landing",
                 DefaultPageVariant = "landing",
                 IsActive = true,
-                Notes = "Paid Meta life landing with control and the current emotional continuity copy test.",
+                Notes = "Paid Meta life landing with control plus emotional continuity and contact-first education copy tests.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -491,6 +507,15 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         DisplayName = "Emotional Continuity V1",
                         EffectivePageKey = "quote_life_landing_emotional_continuity_v1",
                         Description = "Emotional consequence continuity copy with a softer trust block.",
+                        IsControl = false,
+                        IsActive = true
+                    },
+                    new()
+                    {
+                        Variant = "contact_first_education_v1",
+                        DisplayName = "Contact-First Education V1",
+                        EffectivePageKey = "quote_life_landing_contact_first_education_v1",
+                        Description = "Contact-first educational flow with immediate agent trust and low-friction review request.",
                         IsControl = false,
                         IsActive = true
                     }
