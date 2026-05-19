@@ -11,13 +11,10 @@
     var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
     var isLandingView = isLandingPage || isLandingRoutePath;
     var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
-    var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingView ? "landing" : "website") : Model.PageVariant;
+    var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingView ? "contact_first_education_v1" : "website") : Model.PageVariant;
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingView ? "paid_landing" : "site_mode") : Model.PageMode;
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
-    var isContactFirstEducationVariant = isPaidLandingExperience &&
-        string.Equals(pageVariant, "contact_first_education_v1", StringComparison.OrdinalIgnoreCase);
-    var isEmotionalContinuityVariant = isPaidLandingExperience &&
-        string.Equals(pageVariant, "emotional_continuity_v1", StringComparison.OrdinalIgnoreCase);
+    var isContactFirstEducationVariant = isPaidLandingExperience && isLandingView;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
     ViewData["IsLandingPage"] = isLandingView;
@@ -26,19 +23,17 @@
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
     ViewData["BodyClass"] = isLandingView ? $"life-landing landing-mode {offerBodyClass}" : $"site-mode {offerBodyClass}";
-    // Shared two-step intake for all life product types.
-    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(4).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
-    if (viewSteps.Count < 4)
+    // Shared discovery intake for all life product types.
+    IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(5).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
+    if (viewSteps.Count < 5)
     {
         viewSteps = new List<Protect_Website.Models.LifeWizardStep>
         {
             new("Who are you looking to protect?", new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("just_me","Just me"),
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children"),
                 new("family","My family"),
-                new("not_sure","I’m not sure yet"),
             }, "ProtectingWho"),
             new("What matters most for this protection?", new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -46,8 +41,14 @@
                 new("final_expenses","Cover final expenses"),
                 new("mortgage_or_bills","Help with mortgage or bills"),
                 new("leave_something","Leave something behind"),
-                new("not_sure","I’m not sure yet"),
             }, "CoverageGoal"),
+            new("About how much coverage would you like to explore?", new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("100000","$100,000"),
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+                new("1000000","$1,000,000+"),
+            }, "CoverageAmountOption"),
             new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("non_smoker","Non-smoker"),
@@ -58,7 +59,12 @@
     }
     var protectStep = viewSteps[0];
     var goalStep = viewSteps[1];
-    var ageStep = viewSteps[3];
+    var coverageAmountStep = viewSteps[2];
+    var tobaccoStep = viewSteps[3];
+    var ageStep = viewSteps[4];
+    var selectedCoverageAmountOption = !string.IsNullOrWhiteSpace(form.CoverageAmountOption)
+        ? form.CoverageAmountOption.Trim()
+        : (form.CoverageAmount.HasValue ? form.CoverageAmount.Value.ToString() : string.Empty);
     var selectedAgeBracket = string.Empty;
     var ageValueNumber = form.Age;
     if (!string.IsNullOrWhiteSpace(form.AgeRange) && (form.AgeRange.Contains('-') || form.AgeRange.Contains('+')))
@@ -139,30 +145,24 @@
         : showAgentTrustCard
         ? $"Get My Review From {agentDirectContactName}"
         : "Get My Personalized Review";
-    var heroHeadline = isContactFirstEducationVariant || isEmotionalContinuityVariant
+    var heroHeadline = isContactFirstEducationVariant
         ? "See what may help protect the people who depend on you most."
         : "See what protection options may fit your family’s needs.";
     var heroSubheadline = isContactFirstEducationVariant
         ? "Life insurance can feel confusing. I’ll personally help you understand what may fit your situation. No pressure. No obligation."
-        : isEmotionalContinuityVariant
-        ? "Answer a few quick questions to see personalized protection options. No pressure. You decide what happens next."
         : (isLandingView ? "Answer a few quick questions to review personalized options. No pressure. No obligation." : string.Empty);
-    var heroTrustNote = isContactFirstEducationVariant || isEmotionalContinuityVariant ? "Quick • Private • Personalized" : "Quick • Private • No obligation";
-    var heroTrustPersonName = isEmotionalContinuityVariant
-        ? "Guided by Zac Owen"
-        : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
-            ? agentTrustProfile!.DisplayName!.Trim()
-            : "Zac Owen");
-    var heroTrustPersonRole = isEmotionalContinuityVariant ? "Licensed insurance professional" : "Licensed Insurance Professional";
-    var heroTrustPersonSupport = isEmotionalContinuityVariant ? "Simple guidance. No pressure." : "No pressure. Just personalized guidance.";
-    var heroTrustPersonImageUrl = !isEmotionalContinuityVariant && !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
+    var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Personalized" : "Quick • Private • No obligation";
+    var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
+        ? agentTrustProfile!.DisplayName!.Trim()
+        : "Zac Owen";
+    var heroTrustPersonRole = "Licensed Insurance Professional";
+    var heroTrustPersonSupport = "No pressure. Just personalized guidance.";
+    var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
-    var heroTrustPersonInitials = isEmotionalContinuityVariant
-        ? "ZO"
-        : (!string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
-            ? agentTrustProfile!.FirstName!.Substring(0, 1).ToUpperInvariant()
-            : "ZO");
+    var heroTrustPersonInitials = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
+        ? agentTrustProfile!.FirstName!.Substring(0, 1).ToUpperInvariant()
+        : "ZO";
     var contactFirstTrustImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -184,8 +184,8 @@
     {
         contactFirstTrustInitials = "AG";
     }
-    var heroTrustAriaLabel = isEmotionalContinuityVariant ? "Guided support" : "Licensed professional guidance";
-    var showInlineMobileTrustBlock = isEmotionalContinuityVariant && isLandingView;
+    var heroTrustAriaLabel = "Licensed professional guidance";
+    var showInlineMobileTrustBlock = false;
     var step1IntroTitle = string.Empty;
     var step1IntroHelper = string.Empty;
     var requiredContactFieldNames = isContactFirstEducationVariant
@@ -1435,6 +1435,75 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-rec-card.primary { border-color: rgba(199,153,49,0.64); background: rgba(199,153,49,0.08); }
 .lq-rec-title { font-size: 1.05rem; font-weight: 900; color: #f8fafc; margin-bottom: 5px; }
 .lq-rec-desc { font-size: .9rem; color: rgba(248,250,252,0.72); margin-bottom: 8px; line-height: 1.45; }
+.lq-estimate-panel .lq-step-helper {
+    max-width: 60ch;
+}
+.lq-estimate-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
+}
+.lq-estimate-card {
+    display: grid;
+    gap: 10px;
+    height: 100%;
+}
+.lq-estimate-card-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.lq-estimate-coverage {
+    color: rgba(243,215,143,0.92);
+    font-size: .82rem;
+    font-weight: 820;
+    letter-spacing: .02em;
+}
+.lq-estimate-price-wrap {
+    display: grid;
+    gap: 3px;
+    padding: 11px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(199,153,49,0.32);
+    background:
+        linear-gradient(180deg, rgba(15,24,42,0.62) 0%, rgba(10,18,32,0.46) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 10px 18px rgba(0,0,0,0.14);
+}
+.lq-estimate-card.primary .lq-estimate-price-wrap {
+    border-color: rgba(224,177,74,0.52);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.1), transparent 42%),
+        linear-gradient(180deg, rgba(20,31,51,0.78) 0%, rgba(14,24,40,0.58) 100%);
+}
+.lq-estimate-price-label {
+    color: rgba(248,250,252,0.56);
+    font-size: .68rem;
+    font-weight: 820;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-estimate-price {
+    color: #fff7df;
+    font-size: 1.28rem;
+    font-weight: 940;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+}
+.lq-estimate-reason {
+    color: rgba(236,240,247,0.76);
+    font-size: .88rem;
+    line-height: 1.45;
+}
+.lq-estimate-disclaimer {
+    margin-top: 12px;
+    color: rgba(221,228,239,0.64);
+    font-size: .78rem;
+    line-height: 1.48;
+}
 .lq-rec-bullets {
     list-style: none;
     padding: 0;
@@ -1470,6 +1539,14 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-rec-title { font-size: .98rem; }
     .lq-rec-desc { font-size: .85rem; }
     .lq-rec-bullets li { font-size: .82rem; }
+    .lq-estimate-price { font-size: 1.12rem; }
+    .lq-estimate-coverage { font-size: .78rem; }
+    .lq-estimate-disclaimer { font-size: .74rem; }
+}
+@@media (min-width: 720px) {
+    .lq-estimate-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
 }
 
 /* Paid landing friction reduction */
@@ -2540,7 +2617,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail">
         <div class="lq-header">
-            @if (isLandingView && isContactFirstEducationVariant)
+            @if (isLandingView)
             {
                 <div class="lq-contact-first-hero-grid">
                     <div class="lq-contact-first-hero-copy">
@@ -2551,33 +2628,22 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </figure>
                 </div>
             }
-            else if (isLandingView)
-            {
-                <div class="lq-landing-brand-row">
-                    <div class="lq-landing-brand-copy">
-                        <h1 class="hero-title">@heroHeadline</h1>
-                    </div>
-                    <div class="lq-landing-logo-wrap" aria-hidden="true">
-                        <img class="lq-landing-logo" src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="" />
-                    </div>
-                </div>
-            }
             else
             {
                 <h1 class="hero-title">@heroHeadline</h1>
             }
-            @if (!isContactFirstEducationVariant && !string.IsNullOrWhiteSpace(heroSubheadline))
+            @if (!isLandingView && !string.IsNullOrWhiteSpace(heroSubheadline))
             {
                 <div class="lq-subtext">@heroSubheadline</div>
             }
-            @if (!isContactFirstEducationVariant)
+            @if (!isLandingView)
             {
                 <div class="lq-trust-note">@heroTrustNote</div>
             }
         </div>
-        @if (!isContactFirstEducationVariant)
+        @if (!isLandingView)
         {
-            <div class="lq-human-strip@(isEmotionalContinuityVariant ? " lq-human-strip-soft" : string.Empty)" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
+            <div class="lq-human-strip" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
                 <div class="lq-human-strip-avatar" aria-hidden="true">
                     @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
                     {
@@ -2607,9 +2673,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         <input type="hidden" name="PageMode" value="@pageMode" />
         <input type="hidden" name="Age" id="Age" value="@ageValue" />
         <input type="hidden" name="AgeRange" id="AgeRange" value="@selectedAgeBracket" />
+        <input type="hidden" name="CoverageAmount" id="CoverageAmount" value="@(form.CoverageAmount?.ToString() ?? selectedCoverageAmountOption)" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
         <input type="hidden" name="Answer2" id="Answer2" value="@form.Answer2" />
+        <input type="hidden" name="Answer3" id="Answer3" value="@(string.IsNullOrWhiteSpace(form.Answer3) ? form.TobaccoUse : form.Answer3)" />
         <input type="hidden" name="Answer4" id="Answer4" value="@(string.IsNullOrWhiteSpace(selectedAgeBracket) ? form.Answer4 : selectedAgeBracket)" />
         <input type="hidden" name="SessionId" id="SessionId" />
         <input type="hidden" name="VisitorId" id="VisitorId" />
@@ -2631,7 +2699,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         <input type="hidden" name="RecommendationSecondaryKey" id="RecommendationSecondaryKey" value="@form.RecommendationSecondaryKey" />
         <input type="hidden" name="RecommendationSecondaryTitle" id="RecommendationSecondaryTitle" value="@form.RecommendationSecondaryTitle" />
 
-        @if (isContactFirstEducationVariant)
+        @if (isLandingView)
         {
             <div class="lq-education-stack">
                 <div class="lq-contact-first-primary-grid">
@@ -2669,7 +2737,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-step-helper">@step1IntroHelper</div>
                                     }
                                     <div class="lq-step-progress-wrap" aria-live="polite">
-                                        <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 3</div>
+                                        <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 5</div>
                                         <div class="lq-step-progress-track" aria-hidden="true">
                                             <span class="lq-step-progress-fill" id="lifeStep1ProgressFill"></span>
                                         </div>
@@ -2715,6 +2783,46 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="2" hidden>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
+                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountStep.Question</div>
+                                            <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                                                @foreach (var opt in coverageAmountStep.Options)
+                                                {
+                                                    var isChecked =
+                                                        string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                                        string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                                    <label class="lq-card">
+                                                        <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
+                                                        <span>@opt.Label</span>
+                                                    </label>
+                                                }
+                                            </div>
+                                            <div class="lq-choice-error" id="err-step1-coverage-amount">Please choose a coverage amount to explore.</div>
+                                        </div>
+                                        <button type="button" class="btn-ghost lq-micro-back" data-step1-back="1">Back</button>
+                                    </div>
+
+                                    <div class="lq-micro-step" data-micro-step="3" hidden>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                                            <div class="lq-choice-grid lq-grid-2">
+                                                @foreach (var opt in tobaccoStep.Options)
+                                                {
+                                                    var isChecked =
+                                                        string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                                        string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                                    <label class="lq-card">
+                                                        <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                                        <span>@opt.Label</span>
+                                                    </label>
+                                                }
+                                            </div>
+                                            <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
+                                        </div>
+                                        <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                                    </div>
+
+                                    <div class="lq-micro-step" data-micro-step="4" hidden>
                                         <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                                         <div class="lq-choice-group">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
@@ -2929,7 +3037,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     <div class="lq-step-helper">@step1IntroHelper</div>
                 }
                 <div class="lq-step-progress-wrap" aria-live="polite">
-                    <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 3</div>
+                    <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 5</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
                         <span class="lq-step-progress-fill" id="lifeStep1ProgressFill"></span>
                     </div>
@@ -2992,6 +3100,46 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="2" hidden>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
+                            @foreach (var opt in coverageAmountStep.Options)
+                            {
+                                var isChecked =
+                                    string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-coverage-amount">Please choose a coverage amount to explore.</div>
+                    </div>
+                    <button type="button" class="btn-ghost lq-micro-back" data-step1-back="1">Back</button>
+                </div>
+
+                <div class="lq-micro-step" data-micro-step="3" hidden>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                        <div class="lq-choice-grid lq-grid-2">
+                            @foreach (var opt in tobaccoStep.Options)
+                            {
+                                var isChecked =
+                                    string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                <label class="lq-card">
+                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <span>@opt.Label</span>
+                                </label>
+                            }
+                        </div>
+                        <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
+                    </div>
+                    <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                </div>
+
+                <div class="lq-micro-step" data-micro-step="4" hidden>
                     <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                     <div class="lq-choice-group">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
@@ -3184,6 +3332,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 {
     <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
 }
+<script src="~/js/life-estimate-engine.js" asp-append-version="true"></script>
 <script>
 (() => {
   const form = document.getElementById('lifeWizardForm');
@@ -3204,8 +3353,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answer1Hidden = document.getElementById('Answer1');
   const answer2Hidden = document.getElementById('Answer2');
+  const answer3Hidden = document.getElementById('Answer3');
   const answer4Hidden = document.getElementById('Answer4');
   const ageHidden = document.getElementById('AgeRange');
+  const coverageAmountHidden = document.getElementById('CoverageAmount');
   const focusHidden = document.getElementById('ProtectFocus');
   const submitBtn = document.getElementById('submitLife');
   const submitLabel = submitBtn?.dataset.defaultLabel || 'Submit';
@@ -3213,6 +3364,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const recPrimaryTitleEl = document.getElementById('RecommendationPrimaryTitle');
   const recSecondaryKeyEl = document.getElementById('RecommendationSecondaryKey');
   const recSecondaryTitleEl = document.getElementById('RecommendationSecondaryTitle');
+  const estimatePreviewUrl = '@Url.Action("EstimatePreview", "LifeQuote")';
   const pageKey = form.dataset.formKey || 'quote_life';
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const pageVariant = '@pageVariant';
@@ -3223,6 +3375,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
+  const continueResultsLabel = isContactFirstEducationVariant ? 'Continue To Contact Details' : 'Continue & Review My Options';
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
@@ -3247,11 +3400,15 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const microStepViewEvents = [
     'life_step1_protecting_view',
     'life_step1_goal_view',
+    'life_step1_coverage_view',
+    'life_step1_tobacco_view',
     'life_step1_age_view',
   ];
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
   let processingTimer = null;
+  let latestEstimatePreview = null;
+  let estimatePreviewPromise = null;
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
@@ -3272,158 +3429,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       }
     });
   });
-
-  // ── Product content config ────────────────────────────────────────────────
-  // 5 core recommendation buckets: term, wholelife, finalexpense, mortgage, iul
-  // 'life' is a display-only fallback and is never recommended.
-  const PRODUCT_CONTENT = {
-    term: {
-      title: 'Term Life Insurance',
-      desc: 'A lower-cost protection path commonly reviewed when the goal is covering temporary responsibilities like income, family needs, or major bills.',
-      bullets: [
-        'Often the most affordable way to get more coverage',
-        'Commonly reviewed for income protection and family needs',
-        'A strong option when straightforward protection is the priority',
-      ],
-    },
-    wholelife: {
-      title: 'Whole Life Insurance',
-      desc: 'A simple permanent coverage path often reviewed when lifelong protection and steady guarantees matter.',
-      bullets: [
-        'Designed to stay in place for the long term',
-        'Builds cash value over time',
-        'Often reviewed when permanent protection matters more than lowest cost',
-      ],
-    },
-    finalexpense: {
-      title: 'Final Expense Coverage',
-      desc: 'A smaller permanent coverage path commonly reviewed to help with burial and end-of-life expenses.',
-      bullets: [
-        'Focused on funeral and final-cost needs',
-        'Usually reviewed when the coverage purpose is narrow and specific',
-        'Often more relevant in older-age planning conversations',
-      ],
-    },
-    mortgage: {
-      title: 'Mortgage Protection Review',
-      desc: 'A protection path commonly reviewed when the priority is helping protect the home and major monthly obligations.',
-      bullets: [
-        'Focused on mortgage and household bill protection',
-        'Often reviewed alongside term coverage',
-        'A strong fit when keeping the home is the main concern',
-      ],
-    },
-    iul: {
-      title: 'Indexed Universal Life',
-      desc: 'A more flexible permanent coverage option that may be worth reviewing in select long-term planning situations.',
-      bullets: [
-        'Permanent protection with flexible structure',
-        'More advanced than basic term or whole life',
-        'Typically worth reviewing only when long-term flexibility is a priority',
-      ],
-    },
-    // Display-only fallback — never recommended by the engine
-    life: {
-      title: 'Life Insurance',
-      desc: 'Comprehensive protection options tailored to your goals — income replacement, legacy planning, or simply peace of mind.',
-      bullets: [
-        'Options matched to your situation',
-        'Flexible coverage amounts and terms',
-        'Expert guidance included',
-      ],
-    },
-  };
-
-  // ── Recommendation engine ─────────────────────────────────────────────────
-  // Goal-primary dispatch table — no additive scoring.
-  //
-  // IUL: does NOT appear in any generic page output. The only path to IUL
-  //   as primary is the specific /Quote/IUL product page (offerKey = 'iul').
-  //   On all other pages IUL is never a recommended secondary either.
-  //
-  // Final Expense: suppressed as primary for age < 50. Appears as secondary
-  //   for age 35–49 on a final_expenses or leave_something goal. Primary only
-  //   for age >= 50 on a final_expenses goal.
-  //
-  // Whole Life: the default permanent / cash-value comparison path.
-  //   Replaces IUL as the conservative permanent default for all age bands.
-  //
-  // Q1 (protectingWho) does not change the primary/secondary output.
-
-  // Pure goal + age dispatch. Returns { primaryKey, secondaryKey }.
-  // Q1 does not override these results; it reinforces existing tendencies only.
-  function resolveGenericPair(coverageGoal, ageNum) {
-    // 1. Replace income for my family
-    if (coverageGoal === 'replace_income') {
-      return { primaryKey: 'term', secondaryKey: 'wholelife' };
-    }
-
-    // 2. Help with mortgage or bills
-    if (coverageGoal === 'mortgage_or_bills') {
-      return { primaryKey: 'mortgage', secondaryKey: 'term' };
-    }
-
-    // 3. Leave something behind
-    if (coverageGoal === 'leave_something') {
-      if (Number.isFinite(ageNum) && ageNum >= 50) {
-        return { primaryKey: 'wholelife', secondaryKey: 'finalexpense' };
-      }
-      // age < 50 (including unknown age): whole life + term
-      return { primaryKey: 'wholelife', secondaryKey: 'term' };
-    }
-
-    // 4. Cover final expenses — hard age-banded mapping
-    if (coverageGoal === 'final_expenses') {
-      if (!Number.isFinite(ageNum) || ageNum < 35) {
-        // Young or unknown: whole life is the permanent default; FE not appropriate
-        return { primaryKey: 'wholelife', secondaryKey: 'term' };
-      }
-      if (ageNum < 50) {
-        // 35–49: whole life primary, FE as secondary comparison
-        return { primaryKey: 'wholelife', secondaryKey: 'finalexpense' };
-      }
-      // 50+ (both 50–64 and 65+): FE is the right primary
-      return { primaryKey: 'finalexpense', secondaryKey: 'wholelife' };
-    }
-
-    // 5. Not sure / empty / unknown — conservative default
-    return { primaryKey: 'term', secondaryKey: 'wholelife' };
-  }
-
-  function computeRecommendations() {
-    const coverageGoal  = selectedRadio('CoverageGoal')?.value  || answer2Hidden?.value || '';
-    const selectedAgeRange = selectedRadio('AgeBracket')?.value || ageHidden?.value || '';
-    const ageFromRange  = normalizedAgeFromRange(selectedAgeRange);
-    const age           = asTrimmed(ageInput?.value) || ageFromRange || asTrimmed(answer4Hidden?.value);
-    const ageNum        = Number.parseInt(age, 10);
-    const offerKey      = '@cfg.OfferKey';
-    const isGeneric     = offerKey === 'life';
-
-    let primaryKey, secondaryKey;
-
-    if (!isGeneric) {
-      // Specific-product page: primary is always the page's own product.
-      // Secondary is the top recommendation from the generic dispatch
-      // that isn't the locked primary.
-      const pair   = resolveGenericPair(coverageGoal, ageNum);
-      primaryKey   = offerKey;
-      secondaryKey = pair.primaryKey !== offerKey ? pair.primaryKey : pair.secondaryKey;
-    } else {
-      const pair   = resolveGenericPair(coverageGoal, ageNum);
-      primaryKey   = pair.primaryKey;
-      secondaryKey = pair.secondaryKey;
-    }
-
-    // ── Safety fallbacks ──────────────────────────────────────────────────
-    if (!PRODUCT_CONTENT[primaryKey])   primaryKey   = 'term';
-    if (!PRODUCT_CONTENT[secondaryKey]) secondaryKey = 'wholelife';
-    if (primaryKey === secondaryKey)    secondaryKey = primaryKey === 'term' ? 'wholelife' : 'term';
-
-    return {
-      primary:   { key: primaryKey,   ...(PRODUCT_CONTENT[primaryKey]   || PRODUCT_CONTENT.life) },
-      secondary: { key: secondaryKey, ...(PRODUCT_CONTENT[secondaryKey] || PRODUCT_CONTENT.life) },
-    };
-  }
 
   function trackEvent(eventType, metadata = {}) {
     return window.legendTrack?.({
@@ -3567,10 +3572,56 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     return Number.isFinite(mapped) ? String(mapped) : '';
   }
 
+  function clearEstimatePreviewCache() {
+    latestEstimatePreview = null;
+    estimatePreviewPromise = null;
+  }
+
+  function applyEstimatePreviewToHiddenFields(preview) {
+    if (!preview) {
+      return;
+    }
+
+    if (recPrimaryKeyEl) recPrimaryKeyEl.value = preview.primary?.policyKey || '';
+    if (recPrimaryTitleEl) recPrimaryTitleEl.value = preview.primary?.policyType || '';
+    if (recSecondaryKeyEl) recSecondaryKeyEl.value = preview.secondary?.policyKey || '';
+    if (recSecondaryTitleEl) recSecondaryTitleEl.value = preview.secondary?.policyType || '';
+  }
+
+  async function ensureEstimatePreview(forceRefresh = false) {
+    syncStepOneAnswersFromUI();
+
+    if (!window.lifeEstimateEngine?.fetchPreview) {
+      throw new Error('life_estimate_engine_unavailable');
+    }
+
+    if (!forceRefresh && latestEstimatePreview) {
+      return latestEstimatePreview;
+    }
+
+    if (!forceRefresh && estimatePreviewPromise) {
+      return estimatePreviewPromise;
+    }
+
+    estimatePreviewPromise = window.lifeEstimateEngine.fetchPreview(form, estimatePreviewUrl)
+      .then((preview) => {
+        latestEstimatePreview = preview;
+        applyEstimatePreviewToHiddenFields(preview);
+        return preview;
+      })
+      .finally(() => {
+        estimatePreviewPromise = null;
+      });
+
+    return estimatePreviewPromise;
+  }
+
   const formTrackingKey = form.dataset.formKey || pageKey;
   const TRACKED_FIELD_NAME_MAP = Object.freeze({
     ProtectingWho: 'step_1_choice',
     CoverageGoal: 'step_2_choice',
+    CoverageAmountOption: 'coverage_amount',
+    TobaccoUse: 'tobacco_use',
     AgeBracket: 'age_range',
     FirstName: 'first_name',
     LastName: 'last_name',
@@ -3750,6 +3801,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
+    const coverageAmount = selectedRadio('CoverageAmountOption');
+    const tobaccoUse = selectedRadio('TobaccoUse');
     const selectedAgeRange = selectedRadio('AgeBracket')?.value || '';
     const ageFromRange = normalizedAgeFromRange(selectedAgeRange);
     const fallbackAgeValue = asTrimmed(ageInput?.value);
@@ -3757,10 +3810,20 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
     if (protecting) {
       answer1Hidden.value = protecting.value;
+    } else if (answer1Hidden) {
+      answer1Hidden.value = '';
     }
     if (goal) {
       answer2Hidden.value = goal.value;
       focusHidden.value = goal.dataset.label || goal.value;
+    } else if (answer2Hidden) {
+      answer2Hidden.value = '';
+    }
+    if (coverageAmountHidden) {
+      coverageAmountHidden.value = coverageAmount?.value || '';
+    }
+    if (answer3Hidden) {
+      answer3Hidden.value = tobaccoUse?.value || '';
     }
     if (ageInput) {
       ageInput.value = resolvedAgeValue;
@@ -3771,6 +3834,20 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     if (ageHidden) {
       ageHidden.value = selectedAgeRange;
     }
+  }
+
+  function validateCoverageAmountOnly() {
+    const coverageAmount = selectedRadio('CoverageAmountOption');
+    const hasSelection = !!coverageAmount;
+    showChoiceError('err-step1-coverage-amount', !hasSelection);
+    return hasSelection;
+  }
+
+  function validateTobaccoOnly() {
+    const tobaccoUse = selectedRadio('TobaccoUse');
+    const hasSelection = !!tobaccoUse;
+    showChoiceError('err-step1-tobacco-use', !hasSelection);
+    return hasSelection;
   }
 
   function validateAgeOnly() {
@@ -3798,7 +3875,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     });
 
     if (step1Progress) {
-      step1Progress.textContent = `Step ${bounded + 1} of 3`;
+      step1Progress.textContent = `Step ${bounded + 1} of ${microSteps.length}`;
     }
     if (step1ProgressFill) {
       step1ProgressFill.style.width = `${((bounded + 1) / microSteps.length) * 100}%`;
@@ -3833,71 +3910,100 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   function showProcessingBridge(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
-    computeRecommendations();
+    clearEstimatePreviewCache();
+    syncStepOneAnswersFromUI();
+    const previewPromise = ensureEstimatePreview(true);
     setActivePanel(processingPanel);
     trackEvent('life_processing_bridge_view');
     animateProcessingBar();
     if (shouldScroll) {
       scrollIntoViewAndFocus(processingHeading || processingPanel, true);
     }
-    processingTimer = window.setTimeout(() => {
+    processingTimer = window.setTimeout(async () => {
       processingTimer = null;
       trackEvent('life_processing_bridge_complete');
       syncStepOneAnswersFromUI();
-      showMiniResultsPreview();
+      try {
+        const preview = await previewPromise;
+        showMiniResultsPreview(preview);
+      } catch {
+        trackEvent('estimate_results_error', {
+          protectingWho: answer1Hidden?.value || '',
+          coverageGoal: answer2Hidden?.value || '',
+          coverageAmount: coverageAmountHidden?.value || '',
+          tobaccoUse: answer3Hidden?.value || '',
+          ageRange: ageHidden?.value || ''
+        });
+        showStep2(true);
+      }
     }, PROCESSING_BRIDGE_MS + 80);
   }
 
-  function showMiniResultsPreview() {
+  function showMiniResultsPreview(preview) {
     const existing = document.getElementById('lifeMiniResultsPanel');
     if (existing) existing.remove();
 
-    const recs = computeRecommendations();
+    const estimatePreview = preview || latestEstimatePreview;
+    if (!estimatePreview) {
+      return;
+    }
 
-    const previewHtml = `
-      <div class="lq-step-panel" id="lifeMiniResultsPanel">
-        <div class="lq-step-panel-pad">
-          <div class="lq-step-progress">Your Results</div>
-          <div class="lq-step-title">Based on what you told us, here’s what actually makes sense for your situation</div>
-          <div class="lq-step-helper">Most people are surprised by this — here’s why:</div>
-          <div class="lq-rec-card primary">
-            <span class="lq-rec-badge primary">Best Match</span>
-            <div class="lq-rec-title">${recs.primary.title}</div>
-            <div class="lq-rec-desc">${recs.primary.desc}</div>
-          </div>
-          <div class="lq-rec-card">
-            <span class="lq-rec-badge secondary">Also Worth Looking At</span>
-            <div class="lq-rec-title">${recs.secondary.title}</div>
-          </div>
-          <div class="lq-reach-note" style="margin-top:12px;">
-            Next, I’ll take a look and explain what may fit.
-          </div>
-          <div class="lq-step-actions">
-            <button type="button" class="btn-gold w-100" id="continueToContactBtn">Continue & Review My Options</button>
-          </div>
-        </div>
-      </div>
-    `;
+    latestEstimatePreview = estimatePreview;
+    applyEstimatePreviewToHiddenFields(estimatePreview);
+
+    const previewHtml = window.lifeEstimateEngine.buildResultsPanelHtml(estimatePreview, continueResultsLabel);
+    const primary = estimatePreview.primary || {};
+    const secondary = estimatePreview.secondary || {};
 
     processingPanel.insertAdjacentHTML('afterend', previewHtml);
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
     setActivePanel(previewPanel);
-    trackEvent('mini_results_view');
+    trackEvent('mini_results_view', {
+      recommendationPrimaryKey: primary.policyKey || '',
+      recommendationSecondaryKey: secondary.policyKey || ''
+    });
+    trackEvent('estimate_results_viewed', {
+      primaryPolicyType: primary.policyType || '',
+      secondaryPolicyType: secondary.policyType || '',
+      ageBand: estimatePreview.ageBand || '',
+      requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
+      tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
+      coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
+      protectingWho: estimatePreview.protectingWho || answer1Hidden?.value || '',
+      estimatedLow: primary.estimatedLowMonthly || '',
+      estimatedHigh: primary.estimatedHighMonthly || '',
+      secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
+      secondaryEstimatedHigh: secondary.estimatedHighMonthly || ''
+    });
     metaSignal?.trackRecommendationViewed({
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       ageRange: ageHidden?.value || '',
-      recommendationPrimaryKey: recs.primary.key,
-      recommendationSecondaryKey: recs.secondary.key
+      recommendationPrimaryKey: primary.policyKey || '',
+      recommendationSecondaryKey: secondary.policyKey || ''
     });
 
     document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
+      trackEvent('estimate_contact_continue', {
+        primaryPolicyType: primary.policyType || '',
+        secondaryPolicyType: secondary.policyType || '',
+        ageBand: estimatePreview.ageBand || '',
+        requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
+        tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
+        coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
+        estimatedLow: primary.estimatedLowMonthly || '',
+        estimatedHigh: primary.estimatedHighMonthly || ''
+      });
       metaSignal?.trackStepComplete(2, 'recommendation_complete', {
         protectingWho: answer1Hidden?.value || '',
         coverageGoal: answer2Hidden?.value || '',
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || '',
         ageRange: ageHidden?.value || '',
-        recommendationPrimaryKey: recs.primary.key,
-        recommendationSecondaryKey: recs.secondary.key
+        recommendationPrimaryKey: primary.policyKey || '',
+        recommendationSecondaryKey: secondary.policyKey || ''
       });
       previewPanel.remove();
       showStep2(true);
@@ -3913,6 +4019,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
     if (shouldScroll) {
@@ -3923,16 +4031,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   function resolveInitialMicroStep() {
     if (!selectedRadio('ProtectingWho')) return 0;
     if (!selectedRadio('CoverageGoal')) return 1;
-    return 2; // age step
+    if (!selectedRadio('CoverageAmountOption')) return 2;
+    if (!selectedRadio('TobaccoUse')) return 3;
+    return 4; // age step
   }
 
   function validateStepOneComplete() {
     const protecting = selectedRadio('ProtectingWho');
     const goal = selectedRadio('CoverageGoal');
+    const coverageAmount = selectedRadio('CoverageAmountOption');
+    const hasValidCoverageAmount = validateCoverageAmountOnly();
+    const tobaccoUse = selectedRadio('TobaccoUse');
+    const hasValidTobaccoUse = validateTobaccoOnly();
     const hasValidAge = validateAgeOnly();
 
     showChoiceError('err-step1-protecting-who', !protecting);
     showChoiceError('err-step1-coverage-goal', !goal);
+    showChoiceError('err-step1-coverage-amount', !coverageAmount);
+    showChoiceError('err-step1-tobacco-use', !tobaccoUse);
 
     if (!protecting) {
       trackQuoteFieldError('ProtectingWho', 'required_missing', 'discovery');
@@ -3948,10 +4064,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       form.querySelector('input[name="CoverageGoal"]')?.focus();
       return false;
     }
+    if (!hasValidCoverageAmount) {
+      trackQuoteFieldError('CoverageAmountOption', 'required_missing', 'discovery');
+      metaSignal?.trackFieldError('CoverageAmountOption', { fieldContext: 'discovery' });
+      showStep1(2, true);
+      form.querySelector('input[name="CoverageAmountOption"]')?.focus();
+      return false;
+    }
+    if (!hasValidTobaccoUse) {
+      trackQuoteFieldError('TobaccoUse', 'required_missing', 'discovery');
+      metaSignal?.trackFieldError('TobaccoUse', { fieldContext: 'discovery' });
+      showStep1(3, true);
+      form.querySelector('input[name="TobaccoUse"]')?.focus();
+      return false;
+    }
     if (!hasValidAge) {
       trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
       metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
-      showStep1(2, true);
+      showStep1(4, true);
       form.querySelector('input[name="AgeBracket"]')?.focus();
       return false;
     }
@@ -4002,7 +4132,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   }
 
   function queueProcessingAdvanceFromAgeSelection() {
-    if (step1Panel.hidden || currentMicroStep !== 2) return;
+    if (step1Panel.hidden || currentMicroStep !== 4) return;
     clearAutoAdvanceTimer();
     autoAdvanceTimer = window.setTimeout(() => step1ContinueBtn?.click(), 180);
   }
@@ -4012,11 +4142,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       radio.addEventListener('change', () => {
         showChoiceError(errorId, false);
         clearQuoteFieldError(groupName);
+        clearEstimatePreviewCache();
         syncStepOneAnswersFromUI();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         metaSignal?.trackLeadFormStart({
           protectingWho: groupName === 'ProtectingWho' ? radio.value : answer1Hidden?.value || '',
           coverageGoal: groupName === 'CoverageGoal' ? radio.value : answer2Hidden?.value || '',
+          coverageAmount: groupName === 'CoverageAmountOption' ? radio.value : coverageAmountHidden?.value || '',
+          tobaccoUse: groupName === 'TobaccoUse' ? radio.value : answer3Hidden?.value || '',
           ageRange: ageHidden?.value || ''
         });
         queueMicroAdvance(expectedStep, nextStep);
@@ -4035,11 +4168,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     radio.addEventListener('change', () => {
       showChoiceError('err-step1-coverage-goal', false);
       clearQuoteFieldError('CoverageGoal');
+      clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
       metaSignal?.trackLeadFormStart({
         protectingWho: answer1Hidden?.value || '',
         coverageGoal: radio.value,
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || '',
         ageRange: ageHidden?.value || ''
       });
       if (!step1Panel.hidden && currentMicroStep === 1) {
@@ -4049,19 +4185,25 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     });
   });
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: 'goal' });
-    showStep1(1, true);
+    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: 'tobacco' });
+    showStep1(3, true);
   });
+
+  wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', 2, 3);
+  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', 3, 4);
 
   ageRangeInputs.forEach((radio) => {
     radio.addEventListener('change', () => {
       showChoiceError('err-step1-age', false);
       clearQuoteFieldError('AgeBracket');
+      clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
       metaSignal?.trackLeadFormStart({
         protectingWho: answer1Hidden?.value || '',
         coverageGoal: answer2Hidden?.value || '',
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || '',
         ageRange: radio.value
       });
       queueProcessingAdvanceFromAgeSelection();
@@ -4088,12 +4230,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     trackEvent('life_step1_age_continue', {
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
     metaSignal?.trackStepComplete(1, 'discovery_complete', {
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
     showProcessingBridge(true);
@@ -4102,27 +4248,38 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
     metaSignal?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
-    showStep1(2, true);
+    showStep1(4, true);
   });
 
   // form submission
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const recs = computeRecommendations();
-    if (recPrimaryKeyEl)     recPrimaryKeyEl.value     = recs.primary.key;
-    if (recPrimaryTitleEl)   recPrimaryTitleEl.value   = recs.primary.title;
-    if (recSecondaryKeyEl)   recSecondaryKeyEl.value   = recs.secondary.key;
-    if (recSecondaryTitleEl) recSecondaryTitleEl.value = recs.secondary.title;
-    trackEvent('recommendation_generated', {
-      primary: recs.primary.key,
-      secondary: recs.secondary.key,
-    });
-
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) {
       form._trackSubmitAttempt?.(false, 1);
       return;
+    }
+
+    let estimatePreview = latestEstimatePreview;
+    try {
+      estimatePreview = await ensureEstimatePreview();
+      trackEvent('recommendation_generated', {
+        primary: estimatePreview.primary?.policyKey || '',
+        secondary: estimatePreview.secondary?.policyKey || '',
+        coverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
+        tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
+        ageBand: estimatePreview.ageBand || ''
+      });
+    } catch {
+      trackEvent('estimate_results_error', {
+        step: 'submit_attempt',
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || '',
+        ageRange: ageHidden?.value || ''
+      });
     }
 
     const lifeError = document.getElementById('lifeError');
@@ -4159,13 +4316,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       step: 'submit_attempt',
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       age: answer4Hidden?.value || '',
       ageRange: ageHidden.value,
-      protectFocus: focusHidden.value
+      protectFocus: focusHidden.value,
+      recommendationPrimaryKey: estimatePreview?.primary?.policyKey || recPrimaryKeyEl?.value || '',
+      recommendationSecondaryKey: estimatePreview?.secondary?.policyKey || recSecondaryKeyEl?.value || ''
     });
     metaSignal?.trackSubmitAttempt({
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
+      coverageAmount: coverageAmountHidden?.value || '',
+      tobaccoUse: answer3Hidden?.value || '',
       ageRange: ageHidden?.value || '',
       requiredContactFieldsComplete: true,
       contactStepReached: true
@@ -4218,11 +4381,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     showStep2(false);
   } else {
     const initMicro = resolveInitialMicroStep();
-    if (initMicro >= 2) {
-      showStep1(2, false);
-    } else {
-      showStep1(initMicro, false);
-    }
+    showStep1(initMicro, false);
   }
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);

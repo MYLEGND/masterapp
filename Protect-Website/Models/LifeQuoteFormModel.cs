@@ -22,6 +22,8 @@ namespace Protect_Website.Models
         // Two-step discovery fields (additive; kept separate from legacy Answer1..Answer4 for compatibility).
         public string? ProtectingWho { get; set; }
         public string? CoverageGoal { get; set; }
+        public string? CoverageAmountOption { get; set; }
+        public int? CoverageAmount { get; set; }
         public string? TobaccoUse { get; set; }
         public int? Age { get; set; }
 

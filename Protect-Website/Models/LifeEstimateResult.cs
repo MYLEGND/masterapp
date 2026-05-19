@@ -19,6 +19,7 @@ namespace Protect_Website.Models
         public LifeEstimateResult Primary { get; set; } = new();
         public LifeEstimateResult Secondary { get; set; } = new();
         public string AgeBand { get; set; } = "";
+        public int RequestedCoverageAmount { get; set; }
         public string TobaccoUse { get; set; } = "";
         public string CoverageGoal { get; set; } = "";
         public string ProtectingWho { get; set; } = "";

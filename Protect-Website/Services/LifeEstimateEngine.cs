@@ -1,0 +1,380 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using Protect_Website.Models;
+
+namespace ProtectWebsite.Services
+{
+    public static class LifeEstimateEngine
+    {
+        public const string EstimateDisclaimer = "Estimates are illustrative only and not a final quote. Actual pricing depends on underwriting, carrier approval, health history, state availability, and coverage details.";
+
+        private sealed record BaseRate(int ReferenceCoverage, decimal LowMonthly, decimal HighMonthly);
+        private sealed record PolicyPair(string PrimaryKey, string SecondaryKey);
+
+        private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, BaseRate>> BaseRateTable =
+            new Dictionary<string, IReadOnlyDictionary<string, BaseRate>>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["term"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["18-24"] = new(250000, 18m, 28m),
+                    ["25-34"] = new(250000, 22m, 34m),
+                    ["35-44"] = new(250000, 29m, 46m),
+                    ["45-54"] = new(250000, 55m, 88m),
+                    ["55-64"] = new(250000, 94m, 158m),
+                    ["65+"] = new(250000, 178m, 290m),
+                },
+                ["wholelife"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["18-24"] = new(50000, 42m, 58m),
+                    ["25-34"] = new(50000, 52m, 74m),
+                    ["35-44"] = new(50000, 69m, 102m),
+                    ["45-54"] = new(50000, 95m, 142m),
+                    ["55-64"] = new(50000, 132m, 196m),
+                    ["65+"] = new(50000, 185m, 270m),
+                },
+                ["finalexpense"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["18-24"] = new(15000, 28m, 42m),
+                    ["25-34"] = new(15000, 32m, 46m),
+                    ["35-44"] = new(15000, 38m, 56m),
+                    ["45-54"] = new(15000, 48m, 72m),
+                    ["55-64"] = new(15000, 59m, 89m),
+                    ["65+"] = new(15000, 76m, 116m),
+                },
+            };
+
+        public static LifeEstimatePreviewResponse BuildPreview(LifeQuoteFormModel model, string? offerKey = null)
+        {
+            var age = ResolveAge(model);
+            var ageBand = ResolveAgeBand(age);
+            var coverageGoal = NormalizeGoal(model.CoverageGoal);
+            var protectingWho = NormalizeProtectingWho(model.ProtectingWho);
+            var requestedCoverageAmount = ResolveRequestedCoverageAmount(model);
+            var tobaccoUse = NormalizeTobaccoUse(model.TobaccoUse);
+            var pair = ResolvePolicyPair(coverageGoal, protectingWho, age, requestedCoverageAmount, offerKey);
+
+            var primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+            var secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+
+            return new LifeEstimatePreviewResponse
+            {
+                Primary = primary,
+                Secondary = secondary,
+                AgeBand = ageBand,
+                RequestedCoverageAmount = requestedCoverageAmount ?? primary.CoverageAmount,
+                TobaccoUse = tobaccoUse,
+                CoverageGoal = coverageGoal,
+                ProtectingWho = protectingWho,
+                HealthAssumption = "Average Health",
+                Disclaimer = EstimateDisclaimer
+            };
+        }
+
+        private static LifeEstimateResult BuildEstimate(
+            string policyKey,
+            int age,
+            string ageBand,
+            string coverageGoal,
+            string protectingWho,
+            string tobaccoUse,
+            int? requestedCoverageAmount)
+        {
+            var coverageAmount = ResolveCoverageAmount(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount);
+            var baseRate = BaseRateTable[policyKey][ageBand];
+            var coverageMultiplier = ResolveCoverageMultiplier(policyKey, coverageAmount, baseRate.ReferenceCoverage);
+            var tobaccoMultiplier = string.Equals(tobaccoUse, "smoker", StringComparison.OrdinalIgnoreCase) ? 1.65m : 1.00m;
+            var healthMultiplier = 1.00m; // Average health assumption.
+            var policyTypeMultiplier = policyKey switch
+            {
+                "term" => 1.00m,
+                "wholelife" => 1.03m,
+                "finalexpense" => 1.08m,
+                _ => 1.00m
+            };
+
+            var low = RoundMonthly(baseRate.LowMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier * policyTypeMultiplier);
+            var high = RoundMonthly(baseRate.HighMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier * policyTypeMultiplier);
+            if (high <= low)
+            {
+                high = low + 8m;
+            }
+
+            return new LifeEstimateResult
+            {
+                PolicyKey = policyKey,
+                PolicyType = ResolvePolicyTitle(policyKey),
+                CoverageAmount = coverageAmount,
+                EstimatedLowMonthly = low,
+                EstimatedHighMonthly = high,
+                RecommendationReason = BuildReasonSummary(policyKey, coverageGoal, requestedCoverageAmount),
+                Disclaimer = EstimateDisclaimer,
+                Reasons = BuildReasons(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount)
+            };
+        }
+
+        private static PolicyPair ResolvePolicyPair(string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount, string? offerKey)
+        {
+            var wantsSmallCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value <= 100000;
+            var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
+
+            if (string.Equals(coverageGoal, "replace_income", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase))
+            {
+                return new PolicyPair("term", "wholelife");
+            }
+
+            if (string.Equals(coverageGoal, "final_expenses", StringComparison.OrdinalIgnoreCase))
+            {
+                if (wantsLargeCoverage)
+                {
+                    return new PolicyPair("wholelife", "term");
+                }
+
+                return (age >= 50 || wantsSmallCoverage)
+                    ? new PolicyPair("finalexpense", "wholelife")
+                    : new PolicyPair("wholelife", "term");
+            }
+
+            if (string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase))
+            {
+                return age >= 65 && wantsSmallCoverage
+                    ? new PolicyPair("wholelife", "finalexpense")
+                    : new PolicyPair("wholelife", "term");
+            }
+
+            if (string.Equals(protectingWho, "children", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(protectingWho, "family", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(protectingWho, "spouse_or_partner", StringComparison.OrdinalIgnoreCase) ||
+                wantsLargeCoverage)
+            {
+                return new PolicyPair("term", "wholelife");
+            }
+
+            if (age >= 60)
+            {
+                return new PolicyPair("wholelife", "term");
+            }
+
+            return new PolicyPair("term", "wholelife");
+        }
+
+        private static int ResolveCoverageAmount(string policyKey, string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)
+        {
+            if (requestedCoverageAmount.HasValue && requestedCoverageAmount.Value > 0)
+            {
+                if (string.Equals(policyKey, "finalexpense", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Math.Min(requestedCoverageAmount.Value, 100000);
+                }
+
+                return requestedCoverageAmount.Value;
+            }
+
+            if (string.Equals(policyKey, "finalexpense", StringComparison.OrdinalIgnoreCase))
+            {
+                return age >= 65 ? 15000 : 20000;
+            }
+
+            if (string.Equals(policyKey, "wholelife", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(coverageGoal, "final_expenses", StringComparison.OrdinalIgnoreCase))
+                    return 50000;
+                if (string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase))
+                    return 100000;
+                return age >= 60 ? 50000 : 75000;
+            }
+
+            if (string.Equals(coverageGoal, "replace_income", StringComparison.OrdinalIgnoreCase))
+            {
+                return protectingWho switch
+                {
+                    "family" => 500000,
+                    "children" => 500000,
+                    "spouse_or_partner" => 400000,
+                    "just_me" => 250000,
+                    _ => 350000
+                };
+            }
+
+            if (string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase))
+            {
+                return protectingWho switch
+                {
+                    "family" => 350000,
+                    "spouse_or_partner" => 300000,
+                    "just_me" => 200000,
+                    _ => 250000
+                };
+            }
+
+            if (string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase))
+            {
+                return 250000;
+            }
+
+            return protectingWho switch
+            {
+                "family" => 350000,
+                "children" => 350000,
+                _ => 250000
+            };
+        }
+
+        private static IReadOnlyList<string> BuildReasons(string policyKey, string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)
+        {
+            var reasons = new List<string>();
+            var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
+            var wantsSmallCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value <= 100000;
+
+            if (string.Equals(policyKey, "term", StringComparison.OrdinalIgnoreCase))
+            {
+                reasons.Add(string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase)
+                    ? "May fit when protecting mortgage years or monthly bills is the priority."
+                    : "May fit when protecting income, family needs, or larger temporary responsibilities matters most.");
+                reasons.Add(wantsLargeCoverage
+                    ? "Often the cleanest way to explore larger coverage amounts before comparing permanent designs."
+                    : "Estimated coverage can often go further at a lower monthly cost than permanent coverage.");
+                reasons.Add(string.Equals(protectingWho, "family", StringComparison.OrdinalIgnoreCase) || string.Equals(protectingWho, "children", StringComparison.OrdinalIgnoreCase)
+                    ? "Often worth considering when multiple people depend on your income or support."
+                    : "Often reviewed first when straightforward protection is the main goal.");
+                return reasons;
+            }
+
+            if (string.Equals(policyKey, "finalexpense", StringComparison.OrdinalIgnoreCase))
+            {
+                reasons.Add("May fit when the goal is helping with burial, funeral, or other final costs.");
+                reasons.Add(wantsSmallCoverage
+                    ? "Keeps the estimate focused on a smaller permanent coverage need."
+                    : "May be worth considering when a modest permanent benefit matters more than a larger face amount.");
+                reasons.Add(age >= 55
+                    ? "Often worth considering later in life when simplicity matters more than larger coverage amounts."
+                    : "May be worth considering when permanent coverage matters more than maximizing face amount.");
+                return reasons;
+            }
+
+            reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
+                ? "May fit when lifelong protection or leaving something behind matters most."
+                : "May fit when permanent protection is worth considering alongside lower-cost term coverage.");
+            reasons.Add(wantsLargeCoverage
+                ? "Can illustrate what a larger permanent protection target may look like before a personalized review."
+                : "Designed for a smaller long-term protection need rather than the largest possible face amount.");
+            reasons.Add(age >= 60
+                ? "Often reviewed when keeping coverage in place long term matters more than simply lowering monthly cost."
+                : "May be worth considering when you want a lifelong option in addition to temporary protection.");
+            return reasons;
+        }
+
+        private static string BuildReasonSummary(string policyKey, string coverageGoal, int? requestedCoverageAmount)
+        {
+            var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
+            return policyKey switch
+            {
+                "term" when string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase) =>
+                    "Term life may fit when the priority is protecting mortgage years or monthly obligations.",
+                "term" when wantsLargeCoverage =>
+                    "Term life may fit when you want to explore higher coverage amounts with a lower estimated monthly starting point.",
+                "term" =>
+                    "Term life may fit when you want broader protection at a lower estimated monthly cost.",
+                "finalexpense" =>
+                    "Final expense coverage may fit when the goal is a smaller permanent benefit for burial or end-of-life costs.",
+                _ =>
+                    "Whole life may fit when lifelong protection or a permanent coverage path is worth considering."
+            };
+        }
+
+        private static decimal ResolveCoverageMultiplier(string policyKey, int coverageAmount, int referenceCoverage)
+        {
+            var ratio = Math.Max(0.5d, (double)coverageAmount / Math.Max(1, referenceCoverage));
+            var exponent = string.Equals(policyKey, "term", StringComparison.OrdinalIgnoreCase) ? 0.92d : 0.98d;
+            return (decimal)Math.Pow(ratio, exponent);
+        }
+
+        private static int? ResolveRequestedCoverageAmount(LifeQuoteFormModel model)
+        {
+            if (model.CoverageAmount.HasValue && model.CoverageAmount.Value > 0)
+            {
+                return model.CoverageAmount.Value;
+            }
+
+            if (int.TryParse(model.CoverageAmountOption, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCoverageAmount) &&
+                parsedCoverageAmount > 0)
+            {
+                return parsedCoverageAmount;
+            }
+
+            return null;
+        }
+
+        private static decimal RoundMonthly(decimal amount)
+        {
+            var rounded = Math.Round(amount, 0, MidpointRounding.AwayFromZero);
+            return rounded < 10m ? 10m : rounded;
+        }
+
+        private static int ResolveAge(LifeQuoteFormModel model)
+        {
+            if (model.Age.HasValue && model.Age.Value >= 18)
+                return model.Age.Value;
+
+            var ageRange = (model.AgeRange ?? "").Trim();
+            return ageRange switch
+            {
+                "18-24" => 21,
+                "25-34" => 30,
+                "35-44" => 40,
+                "45-54" => 50,
+                "55+" => 60,
+                _ when int.TryParse(ageRange, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedRangeAge) => parsedRangeAge,
+                _ when int.TryParse(model.Answer4, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedAnswerAge) => parsedAnswerAge,
+                _ => 35
+            };
+        }
+
+        private static string ResolveAgeBand(int age)
+        {
+            return age switch
+            {
+                <= 24 => "18-24",
+                <= 34 => "25-34",
+                <= 44 => "35-44",
+                <= 54 => "45-54",
+                <= 64 => "55-64",
+                _ => "65+"
+            };
+        }
+
+        private static string NormalizeGoal(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "not_sure" : value.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeProtectingWho(string? value)
+        {
+            return string.IsNullOrWhiteSpace(value) ? "not_sure" : value.Trim().ToLowerInvariant();
+        }
+
+        private static string NormalizeTobaccoUse(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return "non_smoker";
+
+            return value.Trim().ToLowerInvariant() switch
+            {
+                "smoker" => "smoker",
+                _ => "non_smoker"
+            };
+        }
+
+        private static string ResolvePolicyTitle(string policyKey)
+        {
+            return policyKey switch
+            {
+                "term" => "Term Life Insurance",
+                "wholelife" => "Whole Life Insurance",
+                "finalexpense" => "Final Expense Insurance",
+                _ => "Life Insurance"
+            };
+        }
+    }
+}

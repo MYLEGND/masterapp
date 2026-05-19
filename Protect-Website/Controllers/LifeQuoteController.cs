@@ -28,7 +28,6 @@ namespace Protect_Website.Controllers
         private static readonly IReadOnlyDictionary<string, LifeWizardConfig> WizardConfigs = BuildConfigs();
         private const string WebsitePageVariant = "website";
         private const string LandingPageVariant = "landing";
-        private const string EmotionalContinuityLandingVariant = "emotional_continuity_v1";
         private const string ContactFirstEducationLandingVariant = "contact_first_education_v1";
 
         private readonly string tenantId;
@@ -102,6 +101,14 @@ namespace Protect_Website.Controllers
         public Task<IActionResult> SubmitMortgageQuote(LifeQuoteFormModel model) => SubmitInternal(model, "mortgage");
         [HttpPost("IUL")]
         public Task<IActionResult> SubmitIulQuote(LifeQuoteFormModel model) => SubmitInternal(model, "iul");
+        [HttpPost("Life/estimate-preview")]
+        public IActionResult EstimatePreview(LifeQuoteFormModel model)
+        {
+            NormalizeDiscoveryAnswers(model);
+
+            var preview = LifeEstimateEngine.BuildPreview(model, model.OfferKey);
+            return Json(preview);
+        }
 
         private async Task<IActionResult> RenderWizard(string offerKey, bool isLandingPage = false)
         {
@@ -129,7 +136,7 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
-            var requiresLastName = string.Equals(model.PageVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase);
+            var requiresLastName = pageMode.IsLandingPage;
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
                 model.LastName = null;
@@ -147,6 +154,11 @@ namespace Protect_Website.Controllers
             {
                 model.Email = null;
                 ModelState.Remove(nameof(LifeQuoteFormModel.Email));
+            }
+
+            if (!model.CoverageAmount.HasValue || model.CoverageAmount.Value <= 0)
+            {
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.CoverageAmountOption), "Coverage amount is required.");
             }
 
             if (model.Age.HasValue && (model.Age.Value < 18 || model.Age.Value > 85))
@@ -228,6 +240,8 @@ namespace Protect_Website.Controllers
                         ProductType    = model.ProductType,
                         ProtectingWho  = model.ProtectingWho,
                         CoverageGoal   = model.CoverageGoal,
+                        CoverageAmountOption = model.CoverageAmountOption,
+                        CoverageAmount = model.CoverageAmount,
                         TobaccoUse     = model.TobaccoUse,
                         Age            = model.Age,
                         Answer1        = model.Answer1,
@@ -747,6 +761,36 @@ namespace Protect_Website.Controllers
 
         private static string BuildEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
         {
+            static string? ResolveLabel(IReadOnlyList<LifeWizardOption>? options, string? code)
+            {
+                if (string.IsNullOrWhiteSpace(code) || options == null) return null;
+                return options.FirstOrDefault(o => string.Equals(o.Code, code, StringComparison.OrdinalIgnoreCase))?.Label ?? code;
+            }
+
+            static string? ResolveCoverageAmountLabel(int? coverageAmount)
+            {
+                if (!coverageAmount.HasValue || coverageAmount.Value <= 0) return null;
+                return coverageAmount.Value >= 1_000_000
+                    ? "$1,000,000+"
+                    : $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}";
+            }
+
+            static string? ResolveStepResponse(LifeWizardStep step, LifeQuoteFormModel model)
+            {
+                var alias = step.FieldAlias?.Trim();
+                return alias switch
+                {
+                    "ProtectingWho" => ResolveLabel(step.Options, model.ProtectingWho),
+                    "CoverageGoal" => ResolveLabel(step.Options, model.CoverageGoal),
+                    "CoverageAmountOption" => ResolveLabel(step.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount),
+                    "TobaccoUse" => ResolveLabel(step.Options, model.TobaccoUse),
+                    "Age" => !string.IsNullOrWhiteSpace(model.AgeRange) && (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
+                        ? model.AgeRange
+                        : model.Age?.ToString(CultureInfo.InvariantCulture),
+                    _ => null
+                };
+            }
+
             var rows = new LeadEmailTemplate.RowBuilder()
                 .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
                 .Row("Phone", model.Phone)
@@ -755,20 +799,17 @@ namespace Protect_Website.Controllers
             rows.Section("Discovery")
                 .Row("Protecting Who", model.ProtectingWho)
                 .Row("Coverage Goal", model.CoverageGoal)
+                .Row("Coverage Amount", ResolveCoverageAmountLabel(model.CoverageAmount))
                 .Row("Tobacco Use", model.TobaccoUse)
                 .Row("Age", model.Age?.ToString(CultureInfo.InvariantCulture));
 
-            // Keep legacy answer mapping for backward-compatible relay/analytics context.
-            var answers = new[] { model.Answer1, model.Answer2, model.Answer3, model.Answer4 };
             if (cfg.Steps.Any())
             {
                 rows.Section("Responses");
-                for (var i = 0; i < cfg.Steps.Count && i < answers.Length; i++)
+                foreach (var step in cfg.Steps)
                 {
-                    var step = cfg.Steps[i];
-                    var code = answers[i];
-                    if (string.IsNullOrWhiteSpace(code)) continue;
-                    var label = step.Options.FirstOrDefault(o => o.Code == code)?.Label ?? code;
+                    var label = ResolveStepResponse(step, model);
+                    if (string.IsNullOrWhiteSpace(label)) continue;
                     rows.Row(step.Question, label);
                 }
             }
@@ -796,19 +837,34 @@ namespace Protect_Website.Controllers
 
             var protectStep = cfg.Steps.ElementAtOrDefault(0);
             var goalStep    = cfg.Steps.ElementAtOrDefault(1);
-            var tobaccoStep = cfg.Steps.ElementAtOrDefault(2);
+            var coverageStep = cfg.Steps.ElementAtOrDefault(2);
+            var tobaccoStep = cfg.Steps.ElementAtOrDefault(3);
+
+            static string? ResolveCoverageAmountLabel(int? coverageAmount)
+            {
+                if (!coverageAmount.HasValue || coverageAmount.Value <= 0) return null;
+                return coverageAmount.Value >= 1_000_000
+                    ? "$1,000,000+"
+                    : $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}";
+            }
 
             var protectingLabel = ResolveLabel(protectStep?.Options, model.ProtectingWho);
             var goalLabel       = ResolveLabel(goalStep?.Options,    model.CoverageGoal);
+            var coverageLabel   = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount);
             var tobaccoLabel    = ResolveLabel(tobaccoStep?.Options,  model.TobaccoUse);
 
             var rows = new LeadEmailTemplate.RowBuilder();
+            var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange) &&
+                (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
+                ? model.AgeRange
+                : model.Age?.ToString(CultureInfo.InvariantCulture);
 
             rows.Section("Your Answers")
                 .Row("Protecting",  protectingLabel)
                 .Row("Main goal",   goalLabel)
+                .Row("Coverage",    coverageLabel)
                 .Row("Tobacco use", tobaccoLabel)
-                .Row("Age",         model.Age?.ToString(CultureInfo.InvariantCulture));
+                .Row("Age",         ageLabel);
 
             rows.Section("Your Recommendation Summary");
             rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
@@ -837,7 +893,14 @@ namespace Protect_Website.Controllers
 
             model.ProtectingWho = Clean(model.ProtectingWho) ?? Clean(model.Answer1);
             model.CoverageGoal = Clean(model.CoverageGoal) ?? Clean(model.Answer2) ?? Clean(model.ProtectFocus);
+            model.CoverageAmountOption = Clean(model.CoverageAmountOption);
             model.TobaccoUse = Clean(model.TobaccoUse) ?? Clean(model.Answer3);
+
+            if (!model.CoverageAmount.HasValue &&
+                int.TryParse(model.CoverageAmountOption, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedCoverageAmount))
+            {
+                model.CoverageAmount = parsedCoverageAmount;
+            }
 
             if (!model.Age.HasValue)
             {
@@ -851,6 +914,7 @@ namespace Protect_Website.Controllers
             model.Answer2 = Clean(model.Answer2) ?? model.CoverageGoal;
             model.Answer3 = Clean(model.Answer3) ?? model.TobaccoUse;
             model.Answer4 = Clean(model.Answer4) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
+            model.CoverageAmountOption = model.CoverageAmountOption ?? (model.CoverageAmount.HasValue ? model.CoverageAmount.Value.ToString(CultureInfo.InvariantCulture) : null);
 
             model.ProtectFocus = Clean(model.ProtectFocus) ?? model.CoverageGoal;
             model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
@@ -1129,8 +1193,12 @@ namespace Protect_Website.Controllers
                 return basePageKey;
 
             var normalizedLandingVariant = NormalizeLandingVariantKey(landingVariant);
-            return string.IsNullOrWhiteSpace(normalizedLandingVariant) ||
-                   string.Equals(normalizedLandingVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase)
+            var isControlLanding =
+                string.IsNullOrWhiteSpace(normalizedLandingVariant) ||
+                string.Equals(normalizedLandingVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedLandingVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase);
+
+            return isControlLanding
                 ? $"{basePageKey}_landing"
                 : $"{basePageKey}_landing_{normalizedLandingVariant}";
         }
@@ -1161,7 +1229,7 @@ namespace Protect_Website.Controllers
                 IsLandingRouteForOffer(model?.LandingPageUrl, landingRoutePath);
 
             var pageVariant = isLandingRequested
-                ? resolvedPaidLandingVariant ?? LandingPageVariant
+                ? resolvedPaidLandingVariant ?? ContactFirstEducationLandingVariant
                 : WebsitePageVariant;
 
             return new WizardPageMode(
@@ -1180,7 +1248,7 @@ namespace Protect_Website.Controllers
             var normalizedPageKey = pageKey.Trim();
             var landingPrefix = $"{basePageKey}_landing";
             if (string.Equals(normalizedPageKey, landingPrefix, StringComparison.OrdinalIgnoreCase))
-                return LandingPageVariant;
+                return ContactFirstEducationLandingVariant;
 
             if (!normalizedPageKey.StartsWith(landingPrefix + "_", StringComparison.OrdinalIgnoreCase))
                 return null;
@@ -1195,19 +1263,11 @@ namespace Protect_Website.Controllers
             if (string.IsNullOrWhiteSpace(normalizedVariant))
                 return null;
 
-            if (string.Equals(normalizedVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase))
-                return LandingPageVariant;
-
             if (string.Equals(normalizedVariant, WebsitePageVariant, StringComparison.OrdinalIgnoreCase))
                 return WebsitePageVariant;
 
-            if (!string.Equals(LifeOfferResolver.Normalize(offerKey), LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            if (string.Equals(normalizedVariant, EmotionalContinuityLandingVariant, StringComparison.OrdinalIgnoreCase))
-                return EmotionalContinuityLandingVariant;
-
-            if (string.Equals(normalizedVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase))
                 return ContactFirstEducationLandingVariant;
 
             return null;
@@ -1404,11 +1464,9 @@ namespace Protect_Website.Controllers
             {
                 new("Who are you looking to protect?", new List<LifeWizardOption>
                 {
-                    new("just_me","Just me"),
                     new("spouse_or_partner","My spouse or partner"),
                     new("children","My children"),
                     new("family","My family"),
-                    new("not_sure","I’m not sure yet"),
                 }, "ProtectingWho"),
                 new("What would you like this coverage to help with most?", new List<LifeWizardOption>
                 {
@@ -1416,8 +1474,14 @@ namespace Protect_Website.Controllers
                     new("final_expenses","Cover final expenses"),
                     new("mortgage_or_bills","Help with mortgage or bills"),
                     new("leave_something","Leave something behind"),
-                    new("not_sure","I’m not sure yet"),
                 }, "CoverageGoal"),
+                new("About how much coverage would you like to explore?", new List<LifeWizardOption>
+                {
+                    new("100000","$100,000"),
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                    new("1000000","$1,000,000+"),
+                }, "CoverageAmountOption"),
                 new("Tobacco use", new List<LifeWizardOption>
                 {
                     new("non_smoker","Non-smoker"),
