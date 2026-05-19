@@ -50,7 +50,7 @@
   const META_BROWSER_EVENTS = new Set([
     'ViewContent',
     'LeadFormStart',
-    'FunnelStepComplete',
+    'DiscoveryComplete',
     'RecommendationViewed',
     'ContactStepReached',
     'HighIntentLeadSignal',
@@ -342,6 +342,7 @@
     const noop = {
       enabled: false,
       trackLeadFormStart() {},
+      trackDiscoveryComplete() {},
       trackStepComplete() {},
       trackRecommendationViewed() {},
       trackContactStepReached() {},
@@ -425,6 +426,54 @@
       if (normalized.contactStepAbandon) state.contactStepAbandon = true;
     }
 
+    function backfillProgressState(eventName) {
+      const impliesLeadFormStart = new Set([
+        'LeadFormStart',
+        'DiscoveryComplete',
+        'FunnelStepComplete',
+        'RecommendationViewed',
+        'ContactStepReached',
+        'ContactInputStarted',
+        'PhoneFieldCompleted',
+        'RequiredContactFieldsCompleted',
+        'SubmitAttempt',
+        'Lead',
+        'QualifiedLead'
+      ]);
+      const impliesDiscoveryComplete = new Set([
+        'DiscoveryComplete',
+        'RecommendationViewed',
+        'ContactStepReached',
+        'ContactInputStarted',
+        'PhoneFieldCompleted',
+        'RequiredContactFieldsCompleted',
+        'SubmitAttempt',
+        'Lead',
+        'QualifiedLead'
+      ]);
+      const impliesContactStepReached = new Set([
+        'ContactStepReached',
+        'ContactInputStarted',
+        'PhoneFieldCompleted',
+        'RequiredContactFieldsCompleted',
+        'SubmitAttempt',
+        'Lead',
+        'QualifiedLead'
+      ]);
+
+      if (impliesLeadFormStart.has(eventName)) {
+        state.firstQuestionAnswered = true;
+      }
+
+      if (impliesDiscoveryComplete.has(eventName)) {
+        state.completedSteps['1'] = true;
+      }
+
+      if (impliesContactStepReached.has(eventName)) {
+        state.contactStepReached = true;
+      }
+    }
+
     function applyEventToState(eventName, stepNumber, metadata) {
       applyMetadata(metadata);
 
@@ -446,6 +495,10 @@
           break;
         case 'LeadFormStart':
           state.firstQuestionAnswered = true;
+          break;
+        case 'DiscoveryComplete':
+          state.firstQuestionAnswered = true;
+          state.completedSteps['1'] = true;
           break;
         case 'FunnelStepComplete':
           if (Number.isFinite(stepNumber)) {
@@ -494,6 +547,8 @@
           }
           break;
       }
+
+      backfillProgressState(eventName);
     }
 
     function scoreProtectingWho() {
@@ -1058,7 +1113,25 @@
           metadata
         });
       },
+      trackDiscoveryComplete(metadata = {}) {
+        return emitSignal('DiscoveryComplete', {
+          onceKey: 'discovery-complete',
+          stepNumber: 1,
+          stepName: 'discovery_complete',
+          metadata
+        });
+      },
       trackStepComplete(stepNumber, stepName, metadata = {}) {
+        const normalizedStepName = asTrimmed(stepName).toLowerCase();
+        if (Number(stepNumber) === 1 || normalizedStepName === 'discovery_complete') {
+          return emitSignal('DiscoveryComplete', {
+            onceKey: 'discovery-complete',
+            stepNumber: 1,
+            stepName: 'discovery_complete',
+            metadata
+          });
+        }
+
         return emitSignal('FunnelStepComplete', {
           onceKey: `step-${stepNumber}`,
           stepNumber,

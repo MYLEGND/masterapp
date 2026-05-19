@@ -27,6 +27,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         "SessionEngaged15s",
         "MeaningfulScroll",
         "LeadFormStart",
+        "DiscoveryComplete",
         "FunnelStepComplete",
         "RecommendationViewed",
         "ContactStepReached",
@@ -49,7 +50,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     {
         "ViewContent",
         "LeadFormStart",
-        "FunnelStepComplete",
+        "DiscoveryComplete",
         "RecommendationViewed",
         "ContactStepReached",
         "HighIntentLeadSignal",
@@ -688,6 +689,10 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             case "LeadFormStart":
                 accumulator.FirstQuestionAnswered = true;
                 break;
+            case "DiscoveryComplete":
+                accumulator.FirstQuestionAnswered = true;
+                accumulator.CompletedSteps.Add(1);
+                break;
             case "FunnelStepComplete":
                 if (stepNumber.HasValue)
                     accumulator.CompletedSteps.Add(stepNumber.Value);
@@ -729,6 +734,59 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             case "AbandonedHighIntentLead":
                 accumulator.HighIntentAbandon = true;
                 accumulator.ContactStepAbandon = accumulator.ContactStepReached || accumulator.RequiredContactFieldsCompleted || accumulator.ContactStepAbandon;
+                break;
+        }
+
+        BackfillProgressState(accumulator, eventName);
+    }
+
+    private static void BackfillProgressState(SignalAccumulator accumulator, string eventName)
+    {
+        if (string.IsNullOrWhiteSpace(eventName))
+            return;
+
+        switch (eventName)
+        {
+            case "LeadFormStart":
+            case "DiscoveryComplete":
+            case "FunnelStepComplete":
+            case "RecommendationViewed":
+            case "ContactStepReached":
+            case "ContactInputStarted":
+            case "PhoneFieldCompleted":
+            case "RequiredContactFieldsCompleted":
+            case "SubmitAttempt":
+            case "Lead":
+            case "QualifiedLead":
+                accumulator.FirstQuestionAnswered = true;
+                break;
+        }
+
+        switch (eventName)
+        {
+            case "DiscoveryComplete":
+            case "RecommendationViewed":
+            case "ContactStepReached":
+            case "ContactInputStarted":
+            case "PhoneFieldCompleted":
+            case "RequiredContactFieldsCompleted":
+            case "SubmitAttempt":
+            case "Lead":
+            case "QualifiedLead":
+                accumulator.CompletedSteps.Add(1);
+                break;
+        }
+
+        switch (eventName)
+        {
+            case "ContactStepReached":
+            case "ContactInputStarted":
+            case "PhoneFieldCompleted":
+            case "RequiredContactFieldsCompleted":
+            case "SubmitAttempt":
+            case "Lead":
+            case "QualifiedLead":
+                accumulator.ContactStepReached = true;
                 break;
         }
     }
@@ -925,6 +983,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     {
         "ViewContent" => "page",
         "LeadFormStart" or
+        "DiscoveryComplete" or
         "FunnelStepComplete" or
         "RecommendationViewed" or
         "ContactStepReached" or

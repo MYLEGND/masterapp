@@ -278,39 +278,66 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 
     private static List<MetaSignalLadderRowDto> BuildEventLadder(IEnumerable<MetaSignalEvent> rows)
     {
-        var stages = new (string Key, string Label, Func<MetaSignalEvent, bool> Match)[]
+        var visitorSummaries = BuildVisitorSummaries(rows);
+        var stageCounts = new List<(string Key, string Label, int Count)>
         {
-            ("view_content", "View Content", x => string.Equals(x.EventName, "ViewContent", StringComparison.OrdinalIgnoreCase)),
-            ("lead_form_start", "Lead Form Start", x => string.Equals(x.EventName, "LeadFormStart", StringComparison.OrdinalIgnoreCase)),
-            ("discovery_complete", "Discovery Complete", x => string.Equals(x.EventName, "FunnelStepComplete", StringComparison.OrdinalIgnoreCase) && x.FunnelStep == 1),
-            ("recommendation_viewed", "Recommendation Viewed", x => string.Equals(x.EventName, "RecommendationViewed", StringComparison.OrdinalIgnoreCase)),
-            ("contact_step_reached", "Contact Step Reached", x => string.Equals(x.EventName, "ContactStepReached", StringComparison.OrdinalIgnoreCase)),
-            ("submit_attempt", "Submit Attempt", x => string.Equals(x.EventName, "SubmitAttempt", StringComparison.OrdinalIgnoreCase)),
-            ("lead", "Submitted Lead", x => string.Equals(x.EventName, "Lead", StringComparison.OrdinalIgnoreCase))
+            (
+                "view_content",
+                "View Content",
+                rows
+                    .Where(x => string.Equals(x.EventName, "ViewContent", StringComparison.OrdinalIgnoreCase))
+                    .Select(GetVisitorKey)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count()
+            ),
+            (
+                "lead_form_start",
+                "Lead Form Start",
+                visitorSummaries.Count(x => x.FunnelStarted)
+            ),
+            (
+                "discovery_complete",
+                "Discovery Complete",
+                visitorSummaries.Count(x => x.DiscoveryComplete)
+            ),
+            (
+                "recommendation_viewed",
+                "Recommendation Viewed",
+                visitorSummaries.Count(x => x.RecommendationViewed)
+            ),
+            (
+                "contact_step_reached",
+                "Contact Step Reached",
+                visitorSummaries.Count(x => x.ContactStepReached)
+            ),
+            (
+                "submit_attempt",
+                "Submit Attempt",
+                visitorSummaries.Count(x => x.SubmitAttempted)
+            ),
+            (
+                "lead",
+                "Submitted Lead",
+                visitorSummaries.Count(x => x.LeadSubmitted)
+            )
         };
 
         var result = new List<MetaSignalLadderRowDto>();
         int? priorCount = null;
-        foreach (var stage in stages)
+        foreach (var stage in stageCounts)
         {
-            var count = rows
-                .Where(stage.Match)
-                .Select(GetVisitorKey)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count();
-
             result.Add(new MetaSignalLadderRowDto
             {
                 StepKey = stage.Key,
                 StepLabel = stage.Label,
-                Visitors = count,
+                Visitors = stage.Count,
                 ProgressionRate = priorCount.HasValue && priorCount.Value > 0
-                    ? Math.Round((count * 100m) / priorCount.Value, 2)
+                    ? Math.Round((stage.Count * 100m) / priorCount.Value, 2)
                     : (decimal?)null
             });
 
-            priorCount = count;
+            priorCount = stage.Count;
         }
 
         return result;
@@ -492,9 +519,16 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             case "LeadFormStart":
                 summary.FunnelStarted = true;
                 break;
+            case "DiscoveryComplete":
+                summary.FunnelStarted = true;
+                summary.DiscoveryComplete = true;
+                break;
             case "FunnelStepComplete":
                 if (row.FunnelStep == 1)
+                {
                     summary.FunnelStarted = true;
+                    summary.DiscoveryComplete = true;
+                }
                 break;
             case "RecommendationViewed":
                 summary.RecommendationViewed = true;
@@ -527,6 +561,51 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             case "QualifiedLead":
                 summary.LeadSubmitted = true;
                 break;
+        }
+
+        BackfillVisitorSummaryProgress(summary);
+    }
+
+    private static void BackfillVisitorSummaryProgress(VisitorSignalSummary summary)
+    {
+        if (summary.RecommendationViewed ||
+            summary.ContactStepReached ||
+            summary.ContactInputStarted ||
+            summary.PhoneCompleted ||
+            summary.RequiredContactFieldsCompleted ||
+            summary.SubmitAttempted ||
+            summary.LeadSubmitted ||
+            summary.HighIntentSignal ||
+            summary.LeadReadySignal)
+        {
+            summary.FunnelStarted = true;
+        }
+
+        if (summary.RecommendationViewed ||
+            summary.ContactStepReached ||
+            summary.ContactInputStarted ||
+            summary.PhoneCompleted ||
+            summary.RequiredContactFieldsCompleted ||
+            summary.SubmitAttempted ||
+            summary.LeadSubmitted ||
+            summary.LeadReadySignal)
+        {
+            summary.DiscoveryComplete = true;
+        }
+
+        if (summary.ContactInputStarted ||
+            summary.PhoneCompleted ||
+            summary.RequiredContactFieldsCompleted ||
+            summary.SubmitAttempted ||
+            summary.LeadSubmitted ||
+            summary.LeadReadySignal)
+        {
+            summary.ContactStepReached = true;
+        }
+
+        if (summary.LeadSubmitted)
+        {
+            summary.SubmitAttempted = true;
         }
     }
 
@@ -731,6 +810,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         public int MaxTotalSignalScore { get; init; }
         public bool Engaged { get; set; }
         public bool FunnelStarted { get; set; }
+        public bool DiscoveryComplete { get; set; }
         public bool RecommendationViewed { get; set; }
         public bool ContactStepReached { get; set; }
         public bool ContactInputStarted { get; set; }
