@@ -1642,8 +1642,12 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-education-stack {
     display: grid;
     gap: 14px;
-    max-width: 690px;
+    max-width: 980px;
     margin: 0 auto;
+}
+.lq-contact-first-primary-grid {
+    display: grid;
+    gap: 14px;
 }
 .lq-education-trust-card,
 .lq-education-panel {
@@ -1721,6 +1725,66 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-education-panel {
     padding: 16px;
 }
+.lq-contact-first-form-panel {
+    position: relative;
+    overflow: hidden;
+}
+.lq-contact-first-proof-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(208,154,53,0.18);
+}
+.lq-contact-first-proof-avatar {
+    width: 58px;
+    height: 58px;
+    flex: 0 0 auto;
+}
+.lq-contact-first-proof-copy {
+    min-width: 0;
+}
+.lq-contact-first-proof-kicker {
+    color: rgba(240,198,109,0.82);
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+}
+.lq-contact-first-proof-title {
+    color: #fff6dd;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.15;
+    margin-bottom: 5px;
+}
+.lq-contact-first-proof-text {
+    margin: 0;
+    color: rgba(232,238,247,0.82);
+    font-size: .9rem;
+    line-height: 1.45;
+}
+.lq-contact-first-proof-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.lq-contact-first-proof-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(208,154,53,0.26);
+    background: rgba(255,255,255,0.03);
+    color: rgba(236,240,247,0.82);
+    font-size: .78rem;
+    font-weight: 780;
+    line-height: 1;
+}
 .lq-education-form-title {
     color: #fff6d8;
     font-size: 1.18rem;
@@ -1732,6 +1796,57 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-size: .92rem;
     line-height: 1.5;
     margin-bottom: 14px;
+}
+.lq-contact-first-sidecard {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+}
+.lq-contact-first-side-kicker {
+    color: rgba(240,198,109,0.82);
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-first-side-title {
+    color: #fff6dd;
+    font-size: 1.1rem;
+    font-weight: 900;
+    line-height: 1.18;
+}
+.lq-contact-first-side-copy {
+    margin: 0;
+    color: rgba(232,238,247,0.8);
+    font-size: .92rem;
+    line-height: 1.5;
+}
+.lq-contact-first-side-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+.lq-contact-first-side-list li {
+    position: relative;
+    padding-left: 1rem;
+    color: rgba(236,240,247,0.88);
+    font-size: .88rem;
+    line-height: 1.42;
+}
+.lq-contact-first-side-list li::before {
+    content: '•';
+    position: absolute;
+    left: 0;
+    color: #f0c66d;
+    font-weight: 900;
+}
+.lq-contact-first-side-license {
+    color: rgba(221,228,239,0.56);
+    font-size: .74rem;
+    font-weight: 720;
+    line-height: 1.4;
 }
 .lq-education-card-grid {
     display: grid;
@@ -2023,6 +2138,9 @@ body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
     color: rgba(233,236,242,0.78) !important;
     max-width: 48ch;
 }
+body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chip {
+    color: rgba(236,240,247,0.88);
+}
 body.page-variant-contact-first-education-v1 .lq-option-summary-card {
     background:
         radial-gradient(circle at top right, rgba(226,181,79,0.05), transparent 34%),
@@ -2110,7 +2228,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
     margin: 0 auto 12px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
-    max-width: 13ch !important;
+    max-width: 14ch !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
     font-size: clamp(1.95rem, 3.8vw, 2.55rem) !important;
@@ -2136,9 +2254,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
-        gap: 18px;
-        align-items: start;
+        grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
+        gap: 24px;
+        align-items: center;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy {
@@ -2147,9 +2265,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .hero-title {
-        max-width: 12.8ch !important;
-        font-size: clamp(2.1rem, 4vw, 3rem) !important;
-        line-height: 1.02 !important;
+        max-width: 14ch !important;
+        font-size: clamp(2rem, 3.7vw, 2.85rem) !important;
+        line-height: 1.03 !important;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
@@ -2160,6 +2278,44 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-image {
         aspect-ratio: 3 / 2;
         object-fit: cover;
+    }
+
+    .lq-contact-first-primary-grid {
+        grid-template-columns: minmax(0, 1.24fr) minmax(280px, 0.76fr);
+        align-items: start;
+    }
+
+    .lq-contact-first-form-panel .lq-education-form-title {
+        font-size: 1.28rem;
+        margin-bottom: 5px;
+    }
+
+    .lq-contact-first-form-panel .lq-education-form-copy {
+        max-width: 54ch;
+        margin-bottom: 12px;
+    }
+
+    .lq-options-summary-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: start;
+    }
+
+    .lq-option-summary-card {
+        height: 100%;
+        padding: 16px 16px 15px;
+    }
+
+    .lq-option-title {
+        font-size: 1.18rem;
+    }
+
+    .lq-option-copy {
+        font-size: .9rem;
+        margin-bottom: 10px;
+    }
+
+    .lq-option-bullets li {
+        font-size: .84rem;
     }
 }
 
@@ -2181,6 +2337,37 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 @@media (max-width: 767.98px) {
     .lq-education-stack {
         gap: 10px;
+    }
+
+    .lq-contact-first-proof-row {
+        gap: 11px;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+    }
+
+    .lq-contact-first-proof-avatar {
+        width: 54px;
+        height: 54px;
+    }
+
+    .lq-contact-first-proof-title {
+        font-size: 1rem;
+    }
+
+    .lq-contact-first-proof-text,
+    .lq-contact-first-side-copy {
+        font-size: .86rem;
+    }
+
+    .lq-contact-first-proof-chips {
+        gap: 7px;
+        margin-bottom: 12px;
+    }
+
+    .lq-contact-first-proof-chip {
+        font-size: .74rem;
+        min-height: 28px;
+        padding: 5px 10px;
     }
 
     .lq-education-trust-card,
@@ -2335,57 +2522,77 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         @if (isContactFirstEducationVariant)
         {
             <div class="lq-education-stack">
-                <section class="lq-education-trust-card" id="lifeEducationTrustCard" aria-label="Personal guidance from @contactFirstTrustLabelName">
-                    <div class="lq-education-trust-head">
-                        <div class="lq-education-trust-avatar" aria-hidden="true">
-                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                            {
-                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                            }
-                            <span class="lq-education-trust-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                <div class="lq-contact-first-primary-grid">
+                    <section class="lq-step-panel lq-education-panel lq-contact-first-form-panel" id="lifeEducationContactPanel">
+                        <div class="lq-contact-first-proof-row" aria-label="Personal guidance from @contactFirstTrustLabelName">
+                            <div class="lq-education-trust-avatar lq-contact-first-proof-avatar" aria-hidden="true">
+                                @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                                {
+                                    <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                }
+                                <span class="lq-education-trust-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                            </div>
+                            <div class="lq-contact-first-proof-copy">
+                                <div class="lq-contact-first-proof-kicker">Personal guidance</div>
+                                <div class="lq-contact-first-proof-title">@contactFirstTrustIntroLine</div>
+                                <p class="lq-contact-first-proof-text">Life insurance can be confusing. I’ll personally walk through your options and explain what may fit before you make any decisions.</p>
+                            </div>
                         </div>
-                        <div class="lq-education-trust-copy">
-                            <div class="lq-education-kicker">Personal guidance</div>
-                            <div class="lq-education-intro">@contactFirstTrustIntroLine</div>
-                            <p class="lq-education-intro-sub">Life insurance can feel confusing. I’ll personally help you understand what may fit your situation. No pressure. No obligation.</p>
-                            <div class="lq-education-soft-note">Simple guidance. No pressure.</div>
-                        </div>
-                    </div>
-                </section>
 
-                <section class="lq-step-panel lq-education-panel" id="lifeEducationContactPanel">
-                    <div class="lq-education-form-title">Start with a quick conversation</div>
-                    <div class="lq-education-form-copy">Share a few details and I’ll reach out personally to help you understand what options may fit. This is a simple conversation, not an application.</div>
-                    <div class="lq-field-row two">
-                        <div class="lq-field">
-                            <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
-                            <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
-                            <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                        <div class="lq-contact-first-proof-chips" aria-hidden="true">
+                            <span class="lq-contact-first-proof-chip">Quick to start</span>
+                            <span class="lq-contact-first-proof-chip">No obligation</span>
+                            <span class="lq-contact-first-proof-chip">Personal follow-up</span>
                         </div>
-                        <div class="lq-field">
-                            <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                            <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                            <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+
+                        <div class="lq-education-form-title">Start with a quick conversation</div>
+                        <div class="lq-education-form-copy">Share a few details and I’ll reach out personally to help you understand what may fit. This is a simple conversation, not an application.</div>
+                        <div class="lq-field-row two">
+                            <div class="lq-field">
+                                <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
+                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
+                                <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                            </div>
+                            <div class="lq-field">
+                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="lq-field-row full">
-                        <div class="lq-field">
-                            <label for="Email">Email (optional)</label>
-                            <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
-                            <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                        <div class="lq-field-row full">
+                            <div class="lq-field">
+                                <label for="Email">Email (optional)</label>
+                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                            </div>
                         </div>
-                    </div>
-                    <div class="lq-submit-row">
-                        <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
-                        <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
-                    </div>
-                    <div class="lq-error" id="lifeError"></div>
-                    <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                </section>
+                        <div class="lq-submit-row">
+                            <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
+                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                        </div>
+                        <div class="lq-error" id="lifeError"></div>
+                        <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
+                    </section>
+
+                    <aside class="lq-education-panel lq-contact-first-sidecard" aria-labelledby="lifeEducationNextTitle">
+                        <div class="lq-contact-first-side-kicker">What happens next</div>
+                        <div class="lq-contact-first-side-title" id="lifeEducationNextTitle">@agentDirectContactName reviews what you share.</div>
+                        <p class="lq-contact-first-side-copy">You’ll get a simple, personal follow-up to help you understand what may fit, without pressure to commit.</p>
+                        <ul class="lq-contact-first-side-list">
+                            <li>You’ll hear from a licensed professional, not a generic call center.</li>
+                            <li>You can ask simple questions and compare what may fit your needs.</li>
+                            <li>There is no application and no obligation at this stage.</li>
+                        </ul>
+                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                        {
+                            <div class="lq-contact-first-side-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
+                        }
+                    </aside>
+                </div>
 
                 <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
-                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Understanding Your Options</div>
-                    <p class="lq-options-summary-copy">These are the three life insurance conversations most people compare first when they want clarity before choosing what to explore more deeply.</p>
+                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
+                    <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
                     <div class="lq-options-summary-list">
                         <article class="lq-option-summary-card is-term">
                             <div class="lq-option-summary-top">
@@ -2401,11 +2608,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </div>
                             </div>
                             <div class="lq-option-title">Term Life Insurance</div>
-                            <p class="lq-option-copy">Often the simplest place to start when the goal is helping protect income, monthly bills, or the people who rely on you during key working years.</p>
+                            <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
                             <ul class="lq-option-bullets">
-                                <li>Commonly reviewed when affordability and straightforward protection matter most.</li>
-                                <li>Often used to help cover temporary responsibilities like family income or mortgage years.</li>
-                                <li>Usually the cleanest starting point when someone wants clarity before comparing more permanent designs.</li>
+                                <li>Usually the most straightforward coverage conversation.</li>
+                                <li>Often reviewed when affordability matters most.</li>
                             </ul>
                         </article>
 
@@ -2422,11 +2628,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </div>
                             </div>
                             <div class="lq-option-title">Whole Life Insurance</div>
-                            <p class="lq-option-copy">A permanent option people often review when they want coverage designed to stay in place for the long term and build steady value over time.</p>
+                            <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
                             <ul class="lq-option-bullets">
-                                <li>Designed for people who care more about lasting protection than simply chasing the lowest monthly cost.</li>
-                                <li>Often reviewed when predictability, guarantees, and stable long-term structure matter.</li>
-                                <li>Can be a strong fit for people who want a simpler permanent solution without a lot of moving parts.</li>
+                                <li>Often reviewed when guarantees and consistency matter.</li>
+                                <li>A simpler permanent path for people who want long-term protection.</li>
                             </ul>
                         </article>
 
@@ -2445,19 +2650,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </div>
                             </div>
                             <div class="lq-option-title">Universal Life Insurance</div>
-                            <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, when someone wants longer-term coverage with structure that may be adjusted over time.</p>
+                            <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
                             <ul class="lq-option-bullets">
-                                <li>Often reviewed by people comparing permanent coverage with more flexibility than basic whole life.</li>
-                                <li>Can include indexed universal life, or IUL, for people exploring longer-range planning conversations.</li>
-                                <li>Usually best reviewed with guidance because the tradeoffs are more nuanced than simple term coverage.</li>
+                                <li>Often reviewed when long-term flexibility matters.</li>
+                                <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
                             </ul>
                         </article>
                     </div>
-                </section>
-
-                <section class="lq-education-panel lq-next-summary" aria-labelledby="lifeEducationNextTitle">
-                    <div class="lq-step-title" id="lifeEducationNextTitle">What happens next?</div>
-                    <p class="lq-next-summary-copy">@agentDirectContactName will be in touch shortly to walk you through what may fit and answer any questions you may have. There is no obligation, just a straightforward conversation about your options.</p>
                 </section>
             </div>
         }
