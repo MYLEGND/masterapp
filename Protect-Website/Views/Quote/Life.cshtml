@@ -14,6 +14,8 @@
     var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingView ? "landing" : "website") : Model.PageVariant;
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingView ? "paid_landing" : "site_mode") : Model.PageMode;
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
+    var isContactFirstEducationVariant = isPaidLandingExperience &&
+        string.Equals(pageVariant, "contact_first_education_v1", StringComparison.OrdinalIgnoreCase);
     var isEmotionalContinuityVariant = isPaidLandingExperience &&
         string.Equals(pageVariant, "emotional_continuity_v1", StringComparison.OrdinalIgnoreCase);
     ViewData["Title"] = cfg.PageTitle;
@@ -104,7 +106,7 @@
         !string.IsNullOrWhiteSpace(form.Phone) ||
         !string.IsNullOrWhiteSpace(form.Email) ||
         !string.IsNullOrWhiteSpace(form.State);
-    var showContactStepByDefault = !ViewData.ModelState.IsValid || hasContactInput;
+    var showContactStepByDefault = isContactFirstEducationVariant || !ViewData.ModelState.IsValid || hasContactInput;
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
     var agentTrustProfile = Model.AgentTrustProfile;
@@ -130,16 +132,22 @@
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
-    var finalSubmitButtonText = showAgentTrustCard
+    var finalSubmitButtonText = isContactFirstEducationVariant
+        ? (!string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My Options"
+            : "Have My Options Reviewed")
+        : showAgentTrustCard
         ? $"Get My Review From {agentDirectContactName}"
         : "Get My Personalized Review";
-    var heroHeadline = isEmotionalContinuityVariant
+    var heroHeadline = isContactFirstEducationVariant || isEmotionalContinuityVariant
         ? "See what may help protect the people who depend on you most."
         : "See what protection options may fit your family’s needs.";
-    var heroSubheadline = isEmotionalContinuityVariant
+    var heroSubheadline = isContactFirstEducationVariant
+        ? "Life insurance can feel confusing. I’ll personally help you understand what may fit your situation. No pressure. No obligation."
+        : isEmotionalContinuityVariant
         ? "Answer a few quick questions to see personalized protection options. No pressure. You decide what happens next."
         : (isLandingView ? "Answer a few quick questions to review personalized options. No pressure. No obligation." : string.Empty);
-    var heroTrustNote = isEmotionalContinuityVariant ? "Quick • Private • Personalized" : "Quick • Private • No obligation";
+    var heroTrustNote = isContactFirstEducationVariant || isEmotionalContinuityVariant ? "Quick • Private • Personalized" : "Quick • Private • No obligation";
     var heroTrustPersonName = isEmotionalContinuityVariant
         ? "Guided by Zac Owen"
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
@@ -155,6 +163,27 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
             ? agentTrustProfile!.FirstName!.Substring(0, 1).ToUpperInvariant()
             : "ZO");
+    var contactFirstTrustImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
+        ? agentTrustProfile!.ProfileImageUrl!.Trim()
+        : string.Empty;
+    var contactFirstTrustLabelName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
+        ? agentTrustProfile!.DisplayName!.Trim()
+        : "your licensed agent";
+    var contactFirstTrustIntroLine = !string.IsNullOrWhiteSpace(agentTrustProfile?.FirstName)
+        ? $"Hey, I’m {agentTrustProfile!.FirstName!.Trim()}."
+        : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
+            ? $"Hey, I’m {agentTrustProfile!.DisplayName!.Trim()}."
+            : "Hey, I’m your licensed agent.");
+    var contactFirstTrustInitials = string.Concat(
+        contactFirstTrustLabelName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => char.ToUpperInvariant(part[0]))
+            .Take(2));
+    if (string.IsNullOrWhiteSpace(contactFirstTrustInitials))
+    {
+        contactFirstTrustInitials = "AG";
+    }
     var heroTrustAriaLabel = isEmotionalContinuityVariant ? "Guided support" : "Licensed professional guidance";
     var showInlineMobileTrustBlock = isEmotionalContinuityVariant && isLandingView;
     var step1IntroTitle = string.Empty;
@@ -1588,9 +1617,218 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
         margin-bottom: 0 !important;
     }
 
-    body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
+body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
         max-width: 320px;
         margin: 0 0 16px;
+    }
+}
+
+/* Contact-first education landing variant */
+.lq-education-stack {
+    display: grid;
+    gap: 14px;
+    max-width: 690px;
+    margin: 0 auto;
+}
+.lq-education-trust-card,
+.lq-education-panel {
+    background:
+        radial-gradient(circle at top right, rgba(199,153,49,0.15), transparent 36%),
+        linear-gradient(180deg, rgba(18,36,61,0.98) 0%, rgba(12,24,44,0.98) 100%);
+    border: 1.4px solid rgba(199,153,49,0.34);
+    border-radius: 16px;
+    box-shadow:
+        0 18px 32px rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.lq-education-trust-card {
+    padding: 16px 16px 15px;
+}
+.lq-education-trust-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+.lq-education-trust-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border: 2px solid rgba(243,214,136,0.86);
+    background: linear-gradient(180deg, #142442 0%, #0b1529 100%);
+    box-shadow: 0 12px 22px rgba(0,0,0,0.24);
+}
+.lq-education-trust-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+.lq-education-trust-fallback {
+    color: #f3d78f;
+    font-size: 1.15rem;
+    font-weight: 900;
+    letter-spacing: .03em;
+}
+.lq-education-trust-copy {
+    min-width: 0;
+}
+.lq-education-kicker {
+    color: rgba(248,250,252,0.62);
+    font-size: .73rem;
+    font-weight: 820;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+.lq-education-intro {
+    color: #fff6d8;
+    font-size: 1.22rem;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+.lq-education-intro-sub {
+    color: rgba(248,250,252,0.82);
+    font-size: .95rem;
+    line-height: 1.5;
+    margin: 0;
+}
+.lq-education-soft-note {
+    color: #f3d78f;
+    font-size: .84rem;
+    font-weight: 760;
+    margin-top: 8px;
+}
+.lq-education-panel {
+    padding: 16px;
+}
+.lq-education-form-title {
+    color: #fff6d8;
+    font-size: 1.18rem;
+    font-weight: 900;
+    margin-bottom: 6px;
+}
+.lq-education-form-copy {
+    color: rgba(248,250,252,0.74);
+    font-size: .92rem;
+    line-height: 1.5;
+    margin-bottom: 14px;
+}
+.lq-education-card-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+}
+.lq-education-card {
+    padding: 14px;
+    border-radius: 14px;
+    border: 1.2px solid rgba(199,153,49,0.28);
+    background:
+        linear-gradient(180deg, rgba(29,47,76,0.95) 0%, rgba(19,31,52,0.95) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 12px 22px rgba(0,0,0,0.18);
+}
+.lq-education-card-title {
+    color: #fff1c9;
+    font-size: 1rem;
+    font-weight: 860;
+    margin-bottom: 5px;
+}
+.lq-education-card-copy {
+    color: rgba(248,250,252,0.8);
+    font-size: .9rem;
+    line-height: 1.5;
+    margin: 0;
+}
+.lq-education-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    display: grid;
+    gap: 7px;
+}
+.lq-education-list li {
+    position: relative;
+    padding-left: 1.1rem;
+    color: rgba(248,250,252,0.84);
+    font-size: .88rem;
+    line-height: 1.4;
+}
+.lq-education-list li::before {
+    content: '•';
+    position: absolute;
+    left: 0;
+    color: #f3d78f;
+    font-weight: 900;
+}
+body.page-variant-contact-first-education-v1 .lq-header {
+    margin-bottom: 10px !important;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
+    max-width: 690px;
+    margin: 0 auto 12px;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
+    max-width: 13ch !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    font-size: clamp(1.95rem, 3.8vw, 2.55rem) !important;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-subtext {
+    max-width: 34ch;
+    margin: 12px 0 7px !important;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
+    margin-bottom: 0 !important;
+}
+
+@@media (min-width: 768px) {
+    .lq-education-trust-card,
+    .lq-education-panel {
+        padding: 18px 20px;
+    }
+
+    .lq-education-card-grid.three-up {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .lq-education-card-grid.two-up {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@@media (max-width: 767.98px) {
+    .lq-education-stack {
+        gap: 10px;
+    }
+
+    .lq-education-trust-card,
+    .lq-education-panel {
+        padding: 13px 12px;
+        border-radius: 14px;
+    }
+
+    .lq-education-trust-head {
+        gap: 11px;
+    }
+
+    .lq-education-trust-avatar {
+        width: 56px;
+        height: 56px;
+    }
+
+    .lq-education-intro {
+        font-size: 1.08rem;
+    }
+
+    .lq-education-intro-sub,
+    .lq-education-card-copy {
+        font-size: .88rem;
     }
 }
 
@@ -1621,20 +1859,23 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
             }
             <div class="lq-trust-note">@heroTrustNote</div>
         </div>
-        <div class="lq-human-strip@(isEmotionalContinuityVariant ? " lq-human-strip-soft" : string.Empty)" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
-            <div class="lq-human-strip-avatar" aria-hidden="true">
-                @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
-                {
-                    <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                }
-                <span class="lq-human-strip-fallback" @(!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl) ? "hidden" : null)>@heroTrustPersonInitials</span>
+        @if (!isContactFirstEducationVariant)
+        {
+            <div class="lq-human-strip@(isEmotionalContinuityVariant ? " lq-human-strip-soft" : string.Empty)" id="lifeHeroTrustStrip" role="note" aria-label="@heroTrustAriaLabel" @(showContactStepByDefault ? "hidden" : "")>
+                <div class="lq-human-strip-avatar" aria-hidden="true">
+                    @if (!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl))
+                    {
+                        <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                    }
+                    <span class="lq-human-strip-fallback" @(!string.IsNullOrWhiteSpace(heroTrustPersonImageUrl) ? "hidden" : null)>@heroTrustPersonInitials</span>
+                </div>
+                <div class="lq-human-strip-copy">
+                    <div class="lq-human-strip-name">@heroTrustPersonName</div>
+                    <div class="lq-human-strip-role">@heroTrustPersonRole</div>
+                    <div class="lq-human-strip-note">@heroTrustPersonSupport</div>
+                </div>
             </div>
-            <div class="lq-human-strip-copy">
-                <div class="lq-human-strip-name">@heroTrustPersonName</div>
-                <div class="lq-human-strip-role">@heroTrustPersonRole</div>
-                <div class="lq-human-strip-note">@heroTrustPersonSupport</div>
-            </div>
-        </div>
+        }
     </div>
 
     <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
@@ -1674,6 +1915,101 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
         <input type="hidden" name="RecommendationSecondaryKey" id="RecommendationSecondaryKey" value="@form.RecommendationSecondaryKey" />
         <input type="hidden" name="RecommendationSecondaryTitle" id="RecommendationSecondaryTitle" value="@form.RecommendationSecondaryTitle" />
 
+        @if (isContactFirstEducationVariant)
+        {
+            <div class="lq-education-stack">
+                <section class="lq-education-trust-card" id="lifeEducationTrustCard" aria-label="Personal guidance from @contactFirstTrustLabelName">
+                    <div class="lq-education-trust-head">
+                        <div class="lq-education-trust-avatar" aria-hidden="true">
+                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                            {
+                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                            }
+                            <span class="lq-education-trust-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                        </div>
+                        <div class="lq-education-trust-copy">
+                            <div class="lq-education-kicker">Personal guidance</div>
+                            <div class="lq-education-intro">@contactFirstTrustIntroLine</div>
+                            <p class="lq-education-intro-sub">I’ll personally review what you share and help you understand what may fit your situation.</p>
+                            <div class="lq-education-soft-note">Simple guidance. No pressure.</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="lq-step-panel lq-education-panel" id="lifeEducationContactPanel">
+                    <div class="lq-education-form-title">Start with a quick conversation</div>
+                    <div class="lq-education-form-copy">Share a few details and I’ll reach out personally to help you understand what options may fit. This is a simple conversation, not an application.</div>
+                    <div class="lq-field-row two">
+                        <div class="lq-field">
+                            <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
+                            <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
+                            <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                        </div>
+                        <div class="lq-field">
+                            <label for="Phone">Phone <span style="color:#f87171">*</span></label>
+                            <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                            <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                        </div>
+                    </div>
+                    <div class="lq-field-row full">
+                        <div class="lq-field">
+                            <label for="Email">Email (optional)</label>
+                            <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                            <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                        </div>
+                    </div>
+                    <div class="lq-submit-row">
+                        <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
+                        <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                    </div>
+                    <div class="lq-error" id="lifeError"></div>
+                    <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
+                </section>
+
+                <section class="lq-education-panel" aria-labelledby="lifeEducationNextTitle">
+                    <div class="lq-step-title" id="lifeEducationNextTitle">What happens next?</div>
+                    <div class="lq-education-card-grid three-up">
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">Quick Conversation</div>
+                            <p class="lq-education-card-copy">We’ll briefly talk through your situation and what matters most to you.</p>
+                        </article>
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">Personalized Guidance</div>
+                            <p class="lq-education-card-copy">We’ll review what protection options may fit your needs and budget.</p>
+                        </article>
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">No Pressure</div>
+                            <p class="lq-education-card-copy">You decide what happens next. There is no obligation to move forward.</p>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="lq-education-panel" aria-labelledby="lifeEducationOptionsTitle">
+                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Understanding Your Options</div>
+                    <div class="lq-education-card-grid two-up">
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">Term Life Insurance</div>
+                            <p class="lq-education-card-copy">Often the simplest place to start when the goal is helping protect income, monthly bills, or the people who rely on you during key working years.</p>
+                        </article>
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">Whole Life Insurance</div>
+                            <p class="lq-education-card-copy">A permanent option people often review when they want coverage designed to stay in place for the long term and build steady value over time.</p>
+                        </article>
+                        <article class="lq-education-card">
+                            <div class="lq-education-card-title">What coverage can help with</div>
+                            <ul class="lq-education-list">
+                                <li>Income replacement</li>
+                                <li>Mortgage protection</li>
+                                <li>Final expenses</li>
+                                <li>Family support</li>
+                            </ul>
+                        </article>
+                    </div>
+                </section>
+            </div>
+        }
+        else
+        {
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
                 @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
@@ -1931,6 +2267,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
                     <div class="lq-reassurance" hidden></div>
             </div>
         </div>
+        }
     </form>
 </div>
 </div>
@@ -1977,6 +2314,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
   const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
+  const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
@@ -2282,6 +2620,21 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
         secondaryRec: recSecondaryKeyEl?.value || '',
       }),
       trackFormSubmitOutcome('success'),
+      trackMetaLeadSuccess(leadId, metaLeadEventId)
+    ];
+
+    await Promise.race([
+      Promise.allSettled(trackingTasks),
+      new Promise((resolve) => window.setTimeout(resolve, 700))
+    ]);
+  }
+
+  async function flushContactFirstSuccessTracking(leadId, metaLeadEventId) {
+    const trackingTasks = [
+      trackEvent('life_contact_first_submit_success'),
+      trackEvent('life_step2_submit_success', { variantFlow: 'contact_first_education' }),
+      trackEvent(submitEvent, { submitOutcome: 'success', variantFlow: 'contact_first_education' }),
+      trackFormSubmitOutcome('success', { variantFlow: 'contact_first_education' }),
       trackMetaLeadSuccess(leadId, metaLeadEventId)
     ];
 
@@ -2699,6 +3052,154 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
     validateContactFields(true);
   }
 
+  function populateAttributionFields() {
+    var ids = window.legendTrackingIds;
+    var p = new URLSearchParams(window.location.search);
+    var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
+    function set(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
+    set('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
+    set('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
+    set('UtmSource',    attr.utmSource || p.get('utm_source') || '');
+    set('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
+    set('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
+    set('UtmId',        attr.utmId || p.get('utm_id') || '');
+    set('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
+    set('UtmContent',   attr.utmContent || p.get('utm_content') || '');
+    set('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
+    set('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
+    set('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
+    set('Fbclid',       attr.fbclid || p.get('fbclid') || '');
+    set('ReferrerUrl',  document.referrer || '');
+    set('LandingPageUrl', window.location.href || '');
+  }
+
+  function resolveThankYouPath() {
+    const parts = location.pathname.split('/').filter(Boolean);
+    if (parts.length >= 2 && parts[0] === 'a') {
+      return `/a/${parts[1]}/ThankYou`;
+    }
+    return '/ThankYou';
+  }
+
+  if (isContactFirstEducationVariant) {
+    let contactFirstStartTracked = false;
+
+    const markContactFirstStart = () => {
+      if (contactFirstStartTracked) return;
+      contactFirstStartTracked = true;
+      trackEvent('life_contact_first_form_start');
+      metaSignal?.trackLeadFormStart({
+        protectingWho: '',
+        coverageGoal: '',
+        ageRange: ''
+      });
+    };
+
+    ['FirstName', 'Phone', 'Email'].forEach((name) => {
+      const el = form.querySelector(`[name="${name}"]`);
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+        return;
+      }
+
+      const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
+      el.addEventListener(eventName, markContactFirstStart, { once: true });
+    });
+
+    trackEvent('life_contact_first_view');
+    trackEvent('life_step2_view', { handoffType: 'education_contact_first', variantFlow: 'contact_first_education' });
+    metaSignal?.trackContactStepReached({
+      handoffType: 'education_contact_first',
+      protectingWho: '',
+      coverageGoal: '',
+      ageRange: ''
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      markContactFirstStart();
+
+      const lifeError = document.getElementById('lifeError');
+      const lifeSuccess = document.getElementById('lifeSuccess');
+      if (lifeError) lifeError.style.display = 'none';
+      if (lifeSuccess) lifeSuccess.style.display = 'none';
+      ['FirstName', 'Phone', 'Email'].forEach(clearFieldError);
+
+      if (!validateContactFields(true)) {
+        if (lifeError) {
+          lifeError.textContent = 'Please review the highlighted contact fields.';
+          lifeError.style.display = 'block';
+        }
+        form._trackSubmitAttempt?.(false, 1);
+        return;
+      }
+
+      trackEvent('life_contact_first_submit_attempt');
+      trackEvent('life_step2_submit_attempt', { variantFlow: 'contact_first_education' });
+      trackFormSubmitOutcome('attempt', {
+        step: 'submit_attempt',
+        variantFlow: 'contact_first_education'
+      });
+      metaSignal?.trackSubmitAttempt({
+        protectingWho: '',
+        coverageGoal: '',
+        ageRange: '',
+        requiredContactFieldsComplete: true,
+        contactStepReached: true
+      });
+      form._trackSubmitAttempt?.(true, 0);
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Sending...';
+      }
+
+      populateAttributionFields();
+
+      try {
+        const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
+        if (!res.ok) throw new Error('Network');
+        const responseBody = await res.json().catch(() => ({}));
+        const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
+        const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
+        metaSignal?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
+        form._trackSubmitSuccess?.();
+        await flushContactFirstSuccessTracking(leadId, metaLeadEventId);
+        window.location.href = resolveThankYouPath();
+      } catch (err) {
+        if (lifeError) {
+          lifeError.textContent = 'We could not send this right now. Please try again.';
+          lifeError.style.display = 'block';
+        }
+        trackFormSubmitOutcome('error', { variantFlow: 'contact_first_education' });
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = submitLabel;
+        }
+      }
+    });
+
+    window.legendTrack?.({
+      EventType: startEvent,
+      PageKey: pageKey,
+      Offer: '@cfg.OfferKey',
+      MetadataJson: JSON.stringify({
+        pageVariant,
+        pageMode,
+        pagePath: window.location.pathname,
+        hasAgentTrustProfile,
+        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
+      })
+    });
+
+    if (hasServerErrors) {
+      setTimeout(() => focusFirstInvalidContactField(), 30);
+    }
+
+    return;
+  }
+
   function queueMicroAdvance(expectedStep, nextStep) {
     if (step1Panel.hidden || currentMicroStep !== expectedStep) return;
     clearAutoAdvanceTimer();
@@ -2854,27 +3355,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
       submitBtn.textContent = 'Sending...';
     }
 
-    // Populate attribution fields immediately before submit
-    (function () {
-      var ids = window.legendTrackingIds;
-      var p = new URLSearchParams(window.location.search);
-      var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
-      function set(id, v) { var el = document.getElementById(id); if (el && v) el.value = v; }
-      set('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
-      set('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
-      set('UtmSource',    attr.utmSource || p.get('utm_source') || '');
-      set('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
-      set('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
-      set('UtmId',        attr.utmId || p.get('utm_id') || '');
-      set('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
-      set('UtmContent',   attr.utmContent || p.get('utm_content') || '');
-      set('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
-      set('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
-      set('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
-      set('Fbclid',       attr.fbclid || p.get('fbclid') || '');
-      set('ReferrerUrl',  document.referrer || '');
-      set('LandingPageUrl', window.location.href || '');
-    })();
+    populateAttributionFields();
 
     trackFormSubmitOutcome('attempt', {
       step: 'submit_attempt',
@@ -2892,14 +3373,6 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
       contactStepReached: true
     });
 
-    const thankYouPath = (() => {
-      const parts = location.pathname.split('/').filter(Boolean);
-      if (parts.length >= 2 && parts[0] === 'a') {
-        return `/a/${parts[1]}/ThankYou`;
-      }
-      return '/ThankYou';
-    })();
-
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
       if (!res.ok) throw new Error('Network');
@@ -2909,7 +3382,7 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
       metaSignal?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
       form._trackSubmitSuccess?.();
       await flushSuccessTracking(leadId, metaLeadEventId);
-      window.location.href = thankYouPath;
+      window.location.href = resolveThankYouPath();
     } catch (err) {
       if (lifeError) {
         lifeError.textContent = 'We could not send this right now. Please try again.';
