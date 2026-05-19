@@ -509,7 +509,7 @@ body.life-landing .lq-landing-brand-row {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 14px;
+    gap: 18px;
 }
 body.life-landing .lq-landing-brand-copy {
     min-width: 0;
@@ -524,25 +524,18 @@ body.life-landing .lq-header h1 {
     max-width: 10ch;
 }
 body.life-landing .lq-landing-logo-wrap {
-    width: 68px;
-    height: 68px;
+    width: 104px;
+    height: 118px;
     flex: 0 0 auto;
-    border-radius: 16px;
-    border: 1.4px solid rgba(199,153,49,0.52);
-    background:
-        radial-gradient(circle at 30% 24%, rgba(243,214,136,0.18), transparent 48%),
-        linear-gradient(180deg, rgba(17,30,53,0.98) 0%, rgba(10,20,38,0.98) 100%);
     display: grid;
     place-items: center;
-    box-shadow:
-        0 14px 26px rgba(0,0,0,0.26),
-        inset 0 1px 0 rgba(255,255,255,0.08);
+    background: transparent;
 }
 body.life-landing .lq-landing-logo {
-    width: 42px;
+    width: 96px;
     height: auto;
     display: block;
-    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.34));
+    filter: drop-shadow(0 14px 26px rgba(0,0,0,0.34));
 }
 body.life-landing .lq-subtext {
     color: rgba(248,250,252,0.88);
@@ -1240,12 +1233,11 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         align-items: center !important;
     }
     body.life-landing .lq-landing-logo-wrap {
-        width: 56px !important;
-        height: 56px !important;
-        border-radius: 14px !important;
+        width: 78px !important;
+        height: 90px !important;
     }
     body.life-landing .lq-landing-logo {
-        width: 34px !important;
+        width: 72px !important;
     }
 
     body.life-landing .lq-step-panel {
@@ -1371,11 +1363,11 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         margin-bottom: 3px !important;
     }
     body.life-landing .lq-landing-logo-wrap {
-        width: 50px !important;
-        height: 50px !important;
+        width: 70px !important;
+        height: 80px !important;
     }
     body.life-landing .lq-landing-logo {
-        width: 30px !important;
+        width: 64px !important;
     }
 }
 
@@ -1590,15 +1582,15 @@ body.life-landing .lq-step1-panel .lq-step-progress-wrap{
 
     body.page-variant-emotional-continuity-v1.life-landing .lq-landing-brand-copy {
         max-width: none;
-        padding-right: 118px;
+        padding-right: 146px;
     }
 
     body.page-variant-emotional-continuity-v1.life-landing .lq-landing-logo-wrap {
         position: absolute;
-        top: 4px;
+        top: 0;
         right: 0;
-        width: 72px;
-        height: 72px;
+        width: 112px;
+        height: 126px;
     }
 
     body.page-variant-emotional-continuity-v1.life-landing .lq-header h1 {
@@ -1866,86 +1858,92 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     display: block;
 }
 body.page-variant-contact-first-education-v1 {
-    --cf-ink: #17253d;
-    --cf-ink-soft: rgba(23,37,61,0.74);
-    --cf-ink-muted: rgba(23,37,61,0.56);
-    --cf-accent: #ba8830;
-    --cf-accent-strong: #9d6f1f;
-    --cf-panel-border: rgba(186,136,48,0.34);
+    --cf-ink: #f5f7fb;
+    --cf-ink-soft: rgba(232,238,247,0.78);
+    --cf-ink-muted: rgba(219,226,238,0.62);
+    --cf-accent: #e0b14a;
+    --cf-accent-strong: #f5d488;
+    --cf-panel-border: rgba(208,154,53,0.42);
     --cf-panel-bg:
-        linear-gradient(180deg, rgba(255,250,241,0.99) 0%, rgba(245,237,222,0.97) 100%);
+        linear-gradient(180deg, rgba(17,27,50,0.99) 0%, rgba(12,21,39,0.99) 100%);
     --cf-card-bg:
-        linear-gradient(180deg, rgba(39,58,93,0.98) 0%, rgba(24,38,64,0.98) 100%);
-    --cf-card-border: rgba(186,136,48,0.22);
-    --cf-card-copy: rgba(248,244,235,0.92);
+        linear-gradient(180deg, rgba(38,44,55,0.98) 0%, rgba(31,37,48,0.98) 100%);
+    --cf-card-border: rgba(208,154,53,0.34);
+    --cf-card-copy: rgba(236,240,247,0.84);
 }
+body.page-variant-contact-first-education-v1 section.lq-education-trust-card,
+body.page-variant-contact-first-education-v1 section.lq-education-panel,
 body.page-variant-contact-first-education-v1 .lq-education-trust-card,
 body.page-variant-contact-first-education-v1 .lq-education-panel {
     background:
-        radial-gradient(circle at top right, rgba(231,198,124,0.18), transparent 35%),
-        radial-gradient(circle at top left, rgba(255,255,255,0.52), transparent 28%),
-        var(--cf-panel-bg);
-    border-color: var(--cf-panel-border);
+        radial-gradient(circle at top right, rgba(224,177,74,0.11), transparent 34%),
+        var(--cf-panel-bg) !important;
+    background-color: #101b31 !important;
+    color: var(--cf-ink) !important;
+    border-color: var(--cf-panel-border) !important;
     box-shadow:
-        0 20px 34px rgba(0,0,0,0.20),
-        inset 0 1px 0 rgba(255,255,255,0.78);
+        0 22px 36px rgba(4,8,18,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.04) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-trust-avatar {
     background: linear-gradient(180deg, #22375b 0%, #14233f 100%);
     box-shadow:
-        0 12px 22px rgba(10,18,34,0.22),
-        0 0 0 4px rgba(255,248,236,0.72);
+        0 12px 22px rgba(7,14,26,0.28),
+        inset 0 1px 0 rgba(255,255,255,0.08);
 }
 body.page-variant-contact-first-education-v1 .lq-education-kicker {
-    color: rgba(157,111,31,0.74);
+    color: rgba(240,198,109,0.82) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-intro,
 body.page-variant-contact-first-education-v1 .lq-education-form-title {
-    color: var(--cf-accent);
-    text-shadow: 0 1px 0 rgba(255,255,255,0.42);
+    color: var(--cf-accent) !important;
+    text-shadow: none;
+}
+body.page-variant-contact-first-education-v1 .lq-education-intro {
+    color: #fff6dd !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-intro-sub,
 body.page-variant-contact-first-education-v1 .lq-education-form-copy {
-    color: var(--cf-ink-soft);
+    color: var(--cf-ink-soft) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-soft-note {
-    color: var(--cf-accent-strong);
+    color: var(--cf-accent-strong) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-step-title {
-    color: var(--cf-accent);
+    color: var(--cf-accent) !important;
 }
 body.page-variant-contact-first-education-v1 .lq-field label {
-    color: var(--cf-ink);
+    color: #f5f7fb !important;
 }
 body.page-variant-contact-first-education-v1 .lq-field-err {
-    color: #c2410c;
+    color: #fca5a5 !important;
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-control,
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-select {
-    background: rgba(255,253,248,0.98);
-    border-color: rgba(186,136,48,0.62);
-    color: var(--cf-ink);
+    background: rgba(255,255,255,0.98);
+    border-color: rgba(224,177,74,0.68);
+    color: #10203a;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.94),
-        0 1px 2px rgba(23,37,61,0.06);
+        inset 0 1px 0 rgba(255,255,255,0.96),
+        0 1px 2px rgba(10,18,34,0.12);
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-control::placeholder {
-    color: rgba(23,37,61,0.46);
+    color: rgba(16,32,58,0.42);
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-control:focus,
 body.page-variant-contact-first-education-v1 .lq-education-panel .form-select:focus {
     box-shadow:
-        0 0 0 0.22rem rgba(186,136,48,0.18),
+        0 0 0 0.22rem rgba(224,177,74,0.22),
         inset 0 1px 0 rgba(255,255,255,0.94);
-    border-color: rgba(157,111,31,0.78);
+    border-color: rgba(224,177,74,0.86);
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-submit-row {
     margin-top: 16px;
     padding-top: 12px;
-    border-top: 1px solid rgba(186,136,48,0.18);
+    border-top: 1px solid rgba(208,154,53,0.22);
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-trust-note {
-    color: var(--cf-ink-muted);
+    color: rgba(221,228,239,0.66) !important;
     font-weight: 760;
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-gold {
@@ -1981,32 +1979,38 @@ body.page-variant-contact-first-education-v1 .lq-education-list li {
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summary {
     background:
-        radial-gradient(circle at top right, rgba(223,179,78,0.14), transparent 32%),
-        linear-gradient(180deg, #101a31 0%, #0f1930 100%);
-    border-color: rgba(198,146,44,0.62);
+        radial-gradient(circle at top right, rgba(223,179,78,0.12), transparent 32%),
+        linear-gradient(180deg, #101a31 0%, #0e1830 100%) !important;
+    background-color: #101a31 !important;
+    border-color: rgba(198,146,44,0.62) !important;
     box-shadow:
         0 22px 36px rgba(3,8,18,0.34),
-        inset 0 1px 0 rgba(255,255,255,0.03);
+        inset 0 1px 0 rgba(255,255,255,0.03) !important;
 }
-body.page-variant-contact-first-education-v1 .lq-options-summary .lq-step-title {
-    color: #f0c66d;
-    font-size: 1.02rem;
+body.page-variant-contact-first-education-v1 .lq-options-summary .lq-step-title,
+body.page-variant-contact-first-education-v1 .lq-next-summary .lq-step-title {
+    color: #f0c66d !important;
+    font-size: 1.18rem;
     font-weight: 920;
     letter-spacing: .05em;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
-    color: rgba(233,236,242,0.74);
+    color: rgba(233,236,242,0.78) !important;
+    max-width: 48ch;
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card {
     background:
-        radial-gradient(circle at top right, rgba(226,181,79,0.07), transparent 34%),
-        linear-gradient(180deg, rgba(36,42,54,0.98) 0%, rgba(20,25,36,0.98) 100%);
-    border: 1.3px solid rgba(206,153,53,0.54);
+        radial-gradient(circle at top right, rgba(226,181,79,0.05), transparent 34%),
+        linear-gradient(180deg, rgba(38,44,55,0.98) 0%, rgba(31,37,48,0.98) 100%);
+    border: 1.3px solid rgba(115,89,40,0.68);
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.05),
         0 16px 28px rgba(0,0,0,0.18);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term {
+    border-color: rgba(224,177,74,0.82);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term .lq-option-chip {
     background: linear-gradient(180deg, #e0b041 0%, #c8922a 100%);
@@ -2014,29 +2018,66 @@ body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term .lq
     box-shadow: inset 0 1px 0 rgba(255,241,201,0.36);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-whole .lq-option-chip {
-    background: rgba(214,170,76,0.16);
-    border: 1px solid rgba(214,170,76,0.26);
+    background: rgba(43,49,60,0.92);
+    border: 1px solid rgba(214,170,76,0.20);
     color: #f1ce83;
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-universal .lq-option-chip {
     background: rgba(31,40,57,0.92);
-    border: 1px solid rgba(214,170,76,0.24);
+    border: 1px solid rgba(214,170,76,0.20);
     color: #f1ce83;
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-top {
+    align-items: flex-start;
+}
+body.page-variant-contact-first-education-v1 .lq-option-title {
+    font-size: 1.34rem;
+    color: #f8fafc !important;
+}
+body.page-variant-contact-first-education-v1 .lq-option-copy {
+    color: rgba(229,233,240,0.84) !important;
+}
+body.page-variant-contact-first-education-v1 .lq-option-bullets li {
+    color: rgba(236,240,247,0.9) !important;
+}
+body.page-variant-contact-first-education-v1 .lq-option-visual {
+    width: 56px;
+    height: 56px;
+    border-radius: 12px;
+    border: 1px solid rgba(214,171,77,0.16);
+    background: rgba(13,21,36,0.68);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+body.page-variant-contact-first-education-v1 .lq-option-visual svg {
+    width: 42px;
+    height: 42px;
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term .lq-option-visual {
     background:
-        radial-gradient(circle at 68% 26%, rgba(255,227,156,0.16), transparent 34%),
-        linear-gradient(180deg, rgba(35,48,74,0.98) 0%, rgba(15,22,34,0.98) 100%);
+        radial-gradient(circle at 68% 26%, rgba(255,227,156,0.12), transparent 34%),
+        rgba(13,21,36,0.72);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-whole .lq-option-visual {
     background:
-        radial-gradient(circle at 50% 50%, rgba(227,194,111,0.12), transparent 38%),
-        linear-gradient(180deg, rgba(34,44,68,0.98) 0%, rgba(16,23,36,0.98) 100%);
+        radial-gradient(circle at 50% 50%, rgba(227,194,111,0.1), transparent 38%),
+        rgba(13,21,36,0.72);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-universal .lq-option-visual {
     background:
-        radial-gradient(circle at 72% 26%, rgba(111,163,244,0.18), transparent 34%),
-        linear-gradient(180deg, rgba(27,42,70,0.98) 0%, rgba(13,21,35,0.98) 100%);
+        radial-gradient(circle at 72% 26%, rgba(111,163,244,0.12), transparent 34%),
+        rgba(13,21,36,0.72);
+}
+body.page-variant-contact-first-education-v1 .lq-next-summary {
+    padding-top: 18px;
+    padding-bottom: 18px;
+}
+body.page-variant-contact-first-education-v1 .lq-next-summary-copy {
+    margin: 0;
+    max-width: 56ch;
+    color: rgba(230,235,244,0.84) !important;
+    font-size: 1rem;
+    line-height: 1.65;
+    font-weight: 700;
 }
 body.page-variant-contact-first-education-v1 .lq-header {
     margin-bottom: 10px !important;
@@ -2144,7 +2185,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         <h1 class="hero-title">@heroHeadline</h1>
                     </div>
                     <div class="lq-landing-logo-wrap" aria-hidden="true">
-                        <img class="lq-landing-logo" src="~/images/company-icons/legend.png" asp-append-version="true" alt="" />
+                        <img class="lq-landing-logo" src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="" />
                     </div>
                 </div>
             }
@@ -2229,7 +2270,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         <div class="lq-education-trust-copy">
                             <div class="lq-education-kicker">Personal guidance</div>
                             <div class="lq-education-intro">@contactFirstTrustIntroLine</div>
-                            <p class="lq-education-intro-sub">I’ll personally review what you share and help you understand what may fit your situation.</p>
+                            <p class="lq-education-intro-sub">Life insurance can feel confusing. I’ll personally help you understand what may fit your situation. No pressure. No obligation.</p>
                             <div class="lq-education-soft-note">Simple guidance. No pressure.</div>
                         </div>
                     </div>
@@ -2337,22 +2378,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </div>
                 </section>
 
-                <section class="lq-education-panel" aria-labelledby="lifeEducationNextTitle">
+                <section class="lq-education-panel lq-next-summary" aria-labelledby="lifeEducationNextTitle">
                     <div class="lq-step-title" id="lifeEducationNextTitle">What happens next?</div>
-                    <div class="lq-education-card-grid three-up">
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">Quick Conversation</div>
-                            <p class="lq-education-card-copy">We’ll briefly talk through your situation and what matters most to you.</p>
-                        </article>
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">Personalized Guidance</div>
-                            <p class="lq-education-card-copy">We’ll review what protection options may fit your needs and budget.</p>
-                        </article>
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">No Pressure</div>
-                            <p class="lq-education-card-copy">You decide what happens next. There is no obligation to move forward.</p>
-                        </article>
-                    </div>
+                    <p class="lq-next-summary-copy">@agentDirectContactName will be in touch shortly to walk you through what may fit and answer any questions you may have. There is no obligation, just a straightforward conversation about your options.</p>
                 </section>
             </div>
         }
