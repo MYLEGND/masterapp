@@ -1766,6 +1766,278 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     color: #f3d78f;
     font-weight: 900;
 }
+.lq-options-summary {
+    position: relative;
+    overflow: hidden;
+}
+.lq-options-summary-copy {
+    margin: 0;
+    font-size: .94rem;
+    line-height: 1.55;
+}
+.lq-options-summary-list {
+    display: grid;
+    gap: 14px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(199,153,49,0.28);
+}
+.lq-option-summary-card {
+    position: relative;
+    overflow: hidden;
+    padding: 18px 18px 17px;
+    border-radius: 18px;
+}
+.lq-option-summary-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+.lq-option-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    padding: 7px 16px;
+    border-radius: 999px;
+    font-size: .76rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    line-height: 1;
+}
+.lq-option-title {
+    color: #f8fafc;
+    font-size: 1.42rem;
+    font-weight: 920;
+    line-height: 1.08;
+    margin-bottom: 8px;
+}
+.lq-option-copy {
+    color: rgba(236,239,244,0.78);
+    font-size: .98rem;
+    line-height: 1.5;
+    margin: 0 0 14px;
+    max-width: 50ch;
+}
+.lq-option-bullets {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+.lq-option-bullets li {
+    position: relative;
+    padding-left: 1.2rem;
+    color: rgba(244,246,250,0.86);
+    font-size: .95rem;
+    font-weight: 780;
+    line-height: 1.4;
+}
+.lq-option-bullets li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: #d8a53b;
+    font-weight: 900;
+}
+.lq-option-visual {
+    width: 112px;
+    height: 92px;
+    flex: 0 0 auto;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(214,171,77,0.18);
+    background:
+        radial-gradient(circle at 50% 18%, rgba(255,234,176,0.12), transparent 40%),
+        linear-gradient(180deg, rgba(25,36,58,0.94) 0%, rgba(13,20,32,0.96) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 12px 20px rgba(0,0,0,0.16);
+}
+.lq-option-visual svg {
+    width: 74px;
+    height: 74px;
+    display: block;
+}
+body.page-variant-contact-first-education-v1 {
+    --cf-ink: #17253d;
+    --cf-ink-soft: rgba(23,37,61,0.74);
+    --cf-ink-muted: rgba(23,37,61,0.56);
+    --cf-accent: #ba8830;
+    --cf-accent-strong: #9d6f1f;
+    --cf-panel-border: rgba(186,136,48,0.34);
+    --cf-panel-bg:
+        linear-gradient(180deg, rgba(255,250,241,0.99) 0%, rgba(245,237,222,0.97) 100%);
+    --cf-card-bg:
+        linear-gradient(180deg, rgba(39,58,93,0.98) 0%, rgba(24,38,64,0.98) 100%);
+    --cf-card-border: rgba(186,136,48,0.22);
+    --cf-card-copy: rgba(248,244,235,0.92);
+}
+body.page-variant-contact-first-education-v1 .lq-education-trust-card,
+body.page-variant-contact-first-education-v1 .lq-education-panel {
+    background:
+        radial-gradient(circle at top right, rgba(231,198,124,0.18), transparent 35%),
+        radial-gradient(circle at top left, rgba(255,255,255,0.52), transparent 28%),
+        var(--cf-panel-bg);
+    border-color: var(--cf-panel-border);
+    box-shadow:
+        0 20px 34px rgba(0,0,0,0.20),
+        inset 0 1px 0 rgba(255,255,255,0.78);
+}
+body.page-variant-contact-first-education-v1 .lq-education-trust-avatar {
+    background: linear-gradient(180deg, #22375b 0%, #14233f 100%);
+    box-shadow:
+        0 12px 22px rgba(10,18,34,0.22),
+        0 0 0 4px rgba(255,248,236,0.72);
+}
+body.page-variant-contact-first-education-v1 .lq-education-kicker {
+    color: rgba(157,111,31,0.74);
+}
+body.page-variant-contact-first-education-v1 .lq-education-intro,
+body.page-variant-contact-first-education-v1 .lq-education-form-title {
+    color: var(--cf-accent);
+    text-shadow: 0 1px 0 rgba(255,255,255,0.42);
+}
+body.page-variant-contact-first-education-v1 .lq-education-intro-sub,
+body.page-variant-contact-first-education-v1 .lq-education-form-copy {
+    color: var(--cf-ink-soft);
+}
+body.page-variant-contact-first-education-v1 .lq-education-soft-note {
+    color: var(--cf-accent-strong);
+}
+body.page-variant-contact-first-education-v1 .lq-step-title {
+    color: var(--cf-accent);
+}
+body.page-variant-contact-first-education-v1 .lq-field label {
+    color: var(--cf-ink);
+}
+body.page-variant-contact-first-education-v1 .lq-field-err {
+    color: #c2410c;
+}
+body.page-variant-contact-first-education-v1 .lq-education-panel .form-control,
+body.page-variant-contact-first-education-v1 .lq-education-panel .form-select {
+    background: rgba(255,253,248,0.98);
+    border-color: rgba(186,136,48,0.62);
+    color: var(--cf-ink);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.94),
+        0 1px 2px rgba(23,37,61,0.06);
+}
+body.page-variant-contact-first-education-v1 .lq-education-panel .form-control::placeholder {
+    color: rgba(23,37,61,0.46);
+}
+body.page-variant-contact-first-education-v1 .lq-education-panel .form-control:focus,
+body.page-variant-contact-first-education-v1 .lq-education-panel .form-select:focus {
+    box-shadow:
+        0 0 0 0.22rem rgba(186,136,48,0.18),
+        inset 0 1px 0 rgba(255,255,255,0.94);
+    border-color: rgba(157,111,31,0.78);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-submit-row {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(186,136,48,0.18);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-trust-note {
+    color: var(--cf-ink-muted);
+    font-weight: 760;
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-gold {
+    background: linear-gradient(180deg, #d1ac52 0%, #bf9537 54%, #a87922 100%);
+    color: #fff9ef;
+    text-shadow: none;
+    border-color: rgba(173,123,35,0.92);
+    box-shadow:
+        inset 0 1px 0 rgba(255,244,215,0.44),
+        0 16px 26px rgba(84,56,11,0.22),
+        0 0 0 1px rgba(173,123,35,0.18);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-gold:hover {
+    color: #fffdf7;
+    box-shadow:
+        inset 0 1px 0 rgba(255,247,223,0.48),
+        0 18px 30px rgba(84,56,11,0.24),
+        0 0 0 1px rgba(173,123,35,0.24);
+}
+body.page-variant-contact-first-education-v1 .lq-education-card {
+    background: var(--cf-card-bg);
+    border-color: var(--cf-card-border);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 12px 22px rgba(8,14,27,0.18);
+}
+body.page-variant-contact-first-education-v1 .lq-education-card-title {
+    color: #f8e9bf;
+}
+body.page-variant-contact-first-education-v1 .lq-education-card-copy,
+body.page-variant-contact-first-education-v1 .lq-education-list li {
+    color: var(--cf-card-copy);
+}
+body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summary {
+    background:
+        radial-gradient(circle at top right, rgba(223,179,78,0.14), transparent 32%),
+        linear-gradient(180deg, #101a31 0%, #0f1930 100%);
+    border-color: rgba(198,146,44,0.62);
+    box-shadow:
+        0 22px 36px rgba(3,8,18,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.03);
+}
+body.page-variant-contact-first-education-v1 .lq-options-summary .lq-step-title {
+    color: #f0c66d;
+    font-size: 1.02rem;
+    font-weight: 920;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+}
+body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
+    color: rgba(233,236,242,0.74);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card {
+    background:
+        radial-gradient(circle at top right, rgba(226,181,79,0.07), transparent 34%),
+        linear-gradient(180deg, rgba(36,42,54,0.98) 0%, rgba(20,25,36,0.98) 100%);
+    border: 1.3px solid rgba(206,153,53,0.54);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 16px 28px rgba(0,0,0,0.18);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term .lq-option-chip {
+    background: linear-gradient(180deg, #e0b041 0%, #c8922a 100%);
+    color: #19150d;
+    box-shadow: inset 0 1px 0 rgba(255,241,201,0.36);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-whole .lq-option-chip {
+    background: rgba(214,170,76,0.16);
+    border: 1px solid rgba(214,170,76,0.26);
+    color: #f1ce83;
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-universal .lq-option-chip {
+    background: rgba(31,40,57,0.92);
+    border: 1px solid rgba(214,170,76,0.24);
+    color: #f1ce83;
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-term .lq-option-visual {
+    background:
+        radial-gradient(circle at 68% 26%, rgba(255,227,156,0.16), transparent 34%),
+        linear-gradient(180deg, rgba(35,48,74,0.98) 0%, rgba(15,22,34,0.98) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-whole .lq-option-visual {
+    background:
+        radial-gradient(circle at 50% 50%, rgba(227,194,111,0.12), transparent 38%),
+        linear-gradient(180deg, rgba(34,44,68,0.98) 0%, rgba(16,23,36,0.98) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card.is-universal .lq-option-visual {
+    background:
+        radial-gradient(circle at 72% 26%, rgba(111,163,244,0.18), transparent 34%),
+        linear-gradient(180deg, rgba(27,42,70,0.98) 0%, rgba(13,21,35,0.98) 100%);
+}
 body.page-variant-contact-first-education-v1 .lq-header {
     margin-bottom: 10px !important;
 }
@@ -1829,6 +2101,33 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     .lq-education-intro-sub,
     .lq-education-card-copy {
         font-size: .88rem;
+    }
+
+    .lq-option-summary-card {
+        padding: 15px 14px 14px;
+        border-radius: 16px;
+    }
+
+    .lq-option-title {
+        font-size: 1.2rem;
+    }
+
+    .lq-option-copy {
+        font-size: .9rem;
+    }
+
+    .lq-option-bullets li {
+        font-size: .88rem;
+    }
+
+    .lq-option-visual {
+        width: 96px;
+        height: 82px;
+    }
+
+    .lq-option-visual svg {
+        width: 66px;
+        height: 66px;
     }
 }
 
@@ -1966,6 +2265,78 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                 </section>
 
+                <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
+                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Understanding Your Options</div>
+                    <p class="lq-options-summary-copy">These are the three life insurance conversations most people compare first when they want clarity before choosing what to explore more deeply.</p>
+                    <div class="lq-options-summary-list">
+                        <article class="lq-option-summary-card is-term">
+                            <div class="lq-option-summary-top">
+                                <span class="lq-option-chip">Common first look</span>
+                                <div class="lq-option-visual" aria-hidden="true">
+                                    <svg viewBox="0 0 96 96" fill="none">
+                                        <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
+                                        <circle cx="18" cy="60" r="7" fill="#F5D68E" />
+                                        <circle cx="62" cy="60" r="7" fill="#F5D68E" />
+                                        <circle cx="72" cy="28" r="15" stroke="#FFF1C9" stroke-width="4" />
+                                        <path d="M72 20V29L78 33" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="lq-option-title">Term Life Insurance</div>
+                            <p class="lq-option-copy">Often the simplest place to start when the goal is helping protect income, monthly bills, or the people who rely on you during key working years.</p>
+                            <ul class="lq-option-bullets">
+                                <li>Commonly reviewed when affordability and straightforward protection matter most.</li>
+                                <li>Often used to help cover temporary responsibilities like family income or mortgage years.</li>
+                                <li>Usually the cleanest starting point when someone wants clarity before comparing more permanent designs.</li>
+                            </ul>
+                        </article>
+
+                        <article class="lq-option-summary-card is-whole">
+                            <div class="lq-option-summary-top">
+                                <span class="lq-option-chip">Permanent coverage</span>
+                                <div class="lq-option-visual" aria-hidden="true">
+                                    <svg viewBox="0 0 96 96" fill="none">
+                                        <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
+                                        <circle cx="48" cy="48" r="29" stroke="#D3A448" stroke-width="4" stroke-opacity=".88" />
+                                        <circle cx="48" cy="48" r="41" stroke="#7B90B7" stroke-width="2.5" stroke-opacity=".45" />
+                                        <path d="M31 52C37 61 57 61 65 38" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="lq-option-title">Whole Life Insurance</div>
+                            <p class="lq-option-copy">A permanent option people often review when they want coverage designed to stay in place for the long term and build steady value over time.</p>
+                            <ul class="lq-option-bullets">
+                                <li>Designed for people who care more about lasting protection than simply chasing the lowest monthly cost.</li>
+                                <li>Often reviewed when predictability, guarantees, and stable long-term structure matter.</li>
+                                <li>Can be a strong fit for people who want a simpler permanent solution without a lot of moving parts.</li>
+                            </ul>
+                        </article>
+
+                        <article class="lq-option-summary-card is-universal">
+                            <div class="lq-option-summary-top">
+                                <span class="lq-option-chip">Flexible / IUL options</span>
+                                <div class="lq-option-visual" aria-hidden="true">
+                                    <svg viewBox="0 0 96 96" fill="none">
+                                        <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
+                                        <path d="M46 52C54 58 60 64 71 74" stroke="#9FC4FF" stroke-width="3.5" stroke-linecap="round" />
+                                        <path d="M20 76H78" stroke="#597299" stroke-width="4" stroke-linecap="round" stroke-opacity=".72" />
+                                        <circle cx="18" cy="66" r="6" fill="#F2CF82" />
+                                        <circle cx="44" cy="40" r="6" fill="#F2CF82" />
+                                        <circle cx="78" cy="30" r="7" fill="#9FC4FF" />
+                                    </svg>
+                                </div>
+                            </div>
+                            <div class="lq-option-title">Universal Life Insurance</div>
+                            <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, when someone wants longer-term coverage with structure that may be adjusted over time.</p>
+                            <ul class="lq-option-bullets">
+                                <li>Often reviewed by people comparing permanent coverage with more flexibility than basic whole life.</li>
+                                <li>Can include indexed universal life, or IUL, for people exploring longer-range planning conversations.</li>
+                                <li>Usually best reviewed with guidance because the tradeoffs are more nuanced than simple term coverage.</li>
+                            </ul>
+                        </article>
+                    </div>
+                </section>
+
                 <section class="lq-education-panel" aria-labelledby="lifeEducationNextTitle">
                     <div class="lq-step-title" id="lifeEducationNextTitle">What happens next?</div>
                     <div class="lq-education-card-grid three-up">
@@ -1980,29 +2351,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         <article class="lq-education-card">
                             <div class="lq-education-card-title">No Pressure</div>
                             <p class="lq-education-card-copy">You decide what happens next. There is no obligation to move forward.</p>
-                        </article>
-                    </div>
-                </section>
-
-                <section class="lq-education-panel" aria-labelledby="lifeEducationOptionsTitle">
-                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Understanding Your Options</div>
-                    <div class="lq-education-card-grid two-up">
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">Term Life Insurance</div>
-                            <p class="lq-education-card-copy">Often the simplest place to start when the goal is helping protect income, monthly bills, or the people who rely on you during key working years.</p>
-                        </article>
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">Whole Life Insurance</div>
-                            <p class="lq-education-card-copy">A permanent option people often review when they want coverage designed to stay in place for the long term and build steady value over time.</p>
-                        </article>
-                        <article class="lq-education-card">
-                            <div class="lq-education-card-title">What coverage can help with</div>
-                            <ul class="lq-education-list">
-                                <li>Income replacement</li>
-                                <li>Mortgage protection</li>
-                                <li>Final expenses</li>
-                                <li>Family support</li>
-                            </ul>
                         </article>
                     </div>
                 </section>
