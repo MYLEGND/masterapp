@@ -1228,9 +1228,7 @@ namespace Protect_Website.Controllers
                 !string.IsNullOrWhiteSpace(inferredLandingVariant) ||
                 IsLandingRouteForOffer(model?.LandingPageUrl, landingRoutePath);
 
-            var usesContactFirstSiteControl =
-                !isLandingRequested &&
-                string.Equals(LifeOfferResolver.Normalize(cfg.OfferKey), LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
+            var usesContactFirstSiteControl = !isLandingRequested;
 
             var pageVariant = isLandingRequested
                 ? resolvedPaidLandingVariant ?? ContactFirstEducationLandingVariant

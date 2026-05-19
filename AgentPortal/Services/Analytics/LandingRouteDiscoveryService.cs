@@ -508,11 +508,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_mortgage_protection_landing",
                 DisplayName = "Mortgage Protection Landing",
                 BasePath = "/Quote/Mortgage-Protection/landing",
+                ControlPath = "/Quote/Mortgage-Protection",
                 QuoteType = "mortgage_protection",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for mortgage protection.",
+                Notes = "Paid mortgage protection landing variants live under /Quote/Mortgage-Protection/landing while the main control experience uses /Quote/Mortgage-Protection.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -520,7 +521,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_mortgage_protection_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid mortgage protection landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
@@ -531,11 +532,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_term_life_landing",
                 DisplayName = "Term Life Landing",
                 BasePath = "/Quote/Term-Life/landing",
+                ControlPath = "/Quote/Term-Life",
                 QuoteType = "term_life",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for term life.",
+                Notes = "Paid term life landing variants live under /Quote/Term-Life/landing while the main control experience uses /Quote/Term-Life.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -543,7 +545,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_term_life_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid term life landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
@@ -554,11 +556,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_whole_life_landing",
                 DisplayName = "Whole Life Landing",
                 BasePath = "/Quote/Whole-Life/landing",
+                ControlPath = "/Quote/Whole-Life",
                 QuoteType = "whole_life",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for whole life.",
+                Notes = "Paid whole life landing variants live under /Quote/Whole-Life/landing while the main control experience uses /Quote/Whole-Life.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -566,7 +569,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_whole_life_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid whole life landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
@@ -577,11 +580,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_final_expense_landing",
                 DisplayName = "Final Expense Landing",
                 BasePath = "/Quote/Final-Expense/landing",
+                ControlPath = "/Quote/Final-Expense",
                 QuoteType = "final_expense",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for final expense.",
+                Notes = "Paid final expense landing variants live under /Quote/Final-Expense/landing while the main control experience uses /Quote/Final-Expense.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -589,7 +593,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_final_expense_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid final expense landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
@@ -600,11 +604,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_iul_landing",
                 DisplayName = "Indexed Universal Life (IUL) Landing",
                 BasePath = "/Quote/IUL/landing",
+                ControlPath = "/Quote/IUL",
                 QuoteType = "iul",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for IUL.",
+                Notes = "Paid IUL landing variants live under /Quote/IUL/landing while the main control experience uses /Quote/IUL.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -612,7 +617,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_iul_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid IUL landing destination.",
                         IsControl = true,
                         IsActive = true
                     }
