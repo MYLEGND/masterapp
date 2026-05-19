@@ -83,14 +83,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
             .ThenBy(variant => variant.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var controlVariant = activeVariants.FirstOrDefault(variant => variant.IsControl)
-            ?? route.AvailableVariants.FirstOrDefault(variant => variant.IsControl);
-
         return new LandingRouteDefinition
         {
             Key = route.Key,
             DisplayName = route.DisplayName,
             BasePath = route.BasePath,
+            ControlPath = route.ControlPath,
             QuoteType = route.QuoteType,
             PageMode = route.PageMode,
             DefaultPageVariant = route.DefaultPageVariant,
@@ -103,7 +101,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
             IsPaidLanding = route.IsPaidLanding,
             IsActive = route.IsActive,
             Notes = route.Notes,
-            ControlUrl = controlVariant?.Url ?? route.ControlUrl,
+            ControlUrl = route.ControlUrl,
             ComparisonHelperText = BuildComparisonHelperText(activeVariants)
         };
     }
@@ -112,6 +110,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
     {
         var routeKey = ResolveRouteKey(route);
         var basePath = NormalizeBasePath(route.BasePath);
+        var controlPath = NormalizeBasePath(FirstNonEmpty(route.ControlPath, route.BasePath));
         var defaultPageVariant = NormalizeVariantToken(route.DefaultPageVariant) ?? DefaultLandingVariant;
         var pageMode = NormalizeToken(route.PageMode) ?? "paid_landing";
         var quoteType = NormalizeToken(route.QuoteType) ?? BuildQuoteTypeFromBasePath(basePath) ?? "unknown";
@@ -145,13 +144,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
             .ThenBy(variant => variant.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var controlVariant = variants.FirstOrDefault(variant => variant.IsControl) ?? variants.FirstOrDefault();
-
         return new LandingRouteDefinition
         {
             Key = routeKey,
             DisplayName = displayName ?? routeKey,
             BasePath = basePath,
+            ControlPath = controlPath,
             QuoteType = quoteType,
             PageMode = pageMode,
             DefaultPageVariant = defaultPageVariant,
@@ -164,7 +162,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
             IsPaidLanding = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase),
             IsActive = route.IsActive ?? true,
             Notes = string.IsNullOrWhiteSpace(route.Notes) ? null : route.Notes.Trim(),
-            ControlUrl = controlVariant?.Url ?? string.Empty,
+            ControlUrl = CombineUrl(baseUrl, controlPath),
             ComparisonHelperText = BuildComparisonHelperText(variants.Where(variant => variant.IsActive).ToList())
         };
     }
@@ -185,6 +183,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
             Key = key,
             DisplayName = FirstNonEmpty(configured?.DisplayName, fallback?.DisplayName) ?? ResolveRouteDisplayName(quoteType),
             BasePath = basePath,
+            ControlPath = NormalizeBasePath(FirstNonEmpty(configured?.ControlPath, fallback?.ControlPath) ?? basePath),
             QuoteType = quoteType,
             PageMode = FirstNonEmpty(configured?.PageMode, fallback?.PageMode) ?? "paid_landing",
             DefaultPageVariant = NormalizeVariantToken(FirstNonEmpty(configured?.DefaultPageVariant, fallback?.DefaultPageVariant)) ?? DefaultLandingVariant,
@@ -485,11 +484,12 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                 Key = "quote_life_landing",
                 DisplayName = "Life Insurance Landing",
                 BasePath = "/Quote/Life/landing",
+                ControlPath = "/Quote/Life",
                 QuoteType = "life",
                 PageMode = "paid_landing",
                 DefaultPageVariant = "contact_first_education_v1",
                 IsActive = true,
-                Notes = "Shared contact-first control landing for life insurance.",
+                Notes = "Paid life landing variants live under /Quote/Life/landing while the main control experience uses /Quote/Life.",
                 Variants = new List<LandingVariantRegistryItem>
                 {
                     new()
@@ -497,7 +497,7 @@ public sealed class LandingRouteDiscoveryService : ILandingRouteDiscoveryService
                         Variant = "contact_first_education_v1",
                         DisplayName = "Control",
                         EffectivePageKey = "quote_life_landing",
-                        Description = "Current shared paid landing control.",
+                        Description = "Current paid life landing destination.",
                         IsControl = true,
                         IsActive = true
                     }

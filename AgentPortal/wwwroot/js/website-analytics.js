@@ -2555,6 +2555,7 @@
           key: route.key || '',
           displayName: route.displayName || route.key || 'Landing Route',
           basePath: route.basePath || '',
+          controlPath: route.controlPath || route.basePath || '',
           quoteType: route.quoteType || '',
           pageMode: route.pageMode || '',
           defaultPageVariant: route.defaultPageVariant || 'landing',
@@ -2584,7 +2585,7 @@
         return {
           ...normalizedRoute,
           availableVariants,
-          controlUrl: controlVariant?.url || buildScopedLandingRouteUrl(activeBaseLink, normalizedRoute.basePath) || route.controlUrl || ''
+          controlUrl: buildScopedLandingRouteUrl(activeBaseLink, normalizedRoute.controlPath) || route.controlUrl || controlVariant?.url || ''
         };
       })
       .filter(route => route.controlUrl || route.availableVariants.length > 0);
@@ -2738,6 +2739,9 @@
         ? `<div class="landing-route-compare">${escapeHtml(route.comparisonHelperText)}</div>`
         : '';
       const controlButtonUrl = escapeHtml(route.controlUrl || '');
+      const controlLabel = route.controlPath && route.controlPath !== route.basePath
+        ? 'Website Control URL'
+        : 'Control URL';
 
       return `
         <article class="landing-route-card">
@@ -2750,7 +2754,7 @@
           </div>
           <div class="landing-route-control-shell">
             <div class="landing-route-control-copy">
-              <div class="landing-route-control-label">Control URL</div>
+              <div class="landing-route-control-label">${controlLabel}</div>
               <a class="landing-route-url" href="${escapeHtml(route.controlUrl || '')}" target="_blank" rel="noopener">${escapeHtml(route.controlUrl || '—')}</a>
             </div>
             <div class="product-link-actions landing-route-actions">

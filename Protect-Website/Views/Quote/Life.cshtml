@@ -9,12 +9,15 @@
     var requestPath = Context?.Request?.Path.Value ?? string.Empty;
     var isLandingPage = Model.IsLandingPage;
     var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
-    var isLandingView = isLandingPage || isLandingRoutePath;
+    var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant)
+        ? ((isLandingPage || isLandingRoutePath) ? "contact_first_education_v1" : "website")
+        : Model.PageVariant;
+    var usesContactFirstShell = string.Equals(pageVariant, "contact_first_education_v1", StringComparison.OrdinalIgnoreCase);
+    var isLandingView = isLandingPage || isLandingRoutePath || usesContactFirstShell;
     var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
-    var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant) ? (isLandingView ? "contact_first_education_v1" : "website") : Model.PageVariant;
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingView ? "paid_landing" : "site_mode") : Model.PageMode;
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
-    var isContactFirstEducationVariant = isPaidLandingExperience && isLandingView;
+    var isContactFirstEducationVariant = usesContactFirstShell;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
     ViewData["IsLandingPage"] = isLandingView;

@@ -136,7 +136,7 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
-            var requiresLastName = pageMode.IsLandingPage;
+            var requiresLastName = string.Equals(pageMode.PageVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase);
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
                 model.LastName = null;
@@ -1225,12 +1225,18 @@ namespace Protect_Website.Controllers
             var isLandingRequested =
                 isLandingPage ||
                 string.Equals(requestedMode, "paid_landing", StringComparison.OrdinalIgnoreCase) ||
-                !string.IsNullOrWhiteSpace(resolvedPaidLandingVariant) ||
+                !string.IsNullOrWhiteSpace(inferredLandingVariant) ||
                 IsLandingRouteForOffer(model?.LandingPageUrl, landingRoutePath);
+
+            var usesContactFirstSiteControl =
+                !isLandingRequested &&
+                string.Equals(LifeOfferResolver.Normalize(cfg.OfferKey), LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
 
             var pageVariant = isLandingRequested
                 ? resolvedPaidLandingVariant ?? ContactFirstEducationLandingVariant
-                : WebsitePageVariant;
+                : usesContactFirstSiteControl
+                    ? ContactFirstEducationLandingVariant
+                    : WebsitePageVariant;
 
             return new WizardPageMode(
                 IsLandingPage: isLandingRequested,

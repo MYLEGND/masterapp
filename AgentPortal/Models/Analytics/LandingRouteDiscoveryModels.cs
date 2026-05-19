@@ -7,6 +7,7 @@ public sealed class LandingRouteDefinition
     public string Key { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public string BasePath { get; set; } = "";
+    public string ControlPath { get; set; } = "";
     public string QuoteType { get; set; } = "";
     public string PageMode { get; set; } = "paid_landing";
     public string DefaultPageVariant { get; set; } = "landing";
@@ -42,6 +43,7 @@ public sealed class LandingRouteRegistryItem
     public string? Key { get; set; }
     public string? DisplayName { get; set; }
     public string? BasePath { get; set; }
+    public string? ControlPath { get; set; }
     public string? QuoteType { get; set; }
     public string? PageMode { get; set; }
     public string? DefaultPageVariant { get; set; }
