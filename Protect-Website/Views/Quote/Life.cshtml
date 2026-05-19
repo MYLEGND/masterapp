@@ -2200,6 +2200,17 @@ body.page-variant-contact-first-education-v1 {
         linear-gradient(180deg, rgba(38,44,55,0.98) 0%, rgba(31,37,48,0.98) 100%);
     --cf-card-border: rgba(208,154,53,0.34);
     --cf-card-copy: rgba(236,240,247,0.84);
+    --cf-funnel-shell-bg:
+        radial-gradient(circle at 14% 12%, rgba(255,236,190,0.11) 0%, transparent 28%),
+        linear-gradient(135deg, rgba(29,35,54,0.995) 0%, rgba(34,46,74,0.992) 48%, rgba(16,25,43,0.995) 100%);
+    --cf-funnel-shell-border: rgba(232,196,115,0.52);
+    --cf-funnel-surface-bg:
+        radial-gradient(circle at top right, rgba(246,223,174,0.10), transparent 34%),
+        linear-gradient(180deg, rgba(49,63,97,0.992) 0%, rgba(27,40,66,0.995) 100%);
+    --cf-funnel-surface-border: rgba(255,245,220,0.10);
+    --cf-funnel-choice-bg:
+        linear-gradient(180deg, rgba(55,71,109,0.985) 0%, rgba(36,51,82,0.985) 100%);
+    --cf-funnel-choice-border: rgba(231,194,110,0.50);
 }
 body.page-variant-contact-first-education-v1 .lq-education-stack {
     max-width: var(--cf-rail-width);
@@ -2327,6 +2338,76 @@ body.page-variant-contact-first-education-v1 .lq-education-card-title {
 body.page-variant-contact-first-education-v1 .lq-education-card-copy,
 body.page-variant-contact-first-education-v1 .lq-education-list li {
     color: var(--cf-card-copy);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+    background: var(--cf-funnel-shell-bg) !important;
+    background-color: #182239 !important;
+    border-color: var(--cf-funnel-shell-border) !important;
+    box-shadow:
+        0 30px 52px rgba(3,8,18,0.40),
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 0 0 1px rgba(255,236,188,0.04),
+        0 0 38px rgba(255,225,155,0.08) !important;
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel::before {
+    inset: 14% 7% 10%;
+    background:
+        radial-gradient(circle at 18% 18%, rgba(255,228,170,0.14) 0%, transparent 32%),
+        radial-gradient(circle at 78% 72%, rgba(137,169,232,0.08) 0%, transparent 26%);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
+    border-bottom-color: rgba(232,196,115,0.16);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chip {
+    color: rgba(244,246,251,0.82);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+    background: var(--cf-funnel-surface-bg);
+    border: 1px solid var(--cf-funnel-surface-border);
+    box-shadow:
+        0 26px 46px rgba(0,0,0,0.28),
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 0 34px rgba(255,232,173,0.06);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-progress {
+    background: rgba(255,230,170,0.10);
+    border-color: rgba(232,196,115,0.34);
+    color: #f8e7b2;
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
+    color: #fff8e1;
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card {
+    background: var(--cf-funnel-choice-bg);
+    border-color: var(--cf-funnel-choice-border);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 12px 24px rgba(0,0,0,0.18);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card:hover {
+    border-color: rgba(248,220,145,0.88);
+    background:
+        linear-gradient(180deg, rgba(63,80,121,0.99) 0%, rgba(41,57,90,0.99) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 14px 28px rgba(0,0,0,0.24),
+        0 0 0 1px rgba(248,220,145,0.14);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card.lq-selected,
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card:has(input:checked) {
+    background:
+        linear-gradient(180deg, rgba(226,187,100,0.22) 0%, rgba(130,96,31,0.14) 100%),
+        linear-gradient(180deg, rgba(61,78,117,0.99) 0%, rgba(40,56,88,0.99) 100%);
+    border-color: rgba(248,220,145,0.92);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.11),
+        0 16px 30px rgba(0,0,0,0.26),
+        0 0 0 2px rgba(248,220,145,0.26),
+        0 0 28px rgba(248,220,145,0.12);
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-next-note,
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface .lq-submit-row {
+    border-top-color: rgba(232,196,115,0.18);
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summary {
     background:
