@@ -2136,8 +2136,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 24px;
+        grid-template-columns: minmax(0, 1.16fr) minmax(0, 0.84fr);
+        gap: 18px;
         align-items: start;
     }
 
@@ -2147,18 +2147,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .hero-title {
-        max-width: 9.5ch !important;
-        font-size: clamp(2.05rem, 4vw, 2.95rem) !important;
+        max-width: 12.8ch !important;
+        font-size: clamp(2.1rem, 4vw, 3rem) !important;
         line-height: 1.02 !important;
-    }
-
-    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .lq-subtext {
-        max-width: 19ch;
-        margin: 14px 0 8px !important;
-    }
-
-    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .lq-trust-note {
-        max-width: 22ch;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
@@ -2255,11 +2246,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 <div class="lq-contact-first-hero-grid">
                     <div class="lq-contact-first-hero-copy">
                         <h1 class="hero-title">@heroHeadline</h1>
-                        @if (!string.IsNullOrWhiteSpace(heroSubheadline))
-                        {
-                            <div class="lq-subtext">@heroSubheadline</div>
-                        }
-                        <div class="lq-trust-note">@heroTrustNote</div>
                     </div>
                     <figure class="lq-contact-first-hero-media">
                         <img class="lq-contact-first-hero-image" src="~/images/ads/life-insurance-review-ad.png" asp-append-version="true" alt="Legend Legacy Protection ad showing a family and inviting a personalized life insurance review." loading="eager" />
