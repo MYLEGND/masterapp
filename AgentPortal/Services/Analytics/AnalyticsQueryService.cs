@@ -521,7 +521,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         return CountDistinctUnits(events, e =>
             e.EventType == "quote_click" ||
-            (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)));
+            IsQuoteFunnelStartSignalEvent(e));
     }
 
     private sealed record EventAttributionSnapshot(
@@ -1200,7 +1200,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var byType = events
             .Where(e =>
                 e.EventType == "quote_click" ||
-                (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)))
+                IsQuoteFunnelStartSignalEvent(e))
             .Select(e => new
             {
                 QuoteType = ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey),
