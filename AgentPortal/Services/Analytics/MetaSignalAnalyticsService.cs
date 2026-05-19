@@ -524,9 +524,9 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 summary.DiscoveryComplete = true;
                 break;
             case "FunnelStepComplete":
-                if (row.FunnelStep == 1)
+                summary.FunnelStarted = true;
+                if (row.FunnelStep >= 1)
                 {
-                    summary.FunnelStarted = true;
                     summary.DiscoveryComplete = true;
                 }
                 break;

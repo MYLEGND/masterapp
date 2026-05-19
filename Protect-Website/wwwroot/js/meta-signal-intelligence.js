@@ -442,6 +442,7 @@
       ]);
       const impliesDiscoveryComplete = new Set([
         'DiscoveryComplete',
+        'FunnelStepComplete',
         'RecommendationViewed',
         'ContactStepReached',
         'ContactInputStarted',

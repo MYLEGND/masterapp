@@ -765,6 +765,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         switch (eventName)
         {
             case "DiscoveryComplete":
+            case "FunnelStepComplete":
             case "RecommendationViewed":
             case "ContactStepReached":
             case "ContactInputStarted":
