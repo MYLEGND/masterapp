@@ -129,10 +129,18 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
+            var requiresLastName = string.Equals(model.PageVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase);
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
                 model.LastName = null;
-                ModelState.Remove(nameof(LifeQuoteFormModel.LastName));
+                if (requiresLastName)
+                {
+                    ModelState.AddModelError(nameof(LifeQuoteFormModel.LastName), "Last Name is required.");
+                }
+                else
+                {
+                    ModelState.Remove(nameof(LifeQuoteFormModel.LastName));
+                }
             }
 
             if (string.IsNullOrWhiteSpace(model.Email))

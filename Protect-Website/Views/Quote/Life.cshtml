@@ -188,6 +188,9 @@
     var showInlineMobileTrustBlock = isEmotionalContinuityVariant && isLandingView;
     var step1IntroTitle = string.Empty;
     var step1IntroHelper = string.Empty;
+    var requiredContactFieldNames = isContactFirstEducationVariant
+        ? new[] { "FirstName", "LastName", "Phone" }
+        : new[] { "FirstName", "Phone" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
     {
@@ -207,7 +210,7 @@
         agentTrackingProfileId = agentTrustProfile != null ? agentTrustProfile.AgentTrackingProfileId.ToString() : null,
         agentSlug,
         formId = "lifeWizardForm",
-        requiredContactFields = new[] { "FirstName", "Phone" },
+        requiredContactFields = requiredContactFieldNames,
         weights = metaSignalOptions.Weights
     });
 }
@@ -1647,9 +1650,9 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 }
 .lq-contact-first-primary-grid {
     display: grid;
-    gap: 14px;
-    max-width: 760px;
-    margin: 0 auto;
+    gap: 12px;
+    max-width: 780px;
+    margin: 6px auto 0;
 }
 .lq-education-trust-card,
 .lq-education-panel {
@@ -1730,14 +1733,32 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-contact-first-form-panel {
     position: relative;
     overflow: hidden;
+    display: grid;
+    gap: 12px;
+    border-color: rgba(224,177,74,0.46);
+    box-shadow:
+        0 26px 44px rgba(4,8,18,0.32),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.lq-contact-first-form-panel::before {
+    content: "";
+    position: absolute;
+    inset: 18% 9% 12%;
+    border-radius: 24px;
+    background: radial-gradient(circle at 50% 38%, rgba(224,177,74,0.12) 0%, rgba(224,177,74,0.04) 38%, transparent 72%);
+    pointer-events: none;
+}
+.lq-contact-first-form-panel > * {
+    position: relative;
+    z-index: 1;
 }
 .lq-contact-first-proof-row {
     display: flex;
     align-items: flex-start;
     gap: 14px;
-    margin-bottom: 12px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid rgba(208,154,53,0.18);
+    margin-bottom: 0;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(208,154,53,0.12);
 }
 .lq-contact-first-proof-avatar {
     width: 58px;
@@ -1764,15 +1785,16 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 }
 .lq-contact-first-proof-text {
     margin: 0;
-    color: rgba(232,238,247,0.82);
+    color: rgba(232,238,247,0.76);
     font-size: .9rem;
-    line-height: 1.45;
+    line-height: 1.42;
+    max-width: 46ch;
 }
 .lq-contact-first-proof-chips {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 14px;
+    gap: 6px;
+    margin-bottom: 0;
 }
 .lq-contact-first-proof-chip {
     display: inline-flex;
@@ -1780,32 +1802,80 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     min-height: 30px;
     padding: 6px 12px;
     border-radius: 999px;
-    border: 1px solid rgba(208,154,53,0.26);
+    border: 1px solid rgba(208,154,53,0.18);
     background: rgba(255,255,255,0.03);
-    color: rgba(236,240,247,0.82);
-    font-size: .78rem;
-    font-weight: 780;
+    color: rgba(236,240,247,0.68);
+    font-size: .75rem;
+    font-weight: 760;
     line-height: 1;
 }
-.lq-contact-first-next-note {
-    display: grid;
-    gap: 6px;
-    margin-top: 12px;
+.lq-contact-first-form-surface {
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.08), transparent 32%),
+        linear-gradient(180deg, rgba(24,38,64,0.98) 0%, rgba(17,29,49,0.98) 100%);
+    border: 1.6px solid rgba(224,177,74,0.54);
+    border-radius: 18px;
+    padding: 20px 20px 18px;
+    box-shadow:
+        0 20px 34px rgba(0,0,0,0.24),
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 0 0 1px rgba(224,177,74,0.08);
+}
+.lq-contact-first-form-surface .lq-education-form-title {
+    color: #fff6dd;
+    font-size: 1.32rem;
+    margin-bottom: 6px;
+}
+.lq-contact-first-form-surface .lq-education-form-copy {
+    max-width: 50ch;
+    margin-bottom: 13px;
+    color: rgba(232,238,247,0.82);
+}
+.lq-contact-first-form-surface .form-control {
+    background: rgba(255,253,247,0.99);
+    border-color: rgba(224,177,74,0.82);
+    min-height: 60px;
+    font-size: .98rem;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.98),
+        0 1px 2px rgba(10,18,34,0.14);
+}
+.lq-contact-first-form-surface .lq-submit-row {
+    margin-top: 14px;
     padding-top: 12px;
     border-top: 1px solid rgba(208,154,53,0.18);
 }
+.lq-contact-first-form-surface .btn-gold {
+    min-height: 62px;
+    font-size: 1.05rem;
+    font-weight: 930;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 18px 30px rgba(84,56,11,0.24),
+        0 0 0 1px rgba(173,123,35,0.20),
+        0 0 28px rgba(224,177,74,0.12);
+}
+.lq-contact-first-next-note {
+    display: grid;
+    gap: 5px;
+    margin-top: 0;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(208,154,53,0.16);
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.015) 100%);
+}
 .lq-contact-first-next-label {
     color: rgba(240,198,109,0.82);
-    font-size: .72rem;
+    font-size: .68rem;
     font-weight: 860;
     letter-spacing: .08em;
     text-transform: uppercase;
 }
 .lq-contact-first-next-copy {
     margin: 0;
-    color: rgba(232,238,247,0.82);
-    font-size: .88rem;
-    line-height: 1.45;
+    color: rgba(232,238,247,0.74);
+    font-size: .83rem;
+    line-height: 1.42;
 }
 .lq-contact-first-next-license {
     color: rgba(221,228,239,0.56);
@@ -1876,17 +1946,20 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-options-summary {
     position: relative;
     overflow: hidden;
+    max-width: 780px;
+    margin: 0 auto;
+    opacity: .94;
 }
 .lq-options-summary-copy {
     margin: 0;
-    font-size: .94rem;
-    line-height: 1.55;
+    font-size: .9rem;
+    line-height: 1.5;
 }
 .lq-options-summary-list {
     display: grid;
-    gap: 14px;
-    margin-top: 16px;
-    padding-top: 16px;
+    gap: 12px;
+    margin-top: 14px;
+    padding-top: 14px;
     border-top: 1px solid rgba(199,153,49,0.28);
 }
 .lq-option-summary-card {
@@ -2105,18 +2178,18 @@ body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summ
 body.page-variant-contact-first-education-v1 .lq-options-summary .lq-step-title,
 body.page-variant-contact-first-education-v1 .lq-next-summary .lq-step-title {
     color: #f0c66d !important;
-    font-size: 1.18rem;
+    font-size: 1.08rem;
     font-weight: 920;
-    letter-spacing: .05em;
+    letter-spacing: .045em;
     text-transform: uppercase;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
     color: rgba(233,236,242,0.78) !important;
     max-width: 48ch;
 }
 body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chip {
-    color: rgba(236,240,247,0.88);
+    color: rgba(236,240,247,0.74);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card {
     background:
@@ -2201,19 +2274,19 @@ body.page-variant-contact-first-education-v1 .lq-header {
     margin-bottom: 10px !important;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-    max-width: 690px;
-    margin: 0 auto 12px;
+    max-width: 760px;
+    margin: 0 auto 14px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
-    max-width: 13.4ch !important;
+    max-width: 14.4ch !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
-    font-size: clamp(1.9rem, 3.6vw, 2.45rem) !important;
+    font-size: clamp(1.82rem, 3.3vw, 2.3rem) !important;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
     display: block;
     width: min(100%, 420px);
-    margin: 12px auto 0;
+    margin: 10px auto 0;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-image {
     aspect-ratio: 3 / 2;
@@ -2234,15 +2307,15 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-        max-width: 980px;
+        max-width: 920px;
         margin: 0 auto 14px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
-        gap: 20px;
-        align-items: center;
+        grid-template-columns: minmax(0, 1.06fr) minmax(320px, 0.94fr);
+        gap: 24px;
+        align-items: end;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy {
@@ -2251,9 +2324,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .hero-title {
-        max-width: 13.4ch !important;
-        font-size: clamp(1.95rem, 3.45vw, 2.7rem) !important;
-        line-height: 1.03 !important;
+        max-width: 14.6ch !important;
+        font-size: clamp(1.88rem, 3.12vw, 2.5rem) !important;
+        line-height: 1.04 !important;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
@@ -2320,6 +2393,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         gap: 10px;
     }
 
+    .lq-contact-first-primary-grid,
+    .lq-options-summary {
+        max-width: none;
+    }
+
     .lq-contact-first-proof-row {
         gap: 11px;
         margin-bottom: 10px;
@@ -2349,6 +2427,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         font-size: .74rem;
         min-height: 28px;
         padding: 5px 10px;
+    }
+
+    .lq-contact-first-form-surface {
+        padding: 16px 16px 15px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
@@ -2532,30 +2614,37 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                             <span class="lq-contact-first-proof-chip">Personal follow-up</span>
                         </div>
 
-                        <div class="lq-education-form-title">Start with a quick conversation</div>
-                        <div class="lq-education-form-copy">Share a few details and I’ll reach out personally to help you understand what may fit. This is a simple conversation, not an application.</div>
-                        <div class="lq-field-row two">
-                            <div class="lq-field">
-                                <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
-                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
-                                <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                        <div class="lq-contact-first-form-surface">
+                            <div class="lq-education-form-title">Start with a quick conversation</div>
+                            <div class="lq-education-form-copy">Share a few details and I’ll reach out personally to help you understand what may fit. This is a simple conversation, not an application.</div>
+                            <div class="lq-field-row two">
+                                <div class="lq-field">
+                                    <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
+                                    <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" required />
+                                    <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                                </div>
+                                <div class="lq-field">
+                                    <label for="LastName">Last Name <span style="color:#f87171">*</span></label>
+                                    <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" required />
+                                    <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
+                                </div>
                             </div>
-                            <div class="lq-field">
-                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                            <div class="lq-field-row two">
+                                <div class="lq-field">
+                                    <label for="Phone">Phone <span style="color:#f87171">*</span></label>
+                                    <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                    <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                                </div>
+                                <div class="lq-field">
+                                    <label for="Email">Email (optional)</label>
+                                    <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                    <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                                </div>
                             </div>
-                        </div>
-                        <div class="lq-field-row full">
-                            <div class="lq-field">
-                                <label for="Email">Email (optional)</label>
-                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
-                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                            <div class="lq-submit-row">
+                                <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
+                                <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                             </div>
-                        </div>
-                        <div class="lq-submit-row">
-                            <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
-                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-contact-first-next-note" aria-labelledby="lifeEducationNextTitle">
                             <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">What happens next</div>
@@ -2953,7 +3042,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
   const ageRangeInputs = Array.from(form.querySelectorAll('input[name="AgeBracket"]'));
-  const requiredContactFields = ['FirstName', 'Phone'];
+  const requiredContactFields = isContactFirstEducationVariant
+    ? ['FirstName', 'LastName', 'Phone']
+    : ['FirstName', 'Phone'];
   const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
@@ -3374,11 +3465,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       return '';
     }
 
-    if (name === 'LastName') {
-      return '';
-    }
-
     if (!value) {
+      if (!requiredContactFields.includes(name)) {
+        return '';
+      }
+
       return name === 'State'
         ? 'Please select your state.'
         : `Please enter your ${name === 'Email' ? 'email' : name === 'Phone' ? 'phone' : name === 'FirstName' ? 'first name' : 'last name'}.`;
@@ -3727,7 +3818,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       });
     };
 
-    ['FirstName', 'Phone', 'Email'].forEach((name) => {
+    ['FirstName', 'LastName', 'Phone', 'Email'].forEach((name) => {
       const el = form.querySelector(`[name="${name}"]`);
       if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
         return;
@@ -3754,7 +3845,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       const lifeSuccess = document.getElementById('lifeSuccess');
       if (lifeError) lifeError.style.display = 'none';
       if (lifeSuccess) lifeSuccess.style.display = 'none';
-      ['FirstName', 'Phone', 'Email'].forEach(clearFieldError);
+      ['FirstName', 'LastName', 'Phone', 'Email'].forEach(clearFieldError);
 
       if (!validateContactFields(true)) {
         if (lifeError) {
