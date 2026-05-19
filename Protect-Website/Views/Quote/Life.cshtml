@@ -15,17 +15,18 @@
     var usesContactFirstShell = string.Equals(pageVariant, "contact_first_education_v1", StringComparison.OrdinalIgnoreCase);
     var isLandingView = isLandingPage || isLandingRoutePath || usesContactFirstShell;
     var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
-    var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? (isLandingView ? "paid_landing" : "site_mode") : Model.PageMode;
+    var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? ((isLandingPage || isLandingRoutePath) ? "paid_landing" : "site_mode") : Model.PageMode;
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
+    var isStandaloneLandingExperience = isLandingPage || isLandingRoutePath || isPaidLandingExperience;
     var isContactFirstEducationVariant = usesContactFirstShell;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
-    ViewData["IsLandingPage"] = isLandingView;
+    ViewData["IsLandingPage"] = isStandaloneLandingExperience;
     ViewData["PageVariant"] = pageVariant;
     ViewData["PageMode"] = pageMode;
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = cfg.OfferKey;
-    ViewData["BodyClass"] = isLandingView ? $"life-landing landing-mode {offerBodyClass}" : $"site-mode {offerBodyClass}";
+    ViewData["BodyClass"] = isLandingView ? $"life-landing {offerBodyClass}" : offerBodyClass;
     // Shared discovery intake for all life product types.
     IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(5).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
     if (viewSteps.Count < 5)
@@ -236,27 +237,27 @@ main.layout-content,
 .lq-container { background: transparent !important; }
 
 /* Page-scoped nav softening for paid landing */
-body.life-landing header .navbar {
+body.life-landing.page-mode-paid-landing header .navbar {
     padding: 10px 14px;
     box-shadow: 0 8px 18px rgba(0,0,0,0.22);
     background: #0b1529 !important;
     border-color: rgba(166,128,35,.55) !important;
 }
-body.life-landing header .nav-links,
-body.life-landing header .nav-toggle,
-body.life-landing header .header-bottom,
-body.life-landing header .header-psalms {
+body.life-landing.page-mode-paid-landing header .nav-links,
+body.life-landing.page-mode-paid-landing header .nav-toggle,
+body.life-landing.page-mode-paid-landing header .header-bottom,
+body.life-landing.page-mode-paid-landing header .header-psalms {
     display: none !important;
 }
-body.life-landing header .navbar .nav-link {
+body.life-landing.page-mode-paid-landing header .navbar .nav-link {
     background: transparent;
     border-color: rgba(199,153,49,.45);
     color: #f6d27e !important;
     opacity: .78;
     padding: 0.6rem 1.05rem;
 }
-body.life-landing header .navbar .nav-link:hover,
-body.life-landing header .navbar .nav-link:focus {
+body.life-landing.page-mode-paid-landing header .navbar .nav-link:hover,
+body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
     opacity: 1;
     color: #fbe4a0 !important;
     background: rgba(199,153,49,0.08);
@@ -1213,15 +1214,15 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         padding-top: .35rem !important;
         padding-bottom: 2rem;
     }
-    body.life-landing header .navbar {
+    body.life-landing.page-mode-paid-landing header .navbar {
         min-height: 56px !important;
         padding: 4px 10px !important;
         border-radius: 0 0 12px 12px;
         box-shadow: 0 5px 12px rgba(0,0,0,0.22);
         background: linear-gradient(180deg, #0a1326 0%, #0b162c 100%) !important;
     }
-    body.life-landing header .navbar-top { min-height: 0 !important; }
-    body.life-landing header .navbar-brand img {
+    body.life-landing.page-mode-paid-landing header .navbar-top { min-height: 0 !important; }
+    body.life-landing.page-mode-paid-landing header .navbar-brand img {
         max-height: 31px !important;
         filter: drop-shadow(0 3px 8px rgba(0,0,0,.28));
     }
@@ -1383,11 +1384,11 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 }
 
 @@media (max-width: 390px){
-    body.life-landing header .navbar {
+    body.life-landing.page-mode-paid-landing header .navbar {
         min-height: 52px !important;
         padding: 3px 8px !important;
     }
-    body.life-landing header .navbar-brand img { max-height: 28px !important; }
+    body.life-landing.page-mode-paid-landing header .navbar-brand img { max-height: 28px !important; }
     body.life-landing .lq-hero-shell {
         margin-top: 2px !important;
         padding-top: 5px !important;
