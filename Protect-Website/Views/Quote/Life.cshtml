@@ -551,6 +551,9 @@ body.life-landing .lq-contact-first-hero-grid {
 body.life-landing .lq-contact-first-hero-copy {
     min-width: 0;
 }
+body.life-landing .lq-contact-first-hero-copy .hero-title {
+    margin: 0;
+}
 body.life-landing .lq-contact-first-hero-media {
     display: none;
     margin: 0;
@@ -2122,29 +2125,50 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 @@media (min-width: 992px) {
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-shell {
-        max-width: 1020px;
-        padding: 24px 26px 20px;
+        max-width: 1080px;
+        padding: 24px 28px 20px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-        max-width: 920px;
+        max-width: 980px;
         margin: 0 auto 14px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(340px, 408px);
-        gap: 28px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 24px;
         align-items: start;
     }
 
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy {
+        display: grid;
+        align-content: start;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .hero-title {
+        max-width: 9.5ch !important;
+        font-size: clamp(2.05rem, 4vw, 2.95rem) !important;
+        line-height: 1.02 !important;
+    }
+
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .lq-subtext {
-        max-width: 31ch;
+        max-width: 19ch;
+        margin: 14px 0 8px !important;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .lq-trust-note {
+        max-width: 22ch;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
         display: block;
-        margin-top: 2px;
+        margin-top: 4px;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-image {
+        aspect-ratio: 3 / 2;
+        object-fit: cover;
     }
 }
 
@@ -2230,14 +2254,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
             {
                 <div class="lq-contact-first-hero-grid">
                     <div class="lq-contact-first-hero-copy">
-                        <div class="lq-landing-brand-row">
-                            <div class="lq-landing-brand-copy">
-                                <h1 class="hero-title">@heroHeadline</h1>
-                            </div>
-                            <div class="lq-landing-logo-wrap" aria-hidden="true">
-                                <img class="lq-landing-logo" src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="" />
-                            </div>
-                        </div>
+                        <h1 class="hero-title">@heroHeadline</h1>
                         @if (!string.IsNullOrWhiteSpace(heroSubheadline))
                         {
                             <div class="lq-subtext">@heroSubheadline</div>
