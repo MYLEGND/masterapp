@@ -2185,6 +2185,7 @@ body.page-variant-contact-first-education-v1 {
     --cf-ink-muted: rgba(219,226,238,0.62);
     --cf-accent: #e0b14a;
     --cf-accent-strong: #f5d488;
+    --cf-rail-width: 920px;
     --cf-panel-border: rgba(208,154,53,0.42);
     --cf-panel-bg:
         linear-gradient(180deg, rgba(17,27,50,0.99) 0%, rgba(12,21,39,0.99) 100%);
@@ -2192,6 +2193,21 @@ body.page-variant-contact-first-education-v1 {
         linear-gradient(180deg, rgba(38,44,55,0.98) 0%, rgba(31,37,48,0.98) 100%);
     --cf-card-border: rgba(208,154,53,0.34);
     --cf-card-copy: rgba(236,240,247,0.84);
+}
+body.page-variant-contact-first-education-v1 .lq-education-stack {
+    max-width: var(--cf-rail-width);
+}
+body.page-variant-contact-first-education-v1 .lq-hero-rail,
+body.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid,
+body.page-variant-contact-first-education-v1 .lq-options-summary,
+body.page-variant-contact-first-education-v1 .lq-hero-banner-wrap {
+    width: 100%;
+    max-width: var(--cf-rail-width);
+    margin-left: auto;
+    margin-right: auto;
+}
+body.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid {
+    margin-top: 6px;
 }
 body.page-variant-contact-first-education-v1 section.lq-education-trust-card,
 body.page-variant-contact-first-education-v1 section.lq-education-panel,
@@ -2408,11 +2424,11 @@ body.page-variant-contact-first-education-v1 .lq-header {
     margin-bottom: 10px !important;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-    max-width: 720px;
+    max-width: var(--cf-rail-width);
     margin: 0 auto 14px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-hero-banner-wrap {
-    max-width: 720px;
+    max-width: var(--cf-rail-width);
     margin-bottom: 12px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
@@ -2448,17 +2464,17 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 @@media (min-width: 992px) {
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-shell {
-        max-width: 1080px;
+        max-width: 980px;
         padding: 24px 28px 20px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-        max-width: 720px;
+        max-width: var(--cf-rail-width);
         margin: 0 auto 14px;
     }
     
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-banner-wrap {
-        max-width: 720px;
+        max-width: var(--cf-rail-width);
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
