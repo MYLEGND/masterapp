@@ -505,6 +505,22 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
 }
 .lq-helper-intro { color: rgba(248,250,252,0.72); font-size: .96rem; margin-top: 2px; }
 .lq-hero-rail { width: 100%; }
+.lq-hero-banner-wrap {
+    max-width: 720px;
+    margin: 0 auto 14px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1.4px solid rgba(224,177,74,0.34);
+    background: #09111f;
+    box-shadow:
+        0 22px 40px rgba(3,8,18,0.30),
+        0 0 0 1px rgba(255,255,255,0.03);
+}
+.lq-hero-banner-image {
+    display: block;
+    width: 100%;
+    height: auto;
+}
 
 body.life-landing .lq-container {
     padding: 0;
@@ -2392,8 +2408,12 @@ body.page-variant-contact-first-education-v1 .lq-header {
     margin-bottom: 10px !important;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-    max-width: 920px;
+    max-width: 720px;
     margin: 0 auto 14px;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-hero-banner-wrap {
+    max-width: 720px;
+    margin-bottom: 12px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
     max-width: 16.2ch !important;
@@ -2433,8 +2453,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
-        max-width: 920px;
+        max-width: 720px;
         margin: 0 auto 14px;
+    }
+    
+    body.page-variant-contact-first-education-v1.life-landing .lq-hero-banner-wrap {
+        max-width: 720px;
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
@@ -2619,6 +2643,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         width: 66px;
         height: 66px;
     }
+
+    .lq-hero-banner-wrap {
+        margin-bottom: 10px;
+        border-radius: 14px;
+    }
 }
 
 </style>
@@ -2627,7 +2656,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail">
         <div class="lq-header">
-            @if (isLandingView)
+            @if (usesContactFirstShell)
+            {
+                <figure class="lq-hero-banner-wrap">
+                    <img class="lq-hero-banner-image" src="~/images/ads/life-top-banner.png" asp-append-version="true" alt="Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review." loading="eager" />
+                </figure>
+            }
+            else if (isLandingView)
             {
                 <div class="lq-contact-first-hero-grid">
                     <div class="lq-contact-first-hero-copy">
