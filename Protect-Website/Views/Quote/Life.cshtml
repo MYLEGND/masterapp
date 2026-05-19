@@ -1648,6 +1648,8 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-contact-first-primary-grid {
     display: grid;
     gap: 14px;
+    max-width: 760px;
+    margin: 0 auto;
 }
 .lq-education-trust-card,
 .lq-education-panel {
@@ -1785,6 +1787,32 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-weight: 780;
     line-height: 1;
 }
+.lq-contact-first-next-note {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(208,154,53,0.18);
+}
+.lq-contact-first-next-label {
+    color: rgba(240,198,109,0.82);
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-first-next-copy {
+    margin: 0;
+    color: rgba(232,238,247,0.82);
+    font-size: .88rem;
+    line-height: 1.45;
+}
+.lq-contact-first-next-license {
+    color: rgba(221,228,239,0.56);
+    font-size: .73rem;
+    font-weight: 720;
+    line-height: 1.4;
+}
 .lq-education-form-title {
     color: #fff6d8;
     font-size: 1.18rem;
@@ -1796,57 +1824,6 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-size: .92rem;
     line-height: 1.5;
     margin-bottom: 14px;
-}
-.lq-contact-first-sidecard {
-    display: grid;
-    align-content: start;
-    gap: 10px;
-}
-.lq-contact-first-side-kicker {
-    color: rgba(240,198,109,0.82);
-    font-size: .72rem;
-    font-weight: 860;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-.lq-contact-first-side-title {
-    color: #fff6dd;
-    font-size: 1.1rem;
-    font-weight: 900;
-    line-height: 1.18;
-}
-.lq-contact-first-side-copy {
-    margin: 0;
-    color: rgba(232,238,247,0.8);
-    font-size: .92rem;
-    line-height: 1.5;
-}
-.lq-contact-first-side-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: grid;
-    gap: 8px;
-}
-.lq-contact-first-side-list li {
-    position: relative;
-    padding-left: 1rem;
-    color: rgba(236,240,247,0.88);
-    font-size: .88rem;
-    line-height: 1.42;
-}
-.lq-contact-first-side-list li::before {
-    content: '•';
-    position: absolute;
-    left: 0;
-    color: #f0c66d;
-    font-weight: 900;
-}
-.lq-contact-first-side-license {
-    color: rgba(221,228,239,0.56);
-    font-size: .74rem;
-    font-weight: 720;
-    line-height: 1.4;
 }
 .lq-education-card-grid {
     display: grid;
@@ -2228,10 +2205,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
     margin: 0 auto 12px;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-header h1 {
-    max-width: 14ch !important;
+    max-width: 13.4ch !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
-    font-size: clamp(1.95rem, 3.8vw, 2.55rem) !important;
+    font-size: clamp(1.9rem, 3.6vw, 2.45rem) !important;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
+    display: block;
+    width: min(100%, 420px);
+    margin: 12px auto 0;
+}
+body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-image {
+    aspect-ratio: 3 / 2;
+    object-fit: cover;
 }
 body.page-variant-contact-first-education-v1.life-landing .lq-subtext {
     max-width: 34ch;
@@ -2254,8 +2240,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr);
-        gap: 24px;
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.92fr);
+        gap: 20px;
         align-items: center;
     }
 
@@ -2265,8 +2251,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .hero-title {
-        max-width: 14ch !important;
-        font-size: clamp(2rem, 3.7vw, 2.85rem) !important;
+        max-width: 13.4ch !important;
+        font-size: clamp(1.95rem, 3.45vw, 2.7rem) !important;
         line-height: 1.03 !important;
     }
 
@@ -2278,11 +2264,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-image {
         aspect-ratio: 3 / 2;
         object-fit: cover;
-    }
-
-    .lq-contact-first-primary-grid {
-        grid-template-columns: minmax(0, 1.24fr) minmax(280px, 0.76fr);
-        align-items: start;
     }
 
     .lq-contact-first-form-panel .lq-education-form-title {
@@ -2355,7 +2336,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     .lq-contact-first-proof-text,
-    .lq-contact-first-side-copy {
+    .lq-contact-first-next-copy {
         font-size: .86rem;
     }
 
@@ -2368,6 +2349,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         font-size: .74rem;
         min-height: 28px;
         padding: 5px 10px;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
+        display: block;
+        width: min(100%, 420px);
+        margin: 12px auto 0;
     }
 
     .lq-education-trust-card,
@@ -2570,24 +2557,17 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                             <div class="lq-trust-note">Quick to start. Easy to understand. No obligation.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
+                        <div class="lq-contact-first-next-note" aria-labelledby="lifeEducationNextTitle">
+                            <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">What happens next</div>
+                            <p class="lq-contact-first-next-copy">@agentDirectContactName reviews what you share and follows up personally to help you understand what may fit. No obligation.</p>
+                            @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                            {
+                                <div class="lq-contact-first-next-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
+                            }
+                        </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                     </section>
-
-                    <aside class="lq-education-panel lq-contact-first-sidecard" aria-labelledby="lifeEducationNextTitle">
-                        <div class="lq-contact-first-side-kicker">What happens next</div>
-                        <div class="lq-contact-first-side-title" id="lifeEducationNextTitle">@agentDirectContactName reviews what you share.</div>
-                        <p class="lq-contact-first-side-copy">You’ll get a simple, personal follow-up to help you understand what may fit, without pressure to commit.</p>
-                        <ul class="lq-contact-first-side-list">
-                            <li>You’ll hear from a licensed professional, not a generic call center.</li>
-                            <li>You can ask simple questions and compare what may fit your needs.</li>
-                            <li>There is no application and no obligation at this stage.</li>
-                        </ul>
-                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                        {
-                            <div class="lq-contact-first-side-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                        }
-                    </aside>
                 </div>
 
                 <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
