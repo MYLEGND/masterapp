@@ -545,6 +545,26 @@ body.life-landing .lq-subtext {
     margin: 10px 0 6px;
     max-width: 32ch;
 }
+body.life-landing .lq-contact-first-hero-grid {
+    display: block;
+}
+body.life-landing .lq-contact-first-hero-copy {
+    min-width: 0;
+}
+body.life-landing .lq-contact-first-hero-media {
+    display: none;
+    margin: 0;
+}
+body.life-landing .lq-contact-first-hero-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 18px;
+    border: 1.4px solid rgba(224,177,74,0.32);
+    box-shadow:
+        0 24px 42px rgba(3,8,18,0.32),
+        0 0 0 1px rgba(255,255,255,0.04);
+}
 body.life-landing .lq-trust-note {
     margin-top: 0;
     text-align: left;
@@ -2100,6 +2120,34 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     margin-bottom: 0 !important;
 }
 
+@@media (min-width: 992px) {
+    body.page-variant-contact-first-education-v1.life-landing .lq-hero-shell {
+        max-width: 1020px;
+        padding: 24px 26px 20px;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-hero-rail {
+        max-width: 920px;
+        margin: 0 auto 14px;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(340px, 42%, 408px);
+        gap: 28px;
+        align-items: start;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-copy .lq-subtext {
+        max-width: 31ch;
+    }
+
+    body.page-variant-contact-first-education-v1.life-landing .lq-contact-first-hero-media {
+        display: block;
+        margin-top: 2px;
+    }
+}
+
 @@media (min-width: 768px) {
     .lq-education-trust-card,
     .lq-education-panel {
@@ -2178,7 +2226,30 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail">
         <div class="lq-header">
-            @if (isLandingView)
+            @if (isLandingView && isContactFirstEducationVariant)
+            {
+                <div class="lq-contact-first-hero-grid">
+                    <div class="lq-contact-first-hero-copy">
+                        <div class="lq-landing-brand-row">
+                            <div class="lq-landing-brand-copy">
+                                <h1 class="hero-title">@heroHeadline</h1>
+                            </div>
+                            <div class="lq-landing-logo-wrap" aria-hidden="true">
+                                <img class="lq-landing-logo" src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="" />
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(heroSubheadline))
+                        {
+                            <div class="lq-subtext">@heroSubheadline</div>
+                        }
+                        <div class="lq-trust-note">@heroTrustNote</div>
+                    </div>
+                    <figure class="lq-contact-first-hero-media">
+                        <img class="lq-contact-first-hero-image" src="~/images/ads/life-insurance-review-ad.png" asp-append-version="true" alt="Legend Legacy Protection ad showing a family and inviting a personalized life insurance review." loading="eager" />
+                    </figure>
+                </div>
+            }
+            else if (isLandingView)
             {
                 <div class="lq-landing-brand-row">
                     <div class="lq-landing-brand-copy">
@@ -2193,11 +2264,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
             {
                 <h1 class="hero-title">@heroHeadline</h1>
             }
-            @if (!string.IsNullOrWhiteSpace(heroSubheadline))
+            @if (!isContactFirstEducationVariant && !string.IsNullOrWhiteSpace(heroSubheadline))
             {
                 <div class="lq-subtext">@heroSubheadline</div>
             }
-            <div class="lq-trust-note">@heroTrustNote</div>
+            @if (!isContactFirstEducationVariant)
+            {
+                <div class="lq-trust-note">@heroTrustNote</div>
+            }
         </div>
         @if (!isContactFirstEducationVariant)
         {
