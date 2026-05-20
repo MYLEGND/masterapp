@@ -2515,6 +2515,93 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     margin-bottom: 2px;
     padding: 0;
 }
+.lq-funnel-bridge-wrap {
+    width: 100%;
+    max-width: 920px;
+    margin: 2px auto 12px;
+}
+.lq-funnel-bridge {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+}
+.lq-funnel-bridge-line {
+    display: block;
+    height: 1px;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.32) 18%, rgba(224,177,74,0.12) 100%);
+}
+.lq-funnel-bridge-line:last-child {
+    background:
+        linear-gradient(270deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.32) 18%, rgba(224,177,74,0.12) 100%);
+}
+.lq-funnel-bridge-core {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(224,177,74,0.28);
+    background:
+        linear-gradient(180deg, rgba(17,27,47,0.92) 0%, rgba(10,17,31,0.92) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 12px 22px rgba(0,0,0,0.14);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.lq-funnel-bridge:hover .lq-funnel-bridge-core,
+.lq-funnel-bridge:focus-visible .lq-funnel-bridge-core {
+    transform: translateY(-1px);
+    border-color: rgba(240,198,109,0.42);
+    background:
+        linear-gradient(180deg, rgba(21,34,58,0.94) 0%, rgba(12,20,35,0.94) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 14px 24px rgba(0,0,0,0.18),
+        0 0 0 1px rgba(224,177,74,0.08);
+}
+.lq-funnel-bridge:focus-visible {
+    outline: none;
+}
+.lq-funnel-bridge-arrow {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    color: #f2cb72;
+    background:
+        radial-gradient(circle at 50% 32%, rgba(255,236,188,0.16), transparent 54%),
+        linear-gradient(180deg, rgba(26,37,60,0.98) 0%, rgba(13,21,35,0.98) 100%);
+    border: 1px solid rgba(224,177,74,0.28);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 8px 16px rgba(0,0,0,0.14);
+}
+.lq-funnel-bridge-arrow svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    animation: lqBridgeArrowPulse 1.8s ease-in-out infinite;
+}
+.lq-funnel-bridge-copy {
+    color: rgba(248,239,219,0.9);
+    font-size: .79rem;
+    font-weight: 820;
+    line-height: 1.2;
+    letter-spacing: .015em;
+    text-align: left;
+}
 .lq-contact-first-proof-chip {
     display: inline-flex;
     align-items: center;
@@ -2629,6 +2716,16 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 }
 .lq-contact-first-flow-surface .lq-card-rich .lq-card-helper {
     font-size: .79rem;
+}
+@@keyframes lqBridgeArrowPulse {
+    0%, 100% {
+        transform: translateY(0);
+        opacity: .82;
+    }
+    50% {
+        transform: translateY(2px);
+        opacity: 1;
+    }
 }
 .lq-education-form-title {
     color: #fff6d8;
@@ -3047,6 +3144,26 @@ body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
 }
 body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chip {
     color: rgba(236,240,247,0.74);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-line {
+    background:
+        linear-gradient(90deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.34) 18%, rgba(224,177,74,0.08) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-line:last-child {
+    background:
+        linear-gradient(270deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.34) 18%, rgba(224,177,74,0.08) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-core {
+    background:
+        linear-gradient(180deg, rgba(23,34,56,0.94) 0%, rgba(12,20,34,0.94) 100%);
+    border-color: rgba(232,196,115,0.34);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-copy {
+    color: rgba(248,241,225,0.92);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-arrow {
+    color: #f6d98d;
+    border-color: rgba(232,196,115,0.34);
 }
 body.page-variant-contact-first-education-v1 .lq-option-summary-card {
     background:
