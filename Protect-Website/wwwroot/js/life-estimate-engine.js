@@ -130,11 +130,11 @@
           <div class="lq-step-progress">Your Results</div>
           <div class="lq-step-title">${buildResultsHeading(normalized)}</div>
           <div class="lq-step-helper">${buildResultsHelper(normalized)}</div>
+          ${trustStripHtml || ''}
           <div class="lq-estimate-grid">
             ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended' : 'Your Estimate', 'primary')}
             ${hasSecondary ? buildEstimateCard(secondary, 'Also Worth Considering', 'secondary') : ''}
           </div>
-          ${trustStripHtml || ''}
           <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
           <div class="lq-reach-note">${buildResultsNote(normalized)}</div>
           <div class="lq-step-actions">

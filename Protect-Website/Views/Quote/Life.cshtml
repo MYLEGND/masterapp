@@ -4819,6 +4819,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const recSecondaryTitleEl = document.getElementById('RecommendationSecondaryTitle');
   const estimatePreviewUrl = '@Url.Action("EstimatePreview", "LifeQuote")';
   const pageKey = form.dataset.formKey || 'quote_life';
+  const quoteType = '@normalizedOfferKey';
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
@@ -4844,7 +4845,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
   const PROCESSING_BRIDGE_MS = 1500;
-  const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}`;
+  const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
+  const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
   const microStepViewEvents = [
     'life_step1_protecting_view',
@@ -4917,10 +4919,27 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       || Number.isFinite(state.currentMicroStep) && Number(state.currentMicroStep) > 0;
   }
 
+  function resetFunnelToMarkupDefaults() {
+    form.reset();
+    if (stateSelect?.dataset.selected) {
+      stateSelect.value = stateSelect.dataset.selected;
+    }
+
+    latestEstimatePreview = null;
+    estimatePreviewPromise = null;
+    currentMicroStep = 0;
+
+    const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    if (previewPanel) {
+      previewPanel.remove();
+    }
+  }
+
   function buildPersistedFunnelState() {
     syncStepOneAnswersFromUI();
 
     return {
+      scope: FUNNEL_STATE_SCOPE,
       currentMicroStep,
       activePanel: getActivePanelKey(),
       latestEstimatePreview,
@@ -4972,11 +4991,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   async function restorePersistedFunnelState() {
     const storage = getSessionStorageSafe();
     if (!storage) {
+      resetFunnelToMarkupDefaults();
       return false;
     }
 
     const raw = storage.getItem(FUNNEL_STATE_STORAGE_KEY);
     if (!raw) {
+      resetFunnelToMarkupDefaults();
       return false;
     }
 
@@ -4985,16 +5006,25 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       state = JSON.parse(raw);
     } catch {
       storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      resetFunnelToMarkupDefaults();
       return false;
     }
 
     if (!state || typeof state !== 'object') {
       storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      resetFunnelToMarkupDefaults();
+      return false;
+    }
+
+    if (asTrimmed(state.scope) && asTrimmed(state.scope) !== FUNNEL_STATE_SCOPE) {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      resetFunnelToMarkupDefaults();
       return false;
     }
 
     if (Number.isFinite(state.timestamp) && Date.now() - Number(state.timestamp) > FUNNEL_STATE_MAX_AGE_MS) {
       storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      resetFunnelToMarkupDefaults();
       return false;
     }
 
