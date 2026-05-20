@@ -770,8 +770,10 @@ namespace Protect_Website.Controllers
             static string? ResolveCoverageAmountLabel(int? coverageAmount)
             {
                 if (!coverageAmount.HasValue || coverageAmount.Value <= 0) return null;
-                return coverageAmount.Value >= 1_000_000
-                    ? "$1,000,000+"
+                return coverageAmount.Value >= 2_000_000
+                    ? "$2,000,000+"
+                    : coverageAmount.Value >= 1_000_000
+                    ? $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}"
                     : $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}";
             }
 
@@ -846,8 +848,10 @@ namespace Protect_Website.Controllers
             static string? ResolveCoverageAmountLabel(int? coverageAmount)
             {
                 if (!coverageAmount.HasValue || coverageAmount.Value <= 0) return null;
-                return coverageAmount.Value >= 1_000_000
-                    ? "$1,000,000+"
+                return coverageAmount.Value >= 2_000_000
+                    ? "$2,000,000+"
+                    : coverageAmount.Value >= 1_000_000
+                    ? $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}"
                     : $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}";
             }
 

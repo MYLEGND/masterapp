@@ -3982,13 +3982,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
                                 var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
-                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                     <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span class="lq-card-visual" aria-hidden="true">
-                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                        </svg>
-                                    </span>
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                            </svg>
+                                        </span>
+                                    }
                                     <span class="lq-card-copy">
                                         <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                         <span class="lq-card-title">@opt.Label</span>
@@ -4028,13 +4031,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
                                 var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
-                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                     <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span class="lq-card-visual" aria-hidden="true">
-                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                        </svg>
-                                    </span>
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                            </svg>
+                                        </span>
+                                    }
                                     <span class="lq-card-copy">
                                         <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                         <span class="lq-card-title">@opt.Label</span>
@@ -4058,11 +4064,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
                                 var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
-                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                     <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
-                                    <span class="lq-card-visual" aria-hidden="true">
-                                        <span class="lq-card-badge">@choiceMeta.VisualValue</span>
-                                    </span>
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <span class="lq-card-badge">@choiceMeta.VisualValue</span>
+                                        </span>
+                                    }
                                     <span class="lq-card-copy">
                                         <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                         <span class="lq-card-title">@opt.Label</span>
@@ -4086,13 +4095,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
                                 var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
-                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                     <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span class="lq-card-visual" aria-hidden="true">
-                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                        </svg>
-                                    </span>
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                            </svg>
+                                        </span>
+                                    }
                                     <span class="lq-card-copy">
                                         <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                         <span class="lq-card-title">@opt.Label</span>
@@ -4112,11 +4124,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
                             @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">18-24</span>
@@ -4124,11 +4133,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">25-34</span>
@@ -4136,11 +4142,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">35-44</span>
@@ -4148,11 +4151,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">45-54</span>
@@ -4160,11 +4160,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
-                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">55+</span>
