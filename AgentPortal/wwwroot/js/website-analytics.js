@@ -1385,6 +1385,17 @@
     element.replaceWith(block);
   }
 
+  function prependTextBlock(element, text) {
+    if (!(element instanceof HTMLElement)) return;
+    const normalized = normalizeCopiedText(text);
+    if (!normalized) return;
+
+    const block = document.createElement('div');
+    block.className = 'wa-copy-text-block';
+    block.textContent = normalized;
+    element.prepend(block);
+  }
+
   function isMeaningfulSelection(select) {
     if (!(select instanceof HTMLSelectElement)) return false;
     return asTrimmed(select.value).length > 0;
@@ -1442,22 +1453,114 @@
     return normalizeCopiedText(lines.join('\n'));
   }
 
+  function resolveTabPaneLabel(modal, pane) {
+    if (!(modal instanceof HTMLElement) || !(pane instanceof HTMLElement) || !pane.id) return '';
+
+    const trigger = modal.querySelector(`[data-bs-target="#${pane.id}"], [href="#${pane.id}"]`);
+    return asTrimmed(trigger?.textContent);
+  }
+
+  function serializeMetricCardForCopy(element) {
+    if (!(element instanceof HTMLElement)) return '';
+
+    const label = asTrimmed(
+      element.querySelector('.fa-kpi-title, .meta-signal-stat-label, .wa-modal-meta-label')?.textContent
+    );
+    const value = asTrimmed(
+      element.querySelector('.fa-kpi-value, .meta-signal-stat-value, .wa-modal-meta-value')?.textContent
+    );
+    const extraLines = Array.from(
+      element.querySelectorAll('.fa-kpi-sub, .fa-kpi-warning, .meta-signal-stat-note')
+    )
+      .map(node => asTrimmed(node.textContent))
+      .filter(Boolean);
+
+    if (!label && !value && !extraLines.length) {
+      return '';
+    }
+
+    const lines = [];
+    if (label && value) {
+      lines.push(`${label}: ${value}`);
+    } else {
+      if (label) lines.push(label);
+      if (value) lines.push(value);
+    }
+    if (extraLines.length) {
+      lines.push(...extraLines);
+    }
+    return normalizeCopiedText(lines.join('\n'));
+  }
+
+  function isLooseMetricBlock(element) {
+    if (!(element instanceof HTMLElement)) return false;
+    if (element.matches('.kpi-card, .meta-signal-stat-card, .wa-modal-meta-item, .wa-copy-text-block')) return false;
+    if (element.querySelector('table, ul, ol, .table-responsive')) return false;
+
+    const hasTitle = Array.from(element.children).some(child =>
+      child instanceof HTMLElement && child.classList.contains('fa-kpi-title')
+    );
+    const hasValue = Array.from(element.children).some(child =>
+      child instanceof HTMLElement && child.classList.contains('fa-kpi-value')
+    );
+
+    return hasTitle && hasValue;
+  }
+
+  function prepareMetricBlocksForCopy(root) {
+    if (!(root instanceof HTMLElement)) return;
+
+    root.querySelectorAll('.kpi-card, .meta-signal-stat-card, .wa-modal-meta-item').forEach(element => {
+      const text = serializeMetricCardForCopy(element);
+      if (text) {
+        replaceElementWithTextBlock(element, text);
+      }
+    });
+
+    const looseBlocks = Array.from(root.querySelectorAll('.fa-kpi-title'))
+      .map(title => title.parentElement)
+      .filter(parent => isLooseMetricBlock(parent));
+
+    Array.from(new Set(looseBlocks)).forEach(element => {
+      const text = serializeMetricCardForCopy(element);
+      if (text) {
+        replaceElementWithTextBlock(element, text);
+      }
+    });
+  }
+
+  function prepareTabPanesForCopy(root, modal) {
+    if (!(root instanceof HTMLElement)) return;
+
+    root.querySelectorAll('.tab-pane').forEach(pane => {
+      if (!(pane instanceof HTMLElement)) return;
+
+      const paneLabel = resolveTabPaneLabel(modal, pane);
+      if (paneLabel) {
+        prependTextBlock(pane, paneLabel);
+      }
+
+      pane.classList.remove('fade');
+      pane.classList.add('show', 'active');
+      pane.removeAttribute('hidden');
+      pane.style.display = 'block';
+      pane.style.visibility = 'visible';
+      pane.style.opacity = '1';
+    });
+  }
+
   function extractModalBodyCopyText(modal) {
     const body = modal?.querySelector('.modal-body');
     if (!(body instanceof HTMLElement)) return '';
 
     const clone = body.cloneNode(true);
 
-    clone.querySelectorAll('.nav-tabs, script, style, button, select, input, textarea').forEach(el => el.remove());
+    clone.querySelectorAll('script, style, button, select, input, textarea').forEach(el => el.remove());
     clone.querySelectorAll('.meta-signal-filter-panel').forEach(el => el.remove());
     clone.querySelectorAll('[hidden], .d-none').forEach(el => el.remove());
-    clone.querySelectorAll('.tab-pane').forEach(pane => {
-      if (!pane.classList.contains('active')) {
-        pane.remove();
-      } else {
-        pane.classList.remove('fade', 'show', 'active');
-      }
-    });
+    prepareTabPanesForCopy(clone, modal);
+    clone.querySelectorAll('.nav-tabs, [role="tablist"]').forEach(el => el.remove());
+    prepareMetricBlocksForCopy(clone);
 
     clone.querySelectorAll('table').forEach(table => {
       replaceElementWithTextBlock(table, serializeTableForCopy(table));
@@ -1492,10 +1595,19 @@
       lines.push(`Traffic View: ${labelForTrafficType(state.trafficType[modalId])}`);
     }
 
-    const activeTabs = Array.from(modal.querySelectorAll('[data-bs-toggle="tab"].active'))
+    const allTabs = Array.from(new Set(Array.from(modal.querySelectorAll('[data-bs-toggle="tab"]'))
       .map(tab => asTrimmed(tab.textContent))
-      .filter(Boolean);
-    if (activeTabs.length) {
+      .filter(Boolean)));
+    if (allTabs.length) {
+      lines.push(`Views Included: ${allTabs.join(' · ')}`);
+    }
+
+    const activeTabs = Array.from(new Set(Array.from(modal.querySelectorAll('[data-bs-toggle="tab"].active'))
+      .map(tab => asTrimmed(tab.textContent))
+      .filter(Boolean)));
+    if (activeTabs.length && activeTabs.length < allTabs.length) {
+      lines.push(`Current Tab: ${activeTabs.join(' · ')}`);
+    } else if (activeTabs.length && !allTabs.length) {
       lines.push(`Active View: ${activeTabs.join(' · ')}`);
     }
 
