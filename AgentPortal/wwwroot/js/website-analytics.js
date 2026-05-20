@@ -2429,12 +2429,13 @@
     const statusEl = document.getElementById('meta-connection-status');
     const connectBtn = document.getElementById('meta-connect-btn');
     const disconnectBtn = document.getElementById('meta-disconnect-btn');
+    const statusBaseClass = 'wa-kpi-meta-status small';
     if (!statusEl) return;
 
     try {
       const data = await fetchJson('meta-connection-status', endpoints.metaConnectionStatus, {});
       if (!data || !data.connected) {
-        statusEl.className = 'small mt-2 text-warning';
+        statusEl.className = `${statusBaseClass} text-warning`;
         statusEl.textContent = 'Meta Ads not connected for this agent.';
         if (connectBtn) connectBtn.textContent = 'Connect Meta Ads';
         if (disconnectBtn) disconnectBtn.style.display = 'none';
@@ -2446,7 +2447,7 @@
       const acct = data.accountName || data.accountId || 'Meta account connected';
       const user = data.metaUserName ? ` as ${data.metaUserName}` : '';
       const exp = data.accessTokenExpiresUtc ? ` · expires ${formatShortDate(data.accessTokenExpiresUtc)}` : '';
-      statusEl.className = 'small mt-2 text-success';
+      statusEl.className = `${statusBaseClass} text-success`;
       statusEl.textContent = `Connected: ${acct}${user}${exp}`;
       if (connectBtn) connectBtn.textContent = 'Reconnect Meta Ads';
       if (disconnectBtn) disconnectBtn.style.display = '';
@@ -2466,7 +2467,7 @@
       }
 
     } catch (err) {
-      statusEl.className = 'small mt-2 text-danger';
+      statusEl.className = `${statusBaseClass} text-danger`;
       statusEl.textContent = 'Unable to read Meta Ads connection status.';
       if (disconnectBtn) disconnectBtn.style.display = 'none';
       setMetaCampaignsEnabled(false);
@@ -2484,7 +2485,7 @@
     } catch (err) {
       const statusEl = document.getElementById('meta-connection-status');
       if (statusEl) {
-        statusEl.className = 'small mt-2 text-danger';
+        statusEl.className = 'wa-kpi-meta-status small text-danger';
         statusEl.textContent = (err && err.message) ? err.message : 'Failed to disconnect Meta Ads.';
       }
       console.error(err);
@@ -2504,11 +2505,11 @@
     const statusEl = document.getElementById('meta-connection-status');
     if (statusEl) {
       if (meta === 'connected') {
-        statusEl.className = 'small mt-2 text-success';
+        statusEl.className = 'wa-kpi-meta-status small text-success';
         statusEl.textContent = 'Meta Ads connected successfully.';
       } else if (meta === 'error') {
         const msg = url.searchParams.get('message') || 'Meta Ads connection failed.';
-        statusEl.className = 'small mt-2 text-danger';
+        statusEl.className = 'wa-kpi-meta-status small text-danger';
         statusEl.textContent = msg;
       }
     }

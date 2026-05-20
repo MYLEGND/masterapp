@@ -30,7 +30,7 @@
                 <div class="hero-link-intro">
                     <div class="hero-link-kicker">Shared Command Area</div>
                     <h3 class="hero-link-title">Marketing Links</h3>
-                    <div class="hero-link-subtitle text-silver">Open the website, manage Meta Ads, and jump into behavior review fast.</div>
+                    <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
                 </div>
             </div>
 
@@ -52,44 +52,6 @@
                     <button type="button" class="btn btn-outline-light btn-sm w-100 mt-1 product-links-toggle" id="product-links-toggle" data-bs-toggle="modal" data-bs-target="#landingRoutesModal" aria-controls="landingRoutesModal">
                         Explore Paid Landing Routes
                     </button>
-                </div>
-
-                <div class="hero-link-panel hero-link-panel-meta">
-                    <div class="hero-link-panel-head">
-                        <div>
-                            <div class="hero-link-label">Meta Ads</div>
-                            <div class="hero-link-panel-title">Campaign command area</div>
-                        </div>
-                        <div class="hero-link-badge">Campaigns</div>
-                    </div>
-                    <div class="text-silver hero-link-help">Review spend, open campaigns, or connect the account for shared analysis.</div>
-                    <div class="small" id="meta-connection-status">Checking connection…</div>
-                    <div class="hero-link-meta-actions">
-                        <a class="btn btn-gold hero-link-meta-btn"
-                           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
-                           target="_blank"
-                           rel="noopener">
-                            Open Meta Ads Manager
-                        </a>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn"
-                                id="meta-campaigns-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#metaCampaignsModal">
-                            Campaigns
-                        </button>
-                        <a class="btn btn-outline-light hero-link-meta-btn"
-                           id="meta-connect-btn"
-                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
-                            Connect Meta Ads
-                        </a>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn"
-                                id="meta-disconnect-btn"
-                                style="display:none;">
-                            Disconnect
-                        </button>
-                    </div>
                 </div>
 
                 <div class="hero-link-panel hero-link-panel-intel">
@@ -249,7 +211,40 @@
                 <h3 class="wa-kpi-stage-title" id="wa-kpi-title">Core Metrics</h3>
                 <p class="wa-kpi-stage-sub">Your fastest read on traffic, conversion, and what deserves a closer look next.</p>
             </div>
-            <div class="wa-kpi-stage-chip">Click a primary metric to drill in</div>
+            <div class="wa-kpi-stage-meta" aria-label="Meta Ads command access">
+                <div class="wa-kpi-meta-dock">
+                    <div class="wa-kpi-meta-copy">
+                        <div class="wa-kpi-meta-kicker">Meta Ads</div>
+                        <div class="wa-kpi-meta-status" id="meta-connection-status">Checking connection…</div>
+                    </div>
+                    <div class="wa-kpi-meta-actions hero-link-meta-actions">
+                        <a class="btn btn-gold hero-link-meta-btn wa-kpi-meta-btn"
+                           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
+                           target="_blank"
+                           rel="noopener">
+                            Ads Manager
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                                id="meta-campaigns-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#metaCampaignsModal">
+                            Campaigns
+                        </button>
+                        <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                           id="meta-connect-btn"
+                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                            Connect Meta Ads
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                                id="meta-disconnect-btn"
+                                style="display:none;">
+                            Disconnect
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="wa-kpi-band wa-kpi-band-primary">
