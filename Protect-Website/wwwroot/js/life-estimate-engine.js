@@ -115,6 +115,28 @@
     return `${normalizedItems.slice(0, -1).join(', ')}, and ${normalizedItems[normalizedItems.length - 1]}`;
   }
 
+  function isSingleProductPreview(preview) {
+    return String(preview?.displayMode || '').trim().toLowerCase() === 'single'
+      && String(preview?.offerKey || '').trim().toLowerCase() !== 'life';
+  }
+
+  function resolveOfferTopic(preview) {
+    switch (String(preview?.offerKey || '').trim().toLowerCase()) {
+      case 'term':
+        return 'Term Life';
+      case 'wholelife':
+        return 'Whole Life';
+      case 'finalexpense':
+        return 'Final Expense';
+      case 'mortgage':
+        return 'Mortgage Protection';
+      case 'iul':
+        return 'Indexed Universal Life';
+      default:
+        return String(preview?.primary?.policyType || 'Life Insurance').replace(/\s+Insurance$/i, '').trim() || 'Life Insurance';
+    }
+  }
+
   function humanizeProtectingWho(value) {
     switch (String(value || '').trim().toLowerCase()) {
       case 'spouse_or_partner':
@@ -220,6 +242,10 @@
   }
 
   function buildContactSummaryTitle(preview) {
+    if (isSingleProductPreview(preview)) {
+      return `Estimated ${escapeHtml(resolveOfferTopic(preview).toLowerCase())} range: ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
+    }
+
     return `Estimated ${escapeHtml(preview.primary.policyType)} range: ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
   }
 
@@ -228,8 +254,8 @@
     const coverageTarget = formatCoverageFigure(preview.requestedCoverageAmount || preview.primary.coverageAmount);
     const coveragePhrase = coverageTarget ? ` around ${escapeHtml(coverageTarget)} of coverage` : '';
 
-    if (preview.displayMode === 'single') {
-      return `This first look points most strongly toward ${policyType}${coveragePhrase}.`;
+    if (isSingleProductPreview(preview)) {
+      return `This estimate stays centered on ${escapeHtml(resolveOfferTopic(preview).toLowerCase())}${coveragePhrase} based on the answers you gave.`;
     }
 
     return `A common first comparison for answers like yours starts with ${policyType}${coveragePhrase}.`;
@@ -248,11 +274,38 @@
       .slice(0, 4)
       .map((signal) => escapeHtml(signal));
 
+    if (isSingleProductPreview(preview)) {
+      const topicLabel = escapeHtml(resolveOfferTopic(preview).toLowerCase());
+      if (pieces.length === 0) {
+        return `We used the details you shared to size this ${topicLabel} estimate.`;
+      }
+
+      return `${joinNaturalLanguage(pieces)} were used to size this ${topicLabel} estimate.`;
+    }
+
     if (pieces.length === 0) {
       return `${escapeHtml(preview.primary.policyType)} rose to the top as the clearest starting point for the answers you gave.`;
     }
 
     return `${joinNaturalLanguage(pieces)} all pushed ${escapeHtml(preview.primary.policyType)} to the top as the clearest starting point.`;
+  }
+
+  function buildThirdStatLabel(preview) {
+    return isSingleProductPreview(preview) ? 'Estimate focus' : 'Recommendation tier';
+  }
+
+  function buildThirdStatValue(preview) {
+    return isSingleProductPreview(preview) ? resolveOfferTopic(preview) : buildRecommendationTier(preview);
+  }
+
+  function buildPrimaryBadgeLabel(preview) {
+    if (isSingleProductPreview(preview)) {
+      return `${resolveOfferTopic(preview)} Estimate`;
+    }
+
+    return preview.displayMode === 'comparison' && preview.secondary && preview.secondary.policyKey
+      ? 'Recommended First'
+      : 'Your Likely Fit';
   }
 
   function buildPersonalizedProtectionSummary(preview) {
@@ -320,7 +373,7 @@
           <div class="lq-contact-estimate-personal-copy">${buildPersonalizedProtectionSummary(normalized)}</div>
         </div>
         <div class="lq-contact-estimate-signal">
-          <div class="lq-contact-estimate-signal-badge">Why this showed up first</div>
+          <div class="lq-contact-estimate-signal-badge">${isSingleProductPreview(normalized) ? 'What this estimate was based on' : 'Why this showed up first'}</div>
           <div class="lq-contact-estimate-signal-copy">${buildSignalCopy(normalized)}</div>
         </div>
         <div class="lq-contact-estimate-stats" aria-label="Estimate highlights">
@@ -333,13 +386,13 @@
             <div class="lq-contact-estimate-stat-value">${escapeHtml(formatMonthlyStartingPoint(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
           </div>
           <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Recommendation tier</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(buildRecommendationTier(normalized))}</div>
+            <div class="lq-contact-estimate-stat-label">${escapeHtml(buildThirdStatLabel(normalized))}</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(buildThirdStatValue(normalized))}</div>
           </div>
         </div>
         ${profileSignalsHtml}
         <div class="lq-contact-estimate-card-wrap">
-          ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended First' : 'Your Likely Fit', 'primary')}
+          ${buildEstimateCard(normalized.primary, buildPrimaryBadgeLabel(normalized), 'primary')}
         </div>
         ${secondaryNoteHtml}
         <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>

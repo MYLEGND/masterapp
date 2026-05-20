@@ -78,13 +78,13 @@ namespace ProtectWebsite.Services
             if (usesComparisonMode)
             {
                 var pair = ResolvePolicyPair(coverageGoal, protectingWho, age, requestedCoverageAmount);
-                primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
-                secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+                primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
+                secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
             }
             else
             {
                 var primaryPolicyKey = ResolveOfferPolicyKey(normalizedOfferKey);
-                primary = BuildEstimate(primaryPolicyKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+                primary = BuildEstimate(primaryPolicyKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
             }
 
             return new LifeEstimatePreviewResponse
@@ -110,7 +110,8 @@ namespace ProtectWebsite.Services
             string coverageGoal,
             string protectingWho,
             string tobaccoUse,
-            int? requestedCoverageAmount)
+            int? requestedCoverageAmount,
+            bool usesComparisonMode)
         {
             var coverageAmount = ResolveCoverageAmount(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount);
             var baseRate = BaseRateTable[policyKey][ageBand];
@@ -132,9 +133,9 @@ namespace ProtectWebsite.Services
                 CoverageAmount = coverageAmount,
                 EstimatedLowMonthly = low,
                 EstimatedHighMonthly = high,
-                RecommendationReason = BuildReasonSummary(policyKey, coverageGoal, requestedCoverageAmount),
+                RecommendationReason = BuildReasonSummary(policyKey, coverageGoal, requestedCoverageAmount, usesComparisonMode),
                 Disclaimer = EstimateDisclaimer,
-                Reasons = BuildReasons(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount)
+                Reasons = BuildReasons(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount, usesComparisonMode)
             };
         }
 
@@ -284,7 +285,7 @@ namespace ProtectWebsite.Services
             };
         }
 
-        private static IReadOnlyList<string> BuildReasons(string policyKey, string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)
+        private static IReadOnlyList<string> BuildReasons(string policyKey, string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount, bool usesComparisonMode)
         {
             var reasons = new List<string>();
             var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
@@ -292,15 +293,30 @@ namespace ProtectWebsite.Services
 
             if (string.Equals(policyKey, "term", StringComparison.OrdinalIgnoreCase))
             {
-                reasons.Add(string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase)
-                    ? "May fit when protecting mortgage years or monthly bills is the priority."
-                    : "May fit when protecting income, family needs, or larger temporary responsibilities matters most.");
-                reasons.Add(wantsLargeCoverage
-                    ? "Often the cleanest way to explore larger coverage amounts before comparing permanent designs."
-                    : "Estimated coverage can often go further at a lower monthly cost than permanent coverage.");
-                reasons.Add(string.Equals(protectingWho, "family", StringComparison.OrdinalIgnoreCase) || string.Equals(protectingWho, "children", StringComparison.OrdinalIgnoreCase)
-                    ? "Often worth considering when multiple people depend on your income or support."
-                    : "Often reviewed first when straightforward protection is the main goal.");
+                if (usesComparisonMode)
+                {
+                    reasons.Add(string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase)
+                        ? "May fit when protecting mortgage years or monthly bills is the priority."
+                        : "May fit when protecting income, family needs, or larger temporary responsibilities matters most.");
+                    reasons.Add(wantsLargeCoverage
+                        ? "Often the cleanest way to explore larger coverage amounts before comparing permanent designs."
+                        : "Estimated coverage can often go further at a lower monthly cost than permanent coverage.");
+                    reasons.Add(string.Equals(protectingWho, "family", StringComparison.OrdinalIgnoreCase) || string.Equals(protectingWho, "children", StringComparison.OrdinalIgnoreCase)
+                        ? "Often worth considering when multiple people depend on your income or support."
+                        : "Often reviewed first when straightforward protection is the main goal.");
+                }
+                else
+                {
+                    reasons.Add(string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase)
+                        ? "May fit when protecting mortgage years or monthly bills is the priority."
+                        : "May fit when protecting income, family needs, or other time-bound responsibilities matters most.");
+                    reasons.Add(wantsLargeCoverage
+                        ? "Often used to explore larger temporary protection amounts while keeping the structure straightforward."
+                        : "Keeps the estimate centered on straightforward temporary coverage for the years you want protected most.");
+                    reasons.Add(string.Equals(protectingWho, "family", StringComparison.OrdinalIgnoreCase) || string.Equals(protectingWho, "children", StringComparison.OrdinalIgnoreCase)
+                        ? "Often reviewed when multiple people depend on your income or support."
+                        : "Often reviewed when you want a clear, practical protection window.");
+                }
                 return reasons;
             }
 
@@ -338,19 +354,34 @@ namespace ProtectWebsite.Services
                 return reasons;
             }
 
-            reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
-                ? "May fit when lifelong protection or leaving something behind matters most."
-                : "May fit when permanent protection is worth considering alongside lower-cost term coverage.");
-            reasons.Add(wantsLargeCoverage
-                ? "Can illustrate what a larger permanent protection target may look like before a personalized review."
-                : "Designed for a smaller long-term protection need rather than the largest possible face amount.");
-            reasons.Add(age >= 60
-                ? "Often reviewed when keeping coverage in place long term matters more than simply lowering monthly cost."
-                : "May be worth considering when you want a lifelong option in addition to temporary protection.");
+            if (usesComparisonMode)
+            {
+                reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
+                    ? "May fit when lifelong protection or leaving something behind matters most."
+                    : "May fit when permanent protection is worth considering alongside lower-cost term coverage.");
+                reasons.Add(wantsLargeCoverage
+                    ? "Can illustrate what a larger permanent protection target may look like before a personalized review."
+                    : "Designed for a smaller long-term protection need rather than the largest possible face amount.");
+                reasons.Add(age >= 60
+                    ? "Often reviewed when keeping coverage in place long term matters more than simply lowering monthly cost."
+                    : "May be worth considering when you want a lifelong option in addition to temporary protection.");
+            }
+            else
+            {
+                reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
+                    ? "May fit when lifelong protection or leaving something behind matters most."
+                    : "May fit when keeping protection in place for the long term is the priority.");
+                reasons.Add(wantsLargeCoverage
+                    ? "Can illustrate what a larger lifelong protection target may look like before a personalized review."
+                    : "Keeps the estimate centered on permanent coverage designed to stay in place for the long run.");
+                reasons.Add(age >= 60
+                    ? "Often reviewed when stability and lifelong coverage matter more than short-term flexibility."
+                    : "Often explored when fixed lifelong coverage matters more than short-term flexibility.");
+            }
             return reasons;
         }
 
-        private static string BuildReasonSummary(string policyKey, string coverageGoal, int? requestedCoverageAmount)
+        private static string BuildReasonSummary(string policyKey, string coverageGoal, int? requestedCoverageAmount, bool usesComparisonMode)
         {
             var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
             return policyKey switch
@@ -359,14 +390,22 @@ namespace ProtectWebsite.Services
                     "Mortgage protection may fit when the priority is keeping the home secure and covering mortgage years.",
                 "term" when string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase) =>
                     "Term life may fit when the priority is protecting mortgage years or monthly obligations.",
+                "term" when !usesComparisonMode && wantsLargeCoverage =>
+                    "Term life may fit when you want to explore higher coverage amounts for the years protection matters most.",
                 "term" when wantsLargeCoverage =>
                     "Term life may fit when you want to explore higher coverage amounts with a lower estimated monthly starting point.",
+                "term" when !usesComparisonMode =>
+                    "Term life may fit when you want protection for the years income, mortgage, or family responsibilities matter most.",
                 "term" =>
                     "Term life may fit when you want broader protection at a lower estimated monthly cost.",
                 "finalexpense" =>
                     "Final expense coverage may fit when the goal is a smaller permanent benefit for burial or end-of-life costs.",
                 "iul" =>
                     "Indexed universal life may fit when you want long-term protection with flexible cash value growth potential.",
+                "wholelife" when !usesComparisonMode && string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase) =>
+                    "Whole life may fit when lifelong protection, steady premiums, and leaving something behind are part of the goal.",
+                "wholelife" when !usesComparisonMode =>
+                    "Whole life may fit when lifelong protection and a permanent coverage path are the focus.",
                 _ =>
                     "Whole life may fit when lifelong protection or a permanent coverage path is worth considering."
             };

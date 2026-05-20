@@ -4956,7 +4956,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         <div class="full lq-contact-capture-head">
                                             <div class="lq-contact-capture-kicker">Next step</div>
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
-                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain what pushed this option to the top and what else is worth comparing.</div>
+                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.</div>
                                         </div>
                                         <div class="full">
                                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
@@ -5316,7 +5316,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <div class="full lq-contact-capture-head">
                             <div class="lq-contact-capture-kicker">Next step</div>
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
-                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain what pushed this option to the top and what else is worth comparing.</div>
+                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.</div>
                         </div>
                         <div class="full">
                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
@@ -6122,6 +6122,28 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return Boolean(preview?.primary?.policyType);
   }
 
+  function isSingleOfferEstimate(preview) {
+    return String(preview?.displayMode || '').trim().toLowerCase() === 'single'
+      && String(preview?.offerKey || '').trim().toLowerCase() !== 'life';
+  }
+
+  function resolveStep2TopicLabel(preview) {
+    switch (String(preview?.offerKey || '').trim().toLowerCase()) {
+      case 'term':
+        return 'term life';
+      case 'wholelife':
+        return 'whole life';
+      case 'finalexpense':
+        return 'final expense';
+      case 'mortgage':
+        return 'mortgage protection';
+      case 'iul':
+        return 'indexed universal life';
+      default:
+        return String(preview?.primary?.policyType || 'life insurance').replace(/\s+insurance$/i, '').trim().toLowerCase() || 'life insurance';
+    }
+  }
+
   function syncStep2PanelMessaging(preview) {
     if (!canRenderEstimateSummary(preview)) {
       if (step2Progress) step2Progress.textContent = defaultStep2ProgressText;
@@ -6139,23 +6161,38 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       step2Progress.textContent = 'Estimate ready';
     }
 
+    const topicLabel = resolveStep2TopicLabel(preview);
+    const isSingleOffer = isSingleOfferEstimate(preview);
+
     if (step2Heading) {
-      step2Heading.textContent = 'Your estimate is ready';
+      step2Heading.textContent = isSingleOffer
+        ? `Your ${topicLabel} estimate is ready`
+        : 'Your estimate is ready';
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = 'You already have a real starting point. If you want help interpreting it, you can unlock the walkthrough below.';
+      step2Helper.textContent = isSingleOffer
+        ? `You already have a real starting point for ${topicLabel}. If you want help interpreting it, you can unlock the walkthrough below.`
+        : 'You already have a real starting point. If you want help interpreting it, you can unlock the walkthrough below.';
     }
 
     if (step2ContactTitle) {
-      step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
-        ? `Want ${agentDirectContactName} to walk you through it?`
-        : 'Want a walkthrough of this estimate?';
+      if (isSingleOffer) {
+        step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
+          ? `Want ${agentDirectContactName} to walk you through this ${topicLabel} estimate?`
+          : `Want a walkthrough of this ${topicLabel} estimate?`;
+      } else {
+        step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
+          ? `Want ${agentDirectContactName} to walk you through it?`
+          : 'Want a walkthrough of this estimate?';
+      }
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and what else is worth comparing.';
+      step2ContactCopy.textContent = isSingleOffer
+        ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and which ${topicLabel} options may fit best.`
+        : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and what else is worth comparing.';
     }
   }
 
