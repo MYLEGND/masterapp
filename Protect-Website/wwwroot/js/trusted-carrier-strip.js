@@ -3,6 +3,7 @@
   const FULL_PIXELS_PER_SECOND = 30;
   const COMPACT_PIXELS_PER_SECOND = 32;
   const DRAG_INTENT_THRESHOLD = 6;
+  const MOBILE_BREAKPOINT_QUERY = '(max-width: 767.98px)';
 
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -153,14 +154,85 @@
 
     element.style.setProperty('--carrier-marquee-distance', `${distance.toFixed(2)}px`);
     element.style.setProperty('--carrier-marquee-duration', `${duration.toFixed(2)}s`);
+    syncScrollableMode(element);
   }
 
-  function isScrollableViewport(viewport) {
-    if (!(viewport instanceof HTMLElement)) {
-      return false;
+  function isMobileViewport() {
+    return window.matchMedia(MOBILE_BREAKPOINT_QUERY).matches;
+  }
+
+  function getScrollableOverflow(element) {
+    if (!(element instanceof HTMLElement)) {
+      return 0;
     }
 
-    return (viewport.scrollWidth - viewport.clientWidth) > 8;
+    const viewport = element.querySelector('.lq-carrier-strip-viewport');
+    const track = element.querySelector('.lq-carrier-strip-track');
+    const primaryGroup = element.querySelector('.lq-carrier-strip-group');
+    if (!(viewport instanceof HTMLElement)) {
+      return 0;
+    }
+
+    const viewportWidth = viewport.clientWidth || viewport.getBoundingClientRect().width || 0;
+    const scrollWidth = viewport.scrollWidth || 0;
+    const trackWidth = track instanceof HTMLElement
+      ? Math.max(track.scrollWidth || 0, track.getBoundingClientRect().width || 0)
+      : 0;
+    const primaryGroupWidth = primaryGroup instanceof HTMLElement
+      ? Math.max(primaryGroup.scrollWidth || 0, primaryGroup.getBoundingClientRect().width || 0)
+      : 0;
+
+    const contentWidth = isMobileViewport()
+      ? Math.max(scrollWidth, trackWidth, primaryGroupWidth)
+      : Math.max(scrollWidth, trackWidth);
+
+    return Math.max(0, contentWidth - viewportWidth);
+  }
+
+  function readManualOffset(element) {
+    if (!(element instanceof HTMLElement)) {
+      return 0;
+    }
+
+    const offset = Number.parseFloat(element.dataset.carrierTrustOffset || '0');
+    return Number.isFinite(offset) ? Math.max(0, offset) : 0;
+  }
+
+  function writeManualOffset(element, offset) {
+    if (!(element instanceof HTMLElement)) {
+      return;
+    }
+
+    const normalizedOffset = Number.isFinite(offset) ? Math.max(0, offset) : 0;
+    element.dataset.carrierTrustOffset = normalizedOffset.toFixed(2);
+    element.style.setProperty('--carrier-scroll-offset', `${normalizedOffset.toFixed(2)}px`);
+  }
+
+  function syncScrollableMode(element) {
+    if (!(element instanceof HTMLElement)) {
+      return;
+    }
+
+    const viewport = element.querySelector('.lq-carrier-strip-viewport');
+    if (!(viewport instanceof HTMLElement)) {
+      return;
+    }
+
+    const overflow = getScrollableOverflow(element);
+    const useManualScroll = isMobileViewport() && overflow > 8;
+    const nextOffset = Math.min(readManualOffset(element), overflow);
+
+    element.classList.toggle('is-scrollable', overflow > 8);
+    element.classList.toggle('is-manual-scroll', useManualScroll);
+
+    if (!useManualScroll) {
+      viewport.scrollLeft = Math.min(viewport.scrollLeft, overflow);
+      writeManualOffset(element, 0);
+      return;
+    }
+
+    viewport.scrollLeft = 0;
+    writeManualOffset(element, nextOffset);
   }
 
   function bindTouchDragScroll(element) {
@@ -178,22 +250,31 @@
     const dragState = {
       active: false,
       dragging: false,
+      manualScroll: false,
       startX: 0,
       startY: 0,
-      startScrollLeft: 0
+      startOffset: 0
     };
 
     const resetDragState = () => {
       dragState.active = false;
       dragState.dragging = false;
+      dragState.manualScroll = false;
       dragState.startX = 0;
       dragState.startY = 0;
-      dragState.startScrollLeft = 0;
+      dragState.startOffset = 0;
       viewport.classList.remove('is-dragging');
     };
 
     viewport.addEventListener('touchstart', (event) => {
-      if (event.touches.length !== 1 || !isScrollableViewport(viewport)) {
+      if (event.touches.length !== 1) {
+        resetDragState();
+        return;
+      }
+
+      syncScrollableMode(element);
+      const overflow = getScrollableOverflow(element);
+      if (overflow <= 8) {
         resetDragState();
         return;
       }
@@ -201,9 +282,12 @@
       const touch = event.touches[0];
       dragState.active = true;
       dragState.dragging = false;
+      dragState.manualScroll = element.classList.contains('is-manual-scroll');
       dragState.startX = touch.clientX;
       dragState.startY = touch.clientY;
-      dragState.startScrollLeft = viewport.scrollLeft;
+      dragState.startOffset = dragState.manualScroll
+        ? readManualOffset(element)
+        : viewport.scrollLeft;
     }, { passive: true });
 
     viewport.addEventListener('touchmove', (event) => {
@@ -230,7 +314,18 @@
       }
 
       event.preventDefault();
-      viewport.scrollLeft = dragState.startScrollLeft - deltaX;
+      const overflow = getScrollableOverflow(element);
+      const nextOffset = Math.min(
+        overflow,
+        Math.max(0, dragState.startOffset - deltaX)
+      );
+
+      if (dragState.manualScroll) {
+        writeManualOffset(element, nextOffset);
+        return;
+      }
+
+      viewport.scrollLeft = nextOffset;
     }, { passive: false });
 
     viewport.addEventListener('touchend', resetDragState, { passive: true });
