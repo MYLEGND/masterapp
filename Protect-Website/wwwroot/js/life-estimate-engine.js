@@ -53,8 +53,12 @@
       return '';
     }
 
+    if (numericAmount >= 2000000) {
+      return '$2,000,000+ coverage estimate';
+    }
+
     if (numericAmount >= 1000000) {
-      return '$1,000,000+ coverage estimate';
+      return `$${numericAmount.toLocaleString('en-US')} coverage estimate`;
     }
 
     return `$${numericAmount.toLocaleString('en-US')} coverage estimate`;

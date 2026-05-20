@@ -1472,21 +1472,51 @@ namespace Protect_Website.Controllers
         private static List<LifeWizardStep> BuildDiscoveryStepsForOffer(string offerKey)
         {
             var normalizedOfferKey = LifeOfferResolver.Normalize(offerKey);
-            var coverageOptions = string.Equals(normalizedOfferKey, LifeOfferKeys.FinalExpense, StringComparison.OrdinalIgnoreCase)
-                ? new List<LifeWizardOption>
+            var coverageOptions = normalizedOfferKey switch
+            {
+                LifeOfferKeys.FinalExpense => new List<LifeWizardOption>
                 {
                     new("25000","$25,000"),
                     new("50000","$50,000"),
                     new("75000","$75,000"),
                     new("100000","$100,000"),
-                }
-                : new List<LifeWizardOption>
+                },
+                LifeOfferKeys.WholeLife => new List<LifeWizardOption>
+                {
+                    new("50000","$50,000"),
+                    new("100000","$100,000"),
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                },
+                LifeOfferKeys.Term => new List<LifeWizardOption>
+                {
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                    new("1000000","$1,000,000"),
+                    new("2000000","$2,000,000+"),
+                },
+                LifeOfferKeys.Mortgage => new List<LifeWizardOption>
+                {
+                    new("150000","$150,000"),
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                    new("750000","$750,000"),
+                },
+                LifeOfferKeys.Iul => new List<LifeWizardOption>
+                {
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                    new("1000000","$1,000,000"),
+                    new("2000000","$2,000,000+"),
+                },
+                _ => new List<LifeWizardOption>
                 {
                     new("100000","$100,000"),
                     new("250000","$250,000"),
                     new("500000","$500,000"),
                     new("1000000","$1,000,000+"),
-                };
+                }
+            };
 
             return
             new()

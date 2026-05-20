@@ -32,21 +32,51 @@
     IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(5).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
     if (viewSteps.Count < 5)
     {
-        var fallbackCoverageOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-            ? new List<Protect_Website.Models.LifeWizardOption>
+        var fallbackCoverageOptions = normalizedOfferKey switch
+        {
+            "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("25000","$25,000"),
                 new("50000","$50,000"),
                 new("75000","$75,000"),
                 new("100000","$100,000"),
-            }
-            : new List<Protect_Website.Models.LifeWizardOption>
+            },
+            "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("50000","$50,000"),
+                new("100000","$100,000"),
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+            },
+            "term" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+                new("1000000","$1,000,000"),
+                new("2000000","$2,000,000+"),
+            },
+            "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("150000","$150,000"),
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+                new("750000","$750,000"),
+            },
+            "iul" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+                new("1000000","$1,000,000"),
+                new("2000000","$2,000,000+"),
+            },
+            _ => new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("100000","$100,000"),
                 new("250000","$250,000"),
                 new("500000","$500,000"),
                 new("1000000","$1,000,000+"),
-            };
+            }
+        };
 
         viewSteps = new List<Protect_Website.Models.LifeWizardStep>
         {
@@ -99,21 +129,56 @@
                 "leave_something" => ("icon", "choice-icon-legacy", "Legacy", "Leave behind a benefit that supports the people you love", "tone-goal"),
                 _ => ("icon", "choice-icon-legacy", string.Empty, string.Empty, "tone-goal")
             },
-            "CoverageAmountOption" => normalizedCode switch
+            "CoverageAmountOption" => normalizedOfferKey switch
             {
-                "25000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-                    => ("badge", "$25K", "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
-                "50000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-                    => ("badge", "$50K", "Common", "A balanced final expense starting point for many households", "tone-coverage"),
-                "75000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-                    => ("badge", "$75K", "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
-                "100000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-                    => ("badge", "$100K", "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
-                "100000" => ("badge", "$100K", "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
-                "250000" => ("badge", "$250K", "Common", "A balanced starting point for many households", "tone-coverage"),
-                "500000" => ("badge", "$500K", "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
-                "1000000" => ("badge", "$1M+", "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
-                _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                "finalexpense" => normalizedCode switch
+                {
+                    "25000" => ("badge", "$25K", "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
+                    "50000" => ("badge", "$50K", "Common", "A balanced final expense starting point for many households", "tone-coverage"),
+                    "75000" => ("badge", "$75K", "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
+                    "100000" => ("badge", "$100K", "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                },
+                "wholelife" => normalizedCode switch
+                {
+                    "50000" => ("badge", "$50K", "Starter", "A smaller lifelong base for final costs and lasting support", "tone-coverage"),
+                    "100000" => ("badge", "$100K", "Common", "A balanced whole life starting point with steady cash value potential", "tone-coverage"),
+                    "250000" => ("badge", "$250K", "Stronger", "More lifelong coverage with room to build long-range value", "tone-coverage"),
+                    "500000" => ("badge", "$500K", "Maximum", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                },
+                "term" => normalizedCode switch
+                {
+                    "250000" => ("badge", "$250K", "Focused", "A leaner term target for a focused income gap or key bills", "tone-coverage"),
+                    "500000" => ("badge", "$500K", "Common", "A strong family-income starting point for many households", "tone-coverage"),
+                    "1000000" => ("badge", "$1M", "Broader", "More breathing room for income, debt, and future family needs", "tone-coverage"),
+                    "2000000" => ("badge", "$2M+", "Maximum", "A larger term safety net for bigger family protection goals", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                },
+                "mortgage" => normalizedCode switch
+                {
+                    "150000" => ("badge", "$150K", "Starter", "Fits smaller balances or a focused cushion around the home", "tone-coverage"),
+                    "250000" => ("badge", "$250K", "Common", "A practical starting point for many mortgage balances", "tone-coverage"),
+                    "500000" => ("badge", "$500K", "Stronger", "More room to protect the home and the monthly household budget", "tone-coverage"),
+                    "750000" => ("badge", "$750K", "Maximum", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                },
+                "iul" => normalizedCode switch
+                {
+                    "250000" => ("badge", "$250K", "Base", "A flexible starting point for lifelong coverage with growth potential", "tone-coverage"),
+                    "500000" => ("badge", "$500K", "Common", "A strong IUL target for lasting protection and cash value growth", "tone-coverage"),
+                    "1000000" => ("badge", "$1M", "Broader", "More room to pair lifetime protection with long-range strategy", "tone-coverage"),
+                    "2000000" => ("badge", "$2M+", "Maximum", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                },
+                _ => normalizedCode switch
+                {
+                    "100000" => ("badge", "$100K", "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
+                    "250000" => ("badge", "$250K", "Common", "A balanced starting point for many households", "tone-coverage"),
+                    "500000" => ("badge", "$500K", "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
+                    "1000000" => ("badge", "$1M+", "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
+                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                }
             },
             "TobaccoUse" => normalizedCode switch
             {
@@ -1106,10 +1171,10 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: grid;
     justify-items: center;
     align-content: start;
-    gap: 10px;
+    gap: 12px;
     text-align: center;
-    padding: 14px 12px;
-    min-height: 132px;
+    padding: 15px 13px;
+    min-height: 138px;
 }
 .lq-card-rich::after {
     content: "";
@@ -1125,9 +1190,9 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 .lq-card-rich .lq-card-visual {
-    width: 52px;
-    height: 52px;
-    border-radius: 16px;
+    width: 56px;
+    height: 56px;
+    border-radius: 18px;
     display: grid;
     place-items: center;
     background:
@@ -1139,21 +1204,21 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         0 8px 16px rgba(0,0,0,0.18);
 }
 .lq-card-rich .lq-card-icon {
-    width: 28px;
-    height: 28px;
+    width: 31px;
+    height: 31px;
     color: #f0c66d;
 }
 .lq-card-rich .lq-card-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 34px;
-    min-height: 34px;
-    padding: 0 8px;
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 10px;
     border-radius: 999px;
     background: rgba(240,198,109,0.12);
     color: #fff4d0;
-    font-size: .82rem;
+    font-size: .86rem;
     font-weight: 900;
     letter-spacing: .02em;
 }
@@ -1172,13 +1237,13 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 }
 .lq-card-rich .lq-card-title {
     color: #f8fafc;
-    font-size: 1rem;
+    font-size: 1.02rem;
     font-weight: 860;
     line-height: 1.2;
 }
 .lq-card-rich .lq-card-helper {
     color: rgba(231,236,245,0.72);
-    font-size: .77rem;
+    font-size: .76rem;
     font-weight: 690;
     line-height: 1.34;
 }
