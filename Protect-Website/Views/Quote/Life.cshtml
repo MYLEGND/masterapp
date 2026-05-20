@@ -19,6 +19,7 @@
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
     var isStandaloneLandingExperience = isLandingPage || isLandingRoutePath || isPaidLandingExperience;
     var isContactFirstEducationVariant = usesContactFirstShell;
+    var normalizedOfferKey = cfg.OfferKey?.Trim().ToLowerInvariant() ?? string.Empty;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
     ViewData["IsLandingPage"] = isStandaloneLandingExperience;
@@ -193,6 +194,36 @@
     if (string.IsNullOrWhiteSpace(contactFirstTrustInitials))
     {
         contactFirstTrustInitials = "AG";
+    }
+    var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
+    var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review.";
+    var contactFirstProofKicker = "Personal guidance";
+    var contactFirstProofText = "Answer 5 quick questions to see what may fit. You’ll see estimated options before any contact step.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "No spam calls" };
+    var contactFirstProcessingHeading = "Preparing your estimated options...";
+    var contactFirstProcessingHelper = "You’ll see what may fit before any contact step.";
+    var contactFirstProcessingNote = "Building your estimate...";
+    var contactFirstNextLabel = "Estimate first";
+    var contactFirstNextCopy = "You’ll see estimated options before any contact step. If you want help after that, you can send your info. No obligation.";
+
+    if (normalizedOfferKey == "whole_life")
+    {
+        contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
+        contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about building lifelong protection and cash value that grows with you.";
+        contactFirstProofKicker = "Whole life guidance";
+        contactFirstProofText = "Explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals before any contact step.";
+        contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "No spam calls" };
+        contactFirstProcessingHeading = "Preparing your whole life estimate...";
+        contactFirstProcessingHelper = "You’ll see estimated whole life fit before any contact step.";
+        contactFirstProcessingNote = "Building your whole life estimate...";
+        contactFirstNextLabel = "Whole life first";
+        contactFirstNextCopy = "You’ll see estimated whole life options before any contact step. If you want help after that, you can send your info. No obligation.";
+        finalStepHeading = "Want help reviewing whole life options?";
+        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
+        agentTrustBio = "Send your info and I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
+        finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My Whole Life Options"
+            : "Help Me Review Whole Life Options";
     }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
@@ -1986,12 +2017,12 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     margin: 10px 0 0;
 }
 .lq-contact-first-flow-surface .lq-step-progress {
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 .lq-contact-first-flow-surface .lq-step-question {
-    font-size: 1.52rem;
-    line-height: 1.04;
-    margin-bottom: 12px;
+    font-size: 1.66rem;
+    line-height: 1.06;
+    margin-bottom: 18px;
     max-width: none;
     text-align: center;
     margin-left: auto;
@@ -2798,6 +2829,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         height: 66px;
     }
 
+    .lq-contact-first-flow-surface .lq-step-progress {
+        margin-bottom: 7px;
+    }
+
+    .lq-contact-first-flow-surface .lq-step-question {
+        font-size: 1.22rem;
+        line-height: 1.12;
+        margin-bottom: 12px;
+    }
+
     .lq-hero-banner-wrap {
         margin-bottom: 10px;
         border-radius: 14px;
@@ -2813,7 +2854,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
             @if (usesContactFirstShell)
             {
                 <figure class="lq-hero-banner-wrap">
-                    <img class="lq-hero-banner-image" src="~/images/ads/life-top-banner.png" asp-append-version="true" alt="Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review." loading="eager" />
+                    <img class="lq-hero-banner-image" src="@contactFirstBannerImageUrl" asp-append-version="true" alt="@contactFirstBannerAlt" loading="eager" />
                 </figure>
             }
             else if (isLandingView)
@@ -2912,16 +2953,17 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 <span class="lq-education-trust-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
                             </div>
                             <div class="lq-contact-first-proof-copy">
-                                <div class="lq-contact-first-proof-kicker">Personal guidance</div>
+                                <div class="lq-contact-first-proof-kicker">@contactFirstProofKicker</div>
                                 <div class="lq-contact-first-proof-title">@contactFirstTrustIntroLine</div>
-                                <p class="lq-contact-first-proof-text">Answer 5 quick questions to see what may fit. You’ll see estimated options before any contact step.</p>
+                                <p class="lq-contact-first-proof-text">@contactFirstProofText</p>
                             </div>
                         </div>
 
                         <div class="lq-contact-first-proof-chips" aria-hidden="true">
-                            <span class="lq-contact-first-proof-chip">Estimate first</span>
-                            <span class="lq-contact-first-proof-chip">No obligation</span>
-                            <span class="lq-contact-first-proof-chip">No spam calls</span>
+                            @foreach (var chip in contactFirstProofChips)
+                            {
+                                <span class="lq-contact-first-proof-chip">@chip</span>
+                            }
                         </div>
 
                         <div class="lq-contact-first-form-surface lq-contact-first-flow-surface">
@@ -3060,13 +3102,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                             <div class="lq-step-panel lq-contact-first-wizard-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
                                 <div class="lq-step-panel-pad">
                                     <div class="lq-step-progress">Preparing</div>
-                                    <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Preparing your estimated options...</div>
-                                    <div class="lq-step-helper">You’ll see what may fit before any contact step.</div>
+                                    <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
+                                    <div class="lq-step-helper">@contactFirstProcessingHelper</div>
                                     <div class="lq-processing-bridge" aria-hidden="true">
                                         <div class="lq-processing-track">
                                             <div class="lq-processing-fill" id="lifeProcessingFill"></div>
                                         </div>
-                                        <div class="lq-processing-note">Building your estimate...</div>
+                                        <div class="lq-processing-note">@contactFirstProcessingNote</div>
                                     </div>
                                 </div>
                             </div>
@@ -3142,8 +3184,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </div>
                             </div>
                             <div class="lq-contact-first-next-note" aria-labelledby="lifeEducationNextTitle">
-                                <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">Estimate first</div>
-                                <p class="lq-contact-first-next-copy">You’ll see estimated options before any contact step. If you want help after that, you can send your info. No obligation.</p>
+                                <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">@contactFirstNextLabel</div>
+                                <p class="lq-contact-first-next-copy">@contactFirstNextCopy</p>
                                 @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
                                 {
                                     <div class="lq-contact-first-next-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
