@@ -3398,6 +3398,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 .lq-carrier-strip {
+    --carrier-marquee-gap: 10px;
+    --carrier-marquee-distance: 0px;
+    --carrier-marquee-duration: 44s;
     display: grid;
     gap: 10px;
     width: 100%;
@@ -3426,6 +3429,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 .lq-carrier-strip-compact {
+    --carrier-marquee-gap: 8px;
     margin-top: 0;
     padding: 10px 11px 10px;
     border-radius: 14px;
@@ -3473,11 +3477,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 .lq-carrier-strip-track {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--carrier-marquee-gap);
     width: max-content;
-    padding-right: 10px;
-    animation: lqCarrierMarquee 44s linear infinite;
+    animation: lqCarrierMarquee var(--carrier-marquee-duration) linear infinite;
     will-change: transform;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
 }
 
 .lq-carrier-strip:hover .lq-carrier-strip-track,
@@ -3488,7 +3493,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 .lq-carrier-strip-group {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--carrier-marquee-gap);
     flex-shrink: 0;
 }
 
@@ -3592,18 +3597,22 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 @@keyframes lqCarrierMarquee {
-    from { transform: translateX(0); }
-    to { transform: translateX(calc(-50% - 7px)); }
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(calc(-1 * var(--carrier-marquee-distance)), 0, 0); }
 }
 
 @@media (prefers-reduced-motion: reduce) {
-    .lq-carrier-strip-track {
-        animation: none !important;
-        width: auto;
-        flex-wrap: nowrap;
+    .lq-carrier-strip-viewport {
         overflow-x: auto;
         padding-bottom: 2px;
         scrollbar-width: thin;
+    }
+
+    .lq-carrier-strip-track {
+        animation: none !important;
+        width: max-content;
+        flex-wrap: nowrap;
+        transform: none !important;
     }
 
     .lq-carrier-strip-group[aria-hidden="true"] {

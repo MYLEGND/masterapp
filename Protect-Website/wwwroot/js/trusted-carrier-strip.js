@@ -1,5 +1,7 @@
 (function () {
   const SESSION_KEY_PREFIX = 'carrier-trust-strip-viewed:';
+  const FULL_PIXELS_PER_SECOND = 30;
+  const COMPACT_PIXELS_PER_SECOND = 32;
 
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -111,6 +113,82 @@
     elements.forEach((element) => observer.observe(element));
   }
 
+  function queueMarqueeSync(element) {
+    if (!element || element.dataset.carrierTrustMarqueeQueued === 'true') {
+      return;
+    }
+
+    element.dataset.carrierTrustMarqueeQueued = 'true';
+    window.requestAnimationFrame(() => {
+      element.dataset.carrierTrustMarqueeQueued = 'false';
+      syncMarqueeMetrics(element);
+    });
+  }
+
+  function syncMarqueeMetrics(element) {
+    if (!element) {
+      return;
+    }
+
+    const track = element.querySelector('.lq-carrier-strip-track');
+    const primaryGroup = element.querySelector('.lq-carrier-strip-group');
+    if (!(track instanceof HTMLElement) || !(primaryGroup instanceof HTMLElement)) {
+      return;
+    }
+
+    const trackStyles = window.getComputedStyle(track);
+    const gapValue = trackStyles.columnGap || trackStyles.gap || '0';
+    const trackGap = Number.parseFloat(gapValue) || 0;
+    const groupWidth = primaryGroup.getBoundingClientRect().width;
+    const distance = groupWidth + trackGap;
+    if (!Number.isFinite(distance) || distance <= 0) {
+      return;
+    }
+
+    const pixelsPerSecond = element.classList.contains('lq-carrier-strip-compact')
+      ? COMPACT_PIXELS_PER_SECOND
+      : FULL_PIXELS_PER_SECOND;
+    const duration = Math.max(26, distance / pixelsPerSecond);
+
+    element.style.setProperty('--carrier-marquee-distance', `${distance.toFixed(2)}px`);
+    element.style.setProperty('--carrier-marquee-duration', `${duration.toFixed(2)}s`);
+  }
+
+  function bindMarquee(element) {
+    if (!element || element.dataset.carrierTrustMarqueeBound === 'true') {
+      return;
+    }
+
+    element.dataset.carrierTrustMarqueeBound = 'true';
+
+    const viewport = element.querySelector('.lq-carrier-strip-viewport');
+    const primaryGroup = element.querySelector('.lq-carrier-strip-group');
+    const scheduleSync = () => queueMarqueeSync(element);
+
+    if ('ResizeObserver' in window) {
+      const observer = new ResizeObserver(() => scheduleSync());
+      if (viewport instanceof HTMLElement) {
+        observer.observe(viewport);
+      }
+      if (primaryGroup instanceof HTMLElement) {
+        observer.observe(primaryGroup);
+      }
+      element._carrierTrustResizeObserver = observer;
+    }
+
+    element.querySelectorAll('img').forEach((image) => {
+      image.addEventListener('load', () => scheduleSync(), { passive: true });
+      image.addEventListener('error', () => scheduleSync(), { passive: true });
+    });
+
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(() => scheduleSync()).catch(() => {});
+    }
+
+    window.setTimeout(() => scheduleSync(), 140);
+    scheduleSync();
+  }
+
   function init(root) {
     const scope = root instanceof Element || root instanceof Document ? root : document;
     const elements = Array.from(scope.querySelectorAll('[data-carrier-trust-strip]'))
@@ -118,6 +196,7 @@
 
     elements.forEach((element) => {
       element.dataset.carrierTrustInitialized = 'true';
+      bindMarquee(element);
     });
 
     observeElements(elements);
