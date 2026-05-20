@@ -89,6 +89,32 @@
     return `$${lowValue.toLocaleString('en-US')}-$${highValue.toLocaleString('en-US')}/mo`;
   }
 
+  function formatMonthlyStartingPoint(low, high) {
+    const lowValue = Math.max(0, Math.round(Number(low || 0)));
+    const highValue = Math.max(lowValue, Math.round(Number(high || 0)));
+    if (!lowValue && !highValue) {
+      return '';
+    }
+
+    const midpoint = Math.round((lowValue + highValue) / 2);
+    return `About $${midpoint.toLocaleString('en-US')}/mo`;
+  }
+
+  function joinNaturalLanguage(items) {
+    const normalizedItems = items.filter(Boolean);
+    if (normalizedItems.length === 0) {
+      return '';
+    }
+    if (normalizedItems.length === 1) {
+      return normalizedItems[0];
+    }
+    if (normalizedItems.length === 2) {
+      return `${normalizedItems[0]} and ${normalizedItems[1]}`;
+    }
+
+    return `${normalizedItems.slice(0, -1).join(', ')}, and ${normalizedItems[normalizedItems.length - 1]}`;
+  }
+
   function humanizeProtectingWho(value) {
     switch (String(value || '').trim().toLowerCase()) {
       case 'spouse_or_partner':
@@ -184,7 +210,7 @@
         </div>
         <div class="lq-rec-title">${escapeHtml(normalized.policyType)}</div>
         <div class="lq-estimate-price-wrap">
-          <div class="lq-estimate-price-label">Illustrative monthly range</div>
+          <div class="lq-estimate-price-label">Estimated monthly range</div>
           <div class="lq-estimate-price">${escapeHtml(formatCurrencyRange(normalized.estimatedLowMonthly, normalized.estimatedHighMonthly))}</div>
         </div>
         <div class="lq-estimate-reason">${escapeHtml(normalized.recommendationReason)}</div>
@@ -194,44 +220,69 @@
   }
 
   function buildContactSummaryTitle(preview) {
-    if (preview.displayMode === 'single') {
-      return `Your ${escapeHtml(preview.primary.policyType)} estimate is ready`;
-    }
-
-    return `${escapeHtml(preview.primary.policyType)} looks like your strongest starting point`;
+    return `Estimated ${escapeHtml(preview.primary.policyType)} range: ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
   }
 
   function buildContactSummaryCopy(preview) {
+    const policyType = escapeHtml(preview.primary.policyType || 'this option');
+    const coverageTarget = formatCoverageFigure(preview.requestedCoverageAmount || preview.primary.coverageAmount);
+    const coveragePhrase = coverageTarget ? ` around ${escapeHtml(coverageTarget)} of coverage` : '';
+
     if (preview.displayMode === 'single') {
-      return `We sized this estimate around the answers you gave so you can see a real starting point before your walkthrough.`;
+      return `This first look points most strongly toward ${policyType}${coveragePhrase}.`;
     }
 
-    return `Among the options we compared, ${escapeHtml(preview.primary.policyType)} rose to the top first for the answers you gave.`;
+    return `A common first comparison for answers like yours starts with ${policyType}${coveragePhrase}.`;
   }
 
-  function buildSignalCopy(preview, signalCount) {
-    const pieces = [];
-
-    if (preview.ageBand) {
-      pieces.push(`age ${escapeHtml(preview.ageBand)}`);
+  function buildRecommendationTier(preview) {
+    if (preview.displayMode === 'comparison' && preview.secondary && preview.secondary.policyKey) {
+      return 'Strong match';
     }
 
-    const tobaccoLabel = humanizeTobaccoUse(preview.tobaccoUse);
-    if (tobaccoLabel) {
-      pieces.push(`${escapeHtml(tobaccoLabel.toLowerCase())} pricing assumptions`);
-    }
+    return 'Likely fit';
+  }
 
-    const goalLabel = humanizeCoverageGoal(preview.coverageGoal);
-    if (goalLabel) {
-      pieces.push(escapeHtml(goalLabel.toLowerCase()));
-    }
+  function buildSignalCopy(preview) {
+    const pieces = buildProfileSignals(preview)
+      .slice(0, 4)
+      .map((signal) => escapeHtml(signal));
 
     if (pieces.length === 0) {
-      return `We used ${signalCount} details from your answers to size this first-look estimate.`;
+      return `${escapeHtml(preview.primary.policyType)} rose to the top as the clearest starting point for the answers you gave.`;
     }
 
-    const leadingPieces = pieces.slice(0, 3).join(', ');
-    return `We used ${signalCount} details from your answers, including ${leadingPieces}, to size this first-look estimate.`;
+    return `${joinNaturalLanguage(pieces)} all pushed ${escapeHtml(preview.primary.policyType)} to the top as the clearest starting point.`;
+  }
+
+  function buildPersonalizedProtectionSummary(preview) {
+    const protectingLabel = humanizeProtectingWho(preview.protectingWho);
+    const goalLabel = humanizeCoverageGoal(preview.coverageGoal);
+    const coverageTarget = formatCoverageFigure(preview.requestedCoverageAmount || preview.primary.coverageAmount);
+    const tobaccoLabel = humanizeTobaccoUse(preview.tobaccoUse);
+    const summaryPieces = [];
+
+    if (protectingLabel) {
+      summaryPieces.push(`protecting ${escapeHtml(protectingLabel.toLowerCase())}`);
+    }
+    if (goalLabel) {
+      summaryPieces.push(`focused on ${escapeHtml(goalLabel.toLowerCase())}`);
+    }
+    if (coverageTarget) {
+      summaryPieces.push(`around ${escapeHtml(coverageTarget)} of coverage`);
+    }
+    if (preview.ageBand) {
+      summaryPieces.push(`age ${escapeHtml(preview.ageBand)}`);
+    }
+    if (tobaccoLabel) {
+      summaryPieces.push(`${escapeHtml(tobaccoLabel.toLowerCase())} pricing assumptions`);
+    }
+
+    if (summaryPieces.length === 0) {
+      return 'Sized around the answers you gave so you can see a real starting point before sharing your info.';
+    }
+
+    return `Sized for ${joinNaturalLanguage(summaryPieces)}.`;
   }
 
   function buildProfileSignalsHtml(preview) {
@@ -252,8 +303,6 @@
     const secondary = normalized.secondary;
     const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
     const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
-    const signalCount = buildProfileSignals(normalized).length;
-    const coverageTarget = formatCoverageFigure(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
     const profileSignalsHtml = buildProfileSignalsHtml(normalized);
     const secondaryNoteHtml = hasSecondary
       ? `<div class="lq-contact-estimate-alt">Also worth comparing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
@@ -266,23 +315,31 @@
           <div class="lq-contact-estimate-title">${buildContactSummaryTitle(normalized)}</div>
           <div class="lq-contact-estimate-copy">${buildContactSummaryCopy(normalized)}</div>
         </div>
+        <div class="lq-contact-estimate-personal">
+          <div class="lq-contact-estimate-personal-label">Personalized protection summary</div>
+          <div class="lq-contact-estimate-personal-copy">${buildPersonalizedProtectionSummary(normalized)}</div>
+        </div>
         <div class="lq-contact-estimate-signal">
-          <div class="lq-contact-estimate-signal-badge">${signalCount || 5} profile signals used</div>
-          <div class="lq-contact-estimate-signal-copy">${buildSignalCopy(normalized, signalCount || 5)}</div>
+          <div class="lq-contact-estimate-signal-badge">Why this showed up first</div>
+          <div class="lq-contact-estimate-signal-copy">${buildSignalCopy(normalized)}</div>
         </div>
         <div class="lq-contact-estimate-stats" aria-label="Estimate highlights">
           <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Projected monthly range</div>
+            <div class="lq-contact-estimate-stat-label">Estimated monthly range</div>
             <div class="lq-contact-estimate-stat-value">${escapeHtml(formatCurrencyRangeCompact(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
           </div>
           <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Coverage target</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(coverageTarget || formatCoverageFigure(normalized.primary.coverageAmount))}</div>
+            <div class="lq-contact-estimate-stat-label">Likely monthly starting point</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(formatMonthlyStartingPoint(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
+          </div>
+          <div class="lq-contact-estimate-stat">
+            <div class="lq-contact-estimate-stat-label">Recommendation tier</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(buildRecommendationTier(normalized))}</div>
           </div>
         </div>
         ${profileSignalsHtml}
         <div class="lq-contact-estimate-card-wrap">
-          ${buildEstimateCard(normalized.primary, hasSecondary ? 'Top Recommendation' : 'Your Estimate', 'primary')}
+          ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended First' : 'Your Likely Fit', 'primary')}
         </div>
         ${secondaryNoteHtml}
         <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>

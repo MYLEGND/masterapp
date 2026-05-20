@@ -1737,6 +1737,32 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     font-weight: 720;
     line-height: 1.38;
 }
+.lq-contact-capture-head {
+    display: grid;
+    gap: 4px;
+    padding: 2px 0 4px;
+    text-align: center;
+}
+.lq-contact-capture-kicker {
+    color: rgba(240,198,109,0.86);
+    font-size: .7rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-capture-title {
+    color: #fff7df;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.16;
+}
+.lq-contact-capture-copy {
+    color: rgba(236,240,247,0.74);
+    font-size: .84rem;
+    line-height: 1.45;
+    max-width: 48ch;
+    margin: 0 auto;
+}
 .lq-agent-handoff {
     display: grid;
     gap: 12px;
@@ -2544,9 +2570,33 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     line-height: 1.45;
     text-align: center;
 }
+.lq-contact-estimate-personal {
+    display: grid;
+    gap: 4px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.22);
+    background: rgba(11,19,34,0.46);
+    text-align: center;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 9px 18px rgba(0,0,0,0.12);
+}
+.lq-contact-estimate-personal-label {
+    color: rgba(240,198,109,0.86);
+    font-size: .7rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-personal-copy {
+    color: rgba(244,247,251,0.84);
+    font-size: .84rem;
+    line-height: 1.45;
+}
 .lq-contact-estimate-stats {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
 }
 .lq-contact-estimate-stat {
@@ -2636,6 +2686,13 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-signal {
         linear-gradient(180deg, rgba(31,31,36,0.88) 0%, rgba(18,18,22,0.82) 100%);
     border-color: rgba(236,200,116,0.24);
 }
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-personal {
+    background: rgba(12,12,15,0.36);
+    border-color: rgba(236,200,116,0.18);
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-personal-copy {
+    color: rgba(244,239,231,0.82);
+}
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-stat {
     background: rgba(12,12,15,0.42);
     border-color: rgba(236,200,116,0.18);
@@ -2679,8 +2736,20 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
         padding: 12px;
         gap: 10px;
     }
+    .lq-contact-capture-title {
+        font-size: .94rem;
+    }
+    .lq-contact-capture-copy {
+        font-size: .8rem;
+    }
     .lq-contact-estimate-title {
         font-size: 1rem;
+    }
+    .lq-contact-estimate-personal {
+        padding: 11px 12px;
+    }
+    .lq-contact-estimate-personal-copy {
+        font-size: .79rem;
     }
     .lq-contact-estimate-signal {
         padding: 11px 12px;
@@ -4875,18 +4944,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
                             <div class="lq-step-panel lq-contact-step lq-contact-first-wizard-panel" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-step-progress">Final step</div>
+                                    <div class="lq-step-progress" id="lifeStep2Progress">Final step</div>
                                     <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
-                                    @if (!string.IsNullOrWhiteSpace(finalStepHelper))
-                                    {
-                                        <div class="lq-step-helper">@finalStepHelper</div>
-                                    }
+                                    <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                                     @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
                                     {
                                         <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
                                     }
                                     <div class="lq-contact-grid">
                                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                                        <div class="full lq-contact-capture-head">
+                                            <div class="lq-contact-capture-kicker">Next step</div>
+                                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
+                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain what pushed this option to the top and what else is worth comparing.</div>
+                                        </div>
                                         <div class="full">
                                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                                         </div>
@@ -5233,18 +5304,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-progress">Final step</div>
+                <div class="lq-step-progress" id="lifeStep2Progress">Final step</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
-                @if (!string.IsNullOrWhiteSpace(finalStepHelper))
-                {
-                    <div class="lq-step-helper">@finalStepHelper</div>
-                }
+                <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                 @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
                 {
                     <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
                 }
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                        <div class="full lq-contact-capture-head">
+                            <div class="lq-contact-capture-kicker">Next step</div>
+                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
+                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain what pushed this option to the top and what else is worth comparing.</div>
+                        </div>
                         <div class="full">
                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                         </div>
@@ -5372,7 +5445,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const processingHeading = document.getElementById('lifeProcessingHeading');
   const processingHelper = processingPanel?.querySelector('.lq-step-helper');
   const processingNote = processingPanel?.querySelector('.lq-processing-note');
+  const step2Progress = document.getElementById('lifeStep2Progress');
   const step2Heading = document.getElementById('lifeStep2Heading');
+  const step2Helper = document.getElementById('lifeStep2Helper');
+  const step2ContactTitle = document.getElementById('lifeStep2ContactTitle');
+  const step2ContactCopy = document.getElementById('lifeStep2ContactCopy');
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
@@ -5407,6 +5484,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
+  const agentDirectContactName = @Html.Raw(JsonSerializer.Serialize(agentDirectContactName));
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
@@ -5431,6 +5509,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
   const defaultProcessingNoteText = processingNote?.textContent?.trim() || '';
+  const defaultStep2ProgressText = step2Progress?.textContent?.trim() || '';
+  const defaultStep2HeadingText = step2Heading?.textContent?.trim() || '';
+  const defaultStep2HelperText = step2Helper?.textContent?.trim() || '';
+  const defaultStep2HelperHidden = step2Helper?.hidden ?? true;
+  const defaultStep2ContactTitleText = step2ContactTitle?.textContent?.trim() || '';
+  const defaultStep2ContactCopyText = step2ContactCopy?.textContent?.trim() || '';
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
@@ -6038,18 +6122,57 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return Boolean(preview?.primary?.policyType);
   }
 
+  function syncStep2PanelMessaging(preview) {
+    if (!canRenderEstimateSummary(preview)) {
+      if (step2Progress) step2Progress.textContent = defaultStep2ProgressText;
+      if (step2Heading) step2Heading.textContent = defaultStep2HeadingText;
+      if (step2Helper) {
+        step2Helper.textContent = defaultStep2HelperText;
+        step2Helper.hidden = defaultStep2HelperHidden;
+      }
+      if (step2ContactTitle) step2ContactTitle.textContent = defaultStep2ContactTitleText;
+      if (step2ContactCopy) step2ContactCopy.textContent = defaultStep2ContactCopyText;
+      return;
+    }
+
+    if (step2Progress) {
+      step2Progress.textContent = 'Estimate ready';
+    }
+
+    if (step2Heading) {
+      step2Heading.textContent = 'Your estimate is ready';
+    }
+
+    if (step2Helper) {
+      step2Helper.hidden = false;
+      step2Helper.textContent = 'You already have a real starting point. If you want help interpreting it, you can unlock the walkthrough below.';
+    }
+
+    if (step2ContactTitle) {
+      step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
+        ? `Want ${agentDirectContactName} to walk you through it?`
+        : 'Want a walkthrough of this estimate?';
+    }
+
+    if (step2ContactCopy) {
+      step2ContactCopy.textContent = 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and what else is worth comparing.';
+    }
+  }
+
   function renderStep2EstimateSummary(preview) {
     if (!step2EstimateSlot) {
       return;
     }
 
     if (!canRenderEstimateSummary(preview) || !window.lifeEstimateEngine?.buildContactSummaryHtml) {
+      syncStep2PanelMessaging(null);
       step2EstimateSlot.innerHTML = '';
       step2EstimateSlot.hidden = true;
       return;
     }
 
     step2EstimateSlot.innerHTML = window.lifeEstimateEngine.buildContactSummaryHtml(preview);
+    syncStep2PanelMessaging(preview);
     step2EstimateSlot.hidden = false;
   }
 
