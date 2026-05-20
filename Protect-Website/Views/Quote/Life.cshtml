@@ -602,6 +602,15 @@
             ("Legacy planning", "Often reviewed when long-range protection and leaving something behind are both priorities.")
         };
     }
+    var contactFirstBridgeText = normalizedOfferKey switch
+    {
+        "wholelife" => "Answer below to see your whole life estimate",
+        "term" => "Answer below to see your term life estimate",
+        "finalexpense" => "Answer below to see your final expense estimate",
+        "mortgage" => "Answer below to see your mortgage protection estimate",
+        "iul" => "Answer below to see your IUL estimate",
+        _ => "Answer below to compare what may fit"
+    };
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = string.Empty;
