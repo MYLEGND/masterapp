@@ -5962,6 +5962,75 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return typeof value === 'string' ? value.trim() : '';
   }
 
+  function selectedRadioLabel(name) {
+    const radio = selectedRadio(name);
+    return asTrimmed(radio?.dataset.label || radio?.value || '');
+  }
+
+  function applyProcessingStage(stage) {
+    if (!stage || typeof stage !== 'object') {
+      return;
+    }
+
+    if (processingHeading && stage.heading) {
+      processingHeading.textContent = stage.heading;
+    }
+    if (processingHelper && stage.helper) {
+      processingHelper.textContent = stage.helper;
+    }
+    if (processingNote && stage.note) {
+      processingNote.textContent = stage.note;
+    }
+  }
+
+  function buildProcessingStages() {
+    const protectingLabel = selectedRadioLabel('ProtectingWho');
+    const goalLabel = selectedRadioLabel('CoverageGoal');
+    const coverageLabel = selectedRadioLabel('CoverageAmountOption');
+    const tobaccoLabel = selectedRadioLabel('TobaccoUse');
+    const ageBand = getSelectedAgeBand();
+
+    return [
+      {
+        heading: 'Reviewing your protection priorities...',
+        helper: goalLabel && protectingLabel
+          ? `Starting with ${goalLabel.toLowerCase()} for ${protectingLabel.toLowerCase()}.`
+          : 'Starting with the people and priorities you shared.',
+        note: 'Analyzing what matters most...'
+      },
+      {
+        heading: 'Sizing your estimated range...',
+        helper: coverageLabel && ageBand
+          ? `Adjusting around ${coverageLabel} coverage, age ${ageBand}, and ${tobaccoLabel ? tobaccoLabel.toLowerCase() : 'current'} pricing assumptions.`
+          : 'Tightening the estimate around age, tobacco use, and coverage amount.',
+        note: 'Refining your projected monthly range...'
+      },
+      {
+        heading: 'Matching your likely starting point...',
+        helper: 'Comparing which coverage path rises to the top for the answers you gave.',
+        note: 'Finalizing your recommendation reveal...'
+      }
+    ];
+  }
+
+  function animateProcessingNarrative() {
+    const stages = buildProcessingStages();
+    processingStageTimers.forEach((timerId) => window.clearTimeout(timerId));
+    processingStageTimers = [];
+
+    if (!stages.length) {
+      return;
+    }
+
+    applyProcessingStage(stages[0]);
+
+    stages.slice(1).forEach((stage, index) => {
+      const timeoutMs = Math.round(((index + 1) / stages.length) * PROCESSING_BRIDGE_MS);
+      const timerId = window.setTimeout(() => applyProcessingStage(stage), timeoutMs);
+      processingStageTimers.push(timerId);
+    });
+  }
+
   function buildMetaProgressMetadata(extra = {}) {
     return Object.assign({
       protectingWho: answer1Hidden?.value || '',
@@ -6200,6 +6269,19 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (processingTimer) {
       window.clearTimeout(processingTimer);
       processingTimer = null;
+    }
+    processingStageTimers.forEach((timerId) => window.clearTimeout(timerId));
+    processingStageTimers = [];
+    if (resetBar) {
+      if (processingHeading) {
+        processingHeading.textContent = defaultProcessingHeadingText;
+      }
+      if (processingHelper) {
+        processingHelper.textContent = defaultProcessingHelperText;
+      }
+      if (processingNote) {
+        processingNote.textContent = defaultProcessingNoteText;
+      }
     }
     if (processingFill && resetBar) {
       processingFill.style.transition = 'none';
@@ -6559,6 +6641,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const previewPromise = ensureEstimatePreview(true);
     setActivePanel(processingPanel);
     trackEvent('life_processing_bridge_view');
+    animateProcessingNarrative();
     animateProcessingBar();
     if (shouldScroll) {
       focusFunnelPanel(processingPanel, {
