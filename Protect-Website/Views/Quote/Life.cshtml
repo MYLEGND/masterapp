@@ -1992,7 +1992,13 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-size: 1.52rem;
     line-height: 1.04;
     margin-bottom: 12px;
-    max-width: 16ch;
+    max-width: none;
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+}
+.lq-contact-first-flow-surface .lq-step-kicker {
+    text-align: center;
 }
 .lq-contact-first-flow-surface .lq-choice-grid {
     gap: 12px;
@@ -2415,6 +2421,12 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-text,
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-next-copy {
     color: rgba(244,239,231,0.78);
+}
+
+@@media (min-width: 768px) {
+    .lq-contact-first-flow-surface .lq-step-question {
+        white-space: nowrap;
+    }
 }
 body.page-variant-contact-first-education-v1 .lq-education-panel.lq-options-summary {
     background:
@@ -2907,9 +2919,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         </div>
 
                         <div class="lq-contact-first-proof-chips" aria-hidden="true">
-                            <span class="lq-contact-first-proof-chip">5 quick questions</span>
                             <span class="lq-contact-first-proof-chip">Estimate first</span>
                             <span class="lq-contact-first-proof-chip">No obligation</span>
+                            <span class="lq-contact-first-proof-chip">No spam calls</span>
                         </div>
 
                         <div class="lq-contact-first-form-surface lq-contact-first-flow-surface">
