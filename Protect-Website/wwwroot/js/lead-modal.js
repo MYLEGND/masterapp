@@ -299,18 +299,18 @@
     }
   });
 
-  function wireClose(el, redirect) {
+  function wireClose(el, redirect, reason) {
     el?.addEventListener('click', () => {
-      closeModal(redirect, redirect ? 'redirect' : 'dismiss');
+      closeModal(redirect, reason || (redirect ? 'redirect' : 'dismiss'));
     });
   }
-  wireClose(closeBtn, false);
+  wireClose(closeBtn, false, 'close_button');
   // Dismiss should only close; no redirect.
-  wireClose(dismissBtn, false);
+  wireClose(dismissBtn, false, 'dismiss_button');
   modal.addEventListener('click', (e) => {
-    if (e.target === modal) closeModal();
+    if (e.target === modal) closeModal(false, 'backdrop');
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+    if (e.key === 'Escape' && modal.classList.contains('open')) closeModal(false, 'escape_key');
   });
 })();
