@@ -902,10 +902,10 @@ namespace Protect_Website.Controllers
                 return options.FirstOrDefault(o => string.Equals(o.Code, code, StringComparison.OrdinalIgnoreCase))?.Label ?? code;
             }
 
-            var protectStep = cfg.Steps.ElementAtOrDefault(0);
-            var goalStep    = cfg.Steps.ElementAtOrDefault(1);
-            var coverageStep = cfg.Steps.ElementAtOrDefault(2);
-            var tobaccoStep = cfg.Steps.ElementAtOrDefault(3);
+            var protectStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "ProtectingWho", StringComparison.OrdinalIgnoreCase));
+            var goalStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "CoverageGoal", StringComparison.OrdinalIgnoreCase));
+            var coverageStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "CoverageAmountOption", StringComparison.OrdinalIgnoreCase));
+            var tobaccoStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "TobaccoUse", StringComparison.OrdinalIgnoreCase));
 
             static string? ResolveCoverageAmountLabel(int? coverageAmount)
             {
@@ -1551,6 +1551,7 @@ namespace Protect_Website.Controllers
                     new("spouse_or_partner","My spouse or partner"),
                     new("children","My children"),
                     new("family","My household"),
+                    new("just_me","Just me"),
                 },
                 LifeOfferKeys.WholeLife => new List<LifeWizardOption>
                 {
@@ -1597,10 +1598,10 @@ namespace Protect_Website.Controllers
                 },
                 LifeOfferKeys.Mortgage => new List<LifeWizardOption>
                 {
-                    new("mortgage_balance","Cover the mortgage balance"),
-                    new("monthly_payment","Help keep the monthly payment covered"),
-                    new("stay_in_home","Help my family stay in the home"),
-                    new("household_bills","Protect mortgage plus key household bills"),
+                    new("mortgage_balance","The mortgage balance"),
+                    new("monthly_payment","The monthly mortgage payment"),
+                    new("stay_in_home","My spouse or family staying in the home"),
+                    new("household_bills","The home plus key bills"),
                 },
                 LifeOfferKeys.Iul => new List<LifeWizardOption>
                 {
@@ -1646,7 +1647,7 @@ namespace Protect_Website.Controllers
                     new("150000","$150,000"),
                     new("250000","$250,000"),
                     new("500000","$500,000"),
-                    new("750000","$750,000"),
+                    new("750000","$750,000+"),
                 },
                 LifeOfferKeys.Iul => new List<LifeWizardOption>
                 {
@@ -1667,15 +1668,29 @@ namespace Protect_Website.Controllers
             return
             new()
             {
-                new("Who are you looking to protect?", protectOptions, "ProtectingWho"),
-                new("What would you like this coverage to help with most?", goalOptions, "CoverageGoal"),
-                new("About how much coverage would you like to explore?", coverageOptions, "CoverageAmountOption"),
-                new("Tobacco use", new List<LifeWizardOption>
-                {
-                    new("non_smoker","Non-smoker"),
-                    new("smoker","Smoker"),
-                }, "TobaccoUse"),
-                new("Your age", new List<LifeWizardOption>(), "Age"),
+                normalizedOfferKey == LifeOfferKeys.Mortgage
+                    ? new("What would you want protected if something happened to you?", goalOptions, "CoverageGoal")
+                    : new("Who are you looking to protect?", protectOptions, "ProtectingWho"),
+                normalizedOfferKey == LifeOfferKeys.Mortgage
+                    ? new("Who depends on the home?", protectOptions, "ProtectingWho")
+                    : new("What would you like this coverage to help with most?", goalOptions, "CoverageGoal"),
+                normalizedOfferKey == LifeOfferKeys.Mortgage
+                    ? new("Approximate mortgage balance", coverageOptions, "CoverageAmountOption")
+                    : new("About how much coverage would you like to explore?", coverageOptions, "CoverageAmountOption"),
+                normalizedOfferKey == LifeOfferKeys.Mortgage
+                    ? new("Your age", new List<LifeWizardOption>(), "Age")
+                    : new("Tobacco use", new List<LifeWizardOption>
+                    {
+                        new("non_smoker","Non-smoker"),
+                        new("smoker","Smoker"),
+                    }, "TobaccoUse"),
+                normalizedOfferKey == LifeOfferKeys.Mortgage
+                    ? new("Tobacco use", new List<LifeWizardOption>
+                    {
+                        new("non_smoker","Non-smoker"),
+                        new("smoker","Smoker"),
+                    }, "TobaccoUse")
+                    : new("Your age", new List<LifeWizardOption>(), "Age"),
             };
         }
     }

@@ -45,6 +45,7 @@
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children"),
                 new("family","My household"),
+                new("just_me","Just me"),
             },
             "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -91,10 +92,10 @@
             },
             "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("mortgage_balance","Cover the mortgage balance"),
-                new("monthly_payment","Help keep the monthly payment covered"),
-                new("stay_in_home","Help my family stay in the home"),
-                new("household_bills","Protect mortgage plus key household bills"),
+                new("mortgage_balance","The mortgage balance"),
+                new("monthly_payment","The monthly mortgage payment"),
+                new("stay_in_home","My spouse or family staying in the home"),
+                new("household_bills","The home plus key bills"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -140,7 +141,7 @@
                 new("150000","$150,000"),
                 new("250000","$250,000"),
                 new("500000","$500,000"),
-                new("750000","$750,000"),
+                new("750000","$750,000+"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -158,23 +159,54 @@
             }
         };
 
-        viewSteps = new List<Protect_Website.Models.LifeWizardStep>
-        {
-            new("Who are you looking to protect?", fallbackProtectOptions, "ProtectingWho"),
-            new("What would you like this coverage to help with most?", fallbackGoalOptions, "CoverageGoal"),
-            new("About how much coverage would you like to explore?", fallbackCoverageOptions, "CoverageAmountOption"),
-            new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
+        viewSteps = normalizedOfferKey == "mortgage"
+            ? new List<Protect_Website.Models.LifeWizardStep>
             {
-                new("non_smoker","Non-smoker"),
-                new("smoker","Smoker"),
-            }, "TobaccoUse"),
-            new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
-        };
+                new("What would you want protected if something happened to you?", fallbackGoalOptions, "CoverageGoal"),
+                new("Who depends on the home?", fallbackProtectOptions, "ProtectingWho"),
+                new("Approximate mortgage balance", fallbackCoverageOptions, "CoverageAmountOption"),
+                new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
+                new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
+                {
+                    new("non_smoker","Non-smoker"),
+                    new("smoker","Smoker"),
+                }, "TobaccoUse"),
+            }
+            : new List<Protect_Website.Models.LifeWizardStep>
+            {
+                new("Who are you looking to protect?", fallbackProtectOptions, "ProtectingWho"),
+                new("What would you like this coverage to help with most?", fallbackGoalOptions, "CoverageGoal"),
+                new("About how much coverage would you like to explore?", fallbackCoverageOptions, "CoverageAmountOption"),
+                new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
+                {
+                    new("non_smoker","Non-smoker"),
+                    new("smoker","Smoker"),
+                }, "TobaccoUse"),
+                new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
+            };
     }
-    var protectStep = viewSteps[0];
-    var goalStep = viewSteps[1];
-    var coverageAmountStep = viewSteps[2];
-    var tobaccoStep = viewSteps[3];
+    var isMortgageOffer = string.Equals(normalizedOfferKey, "mortgage", StringComparison.OrdinalIgnoreCase);
+    Protect_Website.Models.LifeWizardStep ResolveStep(string fieldAlias, int fallbackIndex)
+    {
+        return viewSteps.FirstOrDefault(step => string.Equals(step.FieldAlias, fieldAlias, StringComparison.OrdinalIgnoreCase))
+            ?? viewSteps.ElementAtOrDefault(fallbackIndex)
+            ?? new Protect_Website.Models.LifeWizardStep(string.Empty, new List<Protect_Website.Models.LifeWizardOption>(), fieldAlias);
+    }
+    var protectStep = ResolveStep("ProtectingWho", 0);
+    var goalStep = ResolveStep("CoverageGoal", 1);
+    var coverageAmountStep = ResolveStep("CoverageAmountOption", 2);
+    var tobaccoStep = ResolveStep("TobaccoUse", 3);
+    var firstDiscoveryStep = isMortgageOffer ? goalStep : protectStep;
+    var secondDiscoveryStep = isMortgageOffer ? protectStep : goalStep;
+    var firstDiscoveryFieldName = isMortgageOffer ? "CoverageGoal" : "ProtectingWho";
+    var secondDiscoveryFieldName = isMortgageOffer ? "ProtectingWho" : "CoverageGoal";
+    var firstDiscoveryQuestionId = isMortgageOffer ? "lbl-step1-goal" : "lbl-step1-protect";
+    var secondDiscoveryQuestionId = isMortgageOffer ? "lbl-step1-protect" : "lbl-step1-goal";
+    var coverageAmountQuestionText = isMortgageOffer ? "Approximate mortgage balance" : coverageAmountStep.Question;
+    var protectingWhoErrorText = isMortgageOffer ? "Please choose who depends on the home." : "Please choose who you want to protect.";
+    var coverageGoalErrorText = isMortgageOffer ? "Please choose what you'd want protected." : "Please select what matters most right now.";
+    var coverageAmountErrorText = isMortgageOffer ? "Please choose an approximate mortgage balance." : "Please choose a coverage amount to explore.";
+    var showMortgageCarrierDisclosure = isMortgageOffer;
     var ageStepOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
         ? new List<(string Value, string Label, int ApproxAge, bool IsWide)>
         {
@@ -219,6 +251,7 @@
                         _ => "Cover the people who depend on your support"
                     },
                     "tone-protect"),
+                "just_me" => ("icon", "choice-icon-home", "Just me", "Keep the focus on protecting the home and monthly stability you depend on.", "tone-protect"),
                 _ => ("icon", "choice-icon-family", string.Empty, string.Empty, "tone-protect")
             },
             "CoverageGoal" => normalizedCode switch
@@ -330,6 +363,26 @@
     var selectedCoverageAmountOption = !string.IsNullOrWhiteSpace(form.CoverageAmountOption)
         ? form.CoverageAmountOption.Trim()
         : (form.CoverageAmount.HasValue ? form.CoverageAmount.Value.ToString() : string.Empty);
+    bool IsStepOptionChecked(string fieldName, string optionCode)
+    {
+        var normalizedFieldName = (fieldName ?? string.Empty).Trim();
+        return normalizedFieldName switch
+        {
+            "ProtectingWho" =>
+                string.Equals(form.ProtectingWho, optionCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(form.Answer1, optionCode, StringComparison.OrdinalIgnoreCase),
+            "CoverageGoal" =>
+                string.Equals(form.CoverageGoal, optionCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(form.Answer2, optionCode, StringComparison.OrdinalIgnoreCase),
+            "CoverageAmountOption" =>
+                string.Equals(form.CoverageAmountOption, optionCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(selectedCoverageAmountOption, optionCode, StringComparison.OrdinalIgnoreCase),
+            "TobaccoUse" =>
+                string.Equals(form.TobaccoUse, optionCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(form.Answer3, optionCode, StringComparison.OrdinalIgnoreCase),
+            _ => false
+        };
+    }
     var isFinalExpenseOffer = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase);
     var selectedAgeBracket = string.Empty;
     var ageValueNumber = form.Age;
@@ -418,6 +471,12 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
+    var stepTwoContactTitleText = isMortgageOffer
+        ? "Want help understanding your estimate?"
+        : "Want the walkthrough behind this estimate?";
+    var stepTwoContactCopyText = isMortgageOffer
+        ? $"Share your info and {agentDirectContactName} will walk through what may fit your mortgage, family, and budget. No obligation."
+        : "Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.";
     var finalStepHeading = isContactFirstEducationVariant ? "Get your personal walkthrough" : "Want a personalized review?";
     var finalStepHelper = isContactFirstEducationVariant
         ? $"{agentDirectContactName} will walk through what may fit and answer your questions. No obligation."
@@ -431,7 +490,7 @@
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
-    var stepOneContinueButtonText = "Show My Estimate";
+    var stepOneContinueButtonText = isMortgageOffer ? "See My Home Protection Estimate" : "Show My Estimate";
     var finalSubmitButtonText = isContactFirstEducationVariant
         ? "Get My Personal Review"
         : "Get My Personalized Review";
@@ -4144,6 +4203,66 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
+.lq-carrier-disclosure {
+    width: 100%;
+}
+
+.lq-carrier-disclosure-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(208, 162, 68, 0.22);
+    background:
+        linear-gradient(180deg, rgba(14, 19, 31, 0.90) 0%, rgba(8, 11, 19, 0.92) 100%);
+    color: rgba(249, 236, 204, 0.92);
+    font-size: .82rem;
+    font-weight: 820;
+    line-height: 1.3;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 10px 20px rgba(0,0,0,0.16);
+}
+
+.lq-carrier-disclosure-summary::-webkit-details-marker {
+    display: none;
+}
+
+.lq-carrier-disclosure-summary::after {
+    content: '+';
+    flex: 0 0 auto;
+    color: #f3d78f;
+    font-size: 1rem;
+    font-weight: 900;
+}
+
+.lq-carrier-disclosure[open] .lq-carrier-disclosure-summary::after {
+    content: '−';
+}
+
+.lq-carrier-disclosure-body {
+    margin-top: 10px;
+}
+
+@@media (min-width: 768px) {
+    .lq-carrier-disclosure:not([open]) > *:not(summary) {
+        display: block;
+    }
+
+    .lq-carrier-disclosure-summary {
+        display: none;
+    }
+
+    .lq-carrier-disclosure-body {
+        margin-top: 0;
+    }
+}
+
 .lq-carrier-strip {
     --carrier-marquee-gap: 10px;
     --carrier-marquee-distance: 0px;
@@ -4767,17 +4886,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="0">
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-protect">@protectStep.Question</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="@firstDiscoveryQuestionId">
+                                            <div class="lq-choice-label lq-step-question" id="@firstDiscoveryQuestionId">@firstDiscoveryStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                        @foreach (var opt in protectStep.Options)
+                        @foreach (var opt in firstDiscoveryStep.Options)
                         {
-                            var isChecked =
-                                string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
+                            var isChecked = IsStepOptionChecked(firstDiscoveryFieldName, opt.Code);
+                            var choiceMeta = GetChoiceCardMeta(firstDiscoveryFieldName, opt.Code);
                             <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <input type="radio" name="@firstDiscoveryFieldName" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
                                 @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <span class="lq-card-visual" aria-hidden="true">
@@ -4794,22 +4911,22 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             </label>
                         }
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
+                                            <div class="lq-choice-error" id="@(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "err-step1-coverage-goal" : "err-step1-protecting-who")">
+                                                @(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
+                                            </div>
                                         </div>
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="1" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-goal">@goalStep.Question</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
+                                            <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                        @foreach (var opt in goalStep.Options)
+                        @foreach (var opt in secondDiscoveryStep.Options)
                         {
-                            var isChecked =
-                                string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
+                            var isChecked = IsStepOptionChecked(secondDiscoveryFieldName, opt.Code);
+                            var choiceMeta = GetChoiceCardMeta(secondDiscoveryFieldName, opt.Code);
                             <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <input type="radio" name="@secondDiscoveryFieldName" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
                                 @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <span class="lq-card-visual" aria-hidden="true">
@@ -4826,20 +4943,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             </label>
                         }
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
+                                            <div class="lq-choice-error" id="@(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "err-step1-coverage-goal" : "err-step1-protecting-who")">
+                                                @(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
+                                            </div>
                                         </div>
                                         <button type="button" class="btn-ghost lq-micro-back" data-step1-back="0">Back</button>
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="2" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountStep.Question</div>
+                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                         @foreach (var opt in coverageAmountStep.Options)
                         {
-                            var isChecked =
-                                string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            var isChecked = IsStepOptionChecked("CoverageAmountOption", opt.Code);
                             var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
                             <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
@@ -4857,73 +4974,142 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             </label>
                         }
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-coverage-amount">Please choose a coverage amount to explore.</div>
+                                            <div class="lq-choice-error" id="err-step1-coverage-amount">@coverageAmountErrorText</div>
                                         </div>
                                         <button type="button" class="btn-ghost lq-micro-back" data-step1-back="1">Back</button>
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="3" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                                            <div class="lq-choice-grid lq-grid-2">
-                        @foreach (var opt in tobaccoStep.Options)
-                        {
-                            var isChecked =
-                                string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                            var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
-                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    <span class="lq-card-visual" aria-hidden="true">
-                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                        </svg>
-                                    </span>
-                                }
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@choiceMeta.Kicker</span>
-                                    <span class="lq-card-title">@opt.Label</span>
-                                    <span class="lq-card-helper">@choiceMeta.Helper</span>
-                                </span>
-                            </label>
-                        }
+                                        @if (isMortgageOffer)
+                                        {
+                                            <div class="lq-choice-group">
+                                                <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
+                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                    <div class="lq-age-picker-top">
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="@minSelectableAge"
+                                                        max="@maxSelectableAge"
+                                                        step="1"
+                                                        value="@ageValue"
+                                                        class="lq-age-slider"
+                                                        data-age-slider
+                                                        aria-labelledby="lbl-step1-age" />
+                                                    <div class="lq-age-scale" aria-hidden="true">
+                                                        @foreach (var markerAge in ageSliderMarkerValues)
+                                                        {
+                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
-                                        </div>
-                                        <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                                            <div class="lq-step-actions dual">
+                                                <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
+                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn">Continue</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                                                <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                                                <div class="lq-choice-grid lq-grid-2">
+                            @foreach (var opt in tobaccoStep.Options)
+                            {
+                                var isChecked = IsStepOptionChecked("TobaccoUse", opt.Code);
+                                var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                            </svg>
+                                        </span>
+                                    }
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
+                                </label>
+                            }
+                                                </div>
+                                                <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
+                                            </div>
+                                            <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                                        }
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
-                                        <div class="lq-choice-group">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
-                                                <div class="lq-age-picker-top">
-                                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                        @if (isMortgageOffer)
+                                        {
+                                            <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                                                <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                                                <div class="lq-choice-grid lq-grid-2">
+                            @foreach (var opt in tobaccoStep.Options)
+                            {
+                                var isChecked = IsStepOptionChecked("TobaccoUse", opt.Code);
+                                var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="lq-card-visual" aria-hidden="true">
+                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                            </svg>
+                                        </span>
+                                    }
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
+                                </label>
+                            }
                                                 </div>
-                                                <input
-                                                    type="range"
-                                                    min="@minSelectableAge"
-                                                    max="@maxSelectableAge"
-                                                    step="1"
-                                                    value="@ageValue"
-                                                    class="lq-age-slider"
-                                                    data-age-slider
-                                                    aria-labelledby="lbl-step1-age" />
-                                                <div class="lq-age-scale" aria-hidden="true">
-                                                    @foreach (var markerAge in ageSliderMarkerValues)
-                                                    {
-                                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
-                                                    }
-                                                </div>
+                                                <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
-                                        </div>
-                                        <div class="lq-step-actions dual">
-                                            <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
-                                        </div>
+                                            <div class="lq-step-actions dual">
+                                                <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
+                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="lq-choice-group">
+                                                <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
+                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                    <div class="lq-age-picker-top">
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="@minSelectableAge"
+                                                        max="@maxSelectableAge"
+                                                        step="1"
+                                                        value="@ageValue"
+                                                        class="lq-age-slider"
+                                                        data-age-slider
+                                                        aria-labelledby="lbl-step1-age" />
+                                                    <div class="lq-age-scale" aria-hidden="true">
+                                                        @foreach (var markerAge in ageSliderMarkerValues)
+                                                        {
+                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                                            </div>
+                                            <div class="lq-step-actions dual">
+                                                <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
+                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                                            </div>
+                                        }
                                     </div>
                                 </div>
                             </div>
@@ -4955,11 +5141,23 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                                         <div class="full lq-contact-capture-head">
                                             <div class="lq-contact-capture-kicker">Next step</div>
-                                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
-                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.</div>
+                                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
+                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                                         </div>
                                         <div class="full">
-                                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                            @if (showMortgageCarrierDisclosure)
+                                            {
+                                                <details class="lq-carrier-disclosure">
+                                                    <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
+                                                    <div class="lq-carrier-disclosure-body">
+                                                        @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                                    </div>
+                                                </details>
+                                            }
+                                            else
+                                            {
+                                                @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                            }
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
@@ -5110,17 +5308,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="0">
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-protect">@protectStep.Question</div>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="@firstDiscoveryQuestionId">
+                        <div class="lq-choice-label lq-step-question" id="@firstDiscoveryQuestionId">@firstDiscoveryStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                            @foreach (var opt in protectStep.Options)
+                            @foreach (var opt in firstDiscoveryStep.Options)
                             {
-                                var isChecked =
-                                    string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
+                                var isChecked = IsStepOptionChecked(firstDiscoveryFieldName, opt.Code);
+                                var choiceMeta = GetChoiceCardMeta(firstDiscoveryFieldName, opt.Code);
                                 <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                    <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <input type="radio" name="@firstDiscoveryFieldName" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
                                     @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
                                     {
                                         <span class="lq-card-visual" aria-hidden="true">
@@ -5137,7 +5333,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                 </label>
                             }
                         </div>
-                        <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
+                        <div class="lq-choice-error" id="@(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "err-step1-coverage-goal" : "err-step1-protecting-who")">
+                            @(string.Equals(firstDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
+                        </div>
                         @if (showInlineMobileTrustBlock)
                         {
                             <div class="lq-human-strip lq-human-strip-soft lq-human-strip-inline" role="note" aria-label="@heroTrustAriaLabel">
@@ -5159,17 +5357,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="1" hidden>
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-goal">@goalStep.Question</div>
+                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="@secondDiscoveryQuestionId">
+                        <div class="lq-choice-label lq-step-question" id="@secondDiscoveryQuestionId">@secondDiscoveryStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                            @foreach (var opt in goalStep.Options)
+                            @foreach (var opt in secondDiscoveryStep.Options)
                             {
-                                var isChecked =
-                                    string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
+                                var isChecked = IsStepOptionChecked(secondDiscoveryFieldName, opt.Code);
+                                var choiceMeta = GetChoiceCardMeta(secondDiscoveryFieldName, opt.Code);
                                 <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                    <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                    <input type="radio" name="@secondDiscoveryFieldName" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
                                     @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
                                     {
                                         <span class="lq-card-visual" aria-hidden="true">
@@ -5186,20 +5382,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                 </label>
                             }
                         </div>
-                        <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
+                        <div class="lq-choice-error" id="@(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? "err-step1-coverage-goal" : "err-step1-protecting-who")">
+                            @(string.Equals(secondDiscoveryFieldName, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ? coverageGoalErrorText : protectingWhoErrorText)
+                        </div>
                     </div>
                     <button type="button" class="btn-ghost lq-micro-back" data-step1-back="0">Back</button>
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="2" hidden>
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountStep.Question</div>
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountQuestionText</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
                             @foreach (var opt in coverageAmountStep.Options)
                             {
-                                var isChecked =
-                                    string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
+                                var isChecked = IsStepOptionChecked("CoverageAmountOption", opt.Code);
                                 var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
                                 <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                     <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
@@ -5217,73 +5413,142 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                 </label>
                             }
                         </div>
-                        <div class="lq-choice-error" id="err-step1-coverage-amount">Please choose a coverage amount to explore.</div>
+                        <div class="lq-choice-error" id="err-step1-coverage-amount">@coverageAmountErrorText</div>
                     </div>
                     <button type="button" class="btn-ghost lq-micro-back" data-step1-back="1">Back</button>
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="3" hidden>
-                    <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
-                        <div class="lq-choice-grid lq-grid-2">
-                            @foreach (var opt in tobaccoStep.Options)
-                            {
-                                var isChecked =
-                                    string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                    string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
-                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                    <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                    @if (isMortgageOffer)
+                    {
+                        <div class="lq-choice-group">
+                            <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
+                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                <div class="lq-age-picker-top">
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="@minSelectableAge"
+                                    max="@maxSelectableAge"
+                                    step="1"
+                                    value="@ageValue"
+                                    class="lq-age-slider"
+                                    data-age-slider
+                                    aria-labelledby="lbl-step1-age" />
+                                <div class="lq-age-scale" aria-hidden="true">
+                                    @foreach (var markerAge in ageSliderMarkerValues)
                                     {
-                                        <span class="lq-card-visual" aria-hidden="true">
-                                            <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                                <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                            </svg>
-                                        </span>
+                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
                                     }
-                                    <span class="lq-card-copy">
-                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
-                                        <span class="lq-card-title">@opt.Label</span>
-                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
-                                    </span>
-                                </label>
-                            }
+                                </div>
+                            </div>
+                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
-                    </div>
-                    <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                        <div class="lq-step-actions dual">
+                            <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
+                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn">Continue</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                            <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                            <div class="lq-choice-grid lq-grid-2">
+                                @foreach (var opt in tobaccoStep.Options)
+                                {
+                                    var isChecked = IsStepOptionChecked("TobaccoUse", opt.Code);
+                                    var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                                    <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                        <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                        @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="lq-card-visual" aria-hidden="true">
+                                                <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                    <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                                </svg>
+                                            </span>
+                                        }
+                                        <span class="lq-card-copy">
+                                            <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                            <span class="lq-card-title">@opt.Label</span>
+                                            <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                        </span>
+                                    </label>
+                                }
+                            </div>
+                            <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
+                        </div>
+                        <button type="button" class="btn-ghost lq-micro-back" data-step1-back="2">Back</button>
+                    }
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="4" hidden>
-                    <div class="lq-choice-group">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                        <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
-                            <div class="lq-age-picker-top">
-                                <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
-                            </div>
-                            <input
-                                type="range"
-                                min="@minSelectableAge"
-                                max="@maxSelectableAge"
-                                step="1"
-                                value="@ageValue"
-                                class="lq-age-slider"
-                                data-age-slider
-                                aria-labelledby="lbl-step1-age" />
-                            <div class="lq-age-scale" aria-hidden="true">
-                                @foreach (var markerAge in ageSliderMarkerValues)
+                    @if (isMortgageOffer)
+                    {
+                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
+                            <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
+                            <div class="lq-choice-grid lq-grid-2">
+                                @foreach (var opt in tobaccoStep.Options)
                                 {
-                                    <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                    var isChecked = IsStepOptionChecked("TobaccoUse", opt.Code);
+                                    var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                                    <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                        <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                        @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <span class="lq-card-visual" aria-hidden="true">
+                                                <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                                    <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                                </svg>
+                                            </span>
+                                        }
+                                        <span class="lq-card-copy">
+                                            <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                            <span class="lq-card-title">@opt.Label</span>
+                                            <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                        </span>
+                                    </label>
                                 }
                             </div>
+                            <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                         </div>
-                        <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
-                    </div>
-                    <div class="lq-step-actions dual">
-                        <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                        <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
-                    </div>
+                        <div class="lq-step-actions dual">
+                            <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
+                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="lq-choice-group">
+                            <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
+                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                <div class="lq-age-picker-top">
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="@minSelectableAge"
+                                    max="@maxSelectableAge"
+                                    step="1"
+                                    value="@ageValue"
+                                    class="lq-age-slider"
+                                    data-age-slider
+                                    aria-labelledby="lbl-step1-age" />
+                                <div class="lq-age-scale" aria-hidden="true">
+                                    @foreach (var markerAge in ageSliderMarkerValues)
+                                    {
+                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                        </div>
+                        <div class="lq-step-actions dual">
+                            <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
+                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                        </div>
+                    }
                 </div>
             </div>
         </div>
@@ -5315,11 +5580,23 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                         <div class="full lq-contact-capture-head">
                             <div class="lq-contact-capture-kicker">Next step</div>
-                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">Want the walkthrough behind this estimate?</div>
-                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.</div>
+                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
+                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                         </div>
                         <div class="full">
-                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                            @if (showMortgageCarrierDisclosure)
+                            {
+                                <details class="lq-carrier-disclosure">
+                                    <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
+                                    <div class="lq-carrier-disclosure-body">
+                                        @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                    </div>
+                                </details>
+                            }
+                            else
+                            {
+                                @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                            }
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
@@ -5456,8 +5733,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const heroTrustStrip = document.getElementById('lifeHeroTrustStrip');
   const step2EstimateSlot = document.getElementById('lifeStep2EstimateSlot');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
+  const ageStepContinueBtn = document.getElementById('ageStepContinueBtn');
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
+  const tobaccoStepBackBtn = document.getElementById('tobaccoStepBackBtn');
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answer1Hidden = document.getElementById('Answer1');
   const answer2Hidden = document.getElementById('Answer2');
@@ -5478,6 +5757,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
+  const isPaidLandingExperience = '@(isPaidLandingExperience ? "true" : "false")' === 'true';
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
   const usesLeanContactFields = '@(usesLeanContactFields ? "true" : "false")' === 'true';
@@ -5518,13 +5798,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-  const microStepViewEvents = [
-    'life_step1_protecting_view',
-    'life_step1_goal_view',
-    'life_step1_coverage_view',
-    'life_step1_tobacco_view',
-    'life_step1_age_view',
-  ];
+  const isMortgageOfferFlow = quoteType === 'mortgage';
+  const discoveryStepSequence = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
+    isMortgageOffer
+      ? new[] { "CoverageGoal", "ProtectingWho", "CoverageAmountOption", "Age", "TobaccoUse" }
+      : new[] { "ProtectingWho", "CoverageGoal", "CoverageAmountOption", "TobaccoUse", "Age" })));
+  const discoveryStepIndexes = Object.freeze(discoveryStepSequence.reduce((accumulator, fieldName, index) => {
+    accumulator[fieldName] = index;
+    return accumulator;
+  }, {}));
+  const microStepViewEvents = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
+    isMortgageOffer
+      ? new[] { "life_step1_goal_view", "life_step1_protecting_view", "life_step1_coverage_view", "life_step1_age_view", "life_step1_tobacco_view" }
+      : new[] { "life_step1_protecting_view", "life_step1_goal_view", "life_step1_coverage_view", "life_step1_tobacco_view", "life_step1_age_view" })));
+  const finalDiscoveryContinueEvent = isMortgageOfferFlow ? 'life_step1_tobacco_continue' : 'life_step1_age_continue';
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
   let processingTimer = null;
@@ -6163,6 +6450,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     const topicLabel = resolveStep2TopicLabel(preview);
     const isSingleOffer = isSingleOfferEstimate(preview);
+    const isMortgageTopic = topicLabel === 'mortgage protection';
 
     if (step2Heading) {
       step2Heading.textContent = isSingleOffer
@@ -6178,6 +6466,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     if (step2ContactTitle) {
+      if (isMortgageTopic) {
+        step2ContactTitle.textContent = defaultStep2ContactTitleText;
+      } else
       if (isSingleOffer) {
         step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
           ? `Want ${agentDirectContactName} to walk you through this ${topicLabel} estimate?`
@@ -6190,9 +6481,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = isSingleOffer
-        ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and where it usually makes sense to size up or down from here.`
-        : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and which coverage range is most worth reviewing next.';
+      step2ContactCopy.textContent = isMortgageTopic
+        ? defaultStep2ContactCopyText
+        : isSingleOffer
+          ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and where it usually makes sense to size up or down from here.`
+          : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and which coverage range is most worth reviewing next.';
     }
   }
 
@@ -6683,6 +6976,61 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return hasValidAge;
   }
 
+  function hasSelectionForDiscoveryField(fieldName) {
+    switch (fieldName) {
+      case 'ProtectingWho':
+      case 'CoverageGoal':
+      case 'CoverageAmountOption':
+      case 'TobaccoUse':
+        return Boolean(selectedRadio(fieldName));
+      case 'Age':
+        {
+          const ageValue = getSelectedAgeValue();
+          const ageNum = Number.parseInt(ageValue, 10);
+          return hasExplicitAgeSelectionInUi()
+            && Number.isFinite(ageNum)
+            && ageNum >= AGE_MIN
+            && ageNum <= AGE_MAX;
+        }
+      default:
+        return false;
+    }
+  }
+
+  function getDiscoveryErrorId(fieldName) {
+    switch (fieldName) {
+      case 'ProtectingWho':
+        return 'err-step1-protecting-who';
+      case 'CoverageGoal':
+        return 'err-step1-coverage-goal';
+      case 'CoverageAmountOption':
+        return 'err-step1-coverage-amount';
+      case 'TobaccoUse':
+        return 'err-step1-tobacco-use';
+      case 'Age':
+        return 'err-step1-age';
+      default:
+        return '';
+    }
+  }
+
+  function getDiscoveryFieldFocusTarget(fieldName) {
+    switch (fieldName) {
+      case 'ProtectingWho':
+        return form.querySelector('input[name="ProtectingWho"]');
+      case 'CoverageGoal':
+        return form.querySelector('input[name="CoverageGoal"]');
+      case 'CoverageAmountOption':
+        return form.querySelector('input[name="CoverageAmountOption"]');
+      case 'TobaccoUse':
+        return form.querySelector('input[name="TobaccoUse"]');
+      case 'Age':
+        return form.querySelector('[data-age-slider]');
+      default:
+        return null;
+    }
+  }
+
   function showMicroStep(stepIndex, shouldScroll = false, options = {}) {
     const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
     currentMicroStep = bounded;
@@ -6839,62 +7187,43 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function resolveInitialMicroStep() {
-    if (!selectedRadio('ProtectingWho')) return 0;
-    if (!selectedRadio('CoverageGoal')) return 1;
-    if (!selectedRadio('CoverageAmountOption')) return 2;
-    if (!selectedRadio('TobaccoUse')) return 3;
-    return 4; // age step
+    for (let stepIndex = 0; stepIndex < discoveryStepSequence.length; stepIndex += 1) {
+      if (!hasSelectionForDiscoveryField(discoveryStepSequence[stepIndex])) {
+        return stepIndex;
+      }
+    }
+
+    return Math.max(0, discoveryStepSequence.length - 1);
   }
 
   function validateStepOneComplete() {
-    const protecting = selectedRadio('ProtectingWho');
-    const goal = selectedRadio('CoverageGoal');
-    const coverageAmount = selectedRadio('CoverageAmountOption');
-    const hasValidCoverageAmount = validateCoverageAmountOnly();
-    const tobaccoUse = selectedRadio('TobaccoUse');
-    const hasValidTobaccoUse = validateTobaccoOnly();
-    const hasValidAge = validateAgeOnly();
+    const validationResults = {
+      ProtectingWho: Boolean(selectedRadio('ProtectingWho')),
+      CoverageGoal: Boolean(selectedRadio('CoverageGoal')),
+      CoverageAmountOption: validateCoverageAmountOnly(),
+      TobaccoUse: validateTobaccoOnly(),
+      Age: validateAgeOnly()
+    };
 
-    showChoiceError('err-step1-protecting-who', !protecting);
-    showChoiceError('err-step1-coverage-goal', !goal);
-    showChoiceError('err-step1-coverage-amount', !coverageAmount);
-    showChoiceError('err-step1-tobacco-use', !tobaccoUse);
+    showChoiceError('err-step1-protecting-who', !validationResults.ProtectingWho);
+    showChoiceError('err-step1-coverage-goal', !validationResults.CoverageGoal);
+    showChoiceError('err-step1-coverage-amount', !validationResults.CoverageAmountOption);
+    showChoiceError('err-step1-tobacco-use', !validationResults.TobaccoUse);
 
-    if (!protecting) {
-      trackQuoteFieldError('ProtectingWho', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('ProtectingWho', { fieldContext: 'discovery' });
-      showStep1(0, true);
-      form.querySelector('input[name="ProtectingWho"]')?.focus();
+    for (const fieldName of discoveryStepSequence) {
+      if (validationResults[fieldName]) {
+        continue;
+      }
+
+      const trackedFieldName = fieldName === 'Age' ? 'AgeBracket' : fieldName;
+      const stepIndex = discoveryStepIndexes[fieldName] ?? 0;
+      trackQuoteFieldError(trackedFieldName, 'required_missing', 'discovery');
+      metaSignal?.trackFieldError(trackedFieldName, { fieldContext: 'discovery' });
+      showStep1(stepIndex, true);
+      getDiscoveryFieldFocusTarget(fieldName)?.focus();
       return false;
     }
-    if (!goal) {
-      trackQuoteFieldError('CoverageGoal', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('CoverageGoal', { fieldContext: 'discovery' });
-      showStep1(1, true);
-      form.querySelector('input[name="CoverageGoal"]')?.focus();
-      return false;
-    }
-    if (!hasValidCoverageAmount) {
-      trackQuoteFieldError('CoverageAmountOption', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('CoverageAmountOption', { fieldContext: 'discovery' });
-      showStep1(2, true);
-      form.querySelector('input[name="CoverageAmountOption"]')?.focus();
-      return false;
-    }
-    if (!hasValidTobaccoUse) {
-      trackQuoteFieldError('TobaccoUse', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('TobaccoUse', { fieldContext: 'discovery' });
-      showStep1(3, true);
-      form.querySelector('input[name="TobaccoUse"]')?.focus();
-      return false;
-    }
-    if (!hasValidAge) {
-      trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
-      showStep1(4, true);
-      form.querySelector('[data-age-slider]')?.focus();
-      return false;
-    }
+
     return true;
   }
 
@@ -6936,7 +7265,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function queueMicroAdvance(expectedStep, nextStep) {
-    if (step1Panel.hidden || currentMicroStep !== expectedStep) return;
+    if (step1Panel.hidden || currentMicroStep !== expectedStep || !Number.isFinite(nextStep) || nextStep >= microSteps.length) return;
     clearAutoAdvanceTimer();
     autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
   }
@@ -6962,7 +7291,13 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
   }
 
-  wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', 0, 1);
+  const protectingStepIndex = discoveryStepIndexes.ProtectingWho ?? 0;
+  const goalStepIndex = discoveryStepIndexes.CoverageGoal ?? 1;
+  const coverageAmountStepIndex = discoveryStepIndexes.CoverageAmountOption ?? 2;
+  const ageStepIndex = discoveryStepIndexes.Age ?? (microSteps.length - 1);
+  const tobaccoStepIndex = discoveryStepIndexes.TobaccoUse ?? Math.max(0, microSteps.length - 2);
+
+  wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', protectingStepIndex, protectingStepIndex + 1);
   form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
     radio.addEventListener('change', () => {
       showChoiceError('err-step1-coverage-goal', false);
@@ -6972,19 +7307,42 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       persistFunnelState();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
       void ensureMetaLeadFormStart();
-      if (!step1Panel.hidden && currentMicroStep === 1) {
+      if (!step1Panel.hidden && currentMicroStep === goalStepIndex) {
         clearAutoAdvanceTimer();
-        autoAdvanceTimer = window.setTimeout(() => showMicroStep(2, true), 160);
+        autoAdvanceTimer = window.setTimeout(() => showMicroStep(goalStepIndex + 1, true), 160);
       }
     });
   });
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: 'tobacco' });
-    showStep1(3, true);
+    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[Math.max(0, ageStepIndex - 1)] || 'previous' });
+    showStep1(Math.max(0, ageStepIndex - 1), true);
+  });
+  ageStepContinueBtn?.addEventListener('click', () => {
+    clearAutoAdvanceTimer();
+    syncStepOneAnswersFromUI();
+    if (!validateAgeOnly()) {
+      trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
+      metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
+      form.querySelector('[data-age-slider]')?.focus();
+      return;
+    }
+
+    clearEstimatePreviewCache();
+    syncStepOneAnswersFromUI();
+    trackEvent('life_step1_age_continue', {
+      age: answer4Hidden?.value || '',
+      ageRange: ageHidden?.value || ''
+    });
+    void ensureMetaLeadFormStart();
+    showMicroStep(tobaccoStepIndex, true);
+  });
+  tobaccoStepBackBtn?.addEventListener('click', () => {
+    metaSignal?.trackBacktrack({ fromStep: 'tobacco', toStep: 'age' });
+    showStep1(Math.max(0, tobaccoStepIndex - 1), true);
   });
 
-  wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', 2, 3);
-  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', 3, 4);
+  wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', coverageAmountStepIndex, coverageAmountStepIndex + 1);
+  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, isMortgageOfferFlow ? Number.NaN : tobaccoStepIndex + 1);
 
   ageSliders.forEach((slider) => {
     if (!(slider instanceof HTMLInputElement)) {
@@ -7026,7 +7384,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) return;
     syncStepOneAnswersFromUI();
-    trackEvent('life_step1_age_continue', {
+    trackEvent(finalDiscoveryContinueEvent, {
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
       coverageAmount: coverageAmountHidden?.value || '',
@@ -7045,7 +7403,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
     metaSignal?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
-    showStep1(4, true);
+    showStep1(Math.max(0, discoveryStepSequence.length - 1), true);
   });
 
   // form submission
