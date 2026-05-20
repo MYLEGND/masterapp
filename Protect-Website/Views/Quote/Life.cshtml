@@ -5534,13 +5534,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         if (!preview) {
           preview = await ensureEstimatePreview();
         }
-        await showMiniResultsPreview(preview, { trackView: false });
+        await showMiniResultsPreview(preview, { trackView: false, shouldScroll: false });
       } else if (state.activePanel === 'contact') {
         currentMicroStep = restoredMicroStep;
         setActivePanel(step2Panel);
       } else if (state.activePanel === 'processing') {
         if (latestEstimatePreview) {
-          await showMiniResultsPreview(latestEstimatePreview, { trackView: false });
+          await showMiniResultsPreview(latestEstimatePreview, { trackView: false, shouldScroll: false });
         } else {
           showStep1(restoredMicroStep, false, { trackView: false });
         }
@@ -5965,19 +5965,69 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     persistFunnelState();
   }
 
+  function getNearestFunnelPanel(target) {
+    if (!(target instanceof HTMLElement)) {
+      return null;
+    }
+
+    if (
+      target === step1Panel ||
+      target === processingPanel ||
+      target === step2Panel ||
+      target.id === 'lifeMiniResultsPanel'
+    ) {
+      return target;
+    }
+
+    return target.closest('#lifeMiniResultsPanel, #lifeStep2Panel, #lifeProcessingPanel, #lifeStep1Panel');
+  }
+
+  function getActiveMicroStepElement() {
+    return microSteps.find((stepEl) => !stepEl.hidden) || null;
+  }
+
+  function getPanelFocusTarget(panel) {
+    const funnelPanel = getNearestFunnelPanel(panel);
+    if (!(funnelPanel instanceof HTMLElement)) {
+      return panel instanceof HTMLElement ? panel : null;
+    }
+
+    if (funnelPanel === step1Panel) {
+      return getActiveMicroStepElement()?.querySelector('.lq-step-question') || step1Progress || funnelPanel;
+    }
+
+    if (funnelPanel === processingPanel) {
+      return processingHeading || funnelPanel;
+    }
+
+    if (funnelPanel === step2Panel) {
+      return step2Heading || funnelPanel;
+    }
+
+    if (funnelPanel.id === 'lifeMiniResultsPanel') {
+      return funnelPanel.querySelector('.lq-step-title') || funnelPanel.querySelector('#continueToContactBtn') || funnelPanel;
+    }
+
+    return funnelPanel.querySelector('.lq-step-title, .lq-step-question, button, input, select, textarea') || funnelPanel;
+  }
+
   function resolveScrollTarget(target, options = {}) {
     if (!target) return target;
+    const nearestFunnelPanel = getNearestFunnelPanel(target);
+    if (options.preferVisiblePanel === true && nearestFunnelPanel) {
+      return nearestFunnelPanel;
+    }
     if (
       options.preferVisiblePanel !== true &&
       contactFirstPanel &&
-      (target === step1Panel ||
-       target === processingPanel ||
-       target === step2Panel ||
-       (target instanceof HTMLElement && target.id === 'lifeMiniResultsPanel'))
+      (nearestFunnelPanel === step1Panel ||
+       nearestFunnelPanel === processingPanel ||
+       nearestFunnelPanel === step2Panel ||
+       (nearestFunnelPanel instanceof HTMLElement && nearestFunnelPanel.id === 'lifeMiniResultsPanel'))
     ) {
       return contactFirstPanel;
     }
-    return target;
+    return nearestFunnelPanel || target;
   }
 
   function getScrollTopOffset() {
@@ -6048,23 +6098,38 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }, 40);
   }
 
+  function focusFunnelPanel(target, options = {}) {
+    const panelTarget = getNearestFunnelPanel(target) || target;
+    const focusTarget = options.focusTarget instanceof HTMLElement
+      ? options.focusTarget
+      : getPanelFocusTarget(panelTarget);
+
+    scrollIntoViewAndFocus(panelTarget, options.shouldFocus !== false, {
+      behavior: options.behavior,
+      align: options.align || 'center',
+      preferVisiblePanel: true,
+      spotlightTarget: panelTarget instanceof HTMLElement ? panelTarget : undefined,
+      focusTarget
+    });
+  }
+
   function scrollInitialFunnelIntoView() {
     const initialTarget = getVisibleFunnelPanel();
     if (!(initialTarget instanceof HTMLElement)) return;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
-        scrollPanelIntoView(initialTarget, 'auto');
+        scrollPanelIntoView(initialTarget, 'auto', {
+          align: 'center',
+          preferVisiblePanel: true
+        });
       });
     });
   }
 
   funnelBridgeBtn?.addEventListener('click', () => {
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
-    scrollIntoViewAndFocus(activeTarget, true, {
-      behavior: 'smooth',
-      align: 'center',
-      preferVisiblePanel: true,
-      spotlightTarget: activeTarget instanceof HTMLElement ? activeTarget : undefined
+    focusFunnelPanel(activeTarget, {
+      behavior: 'smooth'
     });
   });
 
@@ -6149,7 +6214,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     persistFunnelState();
 
     if (shouldScroll) {
-      scrollIntoViewAndFocus(step1Panel, false);
+      focusFunnelPanel(step1Panel, {
+        shouldFocus: true
+      });
     }
   }
 
@@ -6185,7 +6252,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     trackEvent('life_processing_bridge_view');
     animateProcessingBar();
     if (shouldScroll) {
-      scrollIntoViewAndFocus(processingHeading || processingPanel, true);
+      focusFunnelPanel(processingPanel, {
+        shouldFocus: true
+      });
     }
     processingTimer = window.setTimeout(async () => {
       processingTimer = null;
@@ -6227,6 +6296,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
     window.trustedCarrierStrip?.init(previewPanel);
     setActivePanel(previewPanel);
+    if (options.shouldScroll !== false) {
+      focusFunnelPanel(previewPanel, {
+        shouldFocus: true
+      });
+    }
     if (options.trackView !== false) {
       trackEvent('mini_results_view', {
         recommendationPrimaryKey: primary.policyKey || '',
@@ -6286,7 +6360,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
     }));
     if (shouldScroll) {
-      scrollIntoViewAndFocus(step2Heading || step2Panel, true);
+      focusFunnelPanel(step2Panel, {
+        shouldFocus: true
+      });
     }
   }
 
