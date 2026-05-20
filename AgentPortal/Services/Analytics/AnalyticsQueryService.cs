@@ -2034,7 +2034,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 return !groupedEvents.Any(other =>
                     other.EventId != e.EventId &&
                     (other.EventUtc > e.EventUtc ||
-                     (other.EventUtc == e.EventUtc && other.CreatedUtc > e.CreatedUtc)) &&
+                     (other.EventUtc == e.EventUtc && other.EventId != e.EventId)) &&
                     IsQuoteResumeAfterAbandonEvent(other));
             })
             .ToList();

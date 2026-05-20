@@ -485,7 +485,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                     MaxTotalSignalScore = g.Max(x => x.TotalSignalScore)
                 };
 
-                foreach (var row in g.OrderBy(x => x.EventUtc).ThenBy(x => x.CreatedUtc))
+                foreach (var row in g.OrderBy(x => x.CreatedUtc))
                 {
                     ApplyRowToVisitorSummary(summary, row);
                 }
@@ -498,7 +498,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 
     private static void ApplyRowToVisitorSummary(VisitorSignalSummary summary, MetaSignalEvent row)
     {
-        var eventUtc = row.EventUtc ?? row.CreatedUtc;
+        var eventUtc = row.CreatedUtc;
 
         if (ReadBoolMetadata(row.MetadataJson, "contactStepReached"))
             summary.ContactStepReached = true;
