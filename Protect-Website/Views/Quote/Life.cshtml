@@ -263,6 +263,44 @@
             ? $"Have {agentDirectContactName} Review My Final Expense Options"
             : "Help Me Review Final Expense Options";
     }
+    else if (normalizedOfferKey == "mortgage_protection")
+    {
+        contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
+        contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
+        contactFirstProofKicker = "Mortgage protection guidance";
+        contactFirstProofText = "Explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance before any contact step.";
+        contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "No spam calls" };
+        contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
+        contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit before any contact step.";
+        contactFirstProcessingNote = "Building your mortgage protection estimate...";
+        contactFirstNextLabel = "Mortgage protection first";
+        contactFirstNextCopy = "You’ll see estimated mortgage protection options before any contact step. If you want help after that, you can send your info. No obligation.";
+        finalStepHeading = "Want help reviewing mortgage protection options?";
+        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
+        agentTrustBio = "Send your info and I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
+        finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My Mortgage Protection Options"
+            : "Help Me Review Mortgage Protection Options";
+    }
+    else if (normalizedOfferKey == "iul")
+    {
+        contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
+        contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about growing your wealth, protecting your future, and leaving a legacy.";
+        contactFirstProofKicker = "IUL guidance";
+        contactFirstProofText = "Explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals before any contact step.";
+        contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "No spam calls" };
+        contactFirstProcessingHeading = "Preparing your IUL estimate...";
+        contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit before any contact step.";
+        contactFirstProcessingNote = "Building your IUL estimate...";
+        contactFirstNextLabel = "IUL first";
+        contactFirstNextCopy = "You’ll see estimated indexed universal life options before any contact step. If you want help after that, you can send your info. No obligation.";
+        finalStepHeading = "Want help reviewing indexed universal life options?";
+        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
+        agentTrustBio = "Send your info and I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
+        finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My IUL Options"
+            : "Help Me Review IUL Options";
+    }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = string.Empty;
