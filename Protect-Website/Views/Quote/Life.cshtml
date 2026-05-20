@@ -1437,6 +1437,17 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     font-weight: 690;
     line-height: 1.34;
 }
+.lq-card-rich .lq-card-kicker:empty,
+.lq-card-rich .lq-card-helper:empty {
+    display: none;
+}
+.lq-card-rich:has(.lq-card-helper:empty) {
+    min-height: 104px;
+    gap: 8px;
+}
+.lq-card-rich:has(.lq-card-helper:empty) .lq-card-copy {
+    gap: 3px;
+}
 .lq-card-rich.no-visual {
     min-height: 116px;
     gap: 8px;
@@ -2092,6 +2103,24 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-rs-label { font-size: .72rem; font-weight: 700; color: rgba(248,250,252,0.52); text-transform: uppercase; letter-spacing: .04em; }
 .lq-rs-value { font-size: .88rem; font-weight: 800; color: #f3d78f; }
 
+.lq-estimate-panel {
+    width: 100%;
+    max-width: 980px !important;
+    margin: 0 auto;
+}
+.lq-estimate-panel .lq-step-panel-pad {
+    padding: 18px 18px 16px;
+}
+.lq-estimate-panel .lq-step-progress,
+.lq-estimate-panel .lq-step-title,
+.lq-estimate-panel .lq-step-helper,
+.lq-estimate-panel .lq-estimate-disclaimer,
+.lq-estimate-panel .lq-reach-note {
+    text-align: center;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .lq-rec-badge {
     display: inline-block;
     font-size: .72rem;
@@ -2110,22 +2139,30 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     border: 1.4px solid rgba(199,153,49,0.34);
     border-radius: 12px;
     padding: 14px 14px 12px;
-    margin-bottom: 10px;
+    margin-bottom: 0;
 }
 .lq-rec-card.primary { border-color: rgba(199,153,49,0.64); background: rgba(199,153,49,0.08); }
 .lq-rec-title { font-size: 1.05rem; font-weight: 900; color: #f8fafc; margin-bottom: 5px; }
 .lq-rec-desc { font-size: .9rem; color: rgba(248,250,252,0.72); margin-bottom: 8px; line-height: 1.45; }
 .lq-estimate-panel .lq-step-helper {
-    max-width: 60ch;
+    max-width: 66ch;
 }
 .lq-estimate-grid {
     display: grid;
-    gap: 12px;
+    gap: 16px;
     grid-template-columns: 1fr;
+    max-width: 920px;
+    margin: 0 auto;
+}
+.lq-estimate-grid.is-single {
+    max-width: 760px;
+}
+.lq-estimate-grid.is-comparison {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .lq-estimate-card {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     height: 100%;
 }
 .lq-estimate-card-top {
@@ -2159,6 +2196,19 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         radial-gradient(circle at top right, rgba(224,177,74,0.1), transparent 42%),
         linear-gradient(180deg, rgba(20,31,51,0.78) 0%, rgba(14,24,40,0.58) 100%);
 }
+.lq-estimate-grid.is-single .lq-estimate-card-top,
+.lq-estimate-grid.is-single .lq-rec-title,
+.lq-estimate-grid.is-single .lq-estimate-reason {
+    text-align: center;
+    justify-content: center;
+}
+.lq-estimate-grid.is-single .lq-estimate-price-wrap {
+    justify-items: center;
+}
+.lq-estimate-grid.is-single .lq-estimate-reason {
+    max-width: 42ch;
+    margin: 0 auto;
+}
 .lq-estimate-price-label {
     color: rgba(248,250,252,0.56);
     font-size: .68rem;
@@ -2191,6 +2241,10 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: grid;
     gap: 5px;
 }
+.lq-estimate-grid.is-single .lq-rec-bullets {
+    max-width: 39ch;
+    margin: 0 auto;
+}
 .lq-rec-bullets li {
     font-size: .86rem;
     font-weight: 760;
@@ -2213,7 +2267,16 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     color: rgba(248,250,252,0.52);
     margin-top: 4px;
 }
+.lq-estimate-panel .lq-carrier-strip {
+    margin: 18px auto 20px;
+}
 @@media (max-width: 640px) {
+    .lq-estimate-panel {
+        max-width: 100% !important;
+    }
+    .lq-estimate-panel .lq-step-panel-pad {
+        padding: 12px 12px 11px;
+    }
     .lq-results-summary { gap: 6px; padding: 8px 10px; }
     .lq-rec-card { padding: 12px 12px 10px; }
     .lq-rec-title { font-size: .98rem; }
@@ -2222,10 +2285,19 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-estimate-price { font-size: 1.12rem; }
     .lq-estimate-coverage { font-size: .78rem; }
     .lq-estimate-disclaimer { font-size: .74rem; }
-}
-@@media (min-width: 720px) {
     .lq-estimate-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        max-width: none;
+    }
+    .lq-estimate-grid.is-single,
+    .lq-estimate-grid.is-comparison {
+        grid-template-columns: 1fr;
+    }
+    .lq-estimate-grid.is-single .lq-rec-bullets {
+        max-width: none;
+    }
+    .lq-estimate-panel .lq-carrier-strip {
+        margin: 12px 0 14px;
     }
 }
 
@@ -2753,6 +2825,10 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     min-height: 142px;
     padding: 15px 13px;
     gap: 11px;
+}
+.lq-contact-first-flow-surface .lq-card-rich:has(.lq-card-helper:empty) {
+    min-height: 118px;
+    gap: 8px;
 }
 .lq-contact-first-flow-surface .lq-card-rich .lq-card-title {
     font-size: 1.03rem;
@@ -3637,8 +3713,15 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 .lq-carrier-strip-viewport {
     position: relative;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    scrollbar-width: none;
+}
+.lq-carrier-strip-viewport::-webkit-scrollbar {
+    display: none;
 }
 
 .lq-carrier-strip-viewport::before,
@@ -4267,7 +4350,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
-                                        <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                                         <div class="lq-choice-group">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
@@ -4619,7 +4701,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="4" hidden>
-                    <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                     <div class="lq-choice-group">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                         <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
