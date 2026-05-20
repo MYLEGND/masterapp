@@ -3568,18 +3568,18 @@ body {
 }
 
 .wa-kpi-stage-meta {
-    flex: 0 1 36rem;
+    flex: 0 1 40rem;
     min-width: 0;
     display: flex;
     justify-content: flex-end;
 }
 
 .wa-kpi-meta-dock {
-    width: min(100%, 34rem);
+    width: min(100%, 40rem);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: .75rem 1rem;
+    gap: .55rem .85rem;
     padding: .65rem .8rem;
     border: 1px solid rgba(199,153,49,.24);
     border-radius: 16px;
@@ -3592,6 +3592,7 @@ body {
 }
 
 .wa-kpi-meta-copy {
+    flex: 1 1 auto;
     min-width: 0;
     display: grid;
     gap: .18rem;
@@ -3614,14 +3615,19 @@ body {
 }
 
 .wa-kpi-meta-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    gap: .35rem;
     justify-content: flex-end;
 }
 
 .wa-kpi-meta-btn {
-    min-height: 34px;
-    padding: .4rem .72rem;
+    min-height: 32px;
+    padding: .36rem .62rem;
     border-radius: 10px;
-    font-size: .76rem;
+    font-size: .72rem;
     line-height: 1.15;
     white-space: nowrap;
 }
@@ -4530,7 +4536,14 @@ body {
 
     .wa-kpi-meta-actions {
         width: 100%;
+        overflow-x: auto;
+        padding-bottom: 2px;
         justify-content: flex-start;
+    }
+
+    .wa-kpi-meta-actions .btn {
+        width: auto;
+        flex: 0 0 auto;
     }
 
     .wa-workbench-intro {
@@ -4583,11 +4596,11 @@ body {
         min-height: auto;
     }
 
-    .hero-link-meta-actions {
+    .hero-link-meta-actions:not(.wa-kpi-meta-actions) {
         flex-direction: column;
     }
 
-    .hero-link-meta-actions .btn {
+    .hero-link-meta-actions:not(.wa-kpi-meta-actions) .btn {
         width: 100%;
     }
 
