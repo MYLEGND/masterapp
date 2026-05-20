@@ -76,6 +76,7 @@
       .slice(0, 2)
       .map((reason) => `<li>${escapeHtml(reason)}</li>`)
       .join('');
+    const reasonsListHtml = reasonsHtml ? `<ul class="lq-rec-bullets">${reasonsHtml}</ul>` : '';
 
     return `
       <article class="lq-rec-card lq-estimate-card ${escapeHtml(modifierClass)}">
@@ -89,59 +90,48 @@
           <div class="lq-estimate-price">${escapeHtml(formatCurrencyRange(normalized.estimatedLowMonthly, normalized.estimatedHighMonthly))}</div>
         </div>
         <div class="lq-estimate-reason">${escapeHtml(normalized.recommendationReason)}</div>
-        <ul class="lq-rec-bullets">${reasonsHtml}</ul>
+        ${reasonsListHtml}
       </article>
     `;
   }
 
-  function buildResultsHeading(preview) {
+  function buildContactSummaryTitle(preview) {
     if (preview.displayMode === 'single') {
-      return `Here’s your estimated ${escapeHtml(preview.primary.policyType)} fit`;
+      return `Estimated ${escapeHtml(preview.primary.policyType)} fit`;
     }
 
-    return 'Here’s what may fit based on what you shared';
+    return `Estimated ${escapeHtml(preview.primary.policyType)} fit`;
   }
 
-  function buildResultsHelper(preview) {
+  function buildContactSummaryCopy(preview) {
     if (preview.displayMode === 'single') {
-      return `This estimate is a practical starting point for ${escapeHtml(preview.primary.policyType)} based on what you shared.`;
+      return `Finish below to review this estimate and how ${escapeHtml(preview.primary.policyType)} may fit.`;
     }
 
-    return 'These estimated ranges are meant to give you a practical starting point before you talk through details with a licensed professional.';
+    return 'Finish below for a personal walkthrough of this estimate and what may fit best.';
   }
 
-  function buildResultsNote(preview) {
-    if (preview.displayMode === 'single') {
-      return `Continue for a personal walkthrough of this estimate and how ${escapeHtml(preview.primary.policyType)} may fit.`;
-    }
-
-    return 'Continue for a personal walkthrough of these estimates and what may fit best.';
-  }
-
-  function buildResultsPanelHtml(preview, continueLabel, trustStripHtml = '') {
+  function buildContactSummaryHtml(preview) {
     const normalized = normalizePreview(preview);
     const secondary = normalized.secondary;
     const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
     const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
-    const gridClass = hasSecondary ? 'is-comparison' : 'is-single';
+    const secondaryNoteHtml = hasSecondary
+      ? `<div class="lq-contact-estimate-alt">Also worth reviewing: <strong>${escapeHtml(secondary.policyType)}</strong></div>`
+      : '';
 
     return `
-      <div class="lq-step-panel lq-estimate-panel" id="lifeMiniResultsPanel">
-        <div class="lq-step-panel-pad">
-          <div class="lq-step-progress">Your Results</div>
-          <div class="lq-step-title">${buildResultsHeading(normalized)}</div>
-          <div class="lq-step-helper">${buildResultsHelper(normalized)}</div>
-          ${trustStripHtml || ''}
-          <div class="lq-estimate-grid ${gridClass}">
-            ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended' : 'Your Estimate', 'primary')}
-            ${hasSecondary ? buildEstimateCard(secondary, 'Also Worth Considering', 'secondary') : ''}
-          </div>
-          <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
-          <div class="lq-reach-note">${buildResultsNote(normalized)}</div>
-          <div class="lq-step-actions">
-            <button type="button" class="btn-gold btn-progress w-100" id="continueToContactBtn">${escapeHtml(continueLabel || 'Continue To My Personal Review')}</button>
-          </div>
+      <div class="lq-contact-estimate-wrap" id="lifeStep2EstimateSummary">
+        <div class="lq-contact-estimate-head">
+          <div class="lq-contact-estimate-kicker">Your Estimate</div>
+          <div class="lq-contact-estimate-title">${buildContactSummaryTitle(normalized)}</div>
+          <div class="lq-contact-estimate-copy">${buildContactSummaryCopy(normalized)}</div>
         </div>
+        <div class="lq-contact-estimate-card-wrap">
+          ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended Fit' : 'Your Estimate', 'primary')}
+        </div>
+        ${secondaryNoteHtml}
+        <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
       </div>
     `;
   }
@@ -161,7 +151,7 @@
   }
 
   window.lifeEstimateEngine = Object.freeze({
-    buildResultsPanelHtml,
+    buildContactSummaryHtml,
     fetchPreview,
     formatCoverageAmount,
     formatCurrencyRange,

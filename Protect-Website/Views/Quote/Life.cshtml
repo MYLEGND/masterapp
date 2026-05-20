@@ -435,7 +435,6 @@
         ? agentTrustProfile!.Npn!.Trim()
         : null;
     var stepOneContinueButtonText = "Show My Estimate";
-    var resultsContinueButtonText = "Continue To My Personal Review";
     var finalSubmitButtonText = isContactFirstEducationVariant
         ? "Get My Personal Review"
         : "Get My Personalized Review";
@@ -509,7 +508,6 @@
         finalStepHeading = "Get your whole life walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
         agentTrustBio = "I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
-        resultsContinueButtonText = "Continue To My Whole Life Review";
         finalSubmitButtonText = "Get My Whole Life Review";
         productFocusTitle = "Why people explore whole life";
         productFocusCopy = "Whole life is usually explored for lasting protection, steady guarantees, and long-term value growth that stays aligned with the same product path.";
@@ -533,7 +531,6 @@
         finalStepHeading = "Get your term life walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
         agentTrustBio = "I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
-        resultsContinueButtonText = "Continue To My Term Life Review";
         finalSubmitButtonText = "Get My Term Life Review";
         productFocusTitle = "Why people explore term life";
         productFocusCopy = "Term life is usually explored for affordable protection during the years income, bills, and family responsibilities matter most.";
@@ -557,7 +554,6 @@
         finalStepHeading = "Get your final expense walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
         agentTrustBio = "I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
-        resultsContinueButtonText = "Continue To My Final Expense Review";
         finalSubmitButtonText = "Get My Final Expense Review";
         productFocusTitle = "Why people explore final expense";
         productFocusCopy = "Final expense coverage is usually explored to help with burial costs, honor personal wishes, and keep final bills from falling on loved ones.";
@@ -581,7 +577,6 @@
         finalStepHeading = "Get your mortgage protection walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
         agentTrustBio = "I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
-        resultsContinueButtonText = "Continue To My Mortgage Review";
         finalSubmitButtonText = "Get My Mortgage Review";
         productFocusTitle = "Why people explore mortgage protection";
         productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority.";
@@ -605,7 +600,6 @@
         finalStepHeading = "Get your IUL walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
         agentTrustBio = "I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
-        resultsContinueButtonText = "Continue To My IUL Review";
         finalSubmitButtonText = "Get My IUL Review";
         productFocusTitle = "Why people explore indexed universal life";
         productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with flexible cash value growth potential and legacy planning in the same conversation.";
@@ -625,7 +619,6 @@
         "iul" => "Answer below to see your IUL estimate",
         _ => "Answer below to compare what may fit"
     };
-    var resultsContinueButtonTextJson = JsonSerializer.Serialize(resultsContinueButtonText);
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = string.Empty;
@@ -656,14 +649,6 @@
         weights = metaSignalOptions.Weights
     });
     var carrierTrustTrafficType = isPaidLandingExperience ? "paid_landing" : "website";
-    var carrierTrustResultsStripModel = new Protect_Website.Models.TrustedCarrierStripViewModel(
-        Placement: "results",
-        Mode: "full",
-        PageKey: pageKey,
-        QuoteType: normalizedOfferKey,
-        Variant: pageVariant,
-        TrafficType: carrierTrustTrafficType,
-        InstanceKey: $"life-results-{normalizedOfferKey}-{pageVariant}-{pageMode}");
     var carrierTrustContactStripModel = new Protect_Website.Models.TrustedCarrierStripViewModel(
         Placement: "contact",
         Mode: "compact",
@@ -803,7 +788,6 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
     outline-offset: 2px;
 }
 #step1Continue,
-#continueToContactBtn,
 #submitLife {
     text-wrap: balance;
 }
@@ -837,7 +821,6 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
         0 0 0 1px rgba(123,224,166,0.18) !important;
 }
 #step1Continue.btn-progress,
-#continueToContactBtn.btn-progress,
 #submitLife.btn-progress {
     min-height: 60px;
     font-size: 1.03rem;
@@ -2488,6 +2471,83 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-estimate-panel .lq-carrier-strip {
     margin: 22px auto 30px;
 }
+.lq-contact-estimate-slot[hidden] {
+    display: none !important;
+}
+.lq-contact-estimate-wrap {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1.4px solid rgba(199,153,49,0.38);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.14), transparent 36%),
+        linear-gradient(180deg, rgba(24,39,63,0.96) 0%, rgba(15,25,42,0.96) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 16px 28px rgba(0,0,0,0.2);
+}
+.lq-contact-estimate-head {
+    display: grid;
+    gap: 4px;
+    text-align: center;
+}
+.lq-contact-estimate-kicker {
+    color: rgba(240,198,109,0.88);
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-title {
+    color: #fff7df;
+    font-size: 1.08rem;
+    font-weight: 920;
+    line-height: 1.14;
+}
+.lq-contact-estimate-copy {
+    color: rgba(236,240,247,0.76);
+    font-size: .88rem;
+    line-height: 1.45;
+    max-width: 46ch;
+    margin: 0 auto;
+}
+.lq-contact-estimate-card-wrap .lq-rec-card {
+    margin: 0;
+}
+.lq-contact-estimate-card-wrap .lq-estimate-card {
+    height: auto;
+}
+.lq-contact-estimate-alt {
+    text-align: center;
+    color: rgba(232,238,247,0.72);
+    font-size: .84rem;
+    line-height: 1.4;
+}
+.lq-contact-estimate-alt strong {
+    color: #f3d78f;
+    font-weight: 860;
+}
+.lq-contact-estimate-wrap .lq-estimate-disclaimer {
+    margin-top: 0;
+    text-align: center;
+}
+.lq-contact-estimate-wrap .lq-estimate-disclaimer:empty {
+    display: none;
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-wrap {
+    background:
+        radial-gradient(circle at top right, rgba(226,187,100,0.10), transparent 34%),
+        linear-gradient(180deg, rgba(39,39,44,0.99) 0%, rgba(22,22,26,0.995) 100%);
+    border-color: rgba(236,200,116,0.34);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 18px 30px rgba(0,0,0,0.24);
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-copy,
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-alt {
+    color: rgba(244,239,231,0.78);
+}
 @@media (max-width: 640px) {
     .lq-estimate-panel {
         max-width: 100% !important;
@@ -2519,6 +2579,17 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
     .lq-estimate-panel .lq-carrier-strip {
         margin: 12px 0 14px;
+    }
+    .lq-contact-estimate-wrap {
+        padding: 12px;
+        gap: 10px;
+    }
+    .lq-contact-estimate-title {
+        font-size: 1rem;
+    }
+    .lq-contact-estimate-copy,
+    .lq-contact-estimate-alt {
+        font-size: .8rem;
     }
 }
 @@media (max-width: 767.98px) {
@@ -4706,6 +4777,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
                                     }
                                     <div class="lq-contact-grid">
+                                        <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                                         <div class="full">
                                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                                         </div>
@@ -5069,6 +5141,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                     <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
                 }
                     <div class="lq-contact-grid">
+                        <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                         <div class="full">
                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                         </div>
@@ -5177,10 +5250,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 </div>
 </div>
 
-<template id="lifeCarrierTrustStripResultsTemplate">
-    @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustResultsStripModel)
-</template>
-
 @if (isPaidLandingExperience)
 {
     <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
@@ -5203,11 +5272,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const step1Progress = document.getElementById('lifeStep1Progress');
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
   const heroTrustStrip = document.getElementById('lifeHeroTrustStrip');
+  const step2EstimateSlot = document.getElementById('lifeStep2EstimateSlot');
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
-  const carrierTrustResultsTemplate = document.getElementById('lifeCarrierTrustStripResultsTemplate');
-  const carrierTrustResultsHtml = carrierTrustResultsTemplate?.innerHTML?.trim() || '';
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answer1Hidden = document.getElementById('Answer1');
   const answer2Hidden = document.getElementById('Answer2');
@@ -5234,7 +5302,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
-  const continueResultsLabel = @Html.Raw(resultsContinueButtonTextJson);
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
@@ -5286,16 +5353,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function getVisibleFunnelPanel() {
-    const previewPanel = document.getElementById('lifeMiniResultsPanel');
-    if (previewPanel && !previewPanel.hidden) return previewPanel;
     if (step2Panel && !step2Panel.hidden) return step2Panel;
     if (processingPanel && !processingPanel.hidden) return processingPanel;
     return step1Panel;
   }
 
   function getActivePanelKey() {
-    const previewPanel = document.getElementById('lifeMiniResultsPanel');
-    if (previewPanel && !previewPanel.hidden) return 'results';
     if (step2Panel && !step2Panel.hidden) return 'contact';
     if (processingPanel && !processingPanel.hidden) return 'processing';
     return 'step1';
@@ -5439,11 +5502,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
     currentMicroStep = 0;
-
-    const previewPanel = document.getElementById('lifeMiniResultsPanel');
-    if (previewPanel) {
-      previewPanel.remove();
-    }
+    renderStep2EstimateSummary(null);
+    applyEstimatePreviewToHiddenFields(null);
   }
 
   function buildPersistedFunnelState() {
@@ -5574,13 +5634,27 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         if (!preview) {
           preview = await ensureEstimatePreview();
         }
-        await showMiniResultsPreview(preview, { trackView: false, shouldScroll: false });
+        currentMicroStep = restoredMicroStep;
+        await showStep2(false, {
+          estimatePreview: preview,
+          trackView: false,
+          trackRecommendationView: false
+        });
       } else if (state.activePanel === 'contact') {
         currentMicroStep = restoredMicroStep;
-        setActivePanel(step2Panel);
+        await showStep2(false, {
+          estimatePreview: latestEstimatePreview,
+          trackView: false,
+          trackRecommendationView: false
+        });
       } else if (state.activePanel === 'processing') {
         if (latestEstimatePreview) {
-          await showMiniResultsPreview(latestEstimatePreview, { trackView: false, shouldScroll: false });
+          currentMicroStep = restoredMicroStep;
+          await showStep2(false, {
+            estimatePreview: latestEstimatePreview,
+            trackView: false,
+            trackRecommendationView: false
+          });
         } else {
           showStep1(restoredMicroStep, false, { trackView: false });
         }
@@ -5782,21 +5856,38 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return metaSignal.trackLeadFormStart(buildMetaProgressMetadata(extra));
   }
 
+  function canRenderEstimateSummary(preview) {
+    return Boolean(preview?.primary?.policyType);
+  }
+
+  function renderStep2EstimateSummary(preview) {
+    if (!step2EstimateSlot) {
+      return;
+    }
+
+    if (!canRenderEstimateSummary(preview) || !window.lifeEstimateEngine?.buildContactSummaryHtml) {
+      step2EstimateSlot.innerHTML = '';
+      step2EstimateSlot.hidden = true;
+      return;
+    }
+
+    step2EstimateSlot.innerHTML = window.lifeEstimateEngine.buildContactSummaryHtml(preview);
+    step2EstimateSlot.hidden = false;
+  }
+
   function clearEstimatePreviewCache() {
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
+    renderStep2EstimateSummary(null);
+    applyEstimatePreviewToHiddenFields(null);
     persistFunnelState();
   }
 
   function applyEstimatePreviewToHiddenFields(preview) {
-    if (!preview) {
-      return;
-    }
-
-    if (recPrimaryKeyEl) recPrimaryKeyEl.value = preview.primary?.policyKey || '';
-    if (recPrimaryTitleEl) recPrimaryTitleEl.value = preview.primary?.policyType || '';
-    if (recSecondaryKeyEl) recSecondaryKeyEl.value = preview.secondary?.policyKey || '';
-    if (recSecondaryTitleEl) recSecondaryTitleEl.value = preview.secondary?.policyType || '';
+    if (recPrimaryKeyEl) recPrimaryKeyEl.value = preview?.primary?.policyKey || '';
+    if (recPrimaryTitleEl) recPrimaryTitleEl.value = preview?.primary?.policyType || '';
+    if (recSecondaryKeyEl) recSecondaryKeyEl.value = preview?.secondary?.policyKey || '';
+    if (recSecondaryTitleEl) recSecondaryTitleEl.value = preview?.secondary?.policyType || '';
   }
 
   async function ensureEstimatePreview(forceRefresh = false) {
@@ -5998,8 +6089,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function setActivePanel(activePanel) {
-    const previewPanel = document.getElementById('lifeMiniResultsPanel');
-    [step1Panel, processingPanel, step2Panel, previewPanel].forEach((panel) => {
+    [step1Panel, processingPanel, step2Panel].forEach((panel) => {
       if (!panel) return;
       panel.hidden = panel !== activePanel;
     });
@@ -6018,13 +6108,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (
       target === step1Panel ||
       target === processingPanel ||
-      target === step2Panel ||
-      target.id === 'lifeMiniResultsPanel'
+      target === step2Panel
     ) {
       return target;
     }
 
-    return target.closest('#lifeMiniResultsPanel, #lifeStep2Panel, #lifeProcessingPanel, #lifeStep1Panel');
+    return target.closest('#lifeStep2Panel, #lifeProcessingPanel, #lifeStep1Panel');
   }
 
   function getActiveMicroStepElement() {
@@ -6049,10 +6138,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       return step2Heading || funnelPanel;
     }
 
-    if (funnelPanel.id === 'lifeMiniResultsPanel') {
-      return funnelPanel.querySelector('.lq-step-title') || funnelPanel.querySelector('#continueToContactBtn') || funnelPanel;
-    }
-
     return funnelPanel.querySelector('.lq-step-title, .lq-step-question, button, input, select, textarea') || funnelPanel;
   }
 
@@ -6067,8 +6152,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       contactFirstPanel &&
       (nearestFunnelPanel === step1Panel ||
        nearestFunnelPanel === processingPanel ||
-       nearestFunnelPanel === step2Panel ||
-       (nearestFunnelPanel instanceof HTMLElement && nearestFunnelPanel.id === 'lifeMiniResultsPanel'))
+       nearestFunnelPanel === step2Panel)
     ) {
       return contactFirstPanel;
     }
@@ -6296,6 +6380,53 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
   }
 
+  function buildEstimateTrackingPayload(estimatePreview) {
+    const primary = estimatePreview?.primary || {};
+    const secondary = estimatePreview?.secondary || {};
+
+    return {
+      primaryPolicyType: primary.policyType || '',
+      secondaryPolicyType: secondary.policyType || '',
+      ageBand: estimatePreview?.ageBand || '',
+      requestedCoverageAmount: estimatePreview?.requestedCoverageAmount || coverageAmountHidden?.value || '',
+      tobaccoUse: estimatePreview?.tobaccoUse || answer3Hidden?.value || '',
+      coverageGoal: estimatePreview?.coverageGoal || answer2Hidden?.value || '',
+      protectingWho: estimatePreview?.protectingWho || answer1Hidden?.value || '',
+      estimatedLow: primary.estimatedLowMonthly || '',
+      estimatedHigh: primary.estimatedHighMonthly || '',
+      secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
+      secondaryEstimatedHigh: secondary.estimatedHighMonthly || '',
+      recommendationPrimaryKey: primary.policyKey || '',
+      recommendationSecondaryKey: secondary.policyKey || ''
+    };
+  }
+
+  async function trackEstimateSummaryView(estimatePreview) {
+    if (!canRenderEstimateSummary(estimatePreview)) {
+      return;
+    }
+
+    const trackingPayload = buildEstimateTrackingPayload(estimatePreview);
+    trackEvent('estimate_inline_contact_view', {
+      ...trackingPayload,
+      placement: 'contact_step'
+    });
+    trackEvent('estimate_results_viewed', {
+      ...trackingPayload,
+      placement: 'contact_step'
+    });
+    await ensureMetaLeadFormStart();
+    metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
+      recommendationPrimaryKey: trackingPayload.recommendationPrimaryKey,
+      recommendationSecondaryKey: trackingPayload.recommendationSecondaryKey
+    }));
+    metaSignal?.trackStepComplete(2, 'recommendation_complete', {
+      ...buildMetaProgressMetadata(),
+      recommendationPrimaryKey: trackingPayload.recommendationPrimaryKey,
+      recommendationSecondaryKey: trackingPayload.recommendationSecondaryKey
+    });
+  }
+
   function showProcessingBridge(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
@@ -6316,7 +6447,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       syncStepOneAnswersFromUI();
       try {
         const preview = await previewPromise;
-        await showMiniResultsPreview(preview);
+        await showStep2(true, { estimatePreview: preview });
       } catch {
         trackEvent('estimate_results_error', {
           protectingWho: answer1Hidden?.value || '',
@@ -6325,94 +6456,29 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
           tobaccoUse: answer3Hidden?.value || '',
           ageRange: ageHidden?.value || ''
         });
-        showStep2(true);
+        showStep2(true, { trackRecommendationView: false });
       }
     }, PROCESSING_BRIDGE_MS + 80);
   }
 
-  async function showMiniResultsPreview(preview, options = {}) {
-    const existing = document.getElementById('lifeMiniResultsPanel');
-    if (existing) existing.remove();
-
-    const estimatePreview = preview || latestEstimatePreview;
-    if (!estimatePreview) {
-      return;
-    }
-
-    latestEstimatePreview = estimatePreview;
-    applyEstimatePreviewToHiddenFields(estimatePreview);
-
-    const previewHtml = window.lifeEstimateEngine.buildResultsPanelHtml(estimatePreview, continueResultsLabel, carrierTrustResultsHtml);
-    const primary = estimatePreview.primary || {};
-    const secondary = estimatePreview.secondary || {};
-
-    processingPanel.insertAdjacentHTML('afterend', previewHtml);
-    const previewPanel = document.getElementById('lifeMiniResultsPanel');
-    window.trustedCarrierStrip?.init(previewPanel);
-    setActivePanel(previewPanel);
-    if (options.shouldScroll !== false) {
-      focusFunnelPanel(previewPanel, {
-        shouldFocus: true
-      });
-    }
-    if (options.trackView !== false) {
-      trackEvent('mini_results_view', {
-        recommendationPrimaryKey: primary.policyKey || '',
-        recommendationSecondaryKey: secondary.policyKey || ''
-      });
-      trackEvent('estimate_results_viewed', {
-        primaryPolicyType: primary.policyType || '',
-        secondaryPolicyType: secondary.policyType || '',
-        ageBand: estimatePreview.ageBand || '',
-        requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
-        tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
-        coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
-        protectingWho: estimatePreview.protectingWho || answer1Hidden?.value || '',
-        estimatedLow: primary.estimatedLowMonthly || '',
-        estimatedHigh: primary.estimatedHighMonthly || '',
-        secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
-        secondaryEstimatedHigh: secondary.estimatedHighMonthly || ''
-      });
-      await ensureMetaLeadFormStart();
-      metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
-        recommendationPrimaryKey: primary.policyKey || '',
-        recommendationSecondaryKey: secondary.policyKey || ''
-      }));
-    }
-
-    persistFunnelState();
-
-    document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
-      trackEvent('estimate_contact_continue', {
-        primaryPolicyType: primary.policyType || '',
-        secondaryPolicyType: secondary.policyType || '',
-        ageBand: estimatePreview.ageBand || '',
-        requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
-        tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
-        coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
-        estimatedLow: primary.estimatedLowMonthly || '',
-        estimatedHigh: primary.estimatedHighMonthly || ''
-      });
-      metaSignal?.trackStepComplete(2, 'recommendation_complete', {
-        ...buildMetaProgressMetadata(),
-        recommendationPrimaryKey: primary.policyKey || '',
-        recommendationSecondaryKey: secondary.policyKey || ''
-      });
-      previewPanel.remove();
-      persistFunnelState();
-      showStep2(true);
-    });
-  }
-
-  async function showStep2(shouldScroll = true) {
+  async function showStep2(shouldScroll = true, options = {}) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(false);
+    const estimatePreview = options.estimatePreview ?? latestEstimatePreview;
+    latestEstimatePreview = estimatePreview || null;
+    applyEstimatePreviewToHiddenFields(latestEstimatePreview);
+    renderStep2EstimateSummary(latestEstimatePreview);
     setActivePanel(step2Panel);
-    trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
-    await ensureMetaLeadFormStart();
-    metaSignal?.trackContactStepReached(buildMetaProgressMetadata({
-      handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
-    }));
+    if (options.trackRecommendationView !== false) {
+      await trackEstimateSummaryView(latestEstimatePreview);
+    }
+    if (options.trackView !== false) {
+      trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
+      await ensureMetaLeadFormStart();
+      metaSignal?.trackContactStepReached(buildMetaProgressMetadata({
+        handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
+      }));
+    }
     if (shouldScroll) {
       focusFunnelPanel(step2Panel, {
         shouldFocus: true
@@ -6666,7 +6732,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (lifeError) lifeError.style.display = 'none';
     if (lifeSuccess) lifeSuccess.style.display = 'none';
     ['FirstName','LastName','Phone','Email','State'].forEach(clearFieldError);
-    showStep2(false);
+    await showStep2(false, {
+      estimatePreview,
+      trackView: false,
+      trackRecommendationView: false
+    });
 
     // contact validation
     if (!validateContactFields(true)) {
@@ -6674,7 +6744,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         lifeError.textContent = 'Please review the highlighted contact fields.';
         lifeError.style.display = 'block';
       }
-      showStep2(false);
+      await showStep2(false, {
+        estimatePreview,
+        trackView: false,
+        trackRecommendationView: false
+      });
       form._trackSubmitAttempt?.(false, 1);
       return;
     }
