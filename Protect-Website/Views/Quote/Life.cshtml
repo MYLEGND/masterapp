@@ -1228,6 +1228,12 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     animation: lqFadeIn 0.22s ease;
     position: relative;
 }
+.lq-step-panel.lq-panel-spotlight {
+    box-shadow:
+        0 0 0 2px rgba(244,210,124,0.52),
+        0 22px 38px rgba(0,0,0,0.34),
+        0 0 28px rgba(244,210,124,0.18);
+}
 .lq-inner-block {
     /* Primary interaction surface — noticeably lighter than the panel frame
        so the eye reads it immediately as the place to act. */
@@ -5959,9 +5965,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     persistFunnelState();
   }
 
-  function resolveScrollTarget(target) {
+  function resolveScrollTarget(target, options = {}) {
     if (!target) return target;
     if (
+      options.preferVisiblePanel !== true &&
       contactFirstPanel &&
       (target === step1Panel ||
        target === processingPanel ||
@@ -5982,23 +5989,61 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     return navbarHeight + viewportPadding;
   }
 
-  function scrollPanelIntoView(target, behavior = 'smooth') {
-    const scrollTarget = resolveScrollTarget(target);
+  function ensureFocusableTarget(target) {
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!target.hasAttribute('tabindex')) {
+      target.setAttribute('tabindex', '-1');
+    }
+  }
+
+  function spotlightPanel(target) {
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    target.classList.remove('lq-panel-spotlight');
+    void target.offsetWidth;
+    target.classList.add('lq-panel-spotlight');
+    window.setTimeout(() => target.classList.remove('lq-panel-spotlight'), 1400);
+  }
+
+  function scrollPanelIntoView(target, behavior = 'smooth', options = {}) {
+    const scrollTarget = resolveScrollTarget(target, options);
     if (!(scrollTarget instanceof HTMLElement)) return;
-    const targetTop = window.scrollY + scrollTarget.getBoundingClientRect().top - getScrollTopOffset();
+    const topOffset = getScrollTopOffset();
+    const bottomPadding = window.matchMedia('(max-width: 767.98px)').matches ? 12 : 24;
+    const targetRect = scrollTarget.getBoundingClientRect();
+    let targetTop = window.scrollY + targetRect.top - topOffset;
+
+    if (options.align === 'center') {
+      const availableHeight = Math.max(0, window.innerHeight - topOffset - bottomPadding);
+      const centeredOffset = Math.max(0, (availableHeight - Math.min(targetRect.height, availableHeight)) / 2);
+      targetTop = window.scrollY + targetRect.top - topOffset - centeredOffset;
+    }
+
     window.scrollTo({
       top: Math.max(0, targetTop),
       behavior
     });
   }
 
-  function scrollIntoViewAndFocus(target, shouldFocus = false) {
+  function scrollIntoViewAndFocus(target, shouldFocus = false, options = {}) {
     if (!target) return;
-    const scrollBehavior = (isLandingMobile && target === step1Panel) ? 'auto' : 'smooth';
+    const focusTarget = options.focusTarget instanceof HTMLElement ? options.focusTarget : target;
+    const scrollBehavior = options.behavior || ((isLandingMobile && target === step1Panel) ? 'auto' : 'smooth');
     setTimeout(() => {
-      scrollPanelIntoView(target, scrollBehavior);
-      if (shouldFocus && target instanceof HTMLElement) {
-        target.focus({ preventScroll: true });
+      scrollPanelIntoView(target, scrollBehavior, options);
+      if (options.spotlightTarget instanceof HTMLElement) {
+        spotlightPanel(options.spotlightTarget);
+      }
+      if (shouldFocus && focusTarget instanceof HTMLElement) {
+        ensureFocusableTarget(focusTarget);
+        window.setTimeout(() => {
+          focusTarget.focus({ preventScroll: true });
+        }, 120);
       }
     }, 40);
   }
@@ -6015,7 +6060,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
   funnelBridgeBtn?.addEventListener('click', () => {
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
-    scrollPanelIntoView(activeTarget, 'smooth');
+    scrollIntoViewAndFocus(activeTarget, true, {
+      behavior: 'smooth',
+      align: 'center',
+      preferVisiblePanel: true,
+      spotlightTarget: activeTarget instanceof HTMLElement ? activeTarget : undefined
+    });
   });
 
   function syncStepOneAnswersFromUI() {
