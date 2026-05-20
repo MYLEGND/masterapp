@@ -17,48 +17,48 @@ namespace ProtectWebsite.Services
             {
                 ["term"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["18-24"] = new(250000, 18m, 28m),
-                    ["25-34"] = new(250000, 22m, 34m),
-                    ["35-44"] = new(250000, 29m, 46m),
-                    ["45-54"] = new(250000, 55m, 88m),
-                    ["55-64"] = new(250000, 94m, 158m),
-                    ["65+"] = new(250000, 178m, 290m),
+                    ["18-24"] = new(500000, 30m, 36m),
+                    ["25-34"] = new(500000, 31m, 38m),
+                    ["35-44"] = new(500000, 47m, 59m),
+                    ["45-54"] = new(500000, 102m, 137m),
+                    ["55-64"] = new(500000, 286m, 395m),
+                    ["65+"] = new(500000, 430m, 600m),
                 },
                 ["wholelife"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["18-24"] = new(50000, 42m, 58m),
-                    ["25-34"] = new(50000, 52m, 74m),
-                    ["35-44"] = new(50000, 69m, 102m),
-                    ["45-54"] = new(50000, 95m, 142m),
-                    ["55-64"] = new(50000, 132m, 196m),
-                    ["65+"] = new(50000, 185m, 270m),
+                    ["18-24"] = new(100000, 51m, 58m),
+                    ["25-34"] = new(100000, 66m, 77m),
+                    ["35-44"] = new(100000, 96m, 114m),
+                    ["45-54"] = new(100000, 148m, 179m),
+                    ["55-64"] = new(100000, 249m, 309m),
+                    ["65+"] = new(100000, 457m, 583m),
                 },
                 ["finalexpense"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["18-24"] = new(15000, 28m, 42m),
-                    ["25-34"] = new(15000, 32m, 46m),
-                    ["35-44"] = new(15000, 38m, 56m),
-                    ["45-54"] = new(15000, 48m, 72m),
-                    ["55-64"] = new(15000, 59m, 89m),
-                    ["65+"] = new(15000, 76m, 116m),
+                    ["18-24"] = new(10000, 16m, 22m),
+                    ["25-34"] = new(10000, 18m, 24m),
+                    ["35-44"] = new(10000, 22m, 29m),
+                    ["45-54"] = new(10000, 30m, 38m),
+                    ["55-64"] = new(10000, 42m, 54m),
+                    ["65+"] = new(10000, 64m, 80m),
                 },
                 ["mortgage"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["18-24"] = new(250000, 24m, 36m),
-                    ["25-34"] = new(250000, 28m, 42m),
-                    ["35-44"] = new(250000, 36m, 56m),
-                    ["45-54"] = new(250000, 62m, 96m),
-                    ["55-64"] = new(250000, 104m, 168m),
-                    ["65+"] = new(250000, 188m, 304m),
+                    ["18-24"] = new(250000, 16m, 24m),
+                    ["25-34"] = new(250000, 18m, 28m),
+                    ["35-44"] = new(250000, 25m, 47m),
+                    ["45-54"] = new(250000, 58m, 109m),
+                    ["55-64"] = new(250000, 110m, 190m),
+                    ["65+"] = new(250000, 175m, 300m),
                 },
                 ["iul"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["18-24"] = new(100000, 74m, 108m),
-                    ["25-34"] = new(100000, 88m, 128m),
-                    ["35-44"] = new(100000, 112m, 166m),
-                    ["45-54"] = new(100000, 154m, 228m),
-                    ["55-64"] = new(100000, 218m, 318m),
-                    ["65+"] = new(100000, 298m, 438m),
+                    ["18-24"] = new(500000, 170m, 210m),
+                    ["25-34"] = new(500000, 238m, 271m),
+                    ["35-44"] = new(500000, 341m, 398m),
+                    ["45-54"] = new(500000, 447m, 606m),
+                    ["55-64"] = new(500000, 842m, 1023m),
+                    ["65+"] = new(500000, 1180m, 1450m),
                 },
             };
 
@@ -115,18 +115,11 @@ namespace ProtectWebsite.Services
             var coverageAmount = ResolveCoverageAmount(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount);
             var baseRate = BaseRateTable[policyKey][ageBand];
             var coverageMultiplier = ResolveCoverageMultiplier(policyKey, coverageAmount, baseRate.ReferenceCoverage);
-            var tobaccoMultiplier = string.Equals(tobaccoUse, "smoker", StringComparison.OrdinalIgnoreCase) ? 1.65m : 1.00m;
+            var tobaccoMultiplier = ResolveTobaccoMultiplier(policyKey, tobaccoUse);
             var healthMultiplier = 1.00m; // Average health assumption.
-            var policyTypeMultiplier = policyKey switch
-            {
-                "term" => 1.00m,
-                "wholelife" => 1.03m,
-                "finalexpense" => 1.08m,
-                _ => 1.00m
-            };
 
-            var low = RoundMonthly(baseRate.LowMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier * policyTypeMultiplier);
-            var high = RoundMonthly(baseRate.HighMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier * policyTypeMultiplier);
+            var low = RoundMonthly(baseRate.LowMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier);
+            var high = RoundMonthly(baseRate.HighMonthly * coverageMultiplier * tobaccoMultiplier * healthMultiplier);
             if (high <= low)
             {
                 high = low + 8m;
@@ -384,12 +377,31 @@ namespace ProtectWebsite.Services
             var ratio = Math.Max(0.5d, (double)coverageAmount / Math.Max(1, referenceCoverage));
             var exponent = policyKey switch
             {
-                "term" => 0.92d,
-                "mortgage" => 0.94d,
-                "iul" => 0.96d,
-                _ => 0.98d
+                "term" => 0.80d,
+                "mortgage" => 0.80d,
+                "finalexpense" => 0.90d,
+                "iul" => 0.97d,
+                _ => 0.96d
             };
             return (decimal)Math.Pow(ratio, exponent);
+        }
+
+        private static decimal ResolveTobaccoMultiplier(string policyKey, string tobaccoUse)
+        {
+            if (!string.Equals(tobaccoUse, "smoker", StringComparison.OrdinalIgnoreCase))
+            {
+                return 1.00m;
+            }
+
+            return policyKey switch
+            {
+                "term" => 3.00m,
+                "mortgage" => 2.75m,
+                "wholelife" => 1.45m,
+                "finalexpense" => 1.28m,
+                "iul" => 1.68m,
+                _ => 1.50m
+            };
         }
 
         private static int? ResolveRequestedCoverageAmount(LifeQuoteFormModel model)
