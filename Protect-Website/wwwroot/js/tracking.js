@@ -425,6 +425,7 @@
     try {
       const body = buildBody(payload);
       if (!allowedEvents.has(body.EventType)) return;
+      updateTrackedFormStateFromEvent(body);
       if (body.EventType === 'form_start' || body.EventType === 'form_submit') {
         body.FormKey = body.FormKey || payload.FormKey;
       }
@@ -438,6 +439,13 @@
           state.submitAttempted = true;
         }
       }
+      debug('sendEvent', {
+        eventType: body.EventType,
+        formKey: body.FormKey,
+        pageKey: body.PageKey,
+        quoteType: body.QuoteType,
+        submitOutcome: body.SubmitOutcome
+      });
       await fetch(INGEST_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -449,6 +457,12 @@
 
   // ── Beacon send (page-exit and form-abandon — survives navigation/close) ──
   function beaconSend(body) {
+    debug('beaconSend', {
+      eventType: body?.EventType,
+      formKey: body?.FormKey,
+      pageKey: body?.PageKey,
+      quoteType: body?.QuoteType
+    });
     const json = JSON.stringify(body);
     const blob = new Blob([json], { type: 'application/json' });
     if (navigator.sendBeacon && navigator.sendBeacon(INGEST_URL, blob)) return;
@@ -468,6 +482,83 @@
     if (now - last < DEBOUNCE_MS) return false;
     debounceMap.set(key, now);
     return true;
+  }
+
+  function resolveTrackedFormKey(payload) {
+    const explicitFormKey = payload?.FormKey || null;
+    if (explicitFormKey && _formTrackStateByKey.has(explicitFormKey)) {
+      return explicitFormKey;
+    }
+
+    const pageKey = payload?.PageKey || PAGE_KEY;
+    if (pageKey && _formTrackStateByKey.has(pageKey)) {
+      return pageKey;
+    }
+
+    if (_formTrackStateByKey.size === 1) {
+      return _formTrackStateByKey.keys().next().value || null;
+    }
+
+    return explicitFormKey || null;
+  }
+
+  function updateTrackedFormStateFromEvent(payload) {
+    const formKey = resolveTrackedFormKey(payload);
+    if (!formKey) return;
+
+    const state = _formTrackStateByKey.get(formKey);
+    if (!state) return;
+
+    const eventType = payload?.EventType || '';
+    if (!eventType) return;
+
+    switch (eventType) {
+      case 'form_start':
+      case 'lead_form_start':
+      case 'life_general_form_start':
+      case 'life_term_form_start':
+      case 'life_whole_form_start':
+      case 'life_finalexpense_form_start':
+      case 'life_mp_form_start':
+      case 'life_iul_form_start':
+      case 'life_step1_protecting_select':
+      case 'life_step1_goal_select':
+      case 'life_step1_coverage_select':
+      case 'life_step1_tobacco_select':
+      case 'step1_age_entered':
+      case 'form_field_focus':
+      case 'form_field_complete':
+      case 'form_field_error':
+        transitionFormState(state, 'started', eventType);
+        break;
+      case 'life_step1_age_continue':
+      case 'life_processing_bridge_complete':
+      case 'mini_results_view':
+      case 'recommendation_generated':
+      case 'estimate_results_viewed':
+        transitionFormState(state, 'progressed', eventType);
+        break;
+      case 'life_step2_view':
+      case 'estimate_contact_continue':
+        transitionFormState(state, 'contact_viewed', eventType);
+        break;
+      case 'form_submit_attempt':
+      case 'life_step2_submit_attempt':
+        state.submitAttempted = true;
+        state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+        break;
+      case 'form_submit':
+        if (typeof payload.SubmitOutcome === 'string' &&
+            payload.SubmitOutcome.toLowerCase() === 'success') {
+          transitionFormState(state, 'submitted', 'form_submit_success');
+        }
+        break;
+      case 'lead_form_submit_success':
+        transitionFormState(state, 'submitted', 'lead_form_submit_success');
+        break;
+      default:
+        break;
+    }
   }
 
   // ── Behavior Intelligence instrumentation ─────────────────────────────────
