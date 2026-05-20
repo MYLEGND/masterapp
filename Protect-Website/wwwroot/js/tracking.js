@@ -1,4 +1,9 @@
 (() => {
+  if (window.__legendTrackingInitialized) {
+    return;
+  }
+  window.__legendTrackingInitialized = true;
+
   const INGEST_URL = '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
   const PAGE_VARIANT = document.body.dataset.pageVariant || '';
@@ -7,6 +12,10 @@
   const PAGE_QUOTE_TYPE = document.body.dataset.quoteType || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
+  const DEBUG_TRACKING =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    new URLSearchParams(window.location.search).has('trackingDebug');
 
   const STORAGE_VISITOR = 'legend_visitor_id';
   const STORAGE_SESSION = 'legend_session_id';
@@ -17,10 +26,19 @@
   const DEBOUNCE_MS = 2000;
   const _formTrackStateByKey = new Map();
 
+  function debug(message, details) {
+    if (!DEBUG_TRACKING) return;
+    try {
+      console.debug('[legend-tracking]', message, details || '');
+    } catch {
+      // Swallow console issues in legacy browsers.
+    }
+  }
+
   const allowedEvents = new Set([
     'page_view','cta_click','quote_click','risk_assessment_click',
     'form_start','form_submit','outbound_click',
-    'lead_modal_open','lead_form_start','lead_form_submit_success','lead_form_submit_failed',
+    'lead_modal_open','lead_modal_close','lead_form_start','lead_form_submit_success','lead_form_submit_failed',
     // Behavior Intelligence
     'page_exit',
     'page_engaged_10s','page_engaged_30s','page_engaged_60s',
@@ -53,6 +71,130 @@
 
   function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  }
+
+  const FORM_STAGE_RANK = Object.freeze({
+    idle: 0,
+    started: 1,
+    progressed: 2,
+    contact_viewed: 3,
+    submitted: 4,
+    abandoned: 5
+  });
+
+  function createFormTrackState(formKey, quoteType = null) {
+    return {
+      instanceId: uuid(),
+      formKey,
+      quoteType,
+      currentStage: 'idle',
+      started: false,
+      submitted: false,
+      submitAttempted: false,
+      firstInteractionAt: null,
+      startedAt: null,
+      progressedAt: null,
+      contactViewedAt: null,
+      submitAttemptedAt: null,
+      submittedAt: null,
+      abandonedAt: null,
+      lastStateTransitionAt: null,
+      lastStateTransitionReason: null,
+      lastFocusedField: null,
+      lastCompletedField: null,
+      focusedFields: new Set(),
+      completedFields: new Set(),
+      errorsSeen: new Set(),
+      consentInteracted: false,
+      abandonFired: false,
+      lastLifecycleSignalAt: null,
+      lastLifecycleSignalSource: null
+    };
+  }
+
+  function stageRank(stage) {
+    return FORM_STAGE_RANK[stage] ?? 0;
+  }
+
+  function transitionFormState(state, nextStage, reason, details = {}) {
+    if (!state || !nextStage) return;
+
+    const now = Date.now();
+    const previousStage = state.currentStage || 'idle';
+
+    if (previousStage === 'submitted' && nextStage === 'abandoned') {
+      debug('ignored abandon transition after submit', {
+        formKey: state.formKey,
+        instanceId: state.instanceId,
+        reason
+      });
+      return;
+    }
+
+    if (previousStage === 'abandoned' && nextStage !== 'submitted') {
+      return;
+    }
+
+    if (stageRank(nextStage) < stageRank(previousStage)) {
+      return;
+    }
+
+    if (nextStage === 'started') {
+      state.started = true;
+      state.firstInteractionAt = state.firstInteractionAt || now;
+      state.startedAt = state.startedAt || now;
+    }
+
+    if (nextStage === 'progressed') {
+      state.started = true;
+      state.firstInteractionAt = state.firstInteractionAt || now;
+      state.startedAt = state.startedAt || now;
+      state.progressedAt = state.progressedAt || now;
+    }
+
+    if (nextStage === 'contact_viewed') {
+      state.started = true;
+      state.firstInteractionAt = state.firstInteractionAt || now;
+      state.startedAt = state.startedAt || now;
+      state.progressedAt = state.progressedAt || now;
+      state.contactViewedAt = state.contactViewedAt || now;
+    }
+
+    if (nextStage === 'submitted') {
+      state.started = true;
+      state.submitted = true;
+      state.submitAttempted = true;
+      state.firstInteractionAt = state.firstInteractionAt || now;
+      state.startedAt = state.startedAt || now;
+      state.progressedAt = state.progressedAt || now;
+      state.contactViewedAt = state.contactViewedAt || now;
+      state.submitAttemptedAt = state.submitAttemptedAt || now;
+      state.submittedAt = state.submittedAt || now;
+    }
+
+    if (nextStage === 'abandoned') {
+      state.abandonedAt = now;
+    }
+
+    if (previousStage === nextStage) {
+      state.lastStateTransitionAt = now;
+      state.lastStateTransitionReason = reason;
+      return;
+    }
+
+    state.currentStage = nextStage;
+    state.lastStateTransitionAt = now;
+    state.lastStateTransitionReason = reason;
+
+    debug('form stage transition', {
+      formKey: state.formKey,
+      quoteType: state.quoteType,
+      instanceId: state.instanceId,
+      from: previousStage,
+      to: nextStage,
+      reason,
+      details
+    });
   }
 
   function getVisitorId() {
