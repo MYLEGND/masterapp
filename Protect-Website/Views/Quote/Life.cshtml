@@ -225,6 +225,44 @@
             ? $"Have {agentDirectContactName} Review My Whole Life Options"
             : "Help Me Review Whole Life Options";
     }
+    else if (normalizedOfferKey == "term_life")
+    {
+        contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
+        contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
+        contactFirstProofKicker = "Term life guidance";
+        contactFirstProofText = "Explore whether affordable term life coverage may fit the years your family needs protection most before any contact step.";
+        contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "No spam calls" };
+        contactFirstProcessingHeading = "Preparing your term life estimate...";
+        contactFirstProcessingHelper = "You’ll see estimated term life fit before any contact step.";
+        contactFirstProcessingNote = "Building your term life estimate...";
+        contactFirstNextLabel = "Term life first";
+        contactFirstNextCopy = "You’ll see estimated term life options before any contact step. If you want help after that, you can send your info. No obligation.";
+        finalStepHeading = "Want help reviewing term life options?";
+        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
+        agentTrustBio = "Send your info and I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
+        finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My Term Life Options"
+            : "Help Me Review Term Life Options";
+    }
+    else if (normalizedOfferKey == "final_expense")
+    {
+        contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
+        contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
+        contactFirstProofKicker = "Final expense guidance";
+        contactFirstProofText = "Explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind before any contact step.";
+        contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "No spam calls" };
+        contactFirstProcessingHeading = "Preparing your final expense estimate...";
+        contactFirstProcessingHelper = "You’ll see estimated final expense fit before any contact step.";
+        contactFirstProcessingNote = "Building your final expense estimate...";
+        contactFirstNextLabel = "Final expense first";
+        contactFirstNextCopy = "You’ll see estimated final expense options before any contact step. If you want help after that, you can send your info. No obligation.";
+        finalStepHeading = "Want help reviewing final expense options?";
+        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
+        agentTrustBio = "Send your info and I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
+        finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
+            ? $"Have {agentDirectContactName} Review My Final Expense Options"
+            : "Help Me Review Final Expense Options";
+    }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = string.Empty;
