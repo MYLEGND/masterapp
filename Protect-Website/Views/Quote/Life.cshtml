@@ -3991,11 +3991,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     backface-visibility: hidden;
 }
 
-.lq-carrier-strip:hover .lq-carrier-strip-track,
-.lq-carrier-strip:focus-within .lq-carrier-strip-track {
-    animation-play-state: paused;
-}
-
 .lq-carrier-strip-group {
     display: flex;
     align-items: center;
@@ -4143,37 +4138,15 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     .lq-carrier-strip-viewport {
-        overflow-x: auto;
+        overflow: hidden;
         padding-bottom: 2px;
         width: 100%;
         min-width: 0;
-        overscroll-behavior-x: contain;
-        scroll-snap-type: x proximity;
-        -webkit-overflow-scrolling: touch;
-        touch-action: pan-x;
     }
 
     .lq-carrier-strip-track {
-        animation: none !important;
         min-width: max-content;
         width: max-content;
-        transform: none !important;
-    }
-
-    .lq-carrier-strip.is-manual-scroll .lq-carrier-strip-viewport {
-        overflow-x: hidden;
-    }
-
-    .lq-carrier-strip.is-manual-scroll .lq-carrier-strip-track {
-        transform: translate3d(calc(-1 * var(--carrier-scroll-offset, 0px)), 0, 0) !important;
-    }
-
-    .lq-carrier-strip-group[aria-hidden="true"] {
-        display: none;
-    }
-
-    .lq-carrier-strip-item {
-        scroll-snap-align: start;
     }
 
     .lq-carrier-strip-copy {
