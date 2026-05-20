@@ -485,7 +485,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                     MaxTotalSignalScore = g.Max(x => x.TotalSignalScore)
                 };
 
-                foreach (var row in g)
+                foreach (var row in g.OrderBy(x => x.EventUtc).ThenBy(x => x.CreatedUtc))
                 {
                     ApplyRowToVisitorSummary(summary, row);
                 }
@@ -498,6 +498,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 
     private static void ApplyRowToVisitorSummary(VisitorSignalSummary summary, MetaSignalEvent row)
     {
+        var eventUtc = row.EventUtc ?? row.CreatedUtc;
+
         if (ReadBoolMetadata(row.MetadataJson, "contactStepReached"))
             summary.ContactStepReached = true;
         if (ReadBoolMetadata(row.MetadataJson, "contactInputStarted"))
@@ -507,7 +509,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (ReadBoolMetadata(row.MetadataJson, "requiredContactFieldsComplete"))
             summary.RequiredContactFieldsCompleted = true;
         if (ReadBoolMetadata(row.MetadataJson, "contactStepAbandon"))
+        {
             summary.ContactStepAbandon = true;
+            summary.LastAbandonUtc = eventUtc;
+        }
 
         switch (row.EventName)
         {
@@ -518,10 +523,12 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 break;
             case "LeadFormStart":
                 summary.FunnelStarted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "DiscoveryComplete":
                 summary.FunnelStarted = true;
                 summary.DiscoveryComplete = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "FunnelStepComplete":
                 summary.FunnelStarted = true;
@@ -529,41 +536,53 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 {
                     summary.DiscoveryComplete = true;
                 }
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "RecommendationViewed":
                 summary.RecommendationViewed = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "ContactStepReached":
                 summary.ContactStepReached = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "ContactInputStarted":
                 summary.ContactInputStarted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "PhoneFieldCompleted":
                 summary.PhoneCompleted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "RequiredContactFieldsCompleted":
                 summary.RequiredContactFieldsCompleted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "SubmitAttempt":
                 summary.SubmitAttempted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "HighIntentLeadSignal":
                 summary.HighIntentSignal = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "LeadReadySignal":
                 summary.LeadReadySignal = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
             case "AbandonedHighIntentLead":
                 summary.HighIntentAbandon = true;
+                summary.LastAbandonUtc = eventUtc;
                 break;
             case "Lead":
             case "QualifiedLead":
                 summary.LeadSubmitted = true;
+                summary.LastMeaningfulProgressUtc = eventUtc;
                 break;
         }
 
         BackfillVisitorSummaryProgress(summary);
+        ReconcileAbandonState(summary);
     }
 
     private static void BackfillVisitorSummaryProgress(VisitorSignalSummary summary)
@@ -607,6 +626,18 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         {
             summary.SubmitAttempted = true;
         }
+    }
+
+    private static void ReconcileAbandonState(VisitorSignalSummary summary)
+    {
+        if (!summary.LastAbandonUtc.HasValue || !summary.LastMeaningfulProgressUtc.HasValue)
+            return;
+
+        if (summary.LastMeaningfulProgressUtc.Value <= summary.LastAbandonUtc.Value)
+            return;
+
+        summary.HighIntentAbandon = false;
+        summary.ContactStepAbandon = false;
     }
 
     private static string ResolveVisitorScoreTier(VisitorSignalSummary summary)
@@ -822,6 +853,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         public bool LeadReadySignal { get; set; }
         public bool HighIntentAbandon { get; set; }
         public bool ContactStepAbandon { get; set; }
+        public DateTime? LastMeaningfulProgressUtc { get; set; }
+        public DateTime? LastAbandonUtc { get; set; }
         public string ScoreTier { get; set; } = "ColdVisitor";
 
         public bool IsHighIntent =>

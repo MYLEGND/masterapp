@@ -348,6 +348,16 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                IsOfficialLeadSuccessEvent(e);
     }
 
+    private static bool IsQuoteResumeAfterAbandonEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return (IsQuoteFunnelInteractionEvent(e) && e.EventType != "form_abandon") ||
+               e.EventType == "lead_modal_open" ||
+               e.EventType == "lead_modal_close";
+    }
+
     private static bool IsQuoteEarlyDiscoveryInteractionEvent(AnalyticsEvent e)
     {
         return e.EventType == "life_step1_protecting_select" ||
@@ -1999,6 +2009,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        var eventsBySuccessUnit = events
+            .GroupBy(e => BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(e => e.EventUtc).ThenBy(e => e.EventId).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+
         var abandonEvents = events
             .Where(e => e.EventType == "form_abandon")
             .Where(e =>
@@ -2008,6 +2025,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             })
             .GroupBy(e => BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}", StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderByDescending(e => e.EventUtc).First())
+            .Where(e =>
+            {
+                var key = BuildSuccessUnitKey(e) ?? $"eid:{e.EventId:D}";
+                if (!eventsBySuccessUnit.TryGetValue(key, out var groupedEvents))
+                    return true;
+
+                return !groupedEvents.Any(other =>
+                    other.EventId != e.EventId &&
+                    (other.EventUtc > e.EventUtc ||
+                     (other.EventUtc == e.EventUtc && other.CreatedUtc > e.CreatedUtc)) &&
+                    IsQuoteResumeAfterAbandonEvent(other));
+            })
             .ToList();
         var abandonKeys = abandonEvents
             .Select(BuildSuccessUnitKey)
@@ -2194,6 +2223,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 : $"{dataQualityNote} {noAbandonMessage}";
         }
 
+        if (summary.Count > 0)
+        {
+            const string resumeSuppressionNote = "Refresh/resume cases that later continued the same quote session are excluded from explicit form_abandon totals.";
+            dataQualityNote = string.IsNullOrWhiteSpace(dataQualityNote)
+                ? resumeSuppressionNote
+                : $"{dataQualityNote} {resumeSuppressionNote}";
+        }
+
         return new FormAbandonmentDto
         {
             Summary = summary,
@@ -2208,7 +2245,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             ConsentFrictionCount = consentFriction,
             StartSignalGapQuoteTypeCount = startSignalGapQuoteTypeCount,
             DataQualityNote = dataQualityNote,
-            QualificationNote = "Bounce Before Funnel Start counts quote landing exits with no derived funnel start, field interaction, submit attempt, or lead. Funnel Abandon counts explicit form_abandon exits after the funnel starts but before the contact step. Contact-step Abandon counts explicit form_abandon exits after the contact step is viewed. Validation Friction Abandon counts explicit form_abandon exits on sessions that also logged one or more form_field_error events.",
+            QualificationNote = "Bounce Before Funnel Start counts quote landing exits with no derived funnel start, field interaction, submit attempt, or lead. Funnel Abandon counts explicit form_abandon exits after the funnel starts but before the contact step. Contact-step Abandon counts explicit form_abandon exits after the contact step is viewed. Validation Friction Abandon counts explicit form_abandon exits on sessions that also logged one or more form_field_error events. Resumed quote sessions with later progression are excluded from explicit abandon totals.",
             RangeLabel = range.Label
         };
     }

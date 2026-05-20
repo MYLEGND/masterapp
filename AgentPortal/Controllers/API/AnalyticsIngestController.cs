@@ -45,6 +45,7 @@ public class AnalyticsIngestController : ControllerBase
         "form_submit",
         "outbound_click",
         "lead_modal_open",
+        "lead_modal_close",
         "lead_form_start",
         "lead_form_submit_success",
         "lead_form_submit_failed",

@@ -204,7 +204,7 @@
         tracking({
           EventType: 'lead_form_submit_failed',
           PageKey: pageKey,
-          ElementKey: pendingCta || 'lead_modal',
+          ElementKey: pendingCta || resolveElementKey(null),
           FormKey: 'lead_modal_form'
         });
         return;
@@ -216,7 +216,7 @@
       tracking({
         EventType: 'lead_form_submit_failed',
         PageKey: pageKey,
-        ElementKey: pendingCta || 'lead_modal',
+        ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form'
       });
       return;
@@ -289,7 +289,7 @@
       tracking({
         EventType: 'lead_form_submit_failed',
         PageKey: pageKey,
-        ElementKey: pendingCta || 'lead_modal',
+        ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form',
         SubmitOutcome: 'error'
       });
