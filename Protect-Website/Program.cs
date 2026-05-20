@@ -8,10 +8,14 @@ using System.IO;
 var builder = WebApplication.CreateBuilder(args);
 
 // 🔹 MVC
-builder.Services.AddControllersWithViews(options =>
+var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add<ProtectWebsite.Services.Tracking.TrackingViewDataFilter>();
 });
+if (builder.Environment.IsDevelopment())
+{
+    mvcBuilder.AddRazorRuntimeCompilation();
+}
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
 
