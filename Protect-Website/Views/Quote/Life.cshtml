@@ -3806,6 +3806,57 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
+@@media (prefers-reduced-motion: reduce) {
+    .lq-funnel-bridge-arrow svg {
+        animation: none !important;
+    }
+}
+
+@@media (max-width: 640px) {
+    .lq-funnel-bridge-wrap {
+        margin: 0 auto 10px;
+    }
+
+    .lq-funnel-bridge {
+        gap: 8px;
+    }
+
+    .lq-funnel-bridge-core {
+        min-height: 38px;
+        padding: 6px 11px;
+        gap: 8px;
+    }
+
+    .lq-funnel-bridge-copy {
+        font-size: .74rem;
+    }
+
+    .lq-funnel-bridge-arrow {
+        width: 24px;
+        height: 24px;
+    }
+
+    .lq-funnel-bridge-arrow svg {
+        width: 13px;
+        height: 13px;
+    }
+}
+
+@@media (max-width: 480px) {
+    .lq-funnel-bridge {
+        grid-template-columns: 12px minmax(0,1fr) 12px;
+    }
+
+    .lq-funnel-bridge-core {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .lq-funnel-bridge-copy {
+        text-align: center;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -3921,6 +3972,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
             </div>
         }
     </div>
+    @if (usesContactFirstShell)
+    {
+        <div class="lq-funnel-bridge-wrap">
+            <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" aria-label="@contactFirstBridgeText">
+                <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+                <span class="lq-funnel-bridge-core">
+                    <span class="lq-funnel-bridge-arrow" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none">
+                            <path d="M7 8.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M7 4.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
+                        </svg>
+                    </span>
+                    <span class="lq-funnel-bridge-copy">@contactFirstBridgeText</span>
+                </span>
+                <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+            </button>
+        </div>
+    }
 
     <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
         @Html.AntiForgeryToken()
@@ -4666,6 +4735,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   if (!form) return;
 
   const contactFirstPanel = document.getElementById('lifeEducationContactPanel');
+  const funnelBridgeBtn = document.getElementById('lifeFunnelBridge');
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
@@ -5369,6 +5439,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       });
     });
   }
+
+  funnelBridgeBtn?.addEventListener('click', () => {
+    const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
+    scrollPanelIntoView(activeTarget, 'smooth');
+  });
 
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
