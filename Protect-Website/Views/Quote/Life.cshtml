@@ -4236,6 +4236,63 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
+/* Final contact isolation */
+body.life-final-step-active .lq-hero-rail {
+    display: none !important;
+}
+body.life-final-step-active .lq-hero-shell {
+    max-width: 760px;
+}
+body.life-final-step-active .lq-contact-step {
+    position: relative;
+    z-index: 2;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-funnel-bridge-wrap,
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-options-summary {
+    display: none !important;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack {
+    gap: 0;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid {
+    margin-top: 0;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+    padding-top: 14px;
+    padding-bottom: 14px;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
+    gap: 12px;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-avatar {
+    width: 50px;
+    height: 50px;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-title {
+    font-size: 1rem;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips {
+    display: none;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+    padding-top: 18px;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active .lq-hero-shell {
+        padding-top: 10px !important;
+        padding-bottom: 12px !important;
+    }
+
+    body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -5936,12 +5993,17 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
   }
 
+  function setFinalContactFocus(isActive) {
+    document.body.classList.toggle('life-final-step-active', !!isActive);
+  }
+
   function setActivePanel(activePanel) {
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
     [step1Panel, processingPanel, step2Panel, previewPanel].forEach((panel) => {
       if (!panel) return;
       panel.hidden = panel !== activePanel;
     });
+    setFinalContactFocus(activePanel === step2Panel);
     if (heroTrustStrip) {
       heroTrustStrip.hidden = activePanel === step2Panel;
     }

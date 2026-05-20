@@ -270,6 +270,32 @@ body { background-color: #0f172a; color: #f8fafc; }
     margin-bottom: 20px;
     font-size: 1.1rem;
 }
+
+body.disability-final-step-active .lq-header {
+    margin-bottom: 10px;
+}
+body.disability-final-step-active .lq-subtext,
+body.disability-final-step-active .lq-trust-row {
+    display: none;
+}
+body.disability-final-step-active #dq-step4 {
+    max-width: 700px;
+}
+body.disability-final-step-active #dq-step4 .lq-inner-block {
+    border-color: rgba(199,153,49,0.52);
+    box-shadow:
+        0 0 0 1px rgba(199,153,49,0.18),
+        0 20px 36px rgba(0,0,0,0.28);
+}
+body.disability-final-step-active #dq-step4 .lq-step-helper {
+    margin-bottom: 12px;
+}
+
+@@media (max-width: 640px) {
+    body.disability-final-step-active .lq-header {
+        margin-bottom: 8px;
+    }
+}
 </style>
 
 <div class="container-narrow">
@@ -531,6 +557,10 @@ body { background-color: #0f172a; color: #f8fafc; }
 
         track({ EventType: 'disability_quote_step1_view', PageKey: 'quote_disability' });
 
+        function setContactFocusState(step) {
+            document.body.classList.toggle('disability-final-step-active', step === 4);
+        }
+
         function scrollAndFocus(selector) {
             var el = selector ? (typeof selector === 'string' ? document.querySelector(selector) : selector) : null;
             var fallbackPanel = document.getElementById('dq-step' + currentStep);
@@ -558,6 +588,7 @@ body { background-color: #0f172a; color: #f8fafc; }
                 if (panel) panel.style.display = (idx + 1 === step) ? 'block' : 'none';
             });
             currentStep = step;
+            setContactFocusState(step);
             setProgress(step);
             scrollAndFocus(steps[step - 1].group ? '#grp-' + steps[step - 1].group + ' input' : '#FirstName');
             if (step === 4) {
@@ -622,6 +653,7 @@ body { background-color: #0f172a; color: #f8fafc; }
             });
         });
 
+        setContactFocusState(1);
         setProgress(1);
 
         function showFieldError(fieldId, errorId, show) {
