@@ -2514,6 +2514,89 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     max-width: 46ch;
     margin: 0 auto;
 }
+.lq-contact-estimate-signal {
+    display: grid;
+    gap: 6px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.28);
+    background:
+        linear-gradient(180deg, rgba(15,24,42,0.74) 0%, rgba(10,18,32,0.52) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 10px 18px rgba(0,0,0,0.14);
+}
+.lq-contact-estimate-signal-badge {
+    display: inline-flex;
+    justify-self: center;
+    align-items: center;
+    min-height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(240,198,109,0.32);
+    background: rgba(240,198,109,0.08);
+    color: #f5d488;
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-signal-copy {
+    color: rgba(236,240,247,0.76);
+    font-size: .84rem;
+    line-height: 1.45;
+    text-align: center;
+}
+.lq-contact-estimate-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.lq-contact-estimate-stat {
+    display: grid;
+    gap: 4px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background: rgba(11,19,34,0.56);
+    text-align: center;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 9px 18px rgba(0,0,0,0.12);
+}
+.lq-contact-estimate-stat-label {
+    color: rgba(248,250,252,0.56);
+    font-size: .68rem;
+    font-weight: 820;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-stat-value {
+    color: #fff7df;
+    font-size: 1rem;
+    font-weight: 920;
+    line-height: 1.18;
+}
+.lq-contact-estimate-chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+}
+.lq-contact-estimate-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(231,194,110,0.22);
+    background: rgba(255,244,222,0.03);
+    color: rgba(241,238,232,0.82);
+    font-size: .74rem;
+    font-weight: 800;
+    line-height: 1.2;
+}
 .lq-contact-estimate-card-wrap .lq-rec-card {
     margin: 0;
 }
@@ -2547,8 +2630,21 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-wrap {
         0 18px 30px rgba(0,0,0,0.24);
 }
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-copy,
-body.page-variant-contact-first-education-v1 .lq-contact-estimate-alt {
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-alt,
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-signal-copy {
     color: rgba(244,239,231,0.78);
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-signal {
+    background:
+        linear-gradient(180deg, rgba(31,31,36,0.88) 0%, rgba(18,18,22,0.82) 100%);
+    border-color: rgba(236,200,116,0.24);
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-stat {
+    background: rgba(12,12,15,0.42);
+    border-color: rgba(236,200,116,0.18);
+}
+body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
+    color: rgba(244,239,231,0.82);
 }
 @@media (max-width: 640px) {
     .lq-estimate-panel {
@@ -2588,6 +2684,26 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-alt {
     }
     .lq-contact-estimate-title {
         font-size: 1rem;
+    }
+    .lq-contact-estimate-signal {
+        padding: 11px 12px;
+    }
+    .lq-contact-estimate-signal-copy {
+        font-size: .79rem;
+    }
+    .lq-contact-estimate-stats {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .lq-contact-estimate-stat {
+        padding: 10px 11px;
+    }
+    .lq-contact-estimate-stat-value {
+        font-size: .92rem;
+    }
+    .lq-contact-estimate-chip {
+        font-size: .69rem;
+        padding: 5px 8px;
     }
     .lq-contact-estimate-copy,
     .lq-contact-estimate-alt {
@@ -5269,6 +5385,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
   const processingHeading = document.getElementById('lifeProcessingHeading');
+  const processingHelper = processingPanel?.querySelector('.lq-step-helper');
+  const processingNote = processingPanel?.querySelector('.lq-processing-note');
   const step2Heading = document.getElementById('lifeStep2Heading');
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
@@ -5325,6 +5443,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const AGE_DEFAULT = @selectedAgeValue;
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 1500;
+  const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
+  const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
+  const defaultProcessingNoteText = processingNote?.textContent?.trim() || '';
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
@@ -5338,6 +5459,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
   let processingTimer = null;
+  let processingStageTimers = [];
   let latestEstimatePreview = null;
   let estimatePreviewPromise = null;
   let isRestoringFunnelState = false;
