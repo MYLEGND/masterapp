@@ -118,7 +118,7 @@
     return 'Continue for a personal walkthrough of these estimates and what may fit best.';
   }
 
-  function buildResultsPanelHtml(preview, continueLabel) {
+  function buildResultsPanelHtml(preview, continueLabel, trustStripHtml = '') {
     const normalized = normalizePreview(preview);
     const secondary = normalized.secondary;
     const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
@@ -134,6 +134,7 @@
             ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended' : 'Your Estimate', 'primary')}
             ${hasSecondary ? buildEstimateCard(secondary, 'Also Worth Considering', 'secondary') : ''}
           </div>
+          ${trustStripHtml || ''}
           <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
           <div class="lq-reach-note">${buildResultsNote(normalized)}</div>
           <div class="lq-step-actions">

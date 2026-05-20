@@ -643,6 +643,23 @@
         requiredContactFields = requiredContactFieldNames,
         weights = metaSignalOptions.Weights
     });
+    var carrierTrustTrafficType = isPaidLandingExperience ? "paid_landing" : "website";
+    var carrierTrustResultsStripModel = new Protect_Website.Models.TrustedCarrierStripViewModel(
+        Placement: "results",
+        Mode: "full",
+        PageKey: pageKey,
+        QuoteType: normalizedOfferKey,
+        Variant: pageVariant,
+        TrafficType: carrierTrustTrafficType,
+        InstanceKey: $"life-results-{normalizedOfferKey}-{pageVariant}-{pageMode}");
+    var carrierTrustContactStripModel = new Protect_Website.Models.TrustedCarrierStripViewModel(
+        Placement: "contact",
+        Mode: "compact",
+        PageKey: pageKey,
+        QuoteType: normalizedOfferKey,
+        Variant: pageVariant,
+        TrafficType: carrierTrustTrafficType,
+        InstanceKey: $"life-contact-{normalizedOfferKey}-{pageVariant}-{pageMode}");
 }
 
 <style>
@@ -3414,6 +3431,253 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
+.lq-carrier-strip {
+    margin-top: 14px;
+    padding: 13px 14px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background:
+        radial-gradient(circle at top right, rgba(199,153,49,0.08), transparent 34%),
+        linear-gradient(180deg, rgba(15,24,42,0.72) 0%, rgba(10,17,30,0.88) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 14px 24px rgba(0,0,0,0.18);
+    overflow: hidden;
+}
+
+.lq-carrier-strip-copy {
+    color: rgba(246,236,205,0.92);
+    font-size: .86rem;
+    font-weight: 760;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+
+.lq-carrier-strip-compact {
+    margin-top: 0;
+    padding: 10px 12px 10px;
+    border-radius: 14px;
+    border-color: rgba(199,153,49,0.18);
+    background:
+        linear-gradient(180deg, rgba(13,21,36,0.66) 0%, rgba(9,15,27,0.82) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.02),
+        0 10px 18px rgba(0,0,0,0.14);
+}
+
+.lq-carrier-strip-compact .lq-carrier-strip-copy {
+    margin-bottom: 8px;
+    font-size: .8rem;
+    color: rgba(238,229,198,0.82);
+}
+
+.lq-carrier-strip-viewport {
+    position: relative;
+    overflow: hidden;
+}
+
+.lq-carrier-strip-viewport::before,
+.lq-carrier-strip-viewport::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 42px;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.lq-carrier-strip-viewport::before {
+    left: 0;
+    background: linear-gradient(90deg, rgba(10,17,30,0.95) 0%, rgba(10,17,30,0) 100%);
+}
+
+.lq-carrier-strip-viewport::after {
+    right: 0;
+    background: linear-gradient(270deg, rgba(10,17,30,0.95) 0%, rgba(10,17,30,0) 100%);
+}
+
+.lq-carrier-strip-track {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: max-content;
+    animation: lqCarrierMarquee 36s linear infinite;
+    will-change: transform;
+}
+
+.lq-carrier-strip:hover .lq-carrier-strip-track,
+.lq-carrier-strip:focus-within .lq-carrier-strip-track {
+    animation-play-state: paused;
+}
+
+.lq-carrier-strip-group {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.lq-carrier-strip-item {
+    flex: 0 0 auto;
+}
+
+.lq-carrier-strip-logo-frame {
+    width: 152px;
+    height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.20);
+    background:
+        linear-gradient(180deg, rgba(248,250,252,0.02) 0%, rgba(248,250,252,0.01) 100%),
+        rgba(9,15,27,0.38);
+    padding: 0 14px;
+    box-sizing: border-box;
+}
+
+.lq-carrier-strip-compact .lq-carrier-strip-logo-frame {
+    width: 134px;
+    height: 36px;
+    border-radius: 12px;
+}
+
+.lq-carrier-strip-logo-frame img {
+    display: block;
+    max-width: 118px;
+    max-height: 20px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    filter: grayscale(1) brightness(1.28);
+    opacity: 0.58;
+    transition: opacity .2s ease, filter .2s ease, transform .2s ease;
+}
+
+.lq-carrier-strip-compact .lq-carrier-strip-logo-frame img {
+    max-width: 104px;
+    max-height: 18px;
+}
+
+.lq-carrier-strip-item:hover img,
+.lq-carrier-strip-item:focus-within img {
+    opacity: 0.88;
+    filter: grayscale(0.35) brightness(1.45);
+    transform: translateY(-1px);
+}
+
+.lq-carrier-strip-text-badge {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: rgba(246,236,205,0.88);
+    font-size: .74rem;
+    font-weight: 760;
+    line-height: 1.2;
+    letter-spacing: .01em;
+}
+
+.lq-carrier-strip-item.is-fallback .lq-carrier-strip-text-badge {
+    display: inline-flex;
+}
+
+.lq-carrier-strip-item.is-fallback img {
+    display: none;
+}
+
+.lq-carrier-strip-disclaimer {
+    margin-top: 10px;
+    color: rgba(221,228,239,0.62);
+    font-size: .74rem;
+    line-height: 1.42;
+}
+
+.lq-carrier-strip-compact .lq-carrier-strip-disclaimer {
+    margin-top: 8px;
+    font-size: .7rem;
+    color: rgba(221,228,239,0.56);
+}
+
+@@keyframes lqCarrierMarquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(-50% - 7px)); }
+}
+
+@@media (prefers-reduced-motion: reduce) {
+    .lq-carrier-strip-track {
+        animation: none !important;
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .lq-carrier-strip-group[aria-hidden="true"] {
+        display: none;
+    }
+
+    .lq-carrier-strip-viewport::before,
+    .lq-carrier-strip-viewport::after {
+        display: none;
+    }
+}
+
+@@media (max-width: 767.98px) {
+    .lq-carrier-strip {
+        margin-top: 12px;
+        padding: 11px 11px 10px;
+        border-radius: 14px;
+    }
+
+    .lq-carrier-strip-copy {
+        font-size: .8rem;
+        margin-bottom: 8px;
+    }
+
+    .lq-carrier-strip-logo-frame {
+        width: 126px;
+        height: 34px;
+        padding: 0 10px;
+        border-radius: 12px;
+    }
+
+    .lq-carrier-strip-logo-frame img {
+        max-width: 94px;
+        max-height: 16px;
+    }
+
+    .lq-carrier-strip-text-badge {
+        font-size: .68rem;
+    }
+
+    .lq-carrier-strip-disclaimer {
+        font-size: .68rem;
+        line-height: 1.35;
+    }
+
+    .lq-carrier-strip-compact {
+        display: none !important;
+    }
+}
+
+@@media (max-width: 480px) {
+    .lq-carrier-strip-logo-frame {
+        width: 114px;
+        height: 32px;
+        padding: 0 8px;
+    }
+
+    .lq-carrier-strip-logo-frame img {
+        max-width: 86px;
+        max-height: 15px;
+    }
+
+    .lq-carrier-strip-viewport::before,
+    .lq-carrier-strip-viewport::after {
+        width: 22px;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -3819,6 +4083,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                                 </div>
                                             </div>
                                         }
+                                        <div class="full">
+                                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                        </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
                                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
@@ -4197,6 +4464,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </div>
                             </div>
                         }
+                        <div class="full">
+                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                        </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
@@ -4302,11 +4572,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 </div>
 </div>
 
+<template id="lifeCarrierTrustStripResultsTemplate">
+    @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustResultsStripModel)
+</template>
+
 @if (isPaidLandingExperience)
 {
     <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
 }
 <script src="~/js/life-estimate-engine.js" asp-append-version="true"></script>
+<script src="~/js/trusted-carrier-strip.js" asp-append-version="true"></script>
 <script>
 (() => {
   const form = document.getElementById('lifeWizardForm');
@@ -4325,6 +4600,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const step1ContinueBtn = document.getElementById('step1Continue');
   const step2BackBtn = document.getElementById('step2BackBtn');
+  const carrierTrustResultsTemplate = document.getElementById('lifeCarrierTrustStripResultsTemplate');
+  const carrierTrustResultsHtml = carrierTrustResultsTemplate?.innerHTML?.trim() || '';
   const showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
   const answer1Hidden = document.getElementById('Answer1');
   const answer2Hidden = document.getElementById('Answer2');
@@ -4980,12 +5257,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     latestEstimatePreview = estimatePreview;
     applyEstimatePreviewToHiddenFields(estimatePreview);
 
-    const previewHtml = window.lifeEstimateEngine.buildResultsPanelHtml(estimatePreview, continueResultsLabel);
+    const previewHtml = window.lifeEstimateEngine.buildResultsPanelHtml(estimatePreview, continueResultsLabel, carrierTrustResultsHtml);
     const primary = estimatePreview.primary || {};
     const secondary = estimatePreview.secondary || {};
 
     processingPanel.insertAdjacentHTML('afterend', previewHtml);
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    window.trustedCarrierStrip?.init(previewPanel);
     setActivePanel(previewPanel);
     trackEvent('mini_results_view', {
       recommendationPrimaryKey: primary.policyKey || '',
@@ -5379,5 +5657,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }
+  window.trustedCarrierStrip?.init(document);
 })();
 </script>

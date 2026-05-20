@@ -50,7 +50,7 @@
         <div class="lq-carrier-strip-track">
             @for (var groupIndex = 0; groupIndex < 2; groupIndex++)
             {
-                <div class="lq-carrier-strip-group" @(groupIndex == 1 ? "aria-hidden=\"true\"" : null)>
+                <div class="lq-carrier-strip-group" aria-hidden="@(groupIndex == 1 ? "true" : "false")">
                     @foreach (var carrier in carriers)
                     {
                         <div class="lq-carrier-strip-item @(renderProviderLogos ? string.Empty : "is-fallback")"
