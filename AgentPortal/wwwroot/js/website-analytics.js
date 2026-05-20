@@ -1813,6 +1813,150 @@
     });
   }
 
+  function clampMetaSignalScore(value, min = 0, max = 1) {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      return min;
+    }
+    return Math.min(max, Math.max(min, numericValue));
+  }
+
+  function scorePositiveCount(value, target) {
+    const numericValue = Number(value || 0);
+    const numericTarget = Math.max(Number(target || 1), 1);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return 0;
+    }
+    return clampMetaSignalScore(Math.log1p(numericValue) / Math.log1p(numericTarget));
+  }
+
+  function scorePositiveRate(value, target) {
+    const numericValue = Number(value || 0);
+    const numericTarget = Math.max(Number(target || 0), 0.0001);
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return 0;
+    }
+    return clampMetaSignalScore(numericValue / numericTarget);
+  }
+
+  function scoreNegativeRate(value, denominator, badAtRatio) {
+    const numericValue = Number(value || 0);
+    const numericDenominator = Number(denominator || 0);
+    const numericBadAtRatio = Math.max(Number(badAtRatio || 0), 0.0001);
+
+    if ((!Number.isFinite(numericValue) || numericValue <= 0) && (!Number.isFinite(numericDenominator) || numericDenominator <= 0)) {
+      return null;
+    }
+
+    if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      return 1;
+    }
+
+    if (!Number.isFinite(numericDenominator) || numericDenominator <= 0) {
+      return 0;
+    }
+
+    const ratio = numericValue / numericDenominator;
+    return 1 - clampMetaSignalScore(ratio / numericBadAtRatio);
+  }
+
+  function averageMetaSignalScores(...scores) {
+    const validScores = scores.filter((score) => Number.isFinite(score));
+    if (!validScores.length) {
+      return null;
+    }
+    return validScores.reduce((sum, score) => sum + score, 0) / validScores.length;
+  }
+
+  function interpolateMetaSignalColor(score) {
+    const normalizedScore = clampMetaSignalScore(score);
+    const stops = [
+      { at: 0, rgb: [248, 113, 113] },
+      { at: 0.5, rgb: [245, 158, 11] },
+      { at: 1, rgb: [74, 222, 128] }
+    ];
+
+    const upperStopIndex = stops.findIndex((stop) => normalizedScore <= stop.at);
+    const upperStop = upperStopIndex === -1 ? stops[stops.length - 1] : stops[upperStopIndex];
+    const lowerStop = upperStopIndex <= 0 ? stops[0] : stops[upperStopIndex - 1];
+    const range = Math.max(upperStop.at - lowerStop.at, 0.0001);
+    const progress = clampMetaSignalScore((normalizedScore - lowerStop.at) / range);
+    const rgb = lowerStop.rgb.map((value, index) => Math.round(value + (upperStop.rgb[index] - value) * progress));
+
+    return {
+      accent: `rgb(${rgb.join(', ')})`,
+      accentRgb: rgb.join(', '),
+      accentSoft: `rgba(${rgb.join(', ')}, 0.17)`
+    };
+  }
+
+  function applyMetaSignalMetricTone(metricId, score) {
+    const valueEl = document.getElementById(metricId);
+    const card = valueEl?.closest('.meta-signal-stat-card');
+    if (!card) {
+      return;
+    }
+
+    card.classList.remove('metric-tone-active');
+    card.style.removeProperty('--meta-signal-accent');
+    card.style.removeProperty('--meta-signal-accent-rgb');
+    card.style.removeProperty('--meta-signal-accent-soft');
+    card.removeAttribute('data-health-score');
+
+    if (!Number.isFinite(score)) {
+      return;
+    }
+
+    const normalizedScore = clampMetaSignalScore(score);
+    const tone = interpolateMetaSignalColor(normalizedScore);
+    card.classList.add('metric-tone-active');
+    card.style.setProperty('--meta-signal-accent', tone.accent);
+    card.style.setProperty('--meta-signal-accent-rgb', tone.accentRgb);
+    card.style.setProperty('--meta-signal-accent-soft', tone.accentSoft);
+    card.setAttribute('data-health-score', String(Math.round(normalizedScore * 100)));
+  }
+
+  function applyMetaSignalHealthTones(data) {
+    const totalEvents = Number(data.totalSignalEvents || 0);
+    const totalVisitors = Number(data.totalVisitors || 0);
+    const highIntentVisitors = Number(data.highIntentVisitors || 0);
+    const leadReadyVisitors = Number(data.leadReadyVisitors || 0);
+    const submittedLeads = Number(data.submittedLeads || 0);
+    const submitAttemptsWithoutLead = Number(data.submitAttemptsWithoutLead || 0);
+    const highIntentAbandons = Number(data.highIntentAbandons || 0);
+    const contactStepAbandons = Number(data.contactStepAbandons || 0);
+    const excludedSignalEvents = Number(data.excludedSignalEvents || 0);
+    const excludedSignalVisitors = Number(data.excludedSignalVisitors || 0);
+    const signalToLeadRate = Number(data.signalToLeadConversionRate || 0) / 100;
+    const submitAttemptContext = submittedLeads + submitAttemptsWithoutLead;
+    const contactStepContext = leadReadyVisitors + contactStepAbandons;
+
+    const metricScores = {
+      'metasignal-total-events': scorePositiveCount(totalEvents, 300),
+      'metasignal-total-visitors': scorePositiveCount(totalVisitors, 140),
+      'metasignal-high-intent': averageMetaSignalScores(
+        scorePositiveCount(highIntentVisitors, 70),
+        totalVisitors > 0 ? scorePositiveRate(highIntentVisitors / totalVisitors, 0.45) : null
+      ),
+      'metasignal-lead-ready': averageMetaSignalScores(
+        scorePositiveCount(leadReadyVisitors, 36),
+        totalVisitors > 0 ? scorePositiveRate(leadReadyVisitors / totalVisitors, 0.28) : null
+      ),
+      'metasignal-submitted': averageMetaSignalScores(
+        scorePositiveCount(submittedLeads, 20),
+        totalVisitors > 0 ? scorePositiveRate(submittedLeads / totalVisitors, 0.12) : null
+      ),
+      'metasignal-submit-attempts-no-lead': scoreNegativeRate(submitAttemptsWithoutLead, submitAttemptContext, 0.45),
+      'metasignal-signal-conv': totalVisitors > 0 ? scorePositiveRate(signalToLeadRate, 0.12) : null,
+      'metasignal-high-intent-abandons': scoreNegativeRate(highIntentAbandons, highIntentVisitors, 0.45),
+      'metasignal-contact-abandons': scoreNegativeRate(contactStepAbandons, contactStepContext, 0.45),
+      'metasignal-excluded-events': scoreNegativeRate(excludedSignalEvents, totalEvents, 0.18),
+      'metasignal-excluded-visitors': scoreNegativeRate(excludedSignalVisitors, totalVisitors, 0.18)
+    };
+
+    Object.entries(metricScores).forEach(([metricId, score]) => applyMetaSignalMetricTone(metricId, score));
+  }
+
   function renderMetaSignal(data) {
     state.cache.metaSignal = data;
     setText('metasignal-range-label', data.rangeLabel || '');
@@ -1831,6 +1975,7 @@
     setText('metasignal-optimize', data.recommendedOptimizationEvent || '—');
     setText('metasignal-best-variant', data.bestPerformingLandingPageVersion || '—');
     setText('metasignal-worst-friction', data.worstFrictionStep || '—');
+    applyMetaSignalHealthTones(data);
 
     populateSelectOptions('metasignal-quote-filter', data.availableQuoteTypes, state.metaSignalFilters.quoteType, 'All Quote Types');
     populateSelectOptions('metasignal-campaign-filter', data.availableCampaigns, state.metaSignalFilters.campaign, 'All Campaigns');
