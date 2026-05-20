@@ -3300,6 +3300,27 @@ body {
 }
 
 @media (max-width: 1199.98px) {
+    .wa-page-header {
+        grid-template-columns: 1fr;
+    }
+
+    .wa-header-right {
+        justify-self: stretch;
+        justify-items: stretch;
+        min-width: 0;
+    }
+
+    .wa-header-rail-main {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        justify-content: stretch;
+    }
+
+    .wa-header-rail-meta {
+        justify-content: flex-start;
+    }
+
     .hero-link-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -3899,12 +3920,15 @@ body {
 }
 
 .wa-page-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, auto);
     align-items: flex-start;
     padding: 1rem 1.2rem;
     gap: .75rem 1rem;
 }
 
 .wa-header-copy {
+    min-width: 0;
     max-width: 38rem;
 }
 
@@ -3920,12 +3944,59 @@ body {
 }
 
 .wa-header-right {
+    display: grid;
+    justify-self: end;
+    justify-items: end;
+    gap: .5rem;
+    min-width: min(100%, 28rem);
+}
+
+.wa-header-rail-main {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    justify-content: end;
+    gap: .55rem .65rem;
+    width: 100%;
+}
+
+.wa-header-rail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: .45rem .55rem;
+    width: 100%;
+}
+
+.wa-header-stack {
+    display: grid;
+    gap: .22rem;
+    min-width: 0;
+}
+
+.wa-header-stack-label {
+    display: inline-block;
+    padding-left: .18rem;
+    color: rgba(246,223,157,.68);
+    font-size: .5rem;
+    font-weight: 900;
+    letter-spacing: .2em;
+    text-transform: uppercase;
 }
 
 .wa-scope-chip {
-    min-height: 36px;
-    padding: .28rem .72rem .32rem;
+    min-height: 38px;
+    padding: .42rem .8rem;
+    align-items: center;
+    gap: .35rem;
+}
+
+.wa-scope-chip-static {
+    display: inline-flex;
+    align-items: center;
+    min-width: 10.75rem;
+    justify-content: flex-start;
 }
 
 .wa-scope-chip-kicker {
@@ -3941,6 +4012,10 @@ body {
     gap: .2rem;
 }
 
+.wa-scope-picker-head {
+    padding-left: .18rem;
+}
+
 .wa-scope-picker-label {
     font-size: .5rem;
 }
@@ -3952,8 +4027,20 @@ body {
 }
 
 .wa-tz-chip {
+    min-height: 36px;
     padding: .25rem .7rem;
     font-size: .72rem;
+}
+
+.wa-page-header .fa-env-badge {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    margin-top: 0;
+    padding: .3rem .75rem;
+    border-radius: 999px;
+    font-size: .72rem;
+    letter-spacing: .015em;
 }
 
 .wa-team-btn {
@@ -4212,6 +4299,27 @@ body {
 }
 
 @media (max-width: 1199.98px) {
+    .wa-page-header {
+        grid-template-columns: 1fr;
+    }
+
+    .wa-header-right {
+        justify-self: stretch;
+        justify-items: stretch;
+        min-width: 0;
+    }
+
+    .wa-header-rail-main {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        grid-auto-flow: row;
+        grid-auto-columns: auto;
+        justify-content: stretch;
+    }
+
+    .wa-header-rail-meta {
+        justify-content: flex-start;
+    }
+
     .hero-link-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -4266,8 +4374,21 @@ body {
 
     .wa-header-right {
         width: 100%;
-        align-items: stretch;
-        justify-content: flex-start;
+        justify-items: stretch;
+    }
+
+    .wa-header-rail-main {
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    }
+
+    .wa-header-stack,
+    .wa-scope-picker {
+        width: 100%;
+    }
+
+    .wa-scope-chip-static {
+        width: 100%;
+        min-width: 0;
     }
 
     .wa-scope-picker {
@@ -4287,6 +4408,18 @@ body {
 }
 
 @media (max-width: 767.98px) {
+    .wa-page-header {
+        gap: .7rem;
+    }
+
+    .wa-header-rail-main {
+        grid-template-columns: 1fr;
+    }
+
+    .wa-header-rail-meta {
+        justify-content: flex-start;
+    }
+
     .wa-command-surface {
         gap: .85rem;
         padding: .95rem;
