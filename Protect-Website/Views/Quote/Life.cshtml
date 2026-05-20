@@ -448,7 +448,9 @@
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
         : "Zac Owen";
-    var heroTrustPersonRole = "Licensed Insurance Professional";
+    var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
+        ? "Licensed Insurance Professional"
+        : "Personal insurance guidance";
     var heroTrustPersonSupport = "No pressure. Just personalized guidance.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
@@ -481,7 +483,7 @@
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review.";
     var contactFirstProofKicker = "Personal guidance";
     var contactFirstProofText = "Answer 5 quick questions to see what may fit. See your estimate first.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "No spam calls" };
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "You stay in control" };
     var contactFirstProcessingHeading = "Preparing your estimated options...";
     var contactFirstProcessingHelper = "You’ll see what may fit first.";
     var contactFirstProcessingNote = "Building your estimate...";
@@ -501,7 +503,7 @@
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about building lifelong protection and cash value that grows with you.";
         contactFirstProofKicker = "Whole life guidance";
         contactFirstProofText = "Explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "No spam calls" };
+        contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
         contactFirstProcessingNote = "Building your whole life estimate...";
@@ -524,7 +526,7 @@
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
         contactFirstProofText = "Explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "No spam calls" };
+        contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your term life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
         contactFirstProcessingNote = "Building your term life estimate...";
@@ -547,7 +549,7 @@
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
         contactFirstProofText = "Explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "No spam calls" };
+        contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
         contactFirstProcessingNote = "Building your final expense estimate...";
@@ -570,7 +572,7 @@
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
         contactFirstProofText = "Explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "No spam calls" };
+        contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
         contactFirstProcessingNote = "Building your mortgage protection estimate...";
@@ -593,7 +595,7 @@
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about growing your wealth, protecting your future, and leaving a legacy.";
         contactFirstProofKicker = "IUL guidance";
         contactFirstProofText = "Explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "No spam calls" };
+        contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
         contactFirstProcessingNote = "Building your IUL estimate...";
@@ -4531,7 +4533,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         <input type="hidden" name="Fbclid" id="Fbclid" />
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
-        <input type="hidden" name="MarketingEmailConsent" value="true" />
+        <input type="hidden" name="MarketingEmailConsent" value="false" />
         <input type="hidden" name="RecommendationPrimaryKey" id="RecommendationPrimaryKey" value="@form.RecommendationPrimaryKey" />
         <input type="hidden" name="RecommendationPrimaryTitle" id="RecommendationPrimaryTitle" value="@form.RecommendationPrimaryTitle" />
         <input type="hidden" name="RecommendationSecondaryKey" id="RecommendationSecondaryKey" value="@form.RecommendationSecondaryKey" />
