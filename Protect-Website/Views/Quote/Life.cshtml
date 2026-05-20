@@ -4526,7 +4526,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 <script src="~/js/life-estimate-engine.js" asp-append-version="true"></script>
 <script src="~/js/trusted-carrier-strip.js" asp-append-version="true"></script>
 <script>
-(() => {
+(async () => {
   const form = document.getElementById('lifeWizardForm');
   if (!form) return;
 
@@ -4586,6 +4586,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
   const PROCESSING_BRIDGE_MS = 1500;
+  const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}`;
+  const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
   const microStepViewEvents = [
     'life_step1_protecting_view',
     'life_step1_goal_view',
@@ -4598,9 +4600,192 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   let processingTimer = null;
   let latestEstimatePreview = null;
   let estimatePreviewPromise = null;
+  let isRestoringFunnelState = false;
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
+  }
+
+  function getSessionStorageSafe() {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  }
+
+  function getVisibleFunnelPanel() {
+    const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    if (previewPanel && !previewPanel.hidden) return previewPanel;
+    if (step2Panel && !step2Panel.hidden) return step2Panel;
+    if (processingPanel && !processingPanel.hidden) return processingPanel;
+    return step1Panel;
+  }
+
+  function getActivePanelKey() {
+    const previewPanel = document.getElementById('lifeMiniResultsPanel');
+    if (previewPanel && !previewPanel.hidden) return 'results';
+    if (step2Panel && !step2Panel.hidden) return 'contact';
+    if (processingPanel && !processingPanel.hidden) return 'processing';
+    return 'step1';
+  }
+
+  function setRadioValue(name, value) {
+    if (!value) return;
+    const radio = form.querySelector(`input[name="${name}"][value="${CSS.escape(String(value))}"]`);
+    if (radio instanceof HTMLInputElement) {
+      radio.checked = true;
+    }
+  }
+
+  function setFieldValue(name, value) {
+    const el = form.querySelector(`[name="${name}"]`);
+    if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
+      return;
+    }
+    el.value = value ?? '';
+  }
+
+  function hasMeaningfulPersistedState(state) {
+    if (!state || typeof state !== 'object') {
+      return false;
+    }
+
+    const fieldValues = state.fields && typeof state.fields === 'object' ? Object.values(state.fields) : [];
+    return fieldValues.some((value) => asTrimmed(String(value ?? '')) !== '')
+      || Boolean(state.latestEstimatePreview)
+      || state.activePanel === 'results'
+      || state.activePanel === 'contact'
+      || Number.isFinite(state.currentMicroStep) && Number(state.currentMicroStep) > 0;
+  }
+
+  function buildPersistedFunnelState() {
+    syncStepOneAnswersFromUI();
+
+    return {
+      currentMicroStep,
+      activePanel: getActivePanelKey(),
+      latestEstimatePreview,
+      fields: {
+        ProtectingWho: selectedRadio('ProtectingWho')?.value || '',
+        CoverageGoal: selectedRadio('CoverageGoal')?.value || '',
+        CoverageAmountOption: selectedRadio('CoverageAmountOption')?.value || '',
+        TobaccoUse: selectedRadio('TobaccoUse')?.value || '',
+        AgeBracket: selectedRadio('AgeBracket')?.value || '',
+        FirstName: asTrimmed(form.querySelector('[name="FirstName"]')?.value || ''),
+        LastName: asTrimmed(form.querySelector('[name="LastName"]')?.value || ''),
+        Phone: asTrimmed(form.querySelector('[name="Phone"]')?.value || ''),
+        Email: asTrimmed(form.querySelector('[name="Email"]')?.value || ''),
+        State: asTrimmed(form.querySelector('[name="State"]')?.value || '')
+      },
+      timestamp: Date.now()
+    };
+  }
+
+  function clearPersistedFunnelState() {
+    const storage = getSessionStorageSafe();
+    if (!storage) return;
+    storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+  }
+
+  function persistFunnelState() {
+    if (isRestoringFunnelState) {
+      return;
+    }
+
+    const storage = getSessionStorageSafe();
+    if (!storage) {
+      return;
+    }
+
+    const state = buildPersistedFunnelState();
+    if (!hasMeaningfulPersistedState(state)) {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      return;
+    }
+
+    try {
+      storage.setItem(FUNNEL_STATE_STORAGE_KEY, JSON.stringify(state));
+    } catch {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+    }
+  }
+
+  async function restorePersistedFunnelState() {
+    const storage = getSessionStorageSafe();
+    if (!storage) {
+      return false;
+    }
+
+    const raw = storage.getItem(FUNNEL_STATE_STORAGE_KEY);
+    if (!raw) {
+      return false;
+    }
+
+    let state = null;
+    try {
+      state = JSON.parse(raw);
+    } catch {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      return false;
+    }
+
+    if (!state || typeof state !== 'object') {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      return false;
+    }
+
+    if (Number.isFinite(state.timestamp) && Date.now() - Number(state.timestamp) > FUNNEL_STATE_MAX_AGE_MS) {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
+      return false;
+    }
+
+    isRestoringFunnelState = true;
+
+    const fields = state.fields && typeof state.fields === 'object' ? state.fields : {};
+    setRadioValue('ProtectingWho', fields.ProtectingWho || '');
+    setRadioValue('CoverageGoal', fields.CoverageGoal || '');
+    setRadioValue('CoverageAmountOption', fields.CoverageAmountOption || '');
+    setRadioValue('TobaccoUse', fields.TobaccoUse || '');
+    setRadioValue('AgeBracket', fields.AgeBracket || '');
+    setFieldValue('FirstName', fields.FirstName || '');
+    setFieldValue('LastName', fields.LastName || '');
+    setFieldValue('Phone', fields.Phone || '');
+    setFieldValue('Email', fields.Email || '');
+    setFieldValue('State', fields.State || '');
+
+    latestEstimatePreview = state.latestEstimatePreview || null;
+    applyEstimatePreviewToHiddenFields(latestEstimatePreview);
+    syncStepOneAnswersFromUI();
+
+    const restoredMicroStep = Number.isFinite(Number(state.currentMicroStep))
+      ? Math.max(0, Math.min(microSteps.length - 1, Number(state.currentMicroStep)))
+      : resolveInitialMicroStep();
+
+    try {
+      if (state.activePanel === 'results') {
+        let preview = latestEstimatePreview;
+        if (!preview) {
+          preview = await ensureEstimatePreview();
+        }
+        await showMiniResultsPreview(preview, { trackView: false });
+      } else if (state.activePanel === 'contact') {
+        currentMicroStep = restoredMicroStep;
+        setActivePanel(step2Panel);
+      } else if (state.activePanel === 'processing') {
+        if (latestEstimatePreview) {
+          await showMiniResultsPreview(latestEstimatePreview, { trackView: false });
+        } else {
+          showStep1(restoredMicroStep, false, { trackView: false });
+        }
+      } else {
+        showStep1(restoredMicroStep, false, { trackView: false });
+      }
+    } finally {
+      isRestoringFunnelState = false;
+    }
+
+    return true;
   }
 
   contactFieldNames.forEach((name) => {
@@ -4616,6 +4801,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       if (lifeError) {
         lifeError.style.display = 'none';
       }
+      persistFunnelState();
     });
   });
 
@@ -4782,6 +4968,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   function clearEstimatePreviewCache() {
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
+    persistFunnelState();
   }
 
   function applyEstimatePreviewToHiddenFields(preview) {
@@ -4991,6 +5178,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     if (heroTrustStrip) {
       heroTrustStrip.hidden = activePanel === step2Panel;
     }
+    persistFunnelState();
   }
 
   function resolveScrollTarget(target) {
@@ -5038,7 +5226,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   }
 
   function scrollInitialFunnelIntoView() {
-    const initialTarget = contactFirstPanel || (showContactStepByDefault ? step2Panel : step1Panel);
+    const initialTarget = getVisibleFunnelPanel();
     if (!(initialTarget instanceof HTMLElement)) return;
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
@@ -5116,7 +5304,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     return hasValidAge;
   }
 
-  function showMicroStep(stepIndex, shouldScroll = false) {
+  function showMicroStep(stepIndex, shouldScroll = false, options = {}) {
     const bounded = Math.max(0, Math.min(microSteps.length - 1, stepIndex));
     currentMicroStep = bounded;
     microSteps.forEach((stepEl, i) => {
@@ -5129,19 +5317,25 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     if (step1ProgressFill) {
       step1ProgressFill.style.width = `${((bounded + 1) / microSteps.length) * 100}%`;
     }
-    trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
+    if (options.trackView !== false) {
+      trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
+    }
+
+    persistFunnelState();
 
     if (shouldScroll) {
       scrollIntoViewAndFocus(step1Panel, false);
     }
   }
 
-  function showStep1(microStepIndex = 0, shouldScroll = false) {
+  function showStep1(microStepIndex = 0, shouldScroll = false, options = {}) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
     setActivePanel(step1Panel);
-    trackEvent('life_step1_intro_view');
-    showMicroStep(microStepIndex, shouldScroll);
+    if (options.trackView !== false) {
+      trackEvent('life_step1_intro_view');
+    }
+    showMicroStep(microStepIndex, shouldScroll, options);
   }
 
   function animateProcessingBar() {
@@ -5188,7 +5382,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }, PROCESSING_BRIDGE_MS + 80);
   }
 
-  async function showMiniResultsPreview(preview) {
+  async function showMiniResultsPreview(preview, options = {}) {
     const existing = document.getElementById('lifeMiniResultsPanel');
     if (existing) existing.remove();
 
@@ -5208,28 +5402,32 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     const previewPanel = document.getElementById('lifeMiniResultsPanel');
     window.trustedCarrierStrip?.init(previewPanel);
     setActivePanel(previewPanel);
-    trackEvent('mini_results_view', {
-      recommendationPrimaryKey: primary.policyKey || '',
-      recommendationSecondaryKey: secondary.policyKey || ''
-    });
-    trackEvent('estimate_results_viewed', {
-      primaryPolicyType: primary.policyType || '',
-      secondaryPolicyType: secondary.policyType || '',
-      ageBand: estimatePreview.ageBand || '',
-      requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
-      tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
-      coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
-      protectingWho: estimatePreview.protectingWho || answer1Hidden?.value || '',
-      estimatedLow: primary.estimatedLowMonthly || '',
-      estimatedHigh: primary.estimatedHighMonthly || '',
-      secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
-      secondaryEstimatedHigh: secondary.estimatedHighMonthly || ''
-    });
-    await ensureMetaLeadFormStart();
-    metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
-      recommendationPrimaryKey: primary.policyKey || '',
-      recommendationSecondaryKey: secondary.policyKey || ''
-    }));
+    if (options.trackView !== false) {
+      trackEvent('mini_results_view', {
+        recommendationPrimaryKey: primary.policyKey || '',
+        recommendationSecondaryKey: secondary.policyKey || ''
+      });
+      trackEvent('estimate_results_viewed', {
+        primaryPolicyType: primary.policyType || '',
+        secondaryPolicyType: secondary.policyType || '',
+        ageBand: estimatePreview.ageBand || '',
+        requestedCoverageAmount: estimatePreview.requestedCoverageAmount || coverageAmountHidden?.value || '',
+        tobaccoUse: estimatePreview.tobaccoUse || answer3Hidden?.value || '',
+        coverageGoal: estimatePreview.coverageGoal || answer2Hidden?.value || '',
+        protectingWho: estimatePreview.protectingWho || answer1Hidden?.value || '',
+        estimatedLow: primary.estimatedLowMonthly || '',
+        estimatedHigh: primary.estimatedHighMonthly || '',
+        secondaryEstimatedLow: secondary.estimatedLowMonthly || '',
+        secondaryEstimatedHigh: secondary.estimatedHighMonthly || ''
+      });
+      await ensureMetaLeadFormStart();
+      metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
+        recommendationPrimaryKey: primary.policyKey || '',
+        recommendationSecondaryKey: secondary.policyKey || ''
+      }));
+    }
+
+    persistFunnelState();
 
     document.getElementById('continueToContactBtn')?.addEventListener('click', () => {
       trackEvent('estimate_contact_continue', {
@@ -5248,6 +5446,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         recommendationSecondaryKey: secondary.policyKey || ''
       });
       previewPanel.remove();
+      persistFunnelState();
       showStep2(true);
     });
   }
@@ -5382,6 +5581,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         clearQuoteFieldError(groupName);
         clearEstimatePreviewCache();
         syncStepOneAnswersFromUI();
+        persistFunnelState();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         void ensureMetaLeadFormStart();
         queueMicroAdvance(expectedStep, nextStep);
@@ -5402,6 +5602,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       clearQuoteFieldError('CoverageGoal');
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
+      persistFunnelState();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
       void ensureMetaLeadFormStart();
       if (!step1Panel.hidden && currentMicroStep === 1) {
@@ -5424,6 +5625,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       clearQuoteFieldError('AgeBracket');
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
+      persistFunnelState();
       trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
       void ensureMetaLeadFormStart();
       queueProcessingAdvanceFromAgeSelection();
@@ -5559,6 +5761,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       if (isContactFirstEducationVariant) {
         await trackEvent('life_contact_first_submit_success', { variantFlow: 'contact_first_education' });
       }
+      clearPersistedFunnelState();
       window.location.href = resolveThankYouPath();
     } catch (err) {
       if (lifeError) {
@@ -5589,17 +5792,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     })
   });
 
-  syncStepOneAnswersFromUI();
-  if (showContactStepByDefault) {
-    showStep2(false);
-  } else {
-    const initMicro = resolveInitialMicroStep();
-    showStep1(initMicro, false);
+  const restoredFunnelState = await restorePersistedFunnelState();
+  if (!restoredFunnelState) {
+    syncStepOneAnswersFromUI();
+    if (showContactStepByDefault) {
+      showStep2(false);
+    } else {
+      const initMicro = resolveInitialMicroStep();
+      showStep1(initMicro, false);
+    }
   }
   scrollInitialFunnelIntoView();
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }
+  window.addEventListener('pagehide', () => {
+    syncStepOneAnswersFromUI();
+    persistFunnelState();
+  });
   window.trustedCarrierStrip?.init(document);
 })();
 </script>
