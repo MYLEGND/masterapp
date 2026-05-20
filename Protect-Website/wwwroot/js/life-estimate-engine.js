@@ -22,9 +22,12 @@
   }
 
   function normalizePreview(preview) {
+    const secondarySource = readValue(preview, 'secondary', null);
     return {
       primary: normalizeEstimateResult(readValue(preview, 'primary', {})),
-      secondary: normalizeEstimateResult(readValue(preview, 'secondary', {})),
+      secondary: secondarySource ? normalizeEstimateResult(secondarySource) : null,
+      offerKey: String(readValue(preview, 'offerKey', 'life')),
+      displayMode: String(readValue(preview, 'displayMode', 'comparison')),
       ageBand: String(readValue(preview, 'ageBand', '')),
       requestedCoverageAmount: Number(readValue(preview, 'requestedCoverageAmount', 0)),
       tobaccoUse: String(readValue(preview, 'tobaccoUse', '')),
@@ -87,22 +90,48 @@
     `;
   }
 
+  function buildResultsHeading(preview) {
+    if (preview.displayMode === 'single') {
+      return `Here’s your estimated ${escapeHtml(preview.primary.policyType)} fit`;
+    }
+
+    return 'Here’s what may fit based on what you shared';
+  }
+
+  function buildResultsHelper(preview) {
+    if (preview.displayMode === 'single') {
+      return `This estimate is a practical starting point for ${escapeHtml(preview.primary.policyType)} based on what you shared.`;
+    }
+
+    return 'These estimated ranges are meant to give you a practical starting point before you talk through details with a licensed professional.';
+  }
+
+  function buildResultsNote(preview) {
+    if (preview.displayMode === 'single') {
+      return `Continue for a personal walkthrough of this estimate and how ${escapeHtml(preview.primary.policyType)} may fit.`;
+    }
+
+    return 'Continue for a personal walkthrough of these estimates and what may fit best.';
+  }
+
   function buildResultsPanelHtml(preview, continueLabel) {
     const normalized = normalizePreview(preview);
-    const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || normalized.secondary.disclaimer;
+    const secondary = normalized.secondary;
+    const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
+    const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
 
     return `
       <div class="lq-step-panel lq-estimate-panel" id="lifeMiniResultsPanel">
         <div class="lq-step-panel-pad">
           <div class="lq-step-progress">Your Results</div>
-          <div class="lq-step-title">Here’s what may fit based on what you shared</div>
-          <div class="lq-step-helper">These estimated ranges are meant to give you a practical starting point before you talk through details with a licensed professional.</div>
+          <div class="lq-step-title">${buildResultsHeading(normalized)}</div>
+          <div class="lq-step-helper">${buildResultsHelper(normalized)}</div>
           <div class="lq-estimate-grid">
-            ${buildEstimateCard(normalized.primary, 'Recommended', 'primary')}
-            ${buildEstimateCard(normalized.secondary, 'Also Worth Considering', 'secondary')}
+            ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended' : 'Your Estimate', 'primary')}
+            ${hasSecondary ? buildEstimateCard(secondary, 'Also Worth Considering', 'secondary') : ''}
           </div>
           <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
-          <div class="lq-reach-note">Next, we’ll collect your contact details so someone can review what may fit and walk through the options with you.</div>
+          <div class="lq-reach-note">${buildResultsNote(normalized)}</div>
           <div class="lq-step-actions">
             <button type="button" class="btn-gold w-100" id="continueToContactBtn">${escapeHtml(continueLabel || 'Continue & Review My Options')}</button>
           </div>

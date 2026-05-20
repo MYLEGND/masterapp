@@ -42,25 +42,57 @@ namespace ProtectWebsite.Services
                     ["55-64"] = new(15000, 59m, 89m),
                     ["65+"] = new(15000, 76m, 116m),
                 },
+                ["mortgage"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["18-24"] = new(250000, 24m, 36m),
+                    ["25-34"] = new(250000, 28m, 42m),
+                    ["35-44"] = new(250000, 36m, 56m),
+                    ["45-54"] = new(250000, 62m, 96m),
+                    ["55-64"] = new(250000, 104m, 168m),
+                    ["65+"] = new(250000, 188m, 304m),
+                },
+                ["iul"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["18-24"] = new(100000, 74m, 108m),
+                    ["25-34"] = new(100000, 88m, 128m),
+                    ["35-44"] = new(100000, 112m, 166m),
+                    ["45-54"] = new(100000, 154m, 228m),
+                    ["55-64"] = new(100000, 218m, 318m),
+                    ["65+"] = new(100000, 298m, 438m),
+                },
             };
 
         public static LifeEstimatePreviewResponse BuildPreview(LifeQuoteFormModel model, string? offerKey = null)
         {
+            var normalizedOfferKey = LifeOfferResolver.Normalize(offerKey);
             var age = ResolveAge(model);
             var ageBand = ResolveAgeBand(age);
             var coverageGoal = NormalizeGoal(model.CoverageGoal);
             var protectingWho = NormalizeProtectingWho(model.ProtectingWho);
             var requestedCoverageAmount = ResolveRequestedCoverageAmount(model);
             var tobaccoUse = NormalizeTobaccoUse(model.TobaccoUse);
-            var pair = ResolvePolicyPair(coverageGoal, protectingWho, age, requestedCoverageAmount, offerKey);
+            var usesComparisonMode = string.Equals(normalizedOfferKey, LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase);
+            LifeEstimateResult? secondary = null;
+            LifeEstimateResult primary;
 
-            var primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
-            var secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+            if (usesComparisonMode)
+            {
+                var pair = ResolvePolicyPair(coverageGoal, protectingWho, age, requestedCoverageAmount);
+                primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+                secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+            }
+            else
+            {
+                var primaryPolicyKey = ResolveOfferPolicyKey(normalizedOfferKey);
+                primary = BuildEstimate(primaryPolicyKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount);
+            }
 
             return new LifeEstimatePreviewResponse
             {
                 Primary = primary,
                 Secondary = secondary,
+                OfferKey = normalizedOfferKey,
+                DisplayMode = usesComparisonMode ? "comparison" : "single",
                 AgeBand = ageBand,
                 RequestedCoverageAmount = requestedCoverageAmount ?? primary.CoverageAmount,
                 TobaccoUse = tobaccoUse,
@@ -113,7 +145,7 @@ namespace ProtectWebsite.Services
             };
         }
 
-        private static PolicyPair ResolvePolicyPair(string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount, string? offerKey)
+        private static PolicyPair ResolvePolicyPair(string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)
         {
             var wantsSmallCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value <= 100000;
             var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
@@ -159,6 +191,19 @@ namespace ProtectWebsite.Services
             return new PolicyPair("term", "wholelife");
         }
 
+        private static string ResolveOfferPolicyKey(string normalizedOfferKey)
+        {
+            return normalizedOfferKey switch
+            {
+                LifeOfferKeys.Term => "term",
+                LifeOfferKeys.WholeLife => "wholelife",
+                LifeOfferKeys.FinalExpense => "finalexpense",
+                LifeOfferKeys.Mortgage => "mortgage",
+                LifeOfferKeys.Iul => "iul",
+                _ => "term"
+            };
+        }
+
         private static int ResolveCoverageAmount(string policyKey, string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)
         {
             if (requestedCoverageAmount.HasValue && requestedCoverageAmount.Value > 0)
@@ -183,6 +228,31 @@ namespace ProtectWebsite.Services
                 if (string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase))
                     return 100000;
                 return age >= 60 ? 50000 : 75000;
+            }
+
+            if (string.Equals(policyKey, "mortgage", StringComparison.OrdinalIgnoreCase))
+            {
+                return protectingWho switch
+                {
+                    "family" => 350000,
+                    "children" => 350000,
+                    "spouse_or_partner" => 300000,
+                    _ => 250000
+                };
+            }
+
+            if (string.Equals(policyKey, "iul", StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase))
+                    return 250000;
+                if (string.Equals(coverageGoal, "replace_income", StringComparison.OrdinalIgnoreCase))
+                    return 250000;
+                return protectingWho switch
+                {
+                    "family" => 250000,
+                    "children" => 250000,
+                    _ => 150000
+                };
             }
 
             if (string.Equals(coverageGoal, "replace_income", StringComparison.OrdinalIgnoreCase))
@@ -253,6 +323,28 @@ namespace ProtectWebsite.Services
                 return reasons;
             }
 
+            if (string.Equals(policyKey, "mortgage", StringComparison.OrdinalIgnoreCase))
+            {
+                reasons.Add("May fit when keeping your family in the home is the priority.");
+                reasons.Add("Keeps the estimate focused on mortgage balance coverage or key household obligations.");
+                reasons.Add(age >= 55
+                    ? "Often worth reviewing when protecting payment continuity matters more than maximizing extra coverage."
+                    : "Often reviewed when protecting mortgage years and household stability matters most.");
+                return reasons;
+            }
+
+            if (string.Equals(policyKey, "iul", StringComparison.OrdinalIgnoreCase))
+            {
+                reasons.Add("May fit when lifelong protection and cash value flexibility are both priorities.");
+                reasons.Add(wantsLargeCoverage
+                    ? "Can illustrate what a larger long-term protection target may look like with a flexible cash value design."
+                    : "Keeps the estimate centered on protection plus flexible long-term value growth potential.");
+                reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
+                    ? "Often reviewed in legacy planning conversations where long-range value and access matter."
+                    : "Often reviewed when long-term growth potential and access to cash value matter.");
+                return reasons;
+            }
+
             reasons.Add(string.Equals(coverageGoal, "leave_something", StringComparison.OrdinalIgnoreCase)
                 ? "May fit when lifelong protection or leaving something behind matters most."
                 : "May fit when permanent protection is worth considering alongside lower-cost term coverage.");
@@ -270,6 +362,8 @@ namespace ProtectWebsite.Services
             var wantsLargeCoverage = requestedCoverageAmount.HasValue && requestedCoverageAmount.Value >= 500000;
             return policyKey switch
             {
+                "mortgage" =>
+                    "Mortgage protection may fit when the priority is keeping the home secure and covering mortgage years.",
                 "term" when string.Equals(coverageGoal, "mortgage_or_bills", StringComparison.OrdinalIgnoreCase) =>
                     "Term life may fit when the priority is protecting mortgage years or monthly obligations.",
                 "term" when wantsLargeCoverage =>
@@ -278,6 +372,8 @@ namespace ProtectWebsite.Services
                     "Term life may fit when you want broader protection at a lower estimated monthly cost.",
                 "finalexpense" =>
                     "Final expense coverage may fit when the goal is a smaller permanent benefit for burial or end-of-life costs.",
+                "iul" =>
+                    "Indexed universal life may fit when you want long-term protection with flexible cash value growth potential.",
                 _ =>
                     "Whole life may fit when lifelong protection or a permanent coverage path is worth considering."
             };
@@ -286,7 +382,13 @@ namespace ProtectWebsite.Services
         private static decimal ResolveCoverageMultiplier(string policyKey, int coverageAmount, int referenceCoverage)
         {
             var ratio = Math.Max(0.5d, (double)coverageAmount / Math.Max(1, referenceCoverage));
-            var exponent = string.Equals(policyKey, "term", StringComparison.OrdinalIgnoreCase) ? 0.92d : 0.98d;
+            var exponent = policyKey switch
+            {
+                "term" => 0.92d,
+                "mortgage" => 0.94d,
+                "iul" => 0.96d,
+                _ => 0.98d
+            };
             return (decimal)Math.Pow(ratio, exponent);
         }
 
@@ -373,6 +475,8 @@ namespace ProtectWebsite.Services
                 "term" => "Term Life Insurance",
                 "wholelife" => "Whole Life Insurance",
                 "finalexpense" => "Final Expense Insurance",
+                "mortgage" => "Mortgage Protection Insurance",
+                "iul" => "Indexed Universal Life (IUL)",
                 _ => "Life Insurance"
             };
         }

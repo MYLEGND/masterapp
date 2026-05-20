@@ -136,23 +136,23 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
-    var finalStepHeading = isContactFirstEducationVariant ? "Want help reviewing this?" : "Where should I send your personalized review?";
+    var finalStepHeading = isContactFirstEducationVariant ? "Get your personal walkthrough" : "Want a personalized review?";
     var finalStepHelper = isContactFirstEducationVariant
-        ? $"Send your info and {agentDirectContactName} will walk through what may fit. No obligation."
+        ? $"{agentDirectContactName} will walk through what may fit and answer your questions. No obligation."
         : string.Empty;
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = isContactFirstEducationVariant
-        ? "Send your info and I’ll walk through what may fit. No obligation."
+        ? "I’ll walk through what may fit and answer your questions. No obligation."
         : "I’ll review what you shared and explain what may fit.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
     var finalSubmitButtonText = isContactFirstEducationVariant
         ? (!string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Walk Me Through This"
-            : "Help Me Review This")
+            ? $"Get My Walkthrough From {agentDirectContactName}"
+            : "Get My Personal Walkthrough")
         : showAgentTrustCard
         ? $"Get My Review From {agentDirectContactName}"
         : "Get My Personalized Review";
@@ -198,108 +198,157 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review.";
     var contactFirstProofKicker = "Personal guidance";
-    var contactFirstProofText = "Answer 5 quick questions to see what may fit. You’ll see estimated options before any contact step.";
+    var contactFirstProofText = "Answer 5 quick questions to see what may fit. See your estimate first.";
     IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "No spam calls" };
     var contactFirstProcessingHeading = "Preparing your estimated options...";
-    var contactFirstProcessingHelper = "You’ll see what may fit before any contact step.";
+    var contactFirstProcessingHelper = "You’ll see what may fit first.";
     var contactFirstProcessingNote = "Building your estimate...";
     var contactFirstNextLabel = "Estimate first";
-    var contactFirstNextCopy = "You’ll see estimated options before any contact step. If you want help after that, you can send your info. No obligation.";
+    var contactFirstNextCopy = "Review estimated options first, then decide what you’d like to explore. No obligation.";
+    var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
+    var productFocusTitle = "What this estimate is built around";
+    var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
+    IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
+    {
+        ("Focused guidance", "See an estimate centered on the coverage conversation you actually came here for."),
+        ("Relevant tradeoffs", "Review the main tradeoffs that matter for this protection path, not every life product."),
+        ("Clear next steps", "Keep the walkthrough focused on what may fit without extra product noise.")
+    };
 
     if (normalizedOfferKey == "wholelife")
     {
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about building lifelong protection and cash value that grows with you.";
         contactFirstProofKicker = "Whole life guidance";
-        contactFirstProofText = "Explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals before any contact step.";
+        contactFirstProofText = "Explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "No spam calls" };
         contactFirstProcessingHeading = "Preparing your whole life estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated whole life fit before any contact step.";
+        contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
         contactFirstProcessingNote = "Building your whole life estimate...";
         contactFirstNextLabel = "Whole life first";
-        contactFirstNextCopy = "You’ll see estimated whole life options before any contact step. If you want help after that, you can send your info. No obligation.";
-        finalStepHeading = "Want help reviewing whole life options?";
-        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
-        agentTrustBio = "Send your info and I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
+        contactFirstNextCopy = "Review estimated whole life options first, then decide what you’d like to explore. No obligation.";
+        finalStepHeading = "Get your whole life walkthrough";
+        finalStepHelper = $"{agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
+        agentTrustBio = "I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
         finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My Whole Life Options"
-            : "Help Me Review Whole Life Options";
+            ? $"Get My Whole Life Walkthrough From {agentDirectContactName}"
+            : "Get My Whole Life Walkthrough";
+        productFocusTitle = "Why people explore whole life";
+        productFocusCopy = "Whole life is usually explored for lasting protection, steady guarantees, and long-term value growth that stays aligned with the same product path.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("Lifelong coverage", "Designed for people who want coverage built to stay in place for the long run."),
+            ("Steady value growth", "Often explored when predictable long-term cash value matters alongside protection."),
+            ("Simpler permanent path", "Keeps the conversation centered on a straightforward permanent coverage design.")
+        };
     }
     else if (normalizedOfferKey == "term")
     {
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
-        contactFirstProofText = "Explore whether affordable term life coverage may fit the years your family needs protection most before any contact step.";
+        contactFirstProofText = "Explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
         contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "No spam calls" };
         contactFirstProcessingHeading = "Preparing your term life estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated term life fit before any contact step.";
+        contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
         contactFirstProcessingNote = "Building your term life estimate...";
         contactFirstNextLabel = "Term life first";
-        contactFirstNextCopy = "You’ll see estimated term life options before any contact step. If you want help after that, you can send your info. No obligation.";
-        finalStepHeading = "Want help reviewing term life options?";
-        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
-        agentTrustBio = "Send your info and I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
+        contactFirstNextCopy = "Review estimated term life options first, then decide what you’d like to explore. No obligation.";
+        finalStepHeading = "Get your term life walkthrough";
+        finalStepHelper = $"{agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
+        agentTrustBio = "I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
         finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My Term Life Options"
-            : "Help Me Review Term Life Options";
+            ? $"Get My Term Life Walkthrough From {agentDirectContactName}"
+            : "Get My Term Life Walkthrough";
+        productFocusTitle = "Why people explore term life";
+        productFocusCopy = "Term life is usually explored for affordable protection during the years income, bills, and family responsibilities matter most.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("Affordable protection", "Often the first place people look when they want broader coverage at a lower monthly starting point."),
+            ("Specific term years", "Built around protecting the years your family or budget would feel the loss the most."),
+            ("Straightforward comparison", "Keeps the estimate focused on simple coverage and practical monthly cost.")
+        };
     }
     else if (normalizedOfferKey == "finalexpense")
     {
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
-        contactFirstProofText = "Explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind before any contact step.";
+        contactFirstProofText = "Explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
         contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "No spam calls" };
         contactFirstProcessingHeading = "Preparing your final expense estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated final expense fit before any contact step.";
+        contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
         contactFirstProcessingNote = "Building your final expense estimate...";
         contactFirstNextLabel = "Final expense first";
-        contactFirstNextCopy = "You’ll see estimated final expense options before any contact step. If you want help after that, you can send your info. No obligation.";
-        finalStepHeading = "Want help reviewing final expense options?";
-        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
-        agentTrustBio = "Send your info and I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
+        contactFirstNextCopy = "Review estimated final expense options first, then decide what you’d like to explore. No obligation.";
+        finalStepHeading = "Get your final expense walkthrough";
+        finalStepHelper = $"{agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
+        agentTrustBio = "I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
         finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My Final Expense Options"
-            : "Help Me Review Final Expense Options";
+            ? $"Get My Final Expense Walkthrough From {agentDirectContactName}"
+            : "Get My Final Expense Walkthrough";
+        productFocusTitle = "Why people explore final expense";
+        productFocusCopy = "Final expense coverage is usually explored to help with burial costs, honor personal wishes, and keep final bills from falling on loved ones.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("Final cost focus", "Keeps the estimate centered on burial, funeral, and other end-of-life cost planning."),
+            ("Smaller permanent need", "Often reviewed when a modest permanent benefit matters more than a large face amount."),
+            ("Simple review", "Designed to keep the conversation straightforward and easy to understand.")
+        };
     }
     else if (normalizedOfferKey == "mortgage")
     {
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
-        contactFirstProofText = "Explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance before any contact step.";
+        contactFirstProofText = "Explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
         contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "No spam calls" };
         contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit before any contact step.";
+        contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
         contactFirstProcessingNote = "Building your mortgage protection estimate...";
         contactFirstNextLabel = "Mortgage protection first";
-        contactFirstNextCopy = "You’ll see estimated mortgage protection options before any contact step. If you want help after that, you can send your info. No obligation.";
-        finalStepHeading = "Want help reviewing mortgage protection options?";
-        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
-        agentTrustBio = "Send your info and I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
+        contactFirstNextCopy = "Review estimated mortgage protection options first, then decide what you’d like to explore. No obligation.";
+        finalStepHeading = "Get your mortgage protection walkthrough";
+        finalStepHelper = $"{agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
+        agentTrustBio = "I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
         finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My Mortgage Protection Options"
-            : "Help Me Review Mortgage Protection Options";
+            ? $"Get My Mortgage Walkthrough From {agentDirectContactName}"
+            : "Get My Mortgage Walkthrough";
+        productFocusTitle = "Why people explore mortgage protection";
+        productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("Home-first protection", "Keeps the estimate focused on protecting the home and housing stability."),
+            ("Mortgage balance fit", "Centers the walkthrough on coverage sized around key mortgage or household obligations."),
+            ("Family continuity", "Often reviewed when preserving breathing room at home matters most.")
+        };
     }
     else if (normalizedOfferKey == "iul")
     {
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about growing your wealth, protecting your future, and leaving a legacy.";
         contactFirstProofKicker = "IUL guidance";
-        contactFirstProofText = "Explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals before any contact step.";
+        contactFirstProofText = "Explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "No spam calls" };
         contactFirstProcessingHeading = "Preparing your IUL estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit before any contact step.";
+        contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
         contactFirstProcessingNote = "Building your IUL estimate...";
         contactFirstNextLabel = "IUL first";
-        contactFirstNextCopy = "You’ll see estimated indexed universal life options before any contact step. If you want help after that, you can send your info. No obligation.";
-        finalStepHeading = "Want help reviewing indexed universal life options?";
-        finalStepHelper = $"Send your info and {agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
-        agentTrustBio = "Send your info and I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
+        contactFirstNextCopy = "Review estimated indexed universal life options first, then decide what you’d like to explore. No obligation.";
+        finalStepHeading = "Get your IUL walkthrough";
+        finalStepHelper = $"{agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
+        agentTrustBio = "I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
         finalSubmitButtonText = !string.IsNullOrWhiteSpace(agentDirectContactName)
-            ? $"Have {agentDirectContactName} Review My IUL Options"
-            : "Help Me Review IUL Options";
+            ? $"Get My IUL Walkthrough From {agentDirectContactName}"
+            : "Get My IUL Walkthrough";
+        productFocusTitle = "Why people explore indexed universal life";
+        productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with flexible cash value growth potential and legacy planning in the same conversation.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("Growth potential", "Keeps the estimate focused on long-term cash value growth potential tied to an IUL design."),
+            ("Flexible access", "Centers the conversation on how flexibility and access to value can matter over time."),
+            ("Legacy planning", "Often reviewed when long-range protection and leaving something behind are both priorities.")
+        };
     }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
@@ -3250,7 +3299,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     </div>
                                     <div class="lq-step-actions">
                                         <div class="lq-submit-row">
-                                            <div class="lq-trust-note">Want help reviewing this? Send your info and I’ll walk through what may fit. No obligation.</div>
+                                            <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
                                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                         </div>
                                         <div class="lq-error" id="lifeError"></div>
@@ -3271,74 +3320,93 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </section>
                 </div>
 
-                <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
-                    <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
-                    <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
-                    <div class="lq-options-summary-list">
-                        <article class="lq-option-summary-card is-term">
-                            <div class="lq-option-summary-top">
-                                <span class="lq-option-chip">Common first look</span>
-                                <div class="lq-option-visual" aria-hidden="true">
-                                    <svg viewBox="0 0 96 96" fill="none">
-                                        <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
-                                        <circle cx="18" cy="60" r="7" fill="#F5D68E" />
-                                        <circle cx="62" cy="60" r="7" fill="#F5D68E" />
-                                        <circle cx="72" cy="28" r="15" stroke="#FFF1C9" stroke-width="4" />
-                                        <path d="M72 20V29L78 33" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-                                    </svg>
+                @if (showGenericCoverageOverview)
+                {
+                    <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
+                        <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
+                        <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
+                        <div class="lq-options-summary-list">
+                            <article class="lq-option-summary-card is-term">
+                                <div class="lq-option-summary-top">
+                                    <span class="lq-option-chip">Common first look</span>
+                                    <div class="lq-option-visual" aria-hidden="true">
+                                        <svg viewBox="0 0 96 96" fill="none">
+                                            <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
+                                            <circle cx="18" cy="60" r="7" fill="#F5D68E" />
+                                            <circle cx="62" cy="60" r="7" fill="#F5D68E" />
+                                            <circle cx="72" cy="28" r="15" stroke="#FFF1C9" stroke-width="4" />
+                                            <path d="M72 20V29L78 33" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                                        </svg>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="lq-option-title">Term Life Insurance</div>
-                            <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
-                            <ul class="lq-option-bullets">
-                                <li>Usually the most straightforward coverage conversation.</li>
-                                <li>Often reviewed when affordability matters most.</li>
-                            </ul>
-                        </article>
+                                <div class="lq-option-title">Term Life Insurance</div>
+                                <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
+                                <ul class="lq-option-bullets">
+                                    <li>Usually the most straightforward coverage conversation.</li>
+                                    <li>Often reviewed when affordability matters most.</li>
+                                </ul>
+                            </article>
 
-                        <article class="lq-option-summary-card is-whole">
-                            <div class="lq-option-summary-top">
-                                <span class="lq-option-chip">Permanent coverage</span>
-                                <div class="lq-option-visual" aria-hidden="true">
-                                    <svg viewBox="0 0 96 96" fill="none">
-                                        <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
-                                        <circle cx="48" cy="48" r="29" stroke="#D3A448" stroke-width="4" stroke-opacity=".88" />
-                                        <circle cx="48" cy="48" r="41" stroke="#7B90B7" stroke-width="2.5" stroke-opacity=".45" />
-                                        <path d="M31 52C37 61 57 61 65 38" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" />
-                                    </svg>
+                            <article class="lq-option-summary-card is-whole">
+                                <div class="lq-option-summary-top">
+                                    <span class="lq-option-chip">Permanent coverage</span>
+                                    <div class="lq-option-visual" aria-hidden="true">
+                                        <svg viewBox="0 0 96 96" fill="none">
+                                            <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
+                                            <circle cx="48" cy="48" r="29" stroke="#D3A448" stroke-width="4" stroke-opacity=".88" />
+                                            <circle cx="48" cy="48" r="41" stroke="#7B90B7" stroke-width="2.5" stroke-opacity=".45" />
+                                            <path d="M31 52C37 61 57 61 65 38" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" />
+                                        </svg>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="lq-option-title">Whole Life Insurance</div>
-                            <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
-                            <ul class="lq-option-bullets">
-                                <li>Often reviewed when guarantees and consistency matter.</li>
-                                <li>A simpler permanent path for people who want long-term protection.</li>
-                            </ul>
-                        </article>
+                                <div class="lq-option-title">Whole Life Insurance</div>
+                                <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
+                                <ul class="lq-option-bullets">
+                                    <li>Often reviewed when guarantees and consistency matter.</li>
+                                    <li>A simpler permanent path for people who want long-term protection.</li>
+                                </ul>
+                            </article>
 
-                        <article class="lq-option-summary-card is-universal">
-                            <div class="lq-option-summary-top">
-                                <span class="lq-option-chip">Flexible / IUL options</span>
-                                <div class="lq-option-visual" aria-hidden="true">
-                                    <svg viewBox="0 0 96 96" fill="none">
-                                        <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
-                                        <path d="M46 52C54 58 60 64 71 74" stroke="#9FC4FF" stroke-width="3.5" stroke-linecap="round" />
-                                        <path d="M20 76H78" stroke="#597299" stroke-width="4" stroke-linecap="round" stroke-opacity=".72" />
-                                        <circle cx="18" cy="66" r="6" fill="#F2CF82" />
-                                        <circle cx="44" cy="40" r="6" fill="#F2CF82" />
-                                        <circle cx="78" cy="30" r="7" fill="#9FC4FF" />
-                                    </svg>
+                            <article class="lq-option-summary-card is-universal">
+                                <div class="lq-option-summary-top">
+                                    <span class="lq-option-chip">Flexible / IUL options</span>
+                                    <div class="lq-option-visual" aria-hidden="true">
+                                        <svg viewBox="0 0 96 96" fill="none">
+                                            <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
+                                            <path d="M46 52C54 58 60 64 71 74" stroke="#9FC4FF" stroke-width="3.5" stroke-linecap="round" />
+                                            <path d="M20 76H78" stroke="#597299" stroke-width="4" stroke-linecap="round" stroke-opacity=".72" />
+                                            <circle cx="18" cy="66" r="6" fill="#F2CF82" />
+                                            <circle cx="44" cy="40" r="6" fill="#F2CF82" />
+                                            <circle cx="78" cy="30" r="7" fill="#9FC4FF" />
+                                        </svg>
+                                    </div>
                                 </div>
-                            </div>
-                            <div class="lq-option-title">Universal Life Insurance</div>
-                            <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
-                            <ul class="lq-option-bullets">
-                                <li>Often reviewed when long-term flexibility matters.</li>
-                                <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
-                            </ul>
-                        </article>
-                    </div>
-                </section>
+                                <div class="lq-option-title">Universal Life Insurance</div>
+                                <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
+                                <ul class="lq-option-bullets">
+                                    <li>Often reviewed when long-term flexibility matters.</li>
+                                    <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
+                                </ul>
+                            </article>
+                        </div>
+                    </section>
+                }
+                else
+                {
+                    <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
+                        <div class="lq-step-title" id="lifeEducationOptionsTitle">@productFocusTitle</div>
+                        <p class="lq-options-summary-copy">@productFocusCopy</p>
+                        <div class="lq-education-card-grid three-up">
+                            @foreach (var card in productFocusCards)
+                            {
+                                <article class="lq-education-card">
+                                    <div class="lq-education-card-title">@card.Title</div>
+                                    <p class="lq-education-card-copy">@card.Copy</p>
+                                </article>
+                            }
+                        </div>
+                    </section>
+                }
             </div>
         }
         else
@@ -3630,7 +3698,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">Want help reviewing this? Send your info and I’ll walk through what may fit. No obligation.</div>
+                            <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
                             <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -3655,6 +3723,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const form = document.getElementById('lifeWizardForm');
   if (!form) return;
 
+  const contactFirstPanel = document.getElementById('lifeEducationContactPanel');
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
@@ -3692,7 +3761,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
-  const continueResultsLabel = isContactFirstEducationVariant ? 'Continue To Contact Details' : 'Continue & Review My Options';
+  const continueResultsLabel = isContactFirstEducationVariant ? 'Get My Walkthrough' : 'Continue & Review My Options';
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
@@ -4121,16 +4190,58 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
   }
 
+  function resolveScrollTarget(target) {
+    if (!target) return target;
+    if (
+      contactFirstPanel &&
+      (target === step1Panel ||
+       target === processingPanel ||
+       target === step2Panel ||
+       (target instanceof HTMLElement && target.id === 'lifeMiniResultsPanel'))
+    ) {
+      return contactFirstPanel;
+    }
+    return target;
+  }
+
+  function getScrollTopOffset() {
+    const navbar = document.querySelector('header .navbar');
+    const navbarHeight = !isPaidLandingExperience && navbar instanceof HTMLElement
+      ? navbar.getBoundingClientRect().height
+      : 0;
+    const viewportPadding = window.matchMedia('(max-width: 767.98px)').matches ? 10 : 18;
+    return navbarHeight + viewportPadding;
+  }
+
+  function scrollPanelIntoView(target, behavior = 'smooth') {
+    const scrollTarget = resolveScrollTarget(target);
+    if (!(scrollTarget instanceof HTMLElement)) return;
+    const targetTop = window.scrollY + scrollTarget.getBoundingClientRect().top - getScrollTopOffset();
+    window.scrollTo({
+      top: Math.max(0, targetTop),
+      behavior
+    });
+  }
+
   function scrollIntoViewAndFocus(target, shouldFocus = false) {
     if (!target) return;
     const scrollBehavior = (isLandingMobile && target === step1Panel) ? 'auto' : 'smooth';
-    const scrollBlock = isLandingMobile ? 'nearest' : 'center';
     setTimeout(() => {
-      target.scrollIntoView({ behavior: scrollBehavior, block: scrollBlock });
+      scrollPanelIntoView(target, scrollBehavior);
       if (shouldFocus && target instanceof HTMLElement) {
         target.focus({ preventScroll: true });
       }
     }, 40);
+  }
+
+  function scrollInitialFunnelIntoView() {
+    const initialTarget = contactFirstPanel || (showContactStepByDefault ? step2Panel : step1Panel);
+    if (!(initialTarget instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        scrollPanelIntoView(initialTarget, 'auto');
+      });
+    });
   }
 
   function syncStepOneAnswersFromUI() {
@@ -4681,6 +4792,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     const initMicro = resolveInitialMicroStep();
     showStep1(initMicro, false);
   }
+  scrollInitialFunnelIntoView();
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }

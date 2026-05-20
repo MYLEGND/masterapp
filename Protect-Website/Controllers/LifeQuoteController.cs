@@ -816,7 +816,10 @@ namespace Protect_Website.Controllers
 
             rows.Section("Recommendations");
             rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
-            rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            if (!string.IsNullOrWhiteSpace(model.RecommendationSecondaryKey) || !string.IsNullOrWhiteSpace(model.RecommendationSecondaryTitle))
+            {
+                rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            }
 
             rows.Section("Details")
                 .Row("Product",   cfg.DisplayName)
@@ -868,7 +871,10 @@ namespace Protect_Website.Controllers
 
             rows.Section("Your Recommendation Summary");
             rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
-            rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            if (!string.IsNullOrWhiteSpace(model.RecommendationSecondaryKey) || !string.IsNullOrWhiteSpace(model.RecommendationSecondaryTitle))
+            {
+                rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            }
 
             rows.Section("What Happens Next");
             var hasAttachedAgentFirstName =

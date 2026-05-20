@@ -17,7 +17,9 @@ namespace Protect_Website.Models
     public sealed class LifeEstimatePreviewResponse
     {
         public LifeEstimateResult Primary { get; set; } = new();
-        public LifeEstimateResult Secondary { get; set; } = new();
+        public LifeEstimateResult? Secondary { get; set; }
+        public string OfferKey { get; set; } = "";
+        public string DisplayMode { get; set; } = "comparison";
         public string AgeBand { get; set; } = "";
         public int RequestedCoverageAmount { get; set; }
         public string TobaccoUse { get; set; } = "";
