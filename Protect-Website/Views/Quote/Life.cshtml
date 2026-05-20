@@ -67,6 +67,54 @@
     var coverageAmountStep = viewSteps[2];
     var tobaccoStep = viewSteps[3];
     var ageStep = viewSteps[4];
+    (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
+    {
+        var normalizedField = (fieldName ?? string.Empty).Trim();
+        var normalizedCode = (optionCode ?? string.Empty).Trim().ToLowerInvariant();
+
+        return normalizedField switch
+        {
+            "ProtectingWho" => normalizedCode switch
+            {
+                "spouse_or_partner" => ("icon", "choice-icon-partner", "Partner", "Protect shared income and everyday stability", "tone-protect"),
+                "children" => ("icon", "choice-icon-children", "Children", "Protect the people counting on you most", "tone-protect"),
+                "family" => ("icon", "choice-icon-family", "Household", "Cover the people who depend on your support", "tone-protect"),
+                _ => ("icon", "choice-icon-family", string.Empty, string.Empty, "tone-protect")
+            },
+            "CoverageGoal" => normalizedCode switch
+            {
+                "replace_income" => ("icon", "choice-icon-income", "Income", "Help replace lost earnings for the people who rely on you", "tone-goal"),
+                "final_expenses" => ("icon", "choice-icon-heart", "Final costs", "Ease burial, funeral, and end-of-life expense pressure", "tone-goal"),
+                "mortgage_or_bills" => ("icon", "choice-icon-home", "Home & bills", "Help cover the mortgage and major monthly costs", "tone-goal"),
+                "leave_something" => ("icon", "choice-icon-legacy", "Legacy", "Leave behind a benefit that supports the people you love", "tone-goal"),
+                _ => ("icon", "choice-icon-legacy", string.Empty, string.Empty, "tone-goal")
+            },
+            "CoverageAmountOption" => normalizedCode switch
+            {
+                "100000" => ("badge", "$100K", "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
+                "250000" => ("badge", "$250K", "Common", "A balanced starting point for many households", "tone-coverage"),
+                "500000" => ("badge", "$500K", "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
+                "1000000" => ("badge", "$1M+", "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
+                _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+            },
+            "TobaccoUse" => normalizedCode switch
+            {
+                "non_smoker" => ("icon", "choice-icon-leaf", "Lower-risk profile", "Estimate built around non-tobacco pricing", "tone-health"),
+                "smoker" => ("icon", "choice-icon-smoke", "Tobacco use", "Estimate adjusted for tobacco-related pricing", "tone-health"),
+                _ => ("icon", "choice-icon-leaf", string.Empty, string.Empty, "tone-health")
+            },
+            "AgeBracket" => normalizedCode switch
+            {
+                "18-24" => ("badge", "18-24", "Starting out", "Early-rate years with more room to explore options", "tone-age"),
+                "25-34" => ("badge", "25-34", "Building years", "Often the stretch where family and income protection grows", "tone-age"),
+                "35-44" => ("badge", "35-44", "Peak protection", "A common window for heavier family and bill responsibility", "tone-age"),
+                "45-54" => ("badge", "45-54", "Established years", "Often focused on income protection and long-range stability", "tone-age"),
+                "55+" => ("badge", "55+", "Long-range planning", "Later-career years where lasting fit matters more", "tone-age"),
+                _ => ("badge", "Age", string.Empty, string.Empty, "tone-age")
+            },
+            _ => ("icon", "choice-icon-family", string.Empty, string.Empty, string.Empty)
+        };
+    }
     var selectedCoverageAmountOption = !string.IsNullOrWhiteSpace(form.CoverageAmountOption)
         ? form.CoverageAmountOption.Trim()
         : (form.CoverageAmount.HasValue ? form.CoverageAmount.Value.ToString() : string.Empty);
@@ -958,7 +1006,8 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     min-height: 66px;
     padding: 13px 9px;
 }
-.lq-choice-grid.lq-step1-twoup .lq-card span {
+.lq-choice-grid.lq-step1-twoup .lq-card .lq-card-copy,
+.lq-choice-grid.lq-step1-twoup .lq-card .lq-card-title {
     overflow-wrap: anywhere;
 }
 .lq-choice-grid.lq-age-grid .lq-age-wide {
@@ -1035,6 +1084,134 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     transform: translateY(-1px) scale(1.005);
 }
 .lq-card.lq-invalid { border-color: #ef4444; }
+.lq-card-rich {
+    display: grid;
+    justify-items: center;
+    align-content: start;
+    gap: 10px;
+    text-align: center;
+    padding: 14px 12px;
+    min-height: 132px;
+}
+.lq-card-rich::after {
+    content: "";
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 11px;
+    height: 11px;
+    border-radius: 999px;
+    border: 1.4px solid rgba(244,210,124,0.34);
+    background: rgba(255,255,255,0.02);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.lq-card-rich .lq-card-visual {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(11,19,34,0.54);
+    border: 1px solid rgba(244,210,124,0.18);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 8px 16px rgba(0,0,0,0.18);
+}
+.lq-card-rich .lq-card-icon {
+    width: 28px;
+    height: 28px;
+    color: #f0c66d;
+}
+.lq-card-rich .lq-card-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: rgba(240,198,109,0.12);
+    color: #fff4d0;
+    font-size: .82rem;
+    font-weight: 900;
+    letter-spacing: .02em;
+}
+.lq-card-rich .lq-card-copy {
+    display: grid;
+    gap: 5px;
+    width: 100%;
+}
+.lq-card-rich .lq-card-kicker {
+    color: rgba(240,198,109,0.92);
+    font-size: .68rem;
+    font-weight: 880;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    line-height: 1;
+}
+.lq-card-rich .lq-card-title {
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 860;
+    line-height: 1.2;
+}
+.lq-card-rich .lq-card-helper {
+    color: rgba(231,236,245,0.72);
+    font-size: .77rem;
+    font-weight: 690;
+    line-height: 1.34;
+}
+.lq-card-rich.tone-protect .lq-card-visual {
+    background:
+        radial-gradient(circle at top left, rgba(137,197,255,0.18), transparent 52%),
+        linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(11,19,34,0.54);
+}
+.lq-card-rich.tone-goal .lq-card-visual {
+    background:
+        radial-gradient(circle at top left, rgba(240,198,109,0.18), transparent 52%),
+        linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(11,19,34,0.54);
+}
+.lq-card-rich.tone-coverage .lq-card-visual,
+.lq-card-rich.tone-age .lq-card-visual {
+    background:
+        radial-gradient(circle at top left, rgba(214,170,76,0.22), transparent 50%),
+        linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(11,19,34,0.54);
+}
+.lq-card-rich.tone-health .lq-card-visual {
+    background:
+        radial-gradient(circle at top left, rgba(158,226,190,0.16), transparent 52%),
+        linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%),
+        rgba(11,19,34,0.54);
+}
+.lq-card-rich.lq-selected::after,
+.lq-card-rich:has(input:checked)::after {
+    background: #f4d58b;
+    border-color: #f4d58b;
+    box-shadow: 0 0 0 4px rgba(244,210,124,0.14);
+    transform: scale(1.06);
+}
+.lq-card-rich.lq-selected .lq-card-visual,
+.lq-card-rich:has(input:checked) .lq-card-visual {
+    border-color: rgba(244,210,124,0.72);
+    background:
+        radial-gradient(circle at top left, rgba(248,220,145,0.22), transparent 54%),
+        linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%),
+        rgba(14,22,36,0.72);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.10),
+        0 12px 22px rgba(0,0,0,0.22),
+        0 0 0 1px rgba(248,220,145,0.12);
+}
+.lq-card-rich.lq-selected .lq-card-helper,
+.lq-card-rich:has(input:checked) .lq-card-helper {
+    color: rgba(248,250,252,0.86);
+}
 .lq-choice-error {
     color: #f87171;
     font-size: .82rem;
@@ -1259,6 +1436,21 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-step-progress { font-size: .71rem; padding: 3px 8px; }
     .lq-step-progress-track { height: 5px; }
     .lq-card { min-height: 56px; padding: 12px 10px; font-size: .9rem; }
+    .lq-card-rich {
+        min-height: 122px;
+        gap: 8px;
+        padding: 12px 10px;
+    }
+    .lq-card-rich .lq-card-visual {
+        width: 46px;
+        height: 46px;
+    }
+    .lq-card-rich .lq-card-icon {
+        width: 25px;
+        height: 25px;
+    }
+    .lq-card-rich .lq-card-title { font-size: .94rem; }
+    .lq-card-rich .lq-card-helper { font-size: .73rem; }
     .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 58px; }
     .lq-choice-grid { gap: 8px; }
     .lq-step-actions { margin-top: 10px; }
@@ -1344,6 +1536,23 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-step-progress { font-size: .68rem !important; padding: 3px 7px !important; }
     .lq-step-progress-track { height: 5px !important; }
     .lq-card { min-height: 54px !important; padding: 11px 9px !important; font-size: .86rem !important; }
+    .lq-card-rich {
+        min-height: 116px !important;
+        gap: 8px !important;
+        padding: 11px 9px !important;
+    }
+    .lq-card-rich .lq-card-visual {
+        width: 42px !important;
+        height: 42px !important;
+        border-radius: 14px !important;
+    }
+    .lq-card-rich .lq-card-icon {
+        width: 22px !important;
+        height: 22px !important;
+    }
+    .lq-card-rich .lq-card-title { font-size: .91rem !important; }
+    .lq-card-rich .lq-card-helper { font-size: .71rem !important; }
+    .lq-card-rich .lq-card-kicker { font-size: .64rem !important; }
     .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 56px !important; }
     .lq-choice-grid { gap: 7px !important; }
     .lq-step-actions.dual { gap: 8px !important; }
@@ -2164,6 +2373,17 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-size: .98rem;
     font-weight: 840;
 }
+.lq-contact-first-flow-surface .lq-card-rich {
+    min-height: 142px;
+    padding: 15px 13px;
+    gap: 11px;
+}
+.lq-contact-first-flow-surface .lq-card-rich .lq-card-title {
+    font-size: 1.03rem;
+}
+.lq-contact-first-flow-surface .lq-card-rich .lq-card-helper {
+    font-size: .79rem;
+}
 .lq-contact-first-next-note {
     display: grid;
     gap: 4px;
@@ -2972,6 +3192,52 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 </style>
 
+<svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
+    <defs>
+        <symbol id="choice-icon-partner" viewBox="0 0 48 48">
+            <path d="M14 20a6 6 0 1 1 0-12a6 6 0 0 1 0 12Zm20 1a5 5 0 1 1 0-10a5 5 0 0 1 0 10ZM8.5 34.5c1.3-5.1 4.8-7.5 10.5-7.5s9.2 2.4 10.5 7.5M25.5 34.5c1-3.8 3.6-5.8 7.8-5.8c3.8 0 6.2 1.8 7.2 5.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M25 12.5c1.4-2.2 4.9-2.4 6.3-.2c1.1 1.8.4 3.8-1 5.1L25 22l-5.3-4.6c-1.4-1.3-2.1-3.3-1-5.1c1.4-2.2 4.9-2 6.3.2Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="choice-icon-children" viewBox="0 0 48 48">
+            <circle cx="17" cy="15.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M8.5 35c1.3-5 4.2-7.5 8.5-7.5s7.2 2.5 8.5 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            <path d="M31 10.5l8 2.9v7c0 5.2-3.1 9.6-8 11.4c-4.9-1.8-8-6.2-8-11.4v-7l8-2.9Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="m27.8 21.1 2.1 2.1 4.4-4.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="choice-icon-family" viewBox="0 0 48 48">
+            <circle cx="15" cy="16" r="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <circle cx="33" cy="16" r="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <circle cx="24" cy="22.5" r="4.5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M6.5 36c1.3-4.8 4.2-7.2 8.5-7.2c3.9 0 6.5 1.6 7.9 4.8M41.5 36c-1.3-4.8-4.2-7.2-8.5-7.2c-3.9 0-6.5 1.6-7.9 4.8M15.5 38c1.5-4.9 4.4-7.4 8.5-7.4s7 2.5 8.5 7.4" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="choice-icon-income" viewBox="0 0 48 48">
+            <rect x="7.5" y="12" width="33" height="22" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <circle cx="24" cy="23" r="4.5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M15 18h.01M33 28h.01M16 33l6-6m3 3 8-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="choice-icon-heart" viewBox="0 0 48 48">
+            <path d="M24 38 9.3 24.7C5.8 21.5 5 16.2 7.4 12.2c3.1-5.1 10.4-5.6 14-.8L24 14.5l2.6-3.1c3.6-4.8 10.9-4.3 14 .8 2.4 4 1.6 9.3-1.9 12.5Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="choice-icon-home" viewBox="0 0 48 48">
+            <path d="M8.5 21.5 24 9l15.5 12.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M13 19v18h22V19" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="M21 37V25h6v12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="m34.7 11.3 4.8 4.7v9.6c0 5.3-3.2 9.8-8.1 11.6-4.9-1.8-8.1-6.3-8.1-11.6V16l8.1-4.7Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" opacity=".75"/>
+        </symbol>
+        <symbol id="choice-icon-legacy" viewBox="0 0 48 48">
+            <path d="M24 8.8 28.4 18l10.1 1.4-7.3 7.1 1.8 10-9-4.8-9 4.8 1.8-10-7.3-7.1L19.6 18 24 8.8Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="choice-icon-leaf" viewBox="0 0 48 48">
+            <path d="M38 11c-14 1-22.9 7.1-25.8 18.2C9.7 38 14.8 42 22.8 39.8 34.5 36.6 39 27 38 11Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="M16 31.5c6-5.7 11.4-9 16.3-10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="choice-icon-smoke" viewBox="0 0 48 48">
+            <path d="M13 29.5h22.5a4.5 4.5 0 0 1 0 9H13Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+            <path d="M12 16.5c2.5 1.3 3.4 3.1 2.7 5.3M19 12.5c3 1.7 4.1 4 3.2 6.8M27.5 10c3 1.7 4 4 3.2 6.8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+        </symbol>
+    </defs>
+</svg>
+
 <div class="lq-hero-shell">
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail">
@@ -3113,16 +3379,26 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-protect">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-protect">@protectStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                                                @foreach (var opt in protectStep.Options)
-                                                {
-                                                    var isChecked =
-                                                        string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                                        string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                                    <label class="lq-card">
-                                                        <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                                        <span>@opt.Label</span>
-                                                    </label>
-                                                }
+                        @foreach (var opt in protectStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                    </svg>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                    <span class="lq-card-title">@opt.Label</span>
+                                    <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                </span>
+                            </label>
+                        }
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-protecting-who">Please choose who you want to protect.</div>
                                         </div>
@@ -3132,16 +3408,26 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-goal">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-goal">@goalStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                                                @foreach (var opt in goalStep.Options)
-                                                {
-                                                    var isChecked =
-                                                        string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                                        string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                                    <label class="lq-card">
-                                                        <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                                        <span>@opt.Label</span>
-                                                    </label>
-                                                }
+                        @foreach (var opt in goalStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                    </svg>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                    <span class="lq-card-title">@opt.Label</span>
+                                    <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                </span>
+                            </label>
+                        }
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-coverage-goal">Please select what matters most right now.</div>
                                         </div>
@@ -3152,16 +3438,24 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-coverage-amount">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-coverage-amount">@coverageAmountStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
-                                                @foreach (var opt in coverageAmountStep.Options)
-                                                {
-                                                    var isChecked =
-                                                        string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                                        string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                                    <label class="lq-card">
-                                                        <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
-                                                        <span>@opt.Label</span>
-                                                    </label>
-                                                }
+                        @foreach (var opt in coverageAmountStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@choiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                    <span class="lq-card-title">@opt.Label</span>
+                                    <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                </span>
+                            </label>
+                        }
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-coverage-amount">Please choose a coverage amount to explore.</div>
                                         </div>
@@ -3172,16 +3466,26 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2">
-                                                @foreach (var opt in tobaccoStep.Options)
-                                                {
-                                                    var isChecked =
-                                                        string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
-                                                        string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                                    <label class="lq-card">
-                                                        <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                                        <span>@opt.Label</span>
-                                                    </label>
-                                                }
+                        @foreach (var opt in tobaccoStep.Options)
+                        {
+                            var isChecked =
+                                string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
+                            var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                                <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                    </svg>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                    <span class="lq-card-title">@opt.Label</span>
+                                    <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                </span>
+                            </label>
+                        }
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                                         </div>
@@ -3193,26 +3497,66 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-choice-group">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                                                <label class="lq-card">
-                                                    <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                                    <span>18-24</span>
-                                                </label>
-                                                <label class="lq-card">
-                                                    <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                                    <span>25-34</span>
-                                                </label>
-                                                <label class="lq-card">
-                                                    <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                                    <span>35-44</span>
-                                                </label>
-                                                <label class="lq-card">
-                                                    <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                                    <span>45-54</span>
-                                                </label>
-                                                <label class="lq-card lq-age-wide">
-                                                    <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                                    <span>55+</span>
-                                                </label>
+                            @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                                <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">18-24</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
+                            </label>
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                                <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">25-34</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
+                            </label>
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                                <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">35-44</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
+                            </label>
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                                <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">45-54</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
+                            </label>
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
+                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass">
+                                <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">55+</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
+                            </label>
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
                                         </div>
@@ -3437,9 +3781,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 var isChecked =
                                     string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
+                                var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
                                     <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
                                 </label>
                             }
                         </div>
@@ -3473,9 +3827,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 var isChecked =
                                     string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
+                                var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
                                     <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
                                 </label>
                             }
                         </div>
@@ -3493,9 +3857,17 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 var isChecked =
                                     string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
+                                var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
                                     <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <span class="lq-card-badge">@choiceMeta.VisualValue</span>
+                                    </span>
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
                                 </label>
                             }
                         </div>
@@ -3513,9 +3885,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 var isChecked =
                                     string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                     string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
-                                <label class="lq-card">
+                                var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
+                                <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
                                     <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                    <span>@opt.Label</span>
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@choiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@opt.Label</span>
+                                        <span class="lq-card-helper">@choiceMeta.Helper</span>
+                                    </span>
                                 </label>
                             }
                         </div>
@@ -3529,25 +3911,65 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     <div class="lq-choice-group">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                            <label class="lq-card">
+                            @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
                                 <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                <span>18-24</span>
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">18-24</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
                             </label>
-                            <label class="lq-card">
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
                                 <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                <span>25-34</span>
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">25-34</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
                             </label>
-                            <label class="lq-card">
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
                                 <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                <span>35-44</span>
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">35-44</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
                             </label>
-                            <label class="lq-card">
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
                                 <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                <span>45-54</span>
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">45-54</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
                             </label>
-                            <label class="lq-card lq-age-wide">
+                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
+                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass">
                                 <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                <span>55+</span>
+                                <span class="lq-card-visual" aria-hidden="true">
+                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
+                                </span>
+                                <span class="lq-card-copy">
+                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                    <span class="lq-card-title">55+</span>
+                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                </span>
                             </label>
                         </div>
                         <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
