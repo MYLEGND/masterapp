@@ -35,16 +35,17 @@
     }
 }
 
-<section class="lq-carrier-strip lq-carrier-strip-@Model.Mode"
-         data-carrier-trust-strip
-         data-strip-key="@Model.EffectiveInstanceKey"
-         data-placement="@Model.Placement"
-         data-mode="@Model.Mode"
-         data-page-key="@Model.PageKey"
-         data-quote-type="@Model.QuoteType"
-         data-variant="@Model.Variant"
-         data-traffic-type="@Model.TrafficType"
-         aria-label="@Model.AriaLabel">
+<div class="lq-carrier-strip lq-carrier-strip-@Model.Mode @(renderProviderLogos ? "has-logos" : "is-text-only")"
+     role="region"
+     data-carrier-trust-strip
+     data-strip-key="@Model.EffectiveInstanceKey"
+     data-placement="@Model.Placement"
+     data-mode="@Model.Mode"
+     data-page-key="@Model.PageKey"
+     data-quote-type="@Model.QuoteType"
+     data-variant="@Model.Variant"
+     data-traffic-type="@Model.TrafficType"
+     aria-label="@Model.AriaLabel">
     <div class="lq-carrier-strip-copy">@Model.EffectiveHeadingText</div>
     <div class="lq-carrier-strip-viewport">
         <div class="lq-carrier-strip-track">
@@ -76,4 +77,4 @@
         </div>
     </div>
     <div class="lq-carrier-strip-disclaimer">@Model.EffectiveDisclaimerText</div>
-</section>
+</div>

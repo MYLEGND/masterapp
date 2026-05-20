@@ -1532,6 +1532,14 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     display: none;
 }
 .lq-field-err.visible{ display:block; }
+.lq-contact-license-note {
+    margin-top: -6px;
+    margin-bottom: 10px;
+    color: rgba(221,228,239,0.58);
+    font-size: .72rem;
+    font-weight: 720;
+    line-height: 1.38;
+}
 .lq-agent-handoff {
     display: grid;
     gap: 12px;
@@ -3390,48 +3398,55 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 .lq-carrier-strip {
+    display: grid;
+    gap: 10px;
+    width: 100%;
     margin-top: 14px;
-    padding: 13px 14px 12px;
+    padding: 12px 13px 11px;
     border-radius: 16px;
-    border: 1px solid rgba(199,153,49,0.24);
-    background:
-        radial-gradient(circle at top right, rgba(199,153,49,0.08), transparent 34%),
-        linear-gradient(180deg, rgba(15,24,42,0.72) 0%, rgba(10,17,30,0.88) 100%);
+    border: 1px solid rgba(208, 162, 68, 0.28);
+    background-color: rgba(10, 14, 24, 0.72) !important;
+    background-image:
+        radial-gradient(circle at top right, rgba(208, 162, 68, 0.10), transparent 34%),
+        linear-gradient(180deg, rgba(15, 20, 33, 0.92) 0%, rgba(8, 11, 19, 0.94) 100%) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.03),
-        0 14px 24px rgba(0,0,0,0.18);
+        0 14px 28px rgba(0,0,0,0.22);
+    box-sizing: border-box;
     overflow: hidden;
+    isolation: isolate;
 }
 
 .lq-carrier-strip-copy {
-    color: rgba(246,236,205,0.92);
-    font-size: .86rem;
-    font-weight: 760;
-    line-height: 1.45;
-    margin-bottom: 10px;
+    color: rgba(249, 236, 204, 0.94);
+    font-size: .84rem;
+    font-weight: 780;
+    line-height: 1.42;
+    margin: 0;
 }
 
 .lq-carrier-strip-compact {
     margin-top: 0;
-    padding: 10px 12px 10px;
+    padding: 10px 11px 10px;
     border-radius: 14px;
-    border-color: rgba(199,153,49,0.18);
-    background:
-        linear-gradient(180deg, rgba(13,21,36,0.66) 0%, rgba(9,15,27,0.82) 100%);
+    border-color: rgba(208, 162, 68, 0.20);
+    background-color: rgba(9, 12, 21, 0.68) !important;
+    background-image:
+        linear-gradient(180deg, rgba(14, 19, 31, 0.88) 0%, rgba(8, 11, 19, 0.90) 100%) !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,0.02),
-        0 10px 18px rgba(0,0,0,0.14);
+        0 10px 20px rgba(0,0,0,0.16);
 }
 
 .lq-carrier-strip-compact .lq-carrier-strip-copy {
-    margin-bottom: 8px;
-    font-size: .8rem;
-    color: rgba(238,229,198,0.82);
+    font-size: .78rem;
+    color: rgba(242, 229, 197, 0.84);
 }
 
 .lq-carrier-strip-viewport {
     position: relative;
     overflow: hidden;
+    max-width: 100%;
 }
 
 .lq-carrier-strip-viewport::before,
@@ -3440,27 +3455,28 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 42px;
+    width: 34px;
     z-index: 2;
     pointer-events: none;
 }
 
 .lq-carrier-strip-viewport::before {
     left: 0;
-    background: linear-gradient(90deg, rgba(10,17,30,0.95) 0%, rgba(10,17,30,0) 100%);
+    background: linear-gradient(90deg, rgba(8, 11, 19, 0.96) 0%, rgba(8, 11, 19, 0) 100%);
 }
 
 .lq-carrier-strip-viewport::after {
     right: 0;
-    background: linear-gradient(270deg, rgba(10,17,30,0.95) 0%, rgba(10,17,30,0) 100%);
+    background: linear-gradient(270deg, rgba(8, 11, 19, 0.96) 0%, rgba(8, 11, 19, 0) 100%);
 }
 
 .lq-carrier-strip-track {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 10px;
     width: max-content;
-    animation: lqCarrierMarquee 36s linear infinite;
+    padding-right: 10px;
+    animation: lqCarrierMarquee 44s linear infinite;
     will-change: transform;
 }
 
@@ -3472,7 +3488,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 .lq-carrier-strip-group {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     flex-shrink: 0;
 }
 
@@ -3481,47 +3497,51 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 .lq-carrier-strip-logo-frame {
-    width: 152px;
-    height: 42px;
+    width: 136px;
+    height: 40px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 14px;
-    border: 1px solid rgba(199,153,49,0.20);
-    background:
-        linear-gradient(180deg, rgba(248,250,252,0.02) 0%, rgba(248,250,252,0.01) 100%),
-        rgba(9,15,27,0.38);
-    padding: 0 14px;
+    border-radius: 13px;
+    border: 1px solid rgba(205, 159, 68, 0.28);
+    background-color: rgba(14, 18, 30, 0.94) !important;
+    background-image:
+        linear-gradient(180deg, rgba(45, 54, 73, 0.20) 0%, rgba(9, 13, 22, 0.16) 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        inset 0 -1px 0 rgba(0,0,0,0.18),
+        0 8px 16px rgba(0,0,0,0.12);
+    padding: 0 10px;
     box-sizing: border-box;
 }
 
 .lq-carrier-strip-compact .lq-carrier-strip-logo-frame {
-    width: 134px;
-    height: 36px;
-    border-radius: 12px;
+    width: 126px;
+    height: 34px;
+    border-radius: 11px;
 }
 
 .lq-carrier-strip-logo-frame img {
     display: block;
-    max-width: 118px;
-    max-height: 20px;
+    max-width: 104px;
+    max-height: 18px;
     width: auto;
     height: auto;
     object-fit: contain;
-    filter: grayscale(1) brightness(1.28);
-    opacity: 0.58;
+    filter: grayscale(1) brightness(1.22);
+    opacity: 0.62;
     transition: opacity .2s ease, filter .2s ease, transform .2s ease;
 }
 
 .lq-carrier-strip-compact .lq-carrier-strip-logo-frame img {
-    max-width: 104px;
-    max-height: 18px;
+    max-width: 94px;
+    max-height: 16px;
 }
 
 .lq-carrier-strip-item:hover img,
 .lq-carrier-strip-item:focus-within img {
-    opacity: 0.88;
-    filter: grayscale(0.35) brightness(1.45);
+    opacity: 0.9;
+    filter: grayscale(0.25) brightness(1.36);
     transform: translateY(-1px);
 }
 
@@ -3529,11 +3549,13 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     display: none;
     align-items: center;
     justify-content: center;
+    width: 100%;
+    height: 100%;
     text-align: center;
-    color: rgba(246,236,205,0.88);
-    font-size: .74rem;
-    font-weight: 760;
-    line-height: 1.2;
+    color: rgba(248, 238, 214, 0.92);
+    font-size: .72rem;
+    font-weight: 780;
+    line-height: 1.15;
     letter-spacing: .01em;
 }
 
@@ -3541,21 +3563,32 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     display: inline-flex;
 }
 
+.lq-carrier-strip.is-text-only .lq-carrier-strip-text-badge {
+    display: inline-flex;
+}
+
 .lq-carrier-strip-item.is-fallback img {
     display: none;
 }
 
+.lq-carrier-strip.is-text-only .lq-carrier-strip-logo-frame,
+.lq-carrier-strip-item.is-fallback .lq-carrier-strip-logo-frame {
+    border-color: rgba(216, 174, 84, 0.34);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        inset 0 -1px 0 rgba(0,0,0,0.22),
+        0 10px 18px rgba(0,0,0,0.16);
+}
+
 .lq-carrier-strip-disclaimer {
-    margin-top: 10px;
-    color: rgba(221,228,239,0.62);
-    font-size: .74rem;
+    color: rgba(226, 232, 241, 0.66);
+    font-size: .73rem;
     line-height: 1.42;
 }
 
 .lq-carrier-strip-compact .lq-carrier-strip-disclaimer {
-    margin-top: 8px;
-    font-size: .7rem;
-    color: rgba(221,228,239,0.56);
+    font-size: .69rem;
+    color: rgba(226, 232, 241, 0.58);
 }
 
 @@keyframes lqCarrierMarquee {
@@ -3566,8 +3599,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 @@media (prefers-reduced-motion: reduce) {
     .lq-carrier-strip-track {
         animation: none !important;
-        width: 100%;
-        flex-wrap: wrap;
+        width: auto;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+        scrollbar-width: thin;
     }
 
     .lq-carrier-strip-group[aria-hidden="true"] {
@@ -3583,34 +3619,33 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 @@media (max-width: 767.98px) {
     .lq-carrier-strip {
         margin-top: 12px;
-        padding: 11px 11px 10px;
+        padding: 10px 10px 9px;
         border-radius: 14px;
     }
 
     .lq-carrier-strip-copy {
-        font-size: .8rem;
-        margin-bottom: 8px;
+        font-size: .78rem;
     }
 
     .lq-carrier-strip-logo-frame {
-        width: 126px;
-        height: 34px;
-        padding: 0 10px;
+        width: 118px;
+        height: 32px;
+        padding: 0 8px;
         border-radius: 12px;
     }
 
     .lq-carrier-strip-logo-frame img {
-        max-width: 94px;
-        max-height: 16px;
+        max-width: 84px;
+        max-height: 14px;
     }
 
     .lq-carrier-strip-text-badge {
-        font-size: .68rem;
+        font-size: .64rem;
     }
 
     .lq-carrier-strip-disclaimer {
-        font-size: .68rem;
-        line-height: 1.35;
+        font-size: .66rem;
+        line-height: 1.32;
     }
 
     .lq-carrier-strip-compact {
@@ -3620,19 +3655,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
 @@media (max-width: 480px) {
     .lq-carrier-strip-logo-frame {
-        width: 114px;
-        height: 32px;
-        padding: 0 8px;
+        width: 108px;
+        height: 30px;
+        padding: 0 7px;
     }
 
     .lq-carrier-strip-logo-frame img {
-        max-width: 86px;
-        max-height: 15px;
+        max-width: 78px;
+        max-height: 13px;
     }
 
     .lq-carrier-strip-viewport::before,
     .lq-carrier-strip-viewport::after {
-        width: 22px;
+        width: 18px;
     }
 }
 
@@ -4015,32 +4050,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     {
                                         <div class="lq-step-helper">@finalStepHelper</div>
                                     }
+                                    @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                                    {
+                                        <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
+                                    }
                                     <div class="lq-contact-grid">
-                                        @if (showAgentTrustCard)
-                                        {
-                                            <div class="lq-agent-handoff full">
-                                                <div class="lq-agent-handoff-head">
-                                                    <div class="lq-agent-identity">
-                                                        <div class="lq-agent-avatar" aria-hidden="true">
-                                                            @if (!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl))
-                                                            {
-                                                                <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentTrustProfile.DisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                                            }
-                                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
-                                                        </div>
-                                                        <div class="lq-agent-display-name">@agentDisplayName</div>
-                                                    </div>
-                                                    <div>
-                                                        <div class="lq-agent-name">@agentTrustHeadline</div>
-                                                        <div class="lq-agent-bio">@agentTrustBio</div>
-                                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                                        {
-                                                            <div class="lq-agent-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        }
                                         <div class="full">
                                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                                         </div>
@@ -4388,32 +4402,11 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 {
                     <div class="lq-step-helper">@finalStepHelper</div>
                 }
+                @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                {
+                    <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
+                }
                     <div class="lq-contact-grid">
-                        @if (showAgentTrustCard)
-                        {
-                            <div class="lq-agent-handoff full">
-                                <div class="lq-agent-handoff-head">
-                                    <div class="lq-agent-identity">
-                                        <div class="lq-agent-avatar" aria-hidden="true">
-                                            @if (!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl))
-                                            {
-                                                <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentTrustProfile.DisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                            }
-                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl) ? "hidden" : null)>@((agentTrustProfile?.FirstName ?? "A").Substring(0, 1).ToUpperInvariant())</span>
-                                        </div>
-                                        <div class="lq-agent-display-name">@agentDisplayName</div>
-                                    </div>
-                                    <div>
-                                        <div class="lq-agent-name">@agentTrustHeadline</div>
-                                        <div class="lq-agent-bio">@agentTrustBio</div>
-                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                        {
-                                            <div class="lq-agent-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
-                        }
                         <div class="full">
                             @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
                         </div>
