@@ -236,17 +236,22 @@
       </div>
     </div>
 
-    <div class="wa-methodology-note mb-3" id="wa-methodology-note">
-        <div class="wa-methodology-body">Analytics methodology updated May 15, 2026. Data before this update may include attribution, abandonment, or conversion inconsistencies. Current filtering excludes `IsInternal` and localhost traffic, but bot/test suppression is still limited.</div>
-    </div>
-
-    <section class="wa-section wa-kpi-stage" aria-labelledby="wa-kpi-title">
-        <div class="wa-section-head">
+    <section class="wa-command-surface wa-kpi-command-surface mb-3" aria-labelledby="wa-kpi-title">
+        <div class="wa-kpi-stage-intro">
             <div>
-                <h3 class="wa-section-title" id="wa-kpi-title">Core Metrics</h3>
+                <div class="wa-kpi-stage-kicker">Performance Command Deck</div>
+                <h3 class="wa-kpi-stage-title" id="wa-kpi-title">Core Metrics</h3>
+                <p class="wa-kpi-stage-sub">Your fastest read on traffic, conversion, and what deserves a closer look next.</p>
             </div>
+            <div class="wa-kpi-stage-chip">Click a primary metric to drill in</div>
         </div>
-        <div class="fa-kpi-grid fa-kpi-grid-primary">
+
+        <div class="wa-kpi-band wa-kpi-band-primary">
+            <div class="wa-kpi-band-head">
+                <div class="wa-kpi-band-label">Traffic Pulse</div>
+                <div class="wa-kpi-band-copy">High-signal top-line readouts</div>
+            </div>
+            <div class="fa-kpi-grid fa-kpi-grid-primary">
             <div>
                 <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="pageviews" role="button" tabindex="0" aria-label="Page Views — click to view detail" title="Click to view Page Views detail">
                 <div class="fa-kpi-title">Page Views <span class="kpi-card-drill-hint">↗</span></div>
@@ -279,8 +284,15 @@
                 <div class="fa-spark" id="kpi-leads-spark"></div>
             </div>
             </div>
+            </div>
         </div>
-        <div class="fa-kpi-grid fa-kpi-grid-secondary">
+
+        <div class="wa-kpi-band wa-kpi-band-secondary">
+            <div class="wa-kpi-band-head">
+                <div class="wa-kpi-band-label">Conversion + Context</div>
+                <div class="wa-kpi-band-copy">Supporting reads for quality and intent</div>
+            </div>
+            <div class="fa-kpi-grid fa-kpi-grid-secondary">
             <div>
                 <div class="kpi-card kpi-card-secondary kpi-card-conversion">
                 <div class="fa-kpi-title">Intent Conversion</div>
@@ -311,6 +323,7 @@
                 <div class="fa-kpi-sub">Most clicked</div>
             </div>
         </div>
+            </div>
         </div>
     </section>
 
