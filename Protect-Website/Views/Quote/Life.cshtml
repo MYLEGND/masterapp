@@ -176,6 +176,24 @@
     var coverageAmountStep = viewSteps[2];
     var tobaccoStep = viewSteps[3];
     var ageStep = viewSteps[4];
+    var ageStepOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+        ? new List<(string Value, string Label, int ApproxAge, bool IsWide)>
+        {
+            ("45-54", "45-54", 50, false),
+            ("55-64", "55-64", 60, false),
+            ("65-74", "65-74", 70, false),
+            ("75+", "75+", 78, false),
+        }
+        : new List<(string Value, string Label, int ApproxAge, bool IsWide)>
+        {
+            ("18-24", "18-24", 21, false),
+            ("25-34", "25-34", 30, false),
+            ("35-44", "35-44", 40, false),
+            ("45-54", "45-54", 50, false),
+            ("55+", "55+", 60, true),
+        };
+    var ageRangeToNumericJson = JsonSerializer.Serialize(ageStepOptions.ToDictionary(option => option.Value, option => option.ApproxAge));
+    var ageStepQuestionText = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase) ? "Your age range" : ageStep.Question;
     (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
     {
         var normalizedField = (fieldName ?? string.Empty).Trim();
@@ -233,7 +251,7 @@
                     "25000" => ("none", string.Empty, "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
                     "50000" => ("none", string.Empty, "Common", "A balanced final expense starting point for many households", "tone-coverage"),
                     "75000" => ("none", string.Empty, "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
-                    "100000" => ("none", string.Empty, "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Higher range", "The top end of this final expense range for added peace of mind", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "wholelife" => normalizedCode switch
@@ -241,7 +259,7 @@
                     "50000" => ("none", string.Empty, "Starter", "A smaller lifelong base for final costs and lasting support", "tone-coverage"),
                     "100000" => ("none", string.Empty, "Common", "A balanced whole life starting point with steady cash value potential", "tone-coverage"),
                     "250000" => ("none", string.Empty, "Stronger", "More lifelong coverage with room to build long-range value", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Maximum", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Higher range", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "term" => normalizedCode switch
@@ -249,7 +267,7 @@
                     "250000" => ("none", string.Empty, "Focused", "A leaner term target for a focused income gap or key bills", "tone-coverage"),
                     "500000" => ("none", string.Empty, "Common", "A strong family-income starting point for many households", "tone-coverage"),
                     "1000000" => ("none", string.Empty, "Broader", "More breathing room for income, debt, and future family needs", "tone-coverage"),
-                    "2000000" => ("none", string.Empty, "Maximum", "A larger term safety net for bigger family protection goals", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Higher range", "A larger term safety net for bigger family protection goals", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "mortgage" => normalizedCode switch
@@ -257,7 +275,7 @@
                     "150000" => ("none", string.Empty, "Starter", "Fits smaller balances or a focused cushion around the home", "tone-coverage"),
                     "250000" => ("none", string.Empty, "Common", "A practical starting point for many mortgage balances", "tone-coverage"),
                     "500000" => ("none", string.Empty, "Stronger", "More room to protect the home and the monthly household budget", "tone-coverage"),
-                    "750000" => ("none", string.Empty, "Maximum", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
+                    "750000" => ("none", string.Empty, "Higher range", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "iul" => normalizedCode switch
@@ -265,7 +283,7 @@
                     "250000" => ("none", string.Empty, "Base", "A flexible starting point for lifelong coverage with growth potential", "tone-coverage"),
                     "500000" => ("none", string.Empty, "Common", "A strong IUL target for lasting protection and cash value growth", "tone-coverage"),
                     "1000000" => ("none", string.Empty, "Broader", "More room to pair lifetime protection with long-range strategy", "tone-coverage"),
-                    "2000000" => ("none", string.Empty, "Maximum", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Higher range", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 _ => normalizedCode switch
@@ -273,7 +291,7 @@
                     "100000" => ("none", string.Empty, "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
                     "250000" => ("none", string.Empty, "Common", "A balanced starting point for many households", "tone-coverage"),
                     "500000" => ("none", string.Empty, "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
-                    "1000000" => ("none", string.Empty, "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Higher range", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 }
             },
@@ -288,7 +306,12 @@
                 "18-24" => ("none", string.Empty, "Starting out", "Early-rate years with more room to explore options", "tone-age"),
                 "25-34" => ("none", string.Empty, "Building years", "Often the stretch where family and income protection grows", "tone-age"),
                 "35-44" => ("none", string.Empty, "Peak protection", "A common window for heavier family and bill responsibility", "tone-age"),
+                "45-54" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+                    => ("none", string.Empty, "Early planning", "A common starting window for exploring simpler final expense coverage", "tone-age"),
                 "45-54" => ("none", string.Empty, "Established years", "Often focused on income protection and long-range stability", "tone-age"),
+                "55-64" => ("none", string.Empty, "Retirement years", "Often a strong window for final expense planning and simpler permanent protection", "tone-age"),
+                "65-74" => ("none", string.Empty, "Later planning", "Often centered on final costs, simplicity, and easing the burden on loved ones", "tone-age"),
+                "75+" => ("none", string.Empty, "Senior planning", "Focused on straightforward final expense protection and peace of mind", "tone-age"),
                 "55+" => ("none", string.Empty, "Long-range planning", "Later-career years where lasting fit matters more", "tone-age"),
                 _ => ("none", string.Empty, string.Empty, string.Empty, "tone-age")
             },
@@ -319,11 +342,21 @@
     if (string.IsNullOrWhiteSpace(selectedAgeBracket) && ageValueNumber.HasValue)
     {
         var ageNumber = ageValueNumber.Value;
-        if (ageNumber <= 24) selectedAgeBracket = "18-24";
-        else if (ageNumber <= 34) selectedAgeBracket = "25-34";
-        else if (ageNumber <= 44) selectedAgeBracket = "35-44";
-        else if (ageNumber <= 54) selectedAgeBracket = "45-54";
-        else selectedAgeBracket = "55+";
+        if (string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ageNumber <= 54) selectedAgeBracket = "45-54";
+            else if (ageNumber <= 64) selectedAgeBracket = "55-64";
+            else if (ageNumber <= 74) selectedAgeBracket = "65-74";
+            else selectedAgeBracket = "75+";
+        }
+        else
+        {
+            if (ageNumber <= 24) selectedAgeBracket = "18-24";
+            else if (ageNumber <= 34) selectedAgeBracket = "25-34";
+            else if (ageNumber <= 44) selectedAgeBracket = "35-44";
+            else if (ageNumber <= 54) selectedAgeBracket = "45-54";
+            else selectedAgeBracket = "55+";
+        }
     }
     if (!ageValueNumber.HasValue)
     {
@@ -333,6 +366,9 @@
             "25-34" => 30,
             "35-44" => 40,
             "45-54" => 50,
+            "55-64" => 60,
+            "65-74" => 70,
+            "75+" => 78,
             "55+" => 60,
             _ => null,
         };
@@ -3710,53 +3746,20 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
                                         <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                                         <div class="lq-choice-group">
-                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
+                                            <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                            @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">18-24</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">25-34</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">35-44</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">45-54</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
-                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">55+</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
+                            @foreach (var ageOption in ageStepOptions)
+                            {
+                                var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", ageOption.Value);
+                                <label class="lq-card lq-card-rich @(ageOption.IsWide ? "lq-age-wide " : "")@ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                    <input type="radio" name="AgeBracket" value="@ageOption.Value" data-age="@ageOption.ApproxAge" data-label="@ageOption.Label" @(selectedAgeBracket == ageOption.Value ? "checked" : null) />
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@ageOption.Label</span>
+                                        <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                    </span>
+                                </label>
+                            }
                                             </div>
                                             <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
                                         </div>
@@ -4121,53 +4124,20 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 <div class="lq-micro-step" data-micro-step="4" hidden>
                     <div class="lq-choice-label lq-step-kicker">Let's tailor this to you</div>
                     <div class="lq-choice-group">
-                        <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
+                        <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                         <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                            @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">18-24</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">25-34</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">35-44</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">45-54</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
-                            @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
-                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                <span class="lq-card-copy">
-                                    <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                    <span class="lq-card-title">55+</span>
-                                    <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                </span>
-                            </label>
+                            @foreach (var ageOption in ageStepOptions)
+                            {
+                                var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", ageOption.Value);
+                                <label class="lq-card lq-card-rich @(ageOption.IsWide ? "lq-age-wide " : "")@ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
+                                    <input type="radio" name="AgeBracket" value="@ageOption.Value" data-age="@ageOption.ApproxAge" data-label="@ageOption.Label" @(selectedAgeBracket == ageOption.Value ? "checked" : null) />
+                                    <span class="lq-card-copy">
+                                        <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
+                                        <span class="lq-card-title">@ageOption.Label</span>
+                                        <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
+                                    </span>
+                                </label>
+                            }
                         </div>
                         <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
                     </div>
@@ -4394,13 +4364,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
-  const AGE_RANGE_TO_NUMERIC = Object.freeze({
-    '18-24': 21,
-    '25-34': 30,
-    '35-44': 40,
-    '45-54': 50,
-    '55+': 60,
-  });
+  const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
   const PROCESSING_BRIDGE_MS = 1500;
   const microStepViewEvents = [
     'life_step1_protecting_view',
