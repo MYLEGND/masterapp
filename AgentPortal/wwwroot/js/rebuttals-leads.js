@@ -6,6 +6,9 @@
   const bucketLabels = {
     MortgageProtection: "Mortgage Protection",
     LifeInsurance: "Life Insurance",
+    TermLife: "Term Life",
+    WholeLife: "Whole Life",
+    IUL: "IUL",
     FinalExpense: "Final Expense",
     DisabilityInsurance: "Disability Insurance",
     CalledToday: "Called Today",
@@ -26,6 +29,9 @@
   const allStages = [
     "MortgageProtection",
     "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
     "FinalExpense",
     "DisabilityInsurance",
     "CalledToday",
@@ -48,8 +54,18 @@
   const productBuckets = new Set([
     "MortgageProtection",
     "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
     "FinalExpense",
     "DisabilityInsurance"
+  ]);
+  const requestedAmountLeadTypes = new Set([
+    "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
+    "FinalExpense"
   ]);
   const agentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
   const agentTzOffset = String(new Date().getTimezoneOffset());
@@ -289,17 +305,29 @@
     const key = raw.replace(/[\s\-_]/g, '').toLowerCase();
     const map = {
       mortgageprotection: 'MortgageProtection',
-        mortgageprotectionleads: 'MortgageProtection',
-        mortgageprotectionrebuttals: 'MortgageProtection',
+      mortgageprotectionleads: 'MortgageProtection',
+      mortgageprotectionrebuttals: 'MortgageProtection',
       finalexpense: 'FinalExpense',
-        finalexpenseleads: 'FinalExpense',
-        finalexpenserebuttals: 'FinalExpense',
+      finalexpenseleads: 'FinalExpense',
+      finalexpenserebuttals: 'FinalExpense',
       lifeinsurance: 'LifeInsurance',
-        lifeinsuranceleads: 'LifeInsurance',
-        lifeinsurancerebuttals: 'LifeInsurance',
-        disabilityinsurance: 'DisabilityInsurance',
-        disabilityinsuranceleads: 'DisabilityInsurance',
-        disabilityinsurancerebuttals: 'DisabilityInsurance'
+      lifeinsuranceleads: 'LifeInsurance',
+      lifeinsurancerebuttals: 'LifeInsurance',
+      termlife: 'TermLife',
+      termlifeleads: 'TermLife',
+      termliferebuttals: 'TermLife',
+      wholelife: 'WholeLife',
+      wholelifeleads: 'WholeLife',
+      wholeliferebuttals: 'WholeLife',
+      iul: 'IUL',
+      iulleads: 'IUL',
+      iulrebuttals: 'IUL',
+      indexeduniversallife: 'IUL',
+      indexeduniversallifeleads: 'IUL',
+      indexeduniversalliferebuttals: 'IUL',
+      disabilityinsurance: 'DisabilityInsurance',
+      disabilityinsuranceleads: 'DisabilityInsurance',
+      disabilityinsurancerebuttals: 'DisabilityInsurance'
     };
     return map[key] || raw;
   }
@@ -461,7 +489,9 @@
       return `${leadFirst}, this is ${agentFirst} regarding your mortgage with ${lender}. Just left you a message. Give me a call back when you get this, we have some pending paperwork to get out to you regarding the mortgage for your property at ${addrFull || 'your property'}. The office number is ${agentPhone}, thanks`;
     }
 
-    return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${bucket || 'policy'} - call or text me at ${agentPhone}.`;
+    const normalizedBucket = normalizeQueueKey(bucket || "") || "LifeInsurance";
+    const productLabel = bucketLabel(normalizedBucket || "Life Insurance").toLowerCase();
+    return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${productLabel} request. Call or text me at ${agentPhone}.`;
   }
 
   function parseTextScriptTemplates(node){
@@ -1546,7 +1576,7 @@
 
 
     function isLifeOrFinal(leadType){
-      return leadType === 'LifeInsurance' || leadType === 'FinalExpense';
+      return requestedAmountLeadTypes.has(leadType);
     }
 
     function applyLeadTypeFieldDisplay(lead){

@@ -16,6 +16,7 @@ using System.Globalization;
 using ProtectWebsite.Services;
 using System.Net;
 using Microsoft.EntityFrameworkCore;
+using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using Shared.Meta;
@@ -42,10 +43,11 @@ namespace Protect_Website.Controllers
         private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IMetaSignalIntelligenceService _metaSignalIntelligence;
+        private readonly IWebsiteLifeLeadCaptureService _websiteLifeLeadCapture;
         private readonly ILogger<LifeQuoteController> _logger;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -59,6 +61,7 @@ namespace Protect_Website.Controllers
             _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
             _metaSignalIntelligence = metaSignalIntelligence;
+            _websiteLifeLeadCapture = websiteLifeLeadCapture;
             _logger = logger;
         }
 
@@ -286,6 +289,65 @@ namespace Protect_Website.Controllers
                 var vmPersistErr = await BuildWizardViewModelAsync(cfg, model, pageMode);
                 ApplyWizardViewData(vmPersistErr);
                 return View("~/Views/Quote/Life.cshtml", vmPersistErr);
+            }
+
+            try
+            {
+                var captureResult = await _websiteLifeLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = model.ProductType,
+                        OfferKey = model.OfferKey,
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.State,
+                        Age = model.Age,
+                        AgeRange = model.AgeRange,
+                        CoverageAmount = model.CoverageAmount,
+                        CoverageAmountOption = model.CoverageAmountOption,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (captureResult.Captured)
+                {
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    _logger.LogInformation(
+                        "LifeQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
+                        correlationId,
+                        captureResult.WorkstationLeadId,
+                        captureResult.Created ? "created" : "updated",
+                        captureResult.Bucket,
+                        captureResult.AgentUserId);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "LifeQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
+                        correlationId,
+                        lead.LeadId,
+                        captureResult.Reason ?? "unknown");
+                }
+            }
+            catch (Exception captureEx)
+            {
+                foreach (var entry in _db.ChangeTracker.Entries<WorkstationLeadProfile>()
+                    .Where(x => x.State == EntityState.Added || x.State == EntityState.Modified))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                _logger.LogError(
+                    captureEx,
+                    "LifeQuote [{CorrelationId}]: workstation lead capture failed for WebsiteLead {LeadId}. Continuing with saved website lead.",
+                    correlationId,
+                    lead.LeadId);
             }
 
             var metaLeadEventId = Guid.NewGuid().ToString("N");

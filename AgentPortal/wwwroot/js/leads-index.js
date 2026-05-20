@@ -889,7 +889,12 @@ function buildTextMessage(templateKey, row){
     return `${leadFirst}, this is ${agentFirst} regarding your mortgage with ${lender}. Just left you a message. Give me a call back when you get this, we have some pending paperwork to get out to you regarding the mortgage for your property at ${addrFull || 'your property'}. The office number is ${agentPhone}, thanks`;
   }
 
-  return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect.`;
+  const normalizedTemplateKey = normalizePipelineStageValue(templateKey || "LifeInsurance", "LifeInsurance");
+  const productLabel = (pipelineLabels[normalizedTemplateKey] || "Life Insurance")
+    .replace(/\s+LEADS$/i, "")
+    .trim()
+    .toLowerCase();
+  return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${productLabel} request.`;
 }
 
 function formatPhoneDisplay(raw){
@@ -1133,6 +1138,9 @@ function isSoon(nextISO){
 const pipelineLabels = {
   MortgageProtection: "MORTGAGE PROTECTION LEADS",
   LifeInsurance: "LIFE INSURANCE LEADS",
+  TermLife: "TERM LIFE LEADS",
+  WholeLife: "WHOLE LIFE LEADS",
+  IUL: "IUL LEADS",
   FinalExpense: "FINAL EXPENSE LEADS",
   DisabilityInsurance: "DISABILITY INSURANCE LEADS",
   CalledToday: "Called Today",
@@ -1169,7 +1177,10 @@ const pipelineStages = [
   { key: "FollowUp", label: "Follow Up", tone: "warn", className: "stage-proposalsent", note: "Needs follow-up after conversation." },
   // Core lead buckets (keep existing order)
   { key: "MortgageProtection", label: "MORTGAGE PROTECTION LEADS", tone: "warn", className: "stage-newlead", note: "Mortgage Protection leads direct from scripts." },
-  { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "Life Insurance leads ready for first touch." },
+  { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "General life insurance requests ready for first touch." },
+  { key: "TermLife", label: "TERM LIFE LEADS", tone: "good", className: "stage-qualified", note: "Term life requests ready for fast protection reviews." },
+  { key: "WholeLife", label: "WHOLE LIFE LEADS", tone: "good", className: "stage-qualified", note: "Whole life requests ready for permanent protection conversations." },
+  { key: "IUL", label: "IUL LEADS", tone: "good", className: "stage-qualified", note: "IUL requests ready for cash-value and strategy conversations." },
   { key: "FinalExpense", label: "FINAL EXPENSE LEADS", tone: "warn", className: "stage-contacted", note: "Final Expense leads queued for contact." },
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
   { key: "CalledToday", label: "Called Today", tone: "info", className: "stage-calledtoday", note: "Touched today and ready for same-day follow-through." },
@@ -1196,6 +1207,18 @@ const pipelineAliases = {
   applicationstarted: "NeedsDocs",
   medicare: "MortgageProtection",
   medicareleads: "MortgageProtection",
+  termlife: "TermLife",
+  termlifeleads: "TermLife",
+  termliferebuttals: "TermLife",
+  wholelife: "WholeLife",
+  wholelifeleads: "WholeLife",
+  wholeliferebuttals: "WholeLife",
+  iul: "IUL",
+  iulleads: "IUL",
+  iulrebuttals: "IUL",
+  indexeduniversallife: "IUL",
+  indexeduniversallifeleads: "IUL",
+  indexeduniversalliferebuttals: "IUL",
   submitted: "PolicyPlaced",
   calledtoday: "CalledToday",
   callback: "CallBack",
@@ -1227,7 +1250,8 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   return pipelineAliases[value.toLowerCase()] || fallback;
 }
 
-const productBuckets = new Set(["MortgageProtection","LifeInsurance","FinalExpense","DisabilityInsurance"]);
+const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance"]);
+const requestedAmountLeadTypes = new Set(["LifeInsurance","TermLife","WholeLife","IUL","FinalExpense"]);
 const derivedPipelineFilterStages = new Set(["CalledToday"]);
 
 function normalizeOriginalLeadTypeValue(value){
@@ -1242,7 +1266,7 @@ function rowOriginalLeadType(row){
 }
 
 function isLifeOrFinalExpenseLeadType(leadType){
-  return leadType === "LifeInsurance" || leadType === "FinalExpense";
+  return requestedAmountLeadTypes.has(leadType);
 }
 
 function resolveQuickViewLeadType(row, detail, stageOverride){
@@ -1268,7 +1292,7 @@ function updateImportCsvHelp(bucket){
   if (!help) return;
 
   const key = normalizePipelineStageValue(bucket || "MortgageProtection", "MortgageProtection");
-  if (key === "LifeInsurance" || key === "FinalExpense"){
+  if (requestedAmountLeadTypes.has(key)){
     help.textContent = "Save your Excel sheet as CSV (UTF-8). Required column order (no extra columns): First Name, Last Name, Address, City, State, County, Zip Code, Age, DOB, M/F, Requested, Phone #, Phone # 2. Everything is created as a Lead in the Lead bucket. Max 500 rows per upload.";
     return;
   }

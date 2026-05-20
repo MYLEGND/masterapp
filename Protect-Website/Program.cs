@@ -1,4 +1,5 @@
 using Azure.Identity;
+using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
@@ -47,6 +48,7 @@ else
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
+builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
 builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
 builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();

@@ -7,6 +7,7 @@ using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Leads;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -28,20 +29,17 @@ public class LeadsController : Controller
     private readonly AgentPortal.Models.AppFeatureFlags _featureFlags;
     private readonly AgentPortal.Services.ImportValidation.LeadImportValidator _leadImportValidator;
     private const string CommitmentsUnavailableMessage = "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
-    private static readonly string[] ProductBuckets =
-    {
-        "MortgageProtection",
-        "LifeInsurance",
-        "FinalExpense",
-        "DisabilityInsurance"
-    };
+    private static readonly string[] ProductBuckets = WorkstationLeadBuckets.ProductBuckets;
 
     private static readonly string[] PipelineStages =
     {
-        "MortgageProtection",
-        "LifeInsurance",
-        "FinalExpense",
-        "DisabilityInsurance",
+        WorkstationLeadBuckets.MortgageProtection,
+        WorkstationLeadBuckets.LifeInsurance,
+        WorkstationLeadBuckets.TermLife,
+        WorkstationLeadBuckets.WholeLife,
+        WorkstationLeadBuckets.Iul,
+        WorkstationLeadBuckets.FinalExpense,
+        WorkstationLeadBuckets.DisabilityInsurance,
         "CallBack",
         "Contacted",
         "Booked",
@@ -57,31 +55,33 @@ public class LeadsController : Controller
         "DoNotCallList"
     };
 
-    private static readonly IReadOnlyDictionary<string, string> BucketAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["mortgageprotectionleads"] = "MortgageProtection",
-        ["mortgageprotectionrebuttals"] = "MortgageProtection",
-        ["mortgageprotection"] = "MortgageProtection",
-        ["lifeinsuranceleads"] = "LifeInsurance",
-        ["lifeinsurancerebuttals"] = "LifeInsurance",
-        ["lifeinsurance"] = "LifeInsurance",
-        ["finalexpenseleads"] = "FinalExpense",
-        ["finalexpenserebuttals"] = "FinalExpense",
-        ["finalexpense"] = "FinalExpense",
-        ["medicareleads"] = "MortgageProtection",
-        ["medicare"] = "MortgageProtection",
-        ["disabilityinsuranceleads"] = "DisabilityInsurance",
-        ["disabilityinsurancerebuttals"] = "DisabilityInsurance",
-        ["disabilityinsurance"] = "DisabilityInsurance"
-    };
-
     private static readonly IReadOnlyDictionary<string, string> PipelineStageMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
-        ["mortgageprotection"] = "MortgageProtection",
-        ["lifeinsurance"] = "LifeInsurance",
-        ["finalexpense"] = "FinalExpense",
-        ["medicare"] = "MortgageProtection",
-        ["disabilityinsurance"] = "DisabilityInsurance",
+        ["mortgageprotection"] = WorkstationLeadBuckets.MortgageProtection,
+        ["mortgageprotectionleads"] = WorkstationLeadBuckets.MortgageProtection,
+        ["mortgageprotectionrebuttals"] = WorkstationLeadBuckets.MortgageProtection,
+        ["lifeinsurance"] = WorkstationLeadBuckets.LifeInsurance,
+        ["lifeinsuranceleads"] = WorkstationLeadBuckets.LifeInsurance,
+        ["lifeinsurancerebuttals"] = WorkstationLeadBuckets.LifeInsurance,
+        ["termlife"] = WorkstationLeadBuckets.TermLife,
+        ["termlifeleads"] = WorkstationLeadBuckets.TermLife,
+        ["termliferebuttals"] = WorkstationLeadBuckets.TermLife,
+        ["wholelife"] = WorkstationLeadBuckets.WholeLife,
+        ["wholelifeleads"] = WorkstationLeadBuckets.WholeLife,
+        ["wholeliferebuttals"] = WorkstationLeadBuckets.WholeLife,
+        ["iul"] = WorkstationLeadBuckets.Iul,
+        ["iulleads"] = WorkstationLeadBuckets.Iul,
+        ["iulrebuttals"] = WorkstationLeadBuckets.Iul,
+        ["indexeduniversallife"] = WorkstationLeadBuckets.Iul,
+        ["indexeduniversallifeleads"] = WorkstationLeadBuckets.Iul,
+        ["indexeduniversalliferebuttals"] = WorkstationLeadBuckets.Iul,
+        ["finalexpense"] = WorkstationLeadBuckets.FinalExpense,
+        ["finalexpenseleads"] = WorkstationLeadBuckets.FinalExpense,
+        ["finalexpenserebuttals"] = WorkstationLeadBuckets.FinalExpense,
+        ["medicare"] = WorkstationLeadBuckets.MortgageProtection,
+        ["disabilityinsurance"] = WorkstationLeadBuckets.DisabilityInsurance,
+        ["disabilityinsuranceleads"] = WorkstationLeadBuckets.DisabilityInsurance,
+        ["disabilityinsurancerebuttals"] = WorkstationLeadBuckets.DisabilityInsurance,
         ["callback"] = "CallBack",
         ["donotcall"] = "DoNotCallList",
         ["donotcalllist"] = "DoNotCallList",
@@ -155,30 +155,10 @@ public class LeadsController : Controller
     }
 
     private static string? NormalizeBucket(string? bucket)
-    {
-        if (string.IsNullOrWhiteSpace(bucket)) return null;
-        var key = bucket.Trim();
-        key = key.Replace(" ", "", StringComparison.OrdinalIgnoreCase)
-                 .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                 .Replace("_", "", StringComparison.OrdinalIgnoreCase);
-        foreach (var b in ProductBuckets)
-        {
-            if (key.Equals(b, StringComparison.OrdinalIgnoreCase) ||
-                key.Equals($"{b}Leads", StringComparison.OrdinalIgnoreCase) ||
-                key.Equals($"{b}Rebuttals", StringComparison.OrdinalIgnoreCase))
-                return b;
-        }
-        // handle spaced display labels
-        return BucketAliasMap.TryGetValue(key.ToLowerInvariant(), out var val) ? val : null;
-    }
+        => WorkstationLeadBuckets.NormalizeBucket(bucket);
 
     private static string[] ExpandProductBucketValues(string normalizedBucket)
-    {
-        if (normalizedBucket.Equals("MortgageProtection", StringComparison.OrdinalIgnoreCase))
-            return new[] { "MortgageProtection", "Medicare" };
-
-        return new[] { normalizedBucket };
-    }
+        => WorkstationLeadBuckets.ExpandProductBucketValues(normalizedBucket);
 
     private static string? NormalizePipelineStage(string? stage)
     {
@@ -1680,8 +1660,8 @@ public class LeadsController : Controller
                 {
                     return;
                 }
-                var isLifeOrFinalExpense = bucket == "LifeInsurance" || bucket == "FinalExpense";
-                var minimumColumns = isLifeOrFinalExpense ? 12 : 13;
+                var usesRequestedAmountField = WorkstationLeadBuckets.UsesRequestedAmountField(bucket);
+                var minimumColumns = usesRequestedAmountField ? 12 : 13;
                 if (cells.Length < minimumColumns)
                 {
                     skipped++;
@@ -1702,7 +1682,7 @@ public class LeadsController : Controller
                     age       = GetField(cells, headerMap, true, 7, "age");
                     dobRaw    = GetField(cells, headerMap, true, 8, "dob","birthdate","dateofbirth");
                     gender    = GetField(cells, headerMap, true, 9, "mf","gender","sex");
-                    if (isLifeOrFinalExpense)
+                    if (usesRequestedAmountField)
                     {
                         lender    = "";
                         loan      = GetField(cells, headerMap, true, 10, "requested","loan","loanamount","amount");
@@ -1736,7 +1716,7 @@ public class LeadsController : Controller
                     age       = GetCell(cells, 7);
                     dobRaw    = GetCell(cells, 8);
                     gender    = GetCell(cells, 9);
-                    if (isLifeOrFinalExpense)
+                    if (usesRequestedAmountField)
                     {
                         lender    = "";
                         loan      = GetCell(cells, 10);

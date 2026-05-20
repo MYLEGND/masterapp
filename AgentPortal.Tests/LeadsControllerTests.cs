@@ -196,6 +196,60 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task LeadBridge_LifeInsurance_Queue_Includes_Term_Whole_And_Iul_Leads()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "LT-1",
+                AgentUserId = "agent-1",
+                Bucket = "Contacted",
+                OriginalLeadType = "TermLife",
+                UpdatedUtc = now,
+                CreatedUtc = now.AddHours(-3)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LW-1",
+                AgentUserId = "agent-1",
+                Bucket = "FollowUp",
+                OriginalLeadType = "WholeLife",
+                UpdatedUtc = now.AddMinutes(-2),
+                CreatedUtc = now.AddHours(-2)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LI-1",
+                AgentUserId = "agent-1",
+                Bucket = "Booked",
+                OriginalLeadType = "IUL",
+                UpdatedUtc = now.AddMinutes(-1),
+                CreatedUtc = now.AddHours(-1)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LF-1",
+                AgentUserId = "agent-1",
+                Bucket = "Contacted",
+                OriginalLeadType = "FinalExpense",
+                UpdatedUtc = now.AddMinutes(-4),
+                CreatedUtc = now.AddHours(-4)
+            });
+        await db.SaveChangesAsync();
+
+        var stateService = new LeadBridgeStateService();
+        var controller = ControllerTestHelpers.BuildLeadBridgeController(db, stateService, ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Active("LifeInsurance");
+        var ok = Assert.IsType<OkObjectResult>(result);
+        dynamic payload = ok.Value!;
+        Assert.Equal(3, (int)payload.Total);
+        Assert.Contains((string)payload.ActiveLeadId, new[] { "LT-1", "LW-1", "LI-1" });
+    }
+
+    [Fact]
     public async Task ApplyOutcome_Uses_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();

@@ -10,6 +10,9 @@
     int CountStage(string stage) => Model?.Count(x => string.Equals(x.PipelineStage, stage, StringComparison.OrdinalIgnoreCase)) ?? 0;
     var mpCount = CountStage("MortgageProtection");
     var lifeCount = CountStage("LifeInsurance");
+    var termCount = CountStage("TermLife");
+    var wholeCount = CountStage("WholeLife");
+    var iulCount = CountStage("IUL");
     var feCount = CountStage("FinalExpense");
     var diCount = CountStage("DisabilityInsurance");
     var calledTodayCount = Model?.Count(x => x.AttemptsToday > 0) ?? 0;
@@ -268,7 +271,10 @@
                     <div class="stage-picker-actions">
                         <select class="select stage-picker-select" id="stagePickerSelect">
                             <option value="MortgageProtection" data-count="@mpCount" data-note="Mortgage Protection leads direct from scripts.">MORTGAGE PROTECTION LEADS</option>
-                            <option value="LifeInsurance" data-count="@lifeCount" data-note="Life Insurance leads ready for first touch.">LIFE INSURANCE LEADS</option>
+                            <option value="LifeInsurance" data-count="@lifeCount" data-note="General life insurance requests ready for first touch.">LIFE INSURANCE LEADS</option>
+                            <option value="TermLife" data-count="@termCount" data-note="Term life requests ready for fast protection reviews.">TERM LIFE LEADS</option>
+                            <option value="WholeLife" data-count="@wholeCount" data-note="Whole life requests ready for permanent coverage conversations.">WHOLE LIFE LEADS</option>
+                            <option value="IUL" data-count="@iulCount" data-note="IUL requests ready for cash-value and strategy conversations.">IUL LEADS</option>
                             <option value="FinalExpense" data-count="@feCount" data-note="Final Expense leads queued for contact.">FINAL EXPENSE LEADS</option>
                             <option value="DisabilityInsurance" data-count="@diCount" data-note="Disability Insurance leads to qualify fast.">DISABILITY INSURANCE LEADS</option>
                             <option value="CalledToday" data-count="@calledTodayCount" data-note="Touched today and ready for same-day follow-through.">CALLED TODAY</option>
