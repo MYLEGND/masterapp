@@ -2300,6 +2300,13 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         margin: 12px 0 14px;
     }
 }
+@@media (max-width: 767.98px) {
+    .lq-estimate-grid.is-single,
+    .lq-estimate-grid.is-comparison {
+        grid-template-columns: 1fr;
+        max-width: none;
+    }
+}
 
 /* Paid landing friction reduction */
 body.life-landing .lq-step1-panel .lq-step-progress-wrap{
