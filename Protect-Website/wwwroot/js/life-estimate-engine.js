@@ -73,7 +73,7 @@
   function buildEstimateCard(result, badgeLabel, modifierClass) {
     const normalized = normalizeEstimateResult(result);
     const reasonsHtml = normalized.reasons
-      .slice(0, 3)
+      .slice(0, 2)
       .map((reason) => `<li>${escapeHtml(reason)}</li>`)
       .join('');
 
@@ -123,6 +123,7 @@
     const secondary = normalized.secondary;
     const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
     const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
+    const gridClass = hasSecondary ? 'is-comparison' : 'is-single';
 
     return `
       <div class="lq-step-panel lq-estimate-panel" id="lifeMiniResultsPanel">
@@ -131,7 +132,7 @@
           <div class="lq-step-title">${buildResultsHeading(normalized)}</div>
           <div class="lq-step-helper">${buildResultsHelper(normalized)}</div>
           ${trustStripHtml || ''}
-          <div class="lq-estimate-grid">
+          <div class="lq-estimate-grid ${gridClass}">
             ${buildEstimateCard(normalized.primary, hasSecondary ? 'Recommended' : 'Your Estimate', 'primary')}
             ${hasSecondary ? buildEstimateCard(secondary, 'Also Worth Considering', 'secondary') : ''}
           </div>

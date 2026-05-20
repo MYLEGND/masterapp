@@ -199,7 +199,7 @@
         var normalizedField = (fieldName ?? string.Empty).Trim();
         var normalizedCode = (optionCode ?? string.Empty).Trim().ToLowerInvariant();
 
-        return normalizedField switch
+        var baseChoiceMeta = normalizedField switch
         {
             "ProtectingWho" => normalizedCode switch
             {
@@ -317,6 +317,15 @@
             },
             _ => ("icon", "choice-icon-family", string.Empty, string.Empty, string.Empty)
         };
+
+        if (string.Equals(normalizedField, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedField, "CoverageAmountOption", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedField, "AgeBracket", StringComparison.OrdinalIgnoreCase))
+        {
+            return (baseChoiceMeta.VisualMode, baseChoiceMeta.VisualValue, baseChoiceMeta.Kicker, string.Empty, baseChoiceMeta.ToneClass);
+        }
+
+        return baseChoiceMeta;
     }
     var selectedCoverageAmountOption = !string.IsNullOrWhiteSpace(form.CoverageAmountOption)
         ? form.CoverageAmountOption.Trim()

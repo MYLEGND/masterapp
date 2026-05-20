@@ -186,6 +186,8 @@
     }
 
     window.setTimeout(() => scheduleSync(), 140);
+    window.setTimeout(() => scheduleSync(), 360);
+    window.setTimeout(() => scheduleSync(), 900);
     scheduleSync();
   }
 
