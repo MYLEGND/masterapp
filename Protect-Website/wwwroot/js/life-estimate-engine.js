@@ -138,7 +138,7 @@
           <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
           <div class="lq-reach-note">${buildResultsNote(normalized)}</div>
           <div class="lq-step-actions">
-            <button type="button" class="btn-gold w-100" id="continueToContactBtn">${escapeHtml(continueLabel || 'Continue & Review My Options')}</button>
+            <button type="button" class="btn-gold btn-progress w-100" id="continueToContactBtn">${escapeHtml(continueLabel || 'Continue To My Personal Review')}</button>
           </div>
         </div>
       </div>

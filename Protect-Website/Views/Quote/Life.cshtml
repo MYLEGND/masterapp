@@ -604,7 +604,6 @@
         "iul" => "Answer below to see your IUL estimate",
         _ => "Answer below to compare what may fit"
     };
-    var stepOneContinueButtonTextJson = JsonSerializer.Serialize(stepOneContinueButtonText);
     var resultsContinueButtonTextJson = JsonSerializer.Serialize(resultsContinueButtonText);
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
@@ -3061,6 +3060,25 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-gol
         0 18px 30px rgba(84,56,11,0.24),
         0 0 0 1px rgba(173,123,35,0.24);
 }
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-progress {
+    background:
+        linear-gradient(180deg, #82e3ad 0%, #39c785 42%, #158257 100%) !important;
+    color: #081f14 !important;
+    border-color: rgba(239,222,173,0.74) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.36),
+        0 18px 30px rgba(8,74,48,0.28),
+        0 0 0 1px rgba(110,213,157,0.20),
+        0 0 30px rgba(57,199,133,0.20) !important;
+}
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .btn-progress:hover {
+    color: #071710 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,247,223,0.42),
+        0 20px 32px rgba(8,74,48,0.30),
+        0 0 0 1px rgba(179,229,192,0.30),
+        0 0 34px rgba(57,199,133,0.24) !important;
+}
 body.page-variant-contact-first-education-v1 .lq-education-card {
     background: var(--cf-card-bg);
     border-color: var(--cf-card-border);
@@ -4261,7 +4279,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         </div>
                                         <div class="lq-step-actions dual">
                                             <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                            <button type="button" class="btn-gold flex-fill" id="step1Continue">See What Fits You</button>
+                                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                                         </div>
                                     </div>
                                 </div>
@@ -4325,7 +4343,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     <div class="lq-step-actions">
                                         <div class="lq-submit-row">
                                             <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
-                                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                                            <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                         </div>
                                         <div class="lq-error" id="lifeError"></div>
                                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
@@ -4613,7 +4631,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                        <button type="button" class="btn-gold flex-fill" id="step1Continue">See What Fits You</button>
+                        <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                     </div>
                 </div>
             </div>
@@ -4740,7 +4758,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
                             <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
-                            <button type="submit" class="btn-gold w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                            <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
@@ -4810,7 +4828,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
-  const continueResultsLabel = isContactFirstEducationVariant ? 'Get My Walkthrough' : 'Continue & Review My Options';
+  const continueResultsLabel = @Html.Raw(resultsContinueButtonTextJson);
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
