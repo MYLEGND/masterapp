@@ -1389,7 +1389,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_general_form_start",
                     SubmitEvent = "life_general_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.Life),
                 },
                 [LifeOfferKeys.Term] = new LifeWizardConfig
                 {
@@ -1404,7 +1404,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_term_form_start",
                     SubmitEvent = "life_term_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.Term),
                 },
                 [LifeOfferKeys.WholeLife] = new LifeWizardConfig
                 {
@@ -1419,7 +1419,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_whole_form_start",
                     SubmitEvent = "life_whole_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.WholeLife),
                 },
                 [LifeOfferKeys.FinalExpense] = new LifeWizardConfig
                 {
@@ -1434,7 +1434,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_finalexpense_form_start",
                     SubmitEvent = "life_finalexpense_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.FinalExpense),
                 },
                 [LifeOfferKeys.Mortgage] = new LifeWizardConfig
                 {
@@ -1449,7 +1449,7 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_mp_form_start",
                     SubmitEvent = "life_mp_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.Mortgage),
                 },
                 [LifeOfferKeys.Iul] = new LifeWizardConfig
                 {
@@ -1464,12 +1464,31 @@ namespace Protect_Website.Controllers
                     SubmitButtonText = "Show Me What Fits Me",
                     StartEvent = "life_iul_form_start",
                     SubmitEvent = "life_iul_submit",
-                    Steps = BuildSharedDiscoverySteps(),
+                    Steps = BuildDiscoveryStepsForOffer(LifeOfferKeys.Iul),
                 },
             };
         }
 
-        private static List<LifeWizardStep> BuildSharedDiscoverySteps() =>
+        private static List<LifeWizardStep> BuildDiscoveryStepsForOffer(string offerKey)
+        {
+            var normalizedOfferKey = LifeOfferResolver.Normalize(offerKey);
+            var coverageOptions = string.Equals(normalizedOfferKey, LifeOfferKeys.FinalExpense, StringComparison.OrdinalIgnoreCase)
+                ? new List<LifeWizardOption>
+                {
+                    new("25000","$25,000"),
+                    new("50000","$50,000"),
+                    new("75000","$75,000"),
+                    new("100000","$100,000"),
+                }
+                : new List<LifeWizardOption>
+                {
+                    new("100000","$100,000"),
+                    new("250000","$250,000"),
+                    new("500000","$500,000"),
+                    new("1000000","$1,000,000+"),
+                };
+
+            return
             new()
             {
                 new("Who are you looking to protect?", new List<LifeWizardOption>
@@ -1485,13 +1504,7 @@ namespace Protect_Website.Controllers
                     new("mortgage_or_bills","Help with mortgage or bills"),
                     new("leave_something","Leave something behind"),
                 }, "CoverageGoal"),
-                new("About how much coverage would you like to explore?", new List<LifeWizardOption>
-                {
-                    new("100000","$100,000"),
-                    new("250000","$250,000"),
-                    new("500000","$500,000"),
-                    new("1000000","$1,000,000+"),
-                }, "CoverageAmountOption"),
+                new("About how much coverage would you like to explore?", coverageOptions, "CoverageAmountOption"),
                 new("Tobacco use", new List<LifeWizardOption>
                 {
                     new("non_smoker","Non-smoker"),
@@ -1499,5 +1512,6 @@ namespace Protect_Website.Controllers
                 }, "TobaccoUse"),
                 new("Your age", new List<LifeWizardOption>(), "Age"),
             };
+        }
     }
 }
