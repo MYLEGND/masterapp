@@ -467,8 +467,6 @@
     var contactFirstProcessingHeading = "Preparing your estimated options...";
     var contactFirstProcessingHelper = "You’ll see what may fit first.";
     var contactFirstProcessingNote = "Building your estimate...";
-    var contactFirstNextLabel = "Your estimate is ready";
-    var contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of what may fit. No obligation.";
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var productFocusTitle = "What this estimate is built around";
     var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
@@ -489,8 +487,6 @@
         contactFirstProcessingHeading = "Preparing your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
         contactFirstProcessingNote = "Building your whole life estimate...";
-        contactFirstNextLabel = "Your whole life estimate is ready";
-        contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of lifelong coverage and cash value fit. No obligation.";
         finalStepHeading = "Get your whole life walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
         agentTrustBio = "I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
@@ -516,8 +512,6 @@
         contactFirstProcessingHeading = "Preparing your term life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
         contactFirstProcessingNote = "Building your term life estimate...";
-        contactFirstNextLabel = "Your term life estimate is ready";
-        contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of coverage size, affordability, and term fit. No obligation.";
         finalStepHeading = "Get your term life walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
         agentTrustBio = "I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
@@ -543,8 +537,6 @@
         contactFirstProcessingHeading = "Preparing your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
         contactFirstProcessingNote = "Building your final expense estimate...";
-        contactFirstNextLabel = "Your final expense estimate is ready";
-        contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of simple coverage, peace of mind, and final-cost fit. No obligation.";
         finalStepHeading = "Get your final expense walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
         agentTrustBio = "I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
@@ -570,8 +562,6 @@
         contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
         contactFirstProcessingNote = "Building your mortgage protection estimate...";
-        contactFirstNextLabel = "Your mortgage protection estimate is ready";
-        contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of home protection and mortgage-balance fit. No obligation.";
         finalStepHeading = "Get your mortgage protection walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
         agentTrustBio = "I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
@@ -597,8 +587,6 @@
         contactFirstProcessingHeading = "Preparing your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
         contactFirstProcessingNote = "Building your IUL estimate...";
-        contactFirstNextLabel = "Your IUL estimate is ready";
-        contactFirstNextCopy = "Use it as a starting point for a clearer walkthrough of long-term protection, flexibility, and cash value fit. No obligation.";
         finalStepHeading = "Get your IUL walkthrough";
         finalStepHelper = $"{agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
         agentTrustBio = "I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
@@ -2625,32 +2613,6 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 .lq-contact-first-flow-surface .lq-card-rich .lq-card-helper {
     font-size: .79rem;
 }
-.lq-contact-first-next-note {
-    display: grid;
-    gap: 4px;
-    margin-top: 8px;
-    padding-top: 10px;
-    border-top: 1px solid rgba(208,154,53,0.18);
-}
-.lq-contact-first-next-label {
-    color: rgba(240,198,109,0.82);
-    font-size: .68rem;
-    font-weight: 860;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-.lq-contact-first-next-copy {
-    margin: 0;
-    color: rgba(232,238,247,0.68);
-    font-size: .79rem;
-    line-height: 1.36;
-}
-.lq-contact-first-next-license {
-    color: rgba(221,228,239,0.56);
-    font-size: .73rem;
-    font-weight: 720;
-    line-height: 1.4;
-}
 .lq-education-form-title {
     color: #fff6d8;
     font-size: 1.18rem;
@@ -3027,7 +2989,6 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card
         0 0 0 2px rgba(248,220,145,0.24),
         0 0 24px rgba(248,220,145,0.10);
 }
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-next-note,
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface .lq-submit-row {
     border-top-color: rgba(232,196,115,0.18);
 }
@@ -3035,8 +2996,7 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-cont
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
     color: #fff5df;
 }
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-text,
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-next-copy {
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-text {
     color: rgba(244,239,231,0.78);
 }
 
@@ -3213,8 +3173,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.page-variant-contact-first-education-v1 .lq-contact-first-proof-row,
-    body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chips,
-    body.page-variant-contact-first-education-v1 .lq-contact-first-next-note {
+    body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chips {
         padding-left: 2px;
         padding-right: 2px;
     }
@@ -3336,8 +3295,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         font-size: 1rem;
     }
 
-    .lq-contact-first-proof-text,
-    .lq-contact-first-next-copy {
+    .lq-contact-first-proof-text {
         font-size: .86rem;
     }
 
@@ -4121,14 +4079,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
                                     </div>
                                 </div>
-                            </div>
-                            <div class="lq-contact-first-next-note" aria-labelledby="lifeEducationNextTitle">
-                                <div class="lq-contact-first-next-label" id="lifeEducationNextTitle">@contactFirstNextLabel</div>
-                                <p class="lq-contact-first-next-copy">@contactFirstNextCopy</p>
-                                @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                {
-                                    <div class="lq-contact-first-next-license">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                                }
                             </div>
                         </div>
                     </section>
