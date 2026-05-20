@@ -2828,6 +2828,7 @@ body {
 
 .hero-link-actions-inline {
     align-items: center;
+    flex-wrap: nowrap;
 }
 
 .hero-link .btn {
@@ -3970,6 +3971,10 @@ body {
 .product-links-toggle {
     min-height: 34px;
     font-size: .78rem;
+    width: auto;
+    margin-top: 0 !important;
+    white-space: nowrap;
+    flex: 0 0 auto;
 }
 
 .wa-page-header {
