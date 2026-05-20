@@ -617,6 +617,12 @@
       IsBounceCandidate: dwell < 10000,
       IsExitPage: true
     }));
+    debug('page_exit fired', {
+      pageKey: PAGE_KEY,
+      dwell,
+      engagedMs: _activeMs,
+      scrollPct
+    });
   }
 
   // ── Form Abandonment Intelligence ─────────────────────────────────────────
@@ -694,39 +700,25 @@
     return !SKIP_NAMES.has(n);
   }
 
-  // Registry of active form abandon callbacks — fired in visibilitychange handler
-  const _formAbandonCallbacks = [];
+  // Registry of active form abandon callbacks — fired during terminal page lifecycle.
+  const _formAbandonCallbacks = new Map();
 
   function wireFormTracking(formEl) {
+    if (formEl.dataset.legendTrackingBound === 'true') {
+      return;
+    }
+
     const formKey = formEl.dataset.formKey || '';
     const quoteType = formQuoteType(formKey);
     if (!formKey) return;
-    const abandonSessionFlag = `form_abandon_${getSessionId()}_${formKey}_${quoteType || 'unknown'}`;
-    let abandonAlreadyTrackedForSession = false;
-    try {
-      abandonAlreadyTrackedForSession = sessionStorage.getItem(abandonSessionFlag) === '1';
-    } catch { /* ignore */ }
 
-    const state = {
-      started: false,
-      submitted: false,
-      submitAttempted: false,
-      firstInteractionAt: null,
-      lastFocusedField: null,
-      lastCompletedField: null,
-      focusedFields: new Set(),
-      completedFields: new Set(),
-      errorsSeen: new Set(),     // "fieldName:errorType" deduplication
-      consentInteracted: false,
-      abandonFired: abandonAlreadyTrackedForSession,
-    };
+    formEl.dataset.legendTrackingBound = 'true';
+    const state = createFormTrackState(formKey, quoteType);
     _formTrackStateByKey.set(formKey, state);
+    formEl.dataset.legendTrackingInstanceId = state.instanceId;
 
     function markStarted() {
-      if (!state.started) {
-        state.started = true;
-        state.firstInteractionAt = Date.now();
-      }
+      transitionFormState(state, 'started', 'field_interaction');
     }
 
     function onFocus(fieldName, fieldType, required) {
@@ -817,7 +809,15 @@
 
     // Expose for the form's own submit handler to call
     formEl._trackSubmitAttempt = function (validationPassed, invalidCount) {
+      markStarted();
       state.submitAttempted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      debug('submit attempt', {
+        formKey,
+        instanceId: state.instanceId,
+        validationPassed: !!validationPassed,
+        invalidCount: invalidCount || 0
+      });
       sendEvent({
         EventType: 'form_submit_attempt',
         FormKey: formKey,
@@ -832,6 +832,8 @@
     formEl._trackSubmitSuccess = function () {
       state.submitted = true;
       state.submitAttempted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      transitionFormState(state, 'submitted', 'ajax_submit_success');
     };
 
     // Native submits (non-AJAX forms) should never be counted as abandon.
@@ -840,15 +842,23 @@
       if (typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) return;
       state.submitAttempted = true;
       state.submitted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      transitionFormState(state, 'submitted', 'native_submit_dispatch');
     }, true);
 
-    // Register abandon callback — fired during terminal page lifecycle events (pagehide/beforeunload)
-    _formAbandonCallbacks.push(function () {
+    // Register abandon callback — fired during terminal page lifecycle events.
+    _formAbandonCallbacks.set(state.instanceId, function (lifecycleSource) {
       if (!state.started || state.submitted || state.abandonFired) return;
+
+      const abandonStage = state.currentStage || 'started';
+      const abandonAt = Date.now();
       state.abandonFired = true;
-      try {
-        sessionStorage.setItem(abandonSessionFlag, '1');
-      } catch { /* ignore */ }
+      state.lastLifecycleSignalAt = abandonAt;
+      state.lastLifecycleSignalSource = lifecycleSource || 'pagehide';
+      transitionFormState(state, 'abandoned', `terminal:${lifecycleSource || 'pagehide'}`, {
+        abandonStage
+      });
+
       beaconSend(buildBody({
         EventType: 'form_abandon',
         FormKey: formKey,
@@ -862,6 +872,15 @@
           consentInteracted: state.consentInteracted,
           timeOnFormMs: state.firstInteractionAt ? Date.now() - state.firstInteractionAt : 0,
           quoteType,
+          formInstanceId: state.instanceId,
+          abandonStage,
+          lifecycleSource: lifecycleSource || 'pagehide',
+          startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
+          progressedAt: state.progressedAt ? new Date(state.progressedAt).toISOString() : null,
+          contactViewedAt: state.contactViewedAt ? new Date(state.contactViewedAt).toISOString() : null,
+          submitAttemptedAt: state.submitAttemptedAt ? new Date(state.submitAttemptedAt).toISOString() : null,
+          abandonedAt: new Date(abandonAt).toISOString(),
+          stateTransition: state.currentStage,
         }),
       }));
     });
@@ -875,19 +894,7 @@
     let state = _formTrackStateByKey.get(formKey);
     if (state) return state;
 
-    state = {
-      started: false,
-      submitted: false,
-      submitAttempted: false,
-      firstInteractionAt: null,
-      lastFocusedField: null,
-      lastCompletedField: null,
-      focusedFields: new Set(),
-      completedFields: new Set(),
-      errorsSeen: new Set(),
-      consentInteracted: false,
-      abandonFired: false,
-    };
+    state = createFormTrackState(formKey, formQuoteType(formKey));
     _formTrackStateByKey.set(formKey, state);
     return state;
   }
@@ -934,9 +941,24 @@
     });
   }
 
-  function fireExitSignals() {
+  function fireExitSignals(lifecycleSource, event) {
+    if (event && event.persisted) {
+      debug('skipping lifecycle exit signals for bfcache', {
+        lifecycleSource,
+        persisted: true
+      });
+      return;
+    }
+
+    debug('fireExitSignals', { lifecycleSource });
     firePageExit();
-    _formAbandonCallbacks.forEach(function (cb) { try { cb(); } catch { /* swallow */ } });
+    _formAbandonCallbacks.forEach(function (cb) {
+      try {
+        cb(lifecycleSource || 'pagehide');
+      } catch {
+        /* swallow */
+      }
+    });
   }
 
   // ── Visibility/page lifecycle ──────────────────────────────────────────────
@@ -952,6 +974,10 @@
         EngagedMilliseconds: _activeMs,
         ScrollPercent: Math.max(_maxScroll, getScrollPct())
       });
+      debug('visibilitychange:hidden', {
+        pageKey: PAGE_KEY,
+        activeMs: _activeMs
+      });
     } else {
       if (_activeStart === null) {
         _activeStart = Date.now();
@@ -961,10 +987,13 @@
         DwellMilliseconds: Date.now() - _pageStart,
         EngagedMilliseconds: _activeMs
       });
+      debug('visibilitychange:visible', {
+        pageKey: PAGE_KEY,
+        activeMs: _activeMs
+      });
     }
   });
-  window.addEventListener('pagehide', fireExitSignals);
-  window.addEventListener('beforeunload', fireExitSignals);
+  window.addEventListener('pagehide', (event) => fireExitSignals('pagehide', event));
 
   // ── Standard tracking ─────────────────────────────────────────────────────
 
@@ -992,13 +1021,17 @@
   function wireFormStart(selector, formKey) {
     const form = document.querySelector(selector);
     if (!form) return;
-    const sessionFlag = `form_started_${formKey}`;
+    const sessionFlag = `form_started_${getSessionId()}_${window.location.pathname}_${formKey}`;
     const currentSessionId = getSessionId();
     let fired = sessionStorage.getItem(sessionFlag) === currentSessionId;
     const handler = () => {
       if (fired) return;
       fired = true;
       sessionStorage.setItem(sessionFlag, currentSessionId);
+      debug('form_start fired', {
+        formKey,
+        pageKey: PAGE_KEY
+      });
       sendEvent({ EventType: 'form_start', FormKey: formKey });
     };
     form.addEventListener('focusin', handler, { once: true });

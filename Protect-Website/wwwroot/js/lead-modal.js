@@ -1,6 +1,16 @@
 (() => {
+  if (window.__legendLeadModalInitialized) {
+    return;
+  }
+  window.__legendLeadModalInitialized = true;
+
   const modal = document.getElementById('leadModal');
   if (!modal) return;
+
+  const DEBUG_LEAD_MODAL =
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    new URLSearchParams(window.location.search).has('trackingDebug');
 
   const form = document.getElementById('leadForm');
   const closeBtn = document.getElementById('leadClose');
@@ -18,9 +28,31 @@
   let pendingCta = null;
   let pendingHref = null;
   let formStarted = false;
+  let modalInstanceId = null;
+  let modalCloseTracked = false;
 
   const tracking = window.legendTrack || (() => {});
   const ids = window.legendTrackingIds || {};
+
+  function debug(message, details) {
+    if (!DEBUG_LEAD_MODAL) return;
+    try {
+      console.debug('[legend-lead-modal]', message, details || '');
+    } catch {
+      // Ignore console failures.
+    }
+  }
+
+  function uuid() {
+    return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  }
+
+  function resolveElementKey(ctaKey) {
+    const explicit = typeof ctaKey === 'string' ? ctaKey.trim() : '';
+    if (explicit) return explicit;
+    if (pageKey) return `${pageKey}_lead_modal`;
+    return 'lead_modal_direct';
+  }
 
   function setField(name, value) {
     const el = form.querySelector(`[name="${name}"]`);
@@ -35,7 +67,15 @@
   }
 
   function openModal(options = {}) {
-    pendingCta = options.ctaKey || null;
+    if (modal.classList.contains('open')) {
+      debug('ignored duplicate open while already visible', {
+        pageKey,
+        ctaKey: options.ctaKey || null
+      });
+      return;
+    }
+
+    pendingCta = resolveElementKey(options.ctaKey);
     pendingHref = options.href || null;
     interestSelect.value = options.interest || interestSelect.value || '';
     errorEl.classList.remove('show');
@@ -45,33 +85,81 @@
       interestSelect.value = options.interest || '';
     }
     formStarted = false;
+    modalInstanceId = uuid();
+    modalCloseTracked = false;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
     form.querySelector('input[name="FirstName"]')?.focus();
     sessionStorage.setItem(SOFT_FLAG, '1');
+    debug('modal open', {
+      pageKey,
+      elementKey: pendingCta,
+      modalInstanceId
+    });
     tracking({
       EventType: 'lead_modal_open',
       PageKey: pageKey,
-      ElementKey: pendingCta || 'unknown_modal_open'
+      ElementKey: pendingCta,
+      FormKey: 'lead_modal_form',
+      MetadataJson: JSON.stringify({
+        modalInstanceId
+      })
     });
   }
 
-  function closeModal(redirect) {
+  function closeModal(redirect, reason = 'dismiss') {
+    if (!modal.classList.contains('open')) {
+      return;
+    }
+
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    if (!modalCloseTracked) {
+      modalCloseTracked = true;
+      debug('modal close', {
+        pageKey,
+        elementKey: pendingCta,
+        modalInstanceId,
+        reason
+      });
+      tracking({
+        EventType: 'lead_modal_close',
+        PageKey: pageKey,
+        ElementKey: pendingCta || resolveElementKey(null),
+        FormKey: 'lead_modal_form',
+        MetadataJson: JSON.stringify({
+          modalInstanceId,
+          reason,
+          formStarted,
+          redirected: !!(redirect && pendingHref)
+        })
+      });
+    }
     if (redirect && pendingHref) {
       window.location.href = pendingHref;
     }
+    pendingCta = null;
+    pendingHref = null;
+    formStarted = false;
+    modalInstanceId = null;
   }
 
   function markFormStart() {
     if (formStarted) return;
     formStarted = true;
+    debug('lead form start', {
+      pageKey,
+      elementKey: pendingCta,
+      modalInstanceId
+    });
     tracking({
       EventType: 'lead_form_start',
       PageKey: pageKey,
-      ElementKey: pendingCta || 'unknown_modal_open',
-      FormKey: 'lead_modal_form'
+      ElementKey: pendingCta || resolveElementKey(null),
+      FormKey: 'lead_modal_form',
+      MetadataJson: JSON.stringify({
+        modalInstanceId
+      })
     });
   }
 
@@ -183,15 +271,16 @@
       tracking({
         EventType: 'lead_form_submit_success',
         PageKey: pageKey,
-        ElementKey: pendingCta || 'lead_modal',
+        ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form',
         SubmitOutcome: 'success'
       });
       setTimeout(() => {
-        closeModal();
+        const redirectTarget = pendingHref;
+        closeModal(false, 'submit_success');
         successEl.classList.remove('show');
-        if (pendingHref) {
-          window.location.href = pendingHref;
+        if (redirectTarget) {
+          window.location.href = redirectTarget;
         }
       }, 1400);
     } catch (err) {
@@ -212,7 +301,7 @@
 
   function wireClose(el, redirect) {
     el?.addEventListener('click', () => {
-      closeModal(redirect);
+      closeModal(redirect, redirect ? 'redirect' : 'dismiss');
     });
   }
   wireClose(closeBtn, false);
