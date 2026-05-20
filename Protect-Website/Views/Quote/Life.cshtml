@@ -6393,12 +6393,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
   }
 
-  function queueProcessingAdvanceFromAgeSelection() {
-    if (step1Panel.hidden || currentMicroStep !== 4) return;
-    clearAutoAdvanceTimer();
-    autoAdvanceTimer = window.setTimeout(() => step1ContinueBtn?.click(), 180);
-  }
-
   function wireAutoAdvanceGroup(groupName, errorId, selectEvent, expectedStep, nextStep) {
     form.querySelectorAll(`input[name="${groupName}"]`).forEach((radio) => {
       radio.addEventListener('change', () => {
@@ -6469,7 +6463,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         age: getSelectedAgeValue()
       });
       void ensureMetaLeadFormStart();
-      queueProcessingAdvanceFromAgeSelection();
     });
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
