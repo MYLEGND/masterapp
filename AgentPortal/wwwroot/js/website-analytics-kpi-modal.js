@@ -32,7 +32,7 @@
         const bridge = window.__waState;
         if (bridge) {
             return {
-                preset:        bridge.preset || '30d',
+                preset:        bridge.preset || 'today',
                 fromUtc:       bridge.from   || null,
                 toUtc:         bridge.to     || null,
                 trafficType:   bridge.trafficType || 'all',
@@ -45,7 +45,7 @@
         // Fallback: read from shell data-attributes + globals
         const shell = document.querySelector('.fa-shell');
         return {
-            preset:        shell?.dataset.initialPreset || '30d',
+            preset:        shell?.dataset.initialPreset || 'today',
             fromUtc:       null,
             toUtc:         null,
             trafficType:   'all',

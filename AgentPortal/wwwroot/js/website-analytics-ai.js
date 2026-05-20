@@ -60,7 +60,7 @@
       tzOffset = new Date().getTimezoneOffset();
     } catch (_) { }
     return {
-      preset: st.preset || shell?.dataset.initialPreset || '30d',
+      preset: st.preset || shell?.dataset.initialPreset || 'today',
       from: st.from || null,
       to: st.to || null,
       agentProfileId: st.agentProfileId || null,

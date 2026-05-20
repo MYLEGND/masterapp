@@ -1,7 +1,7 @@
 @{
     ViewData["Title"] = "Website Analytics";
-    var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
-    var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
+    var initialPreset = ViewData["InitialRangePreset"] as string ?? "today";
+    var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
     var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
     var initialRangeTo = ViewData["InitialRangeTo"] as string ?? string.Empty;
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";

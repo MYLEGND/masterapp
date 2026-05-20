@@ -99,7 +99,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
 
         TimeRangeRequest range;
         try { range = TimeRangeRequest.FromPreset(request?.Preset, request?.FromUtc, request?.ToUtc, ResolveViewerTimeZone(request?.TimezoneId, request?.TimezoneOffsetMinutes)); }
-        catch { range = TimeRangeRequest.FromPreset("30d"); }
+        catch { range = TimeRangeRequest.FromPreset("today"); }
 
         var scope = await ResolveScopeAsync(request?.AgentProfileId, request?.Team ?? false);
         var scopeLabel = await ResolveScopeLabelAsync(scope, request?.Team ?? false);
@@ -169,7 +169,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
 
         TimeRangeRequest range;
         try { range = TimeRangeRequest.FromPreset(request.Preset, request.FromUtc, request.ToUtc, ResolveViewerTimeZone(request.TimezoneId, request.TimezoneOffsetMinutes)); }
-        catch { range = TimeRangeRequest.FromPreset("30d"); }
+        catch { range = TimeRangeRequest.FromPreset("today"); }
 
         var scope = await ResolveScopeAsync(request.AgentProfileId, request.Team);
         var scopeLabel = await ResolveScopeLabelAsync(scope, request.Team);

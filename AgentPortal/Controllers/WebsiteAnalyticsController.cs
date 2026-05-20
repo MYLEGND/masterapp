@@ -60,6 +60,7 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null)
     {
         var viewerTimeZone = GetViewerTimeZone();
+        preset = string.IsNullOrWhiteSpace(preset) ? "today" : preset;
         TimeRangeRequest range;
         try
         {
@@ -67,7 +68,7 @@ namespace AgentPortal.Controllers;
         }
         catch (ArgumentException)
         {
-            range = TimeRangeRequest.FromPreset("30d", null, null, viewerTimeZone);
+            range = TimeRangeRequest.FromPreset("today", null, null, viewerTimeZone);
         }
 
         var scope = await ResolveScopeAsync(agentProfileId);
@@ -725,7 +726,7 @@ namespace AgentPortal.Controllers;
             }
             catch
             {
-                fallbackRange = TimeRangeRequest.FromPreset("30d");
+                fallbackRange = TimeRangeRequest.FromPreset("today");
             }
             var fallbackUtc = DateTime.UtcNow;
             var fallbackGenerated = fallbackUtc.ToString("MM/dd/yyyy h:mm tt") + " UTC";

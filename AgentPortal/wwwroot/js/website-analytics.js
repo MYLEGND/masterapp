@@ -1,6 +1,6 @@
 (() => {
   const OPEN_MODAL_STORAGE_KEY = 'websiteAnalytics.openModal';
-  const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || '30d';
+  const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || 'today';
   const initialFrom = document.querySelector('.fa-shell')?.dataset.initialFrom || null;
   const initialTo = document.querySelector('.fa-shell')?.dataset.initialTo || null;
 
@@ -268,7 +268,7 @@
   function syncRangeQueryParams() {
     try {
       const url = new URL(window.location.href);
-      url.searchParams.set('preset', state.scope.preset || '30d');
+      url.searchParams.set('preset', state.scope.preset || 'today');
 
       if (viewerTz.id) url.searchParams.set('timezoneId', viewerTz.id);
       else url.searchParams.delete('timezoneId');
@@ -2637,7 +2637,7 @@
       btn.addEventListener('click', () => {
         document.querySelectorAll('.btn-range[data-range]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        state.scope.preset = btn.dataset.range || '30d';
+        state.scope.preset = btn.dataset.range || 'today';
         if (state.scope.preset !== 'custom') {
           state.scope.from = null;
           state.scope.to = null;
@@ -2986,7 +2986,7 @@
     // The modal JS reads window.__waState on each card click, so it always
     // reflects the most recently applied filter (not a stale snapshot).
     window.__waState = {
-      get preset()      { return state.scope.preset || '30d'; },
+      get preset()      { return state.scope.preset || 'today'; },
       get from()        { return state.scope.from || null; },
       get to()          { return state.scope.to || null; },
       get trafficType() { return 'all'; },
