@@ -1472,6 +1472,86 @@ namespace Protect_Website.Controllers
         private static List<LifeWizardStep> BuildDiscoveryStepsForOffer(string offerKey)
         {
             var normalizedOfferKey = LifeOfferResolver.Normalize(offerKey);
+            var protectOptions = normalizedOfferKey switch
+            {
+                LifeOfferKeys.FinalExpense => new List<LifeWizardOption>
+                {
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children or grandchildren"),
+                    new("family","My loved ones"),
+                },
+                LifeOfferKeys.Mortgage => new List<LifeWizardOption>
+                {
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children"),
+                    new("family","My household"),
+                },
+                LifeOfferKeys.WholeLife => new List<LifeWizardOption>
+                {
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children"),
+                    new("family","My family or legacy"),
+                },
+                LifeOfferKeys.Iul => new List<LifeWizardOption>
+                {
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children"),
+                    new("family","My family or legacy"),
+                },
+                _ => new List<LifeWizardOption>
+                {
+                    new("spouse_or_partner","My spouse or partner"),
+                    new("children","My children"),
+                    new("family","My family"),
+                }
+            };
+
+            var goalOptions = normalizedOfferKey switch
+            {
+                LifeOfferKeys.Term => new List<LifeWizardOption>
+                {
+                    new("replace_income","Replace income for my family"),
+                    new("mortgage_or_bills","Cover mortgage or major bills"),
+                    new("protect_term_years","Protect the years my family needs it most"),
+                    new("keep_costs_affordable","Keep coverage more affordable"),
+                },
+                LifeOfferKeys.WholeLife => new List<LifeWizardOption>
+                {
+                    new("lifelong_protection","Build lifelong protection"),
+                    new("cash_value_growth","Build cash value over time"),
+                    new("leave_legacy","Leave something behind"),
+                    new("final_expenses","Cover final expenses permanently"),
+                },
+                LifeOfferKeys.FinalExpense => new List<LifeWizardOption>
+                {
+                    new("burial_costs","Cover burial and funeral costs"),
+                    new("final_bills","Handle final medical or household bills"),
+                    new("ease_family_burden","Reduce financial stress on my loved ones"),
+                    new("leave_small_benefit","Leave a small benefit behind"),
+                },
+                LifeOfferKeys.Mortgage => new List<LifeWizardOption>
+                {
+                    new("mortgage_balance","Cover the mortgage balance"),
+                    new("monthly_payment","Help keep the monthly payment covered"),
+                    new("stay_in_home","Help my family stay in the home"),
+                    new("household_bills","Protect mortgage plus key household bills"),
+                },
+                LifeOfferKeys.Iul => new List<LifeWizardOption>
+                {
+                    new("cash_value_growth","Build cash value with long-term flexibility"),
+                    new("lifelong_protection","Keep lifelong protection in place"),
+                    new("future_access","Create future access to cash value"),
+                    new("leave_legacy","Leave a legacy for my family"),
+                },
+                _ => new List<LifeWizardOption>
+                {
+                    new("replace_income","Replace income for my family"),
+                    new("final_expenses","Cover final expenses"),
+                    new("mortgage_or_bills","Help with mortgage or bills"),
+                    new("leave_something","Leave something behind"),
+                }
+            };
+
             var coverageOptions = normalizedOfferKey switch
             {
                 LifeOfferKeys.FinalExpense => new List<LifeWizardOption>
@@ -1521,19 +1601,8 @@ namespace Protect_Website.Controllers
             return
             new()
             {
-                new("Who are you looking to protect?", new List<LifeWizardOption>
-                {
-                    new("spouse_or_partner","My spouse or partner"),
-                    new("children","My children"),
-                    new("family","My family"),
-                }, "ProtectingWho"),
-                new("What would you like this coverage to help with most?", new List<LifeWizardOption>
-                {
-                    new("replace_income","Replace income for my family"),
-                    new("final_expenses","Cover final expenses"),
-                    new("mortgage_or_bills","Help with mortgage or bills"),
-                    new("leave_something","Leave something behind"),
-                }, "CoverageGoal"),
+                new("Who are you looking to protect?", protectOptions, "ProtectingWho"),
+                new("What would you like this coverage to help with most?", goalOptions, "CoverageGoal"),
                 new("About how much coverage would you like to explore?", coverageOptions, "CoverageAmountOption"),
                 new("Tobacco use", new List<LifeWizardOption>
                 {

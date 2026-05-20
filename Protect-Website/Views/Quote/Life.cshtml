@@ -32,6 +32,86 @@
     IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(5).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
     if (viewSteps.Count < 5)
     {
+        var fallbackProtectOptions = normalizedOfferKey switch
+        {
+            "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children or grandchildren"),
+                new("family","My loved ones"),
+            },
+            "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My household"),
+            },
+            "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family or legacy"),
+            },
+            "iul" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family or legacy"),
+            },
+            _ => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family"),
+            }
+        };
+
+        var fallbackGoalOptions = normalizedOfferKey switch
+        {
+            "term" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("replace_income","Replace income for my family"),
+                new("mortgage_or_bills","Cover mortgage or major bills"),
+                new("protect_term_years","Protect the years my family needs it most"),
+                new("keep_costs_affordable","Keep coverage more affordable"),
+            },
+            "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("lifelong_protection","Build lifelong protection"),
+                new("cash_value_growth","Build cash value over time"),
+                new("leave_legacy","Leave something behind"),
+                new("final_expenses","Cover final expenses permanently"),
+            },
+            "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("burial_costs","Cover burial and funeral costs"),
+                new("final_bills","Handle final medical or household bills"),
+                new("ease_family_burden","Reduce financial stress on my loved ones"),
+                new("leave_small_benefit","Leave a small benefit behind"),
+            },
+            "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("mortgage_balance","Cover the mortgage balance"),
+                new("monthly_payment","Help keep the monthly payment covered"),
+                new("stay_in_home","Help my family stay in the home"),
+                new("household_bills","Protect mortgage plus key household bills"),
+            },
+            "iul" => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("cash_value_growth","Build cash value with long-term flexibility"),
+                new("lifelong_protection","Keep lifelong protection in place"),
+                new("future_access","Create future access to cash value"),
+                new("leave_legacy","Leave a legacy for my family"),
+            },
+            _ => new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("replace_income","Replace income for my family"),
+                new("final_expenses","Cover final expenses"),
+                new("mortgage_or_bills","Help with mortgage or bills"),
+                new("leave_something","Leave something behind"),
+            }
+        };
+
         var fallbackCoverageOptions = normalizedOfferKey switch
         {
             "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
@@ -80,19 +160,8 @@
 
         viewSteps = new List<Protect_Website.Models.LifeWizardStep>
         {
-            new("Who are you looking to protect?", new List<Protect_Website.Models.LifeWizardOption>
-            {
-                new("spouse_or_partner","My spouse or partner"),
-                new("children","My children"),
-                new("family","My family"),
-            }, "ProtectingWho"),
-            new("What matters most for this protection?", new List<Protect_Website.Models.LifeWizardOption>
-            {
-                new("replace_income","Replace income for my family"),
-                new("final_expenses","Cover final expenses"),
-                new("mortgage_or_bills","Help with mortgage or bills"),
-                new("leave_something","Leave something behind"),
-            }, "CoverageGoal"),
+            new("Who are you looking to protect?", fallbackProtectOptions, "ProtectingWho"),
+            new("What would you like this coverage to help with most?", fallbackGoalOptions, "CoverageGoal"),
             new("About how much coverage would you like to explore?", fallbackCoverageOptions, "CoverageAmountOption"),
             new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -116,9 +185,23 @@
         {
             "ProtectingWho" => normalizedCode switch
             {
-                "spouse_or_partner" => ("icon", "choice-icon-partner", "Partner", "Protect shared income and everyday stability", "tone-protect"),
-                "children" => ("icon", "choice-icon-children", "Children", "Protect the people counting on you most", "tone-protect"),
-                "family" => ("icon", "choice-icon-family", "Household", "Cover the people who depend on your support", "tone-protect"),
+                "spouse_or_partner" => ("icon", "choice-icon-partner", "Partner", "Protect the person closest to your day-to-day financial life", "tone-protect"),
+                "children" => ("icon", "choice-icon-children", string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase) ? "Family next generation" : "Children", string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase) ? "Help shield children or grandchildren from carrying the burden alone" : "Protect the people counting on you most", "tone-protect"),
+                "family" => ("icon", "choice-icon-family", normalizedOfferKey switch
+                    {
+                        "mortgage" => "Household",
+                        "finalexpense" => "Loved ones",
+                        _ => "Household"
+                    },
+                    normalizedOfferKey switch
+                    {
+                        "mortgage" => "Protect the people and home life that depend on your monthly stability",
+                        "wholelife" => "Protect the people you love while keeping legacy goals in view",
+                        "iul" => "Protect the people you love while thinking longer term about legacy",
+                        "finalexpense" => "Ease the emotional and financial burden on the people closest to you",
+                        _ => "Cover the people who depend on your support"
+                    },
+                    "tone-protect"),
                 _ => ("icon", "choice-icon-family", string.Empty, string.Empty, "tone-protect")
             },
             "CoverageGoal" => normalizedCode switch
@@ -127,57 +210,71 @@
                 "final_expenses" => ("icon", "choice-icon-heart", "Final costs", "Ease burial, funeral, and end-of-life expense pressure", "tone-goal"),
                 "mortgage_or_bills" => ("icon", "choice-icon-home", "Home & bills", "Help cover the mortgage and major monthly costs", "tone-goal"),
                 "leave_something" => ("icon", "choice-icon-legacy", "Legacy", "Leave behind a benefit that supports the people you love", "tone-goal"),
+                "protect_term_years" => ("icon", "choice-icon-income", "Key years", "Focus on the years your family would feel the loss of your income most", "tone-goal"),
+                "keep_costs_affordable" => ("icon", "choice-icon-income", "Affordability", "Start with efficient protection that keeps the monthly estimate in a practical range", "tone-goal"),
+                "lifelong_protection" => ("icon", "choice-icon-legacy", "Permanent", "Keep coverage in place for the long haul instead of only a temporary term", "tone-goal"),
+                "cash_value_growth" => ("icon", "choice-icon-income", "Cash value", "Explore coverage designed to build long-range value over time", "tone-goal"),
+                "leave_legacy" => ("icon", "choice-icon-legacy", "Legacy", "Keep the focus on what you want to leave behind for the people you love", "tone-goal"),
+                "burial_costs" => ("icon", "choice-icon-heart", "Burial costs", "Keep burial, funeral, and immediate final costs from falling on family", "tone-goal"),
+                "final_bills" => ("icon", "choice-icon-heart", "Final bills", "Help cover medical, household, or end-of-life costs that can pile up quickly", "tone-goal"),
+                "ease_family_burden" => ("icon", "choice-icon-heart", "Ease the burden", "Reduce the financial stress your loved ones may face during a hard time", "tone-goal"),
+                "leave_small_benefit" => ("icon", "choice-icon-legacy", "Small benefit", "Leave behind a modest amount that can still make things easier for loved ones", "tone-goal"),
+                "mortgage_balance" => ("icon", "choice-icon-home", "Mortgage balance", "Focus on helping cover the loan balance tied to the home", "tone-goal"),
+                "monthly_payment" => ("icon", "choice-icon-home", "Monthly payment", "Help keep the monthly home payment from becoming a crisis", "tone-goal"),
+                "stay_in_home" => ("icon", "choice-icon-home", "Stay in the home", "Keep the people you love in the home they know and count on", "tone-goal"),
+                "household_bills" => ("icon", "choice-icon-home", "Home stability", "Protect the mortgage along with the bills that keep the household running", "tone-goal"),
+                "future_access" => ("icon", "choice-icon-income", "Future access", "Explore long-term flexibility and access to cash value later on", "tone-goal"),
                 _ => ("icon", "choice-icon-legacy", string.Empty, string.Empty, "tone-goal")
             },
             "CoverageAmountOption" => normalizedOfferKey switch
             {
                 "finalexpense" => normalizedCode switch
                 {
-                    "25000" => ("badge", "$25K", "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
-                    "50000" => ("badge", "$50K", "Common", "A balanced final expense starting point for many households", "tone-coverage"),
-                    "75000" => ("badge", "$75K", "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
-                    "100000" => ("badge", "$100K", "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "25000" => ("none", string.Empty, "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
+                    "50000" => ("none", string.Empty, "Common", "A balanced final expense starting point for many households", "tone-coverage"),
+                    "75000" => ("none", string.Empty, "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "wholelife" => normalizedCode switch
                 {
-                    "50000" => ("badge", "$50K", "Starter", "A smaller lifelong base for final costs and lasting support", "tone-coverage"),
-                    "100000" => ("badge", "$100K", "Common", "A balanced whole life starting point with steady cash value potential", "tone-coverage"),
-                    "250000" => ("badge", "$250K", "Stronger", "More lifelong coverage with room to build long-range value", "tone-coverage"),
-                    "500000" => ("badge", "$500K", "Maximum", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "50000" => ("none", string.Empty, "Starter", "A smaller lifelong base for final costs and lasting support", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Common", "A balanced whole life starting point with steady cash value potential", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Stronger", "More lifelong coverage with room to build long-range value", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Maximum", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "term" => normalizedCode switch
                 {
-                    "250000" => ("badge", "$250K", "Focused", "A leaner term target for a focused income gap or key bills", "tone-coverage"),
-                    "500000" => ("badge", "$500K", "Common", "A strong family-income starting point for many households", "tone-coverage"),
-                    "1000000" => ("badge", "$1M", "Broader", "More breathing room for income, debt, and future family needs", "tone-coverage"),
-                    "2000000" => ("badge", "$2M+", "Maximum", "A larger term safety net for bigger family protection goals", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "250000" => ("none", string.Empty, "Focused", "A leaner term target for a focused income gap or key bills", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Common", "A strong family-income starting point for many households", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Broader", "More breathing room for income, debt, and future family needs", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Maximum", "A larger term safety net for bigger family protection goals", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "mortgage" => normalizedCode switch
                 {
-                    "150000" => ("badge", "$150K", "Starter", "Fits smaller balances or a focused cushion around the home", "tone-coverage"),
-                    "250000" => ("badge", "$250K", "Common", "A practical starting point for many mortgage balances", "tone-coverage"),
-                    "500000" => ("badge", "$500K", "Stronger", "More room to protect the home and the monthly household budget", "tone-coverage"),
-                    "750000" => ("badge", "$750K", "Maximum", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "150000" => ("none", string.Empty, "Starter", "Fits smaller balances or a focused cushion around the home", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Common", "A practical starting point for many mortgage balances", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Stronger", "More room to protect the home and the monthly household budget", "tone-coverage"),
+                    "750000" => ("none", string.Empty, "Maximum", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "iul" => normalizedCode switch
                 {
-                    "250000" => ("badge", "$250K", "Base", "A flexible starting point for lifelong coverage with growth potential", "tone-coverage"),
-                    "500000" => ("badge", "$500K", "Common", "A strong IUL target for lasting protection and cash value growth", "tone-coverage"),
-                    "1000000" => ("badge", "$1M", "Broader", "More room to pair lifetime protection with long-range strategy", "tone-coverage"),
-                    "2000000" => ("badge", "$2M+", "Maximum", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "250000" => ("none", string.Empty, "Base", "A flexible starting point for lifelong coverage with growth potential", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Common", "A strong IUL target for lasting protection and cash value growth", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Broader", "More room to pair lifetime protection with long-range strategy", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Maximum", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 _ => normalizedCode switch
                 {
-                    "100000" => ("badge", "$100K", "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
-                    "250000" => ("badge", "$250K", "Common", "A balanced starting point for many households", "tone-coverage"),
-                    "500000" => ("badge", "$500K", "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
-                    "1000000" => ("badge", "$1M+", "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
-                    _ => ("badge", "$", string.Empty, string.Empty, "tone-coverage")
+                    "100000" => ("none", string.Empty, "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Common", "A balanced starting point for many households", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Maximum", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
+                    _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 }
             },
             "TobaccoUse" => normalizedCode switch
@@ -188,12 +285,12 @@
             },
             "AgeBracket" => normalizedCode switch
             {
-                "18-24" => ("badge", "18-24", "Starting out", "Early-rate years with more room to explore options", "tone-age"),
-                "25-34" => ("badge", "25-34", "Building years", "Often the stretch where family and income protection grows", "tone-age"),
-                "35-44" => ("badge", "35-44", "Peak protection", "A common window for heavier family and bill responsibility", "tone-age"),
-                "45-54" => ("badge", "45-54", "Established years", "Often focused on income protection and long-range stability", "tone-age"),
-                "55+" => ("badge", "55+", "Long-range planning", "Later-career years where lasting fit matters more", "tone-age"),
-                _ => ("badge", "Age", string.Empty, string.Empty, "tone-age")
+                "18-24" => ("none", string.Empty, "Starting out", "Early-rate years with more room to explore options", "tone-age"),
+                "25-34" => ("none", string.Empty, "Building years", "Often the stretch where family and income protection grows", "tone-age"),
+                "35-44" => ("none", string.Empty, "Peak protection", "A common window for heavier family and bill responsibility", "tone-age"),
+                "45-54" => ("none", string.Empty, "Established years", "Often focused on income protection and long-range stability", "tone-age"),
+                "55+" => ("none", string.Empty, "Long-range planning", "Later-career years where lasting fit matters more", "tone-age"),
+                _ => ("none", string.Empty, string.Empty, string.Empty, "tone-age")
             },
             _ => ("icon", "choice-icon-family", string.Empty, string.Empty, string.Empty)
         };
@@ -1246,6 +1343,14 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     font-size: .76rem;
     font-weight: 690;
     line-height: 1.34;
+}
+.lq-card-rich.no-visual {
+    min-height: 116px;
+    gap: 8px;
+    padding-top: 18px;
+}
+.lq-card-rich.no-visual .lq-card-copy {
+    align-self: center;
 }
 .lq-card-rich.tone-protect .lq-card-visual {
     background:
@@ -3483,13 +3588,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 string.Equals(form.ProtectingWho, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(form.Answer1, opt.Code, StringComparison.OrdinalIgnoreCase);
                             var choiceMeta = GetChoiceCardMeta("ProtectingWho", opt.Code);
-                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="ProtectingWho" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                    </svg>
-                                </span>
+                                @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                }
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                     <span class="lq-card-title">@opt.Label</span>
@@ -3512,13 +3620,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 string.Equals(form.CoverageGoal, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(form.Answer2, opt.Code, StringComparison.OrdinalIgnoreCase);
                             var choiceMeta = GetChoiceCardMeta("CoverageGoal", opt.Code);
-                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="CoverageGoal" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                    </svg>
-                                </span>
+                                @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                }
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                     <span class="lq-card-title">@opt.Label</span>
@@ -3542,11 +3653,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 string.Equals(form.CoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(selectedCoverageAmountOption, opt.Code, StringComparison.OrdinalIgnoreCase);
                             var choiceMeta = GetChoiceCardMeta("CoverageAmountOption", opt.Code);
-                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="CoverageAmountOption" value="@opt.Code" data-label="@opt.Label" data-amount="@opt.Code" @(isChecked ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@choiceMeta.VisualValue</span>
-                                </span>
+                                @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <span class="lq-card-badge">@choiceMeta.VisualValue</span>
+                                    </span>
+                                }
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                     <span class="lq-card-title">@opt.Label</span>
@@ -3570,13 +3684,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 string.Equals(form.TobaccoUse, opt.Code, StringComparison.OrdinalIgnoreCase) ||
                                 string.Equals(form.Answer3, opt.Code, StringComparison.OrdinalIgnoreCase);
                             var choiceMeta = GetChoiceCardMeta("TobaccoUse", opt.Code);
-                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @choiceMeta.ToneClass@(string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="TobaccoUse" value="@opt.Code" data-label="@opt.Label" @(isChecked ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
-                                        <use href="@($"#{choiceMeta.VisualValue}")"></use>
-                                    </svg>
-                                </span>
+                                @if (!string.Equals(choiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <span class="lq-card-visual" aria-hidden="true">
+                                        <svg class="lq-card-icon" viewBox="0 0 48 48" fill="none">
+                                            <use href="@($"#{choiceMeta.VisualValue}")"></use>
+                                        </svg>
+                                    </span>
+                                }
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@choiceMeta.Kicker</span>
                                     <span class="lq-card-title">@opt.Label</span>
@@ -3596,11 +3713,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
                             @{ var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "18-24"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="18-24" data-age="21" data-label="18-24" @(selectedAgeBracket == "18-24" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">18-24</span>
@@ -3608,11 +3722,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "25-34"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="25-34" data-age="30" data-label="25-34" @(selectedAgeBracket == "25-34" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">25-34</span>
@@ -3620,11 +3731,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "35-44"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="35-44" data-age="40" data-label="35-44" @(selectedAgeBracket == "35-44" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">35-44</span>
@@ -3632,11 +3740,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "45-54"); }
-                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="45-54" data-age="50" data-label="45-54" @(selectedAgeBracket == "45-54" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">45-54</span>
@@ -3644,11 +3749,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                 </span>
                             </label>
                             @{ ageChoiceMeta = GetChoiceCardMeta("AgeBracket", "55+"); }
-                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass">
+                            <label class="lq-card lq-card-rich lq-age-wide @ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
                                 <input type="radio" name="AgeBracket" value="55+" data-age="60" data-label="55+" @(selectedAgeBracket == "55+" ? "checked" : null) />
-                                <span class="lq-card-visual" aria-hidden="true">
-                                    <span class="lq-card-badge">@ageChoiceMeta.VisualValue</span>
-                                </span>
                                 <span class="lq-card-copy">
                                     <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
                                     <span class="lq-card-title">55+</span>

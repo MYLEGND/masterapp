@@ -460,7 +460,25 @@ namespace ProtectWebsite.Services
 
         private static string NormalizeGoal(string? value)
         {
-            return string.IsNullOrWhiteSpace(value) ? "not_sure" : value.Trim().ToLowerInvariant();
+            var normalized = string.IsNullOrWhiteSpace(value) ? "not_sure" : value.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "protect_term_years" => "replace_income",
+                "keep_costs_affordable" => "replace_income",
+                "burial_costs" => "final_expenses",
+                "final_bills" => "final_expenses",
+                "ease_family_burden" => "final_expenses",
+                "mortgage_balance" => "mortgage_or_bills",
+                "monthly_payment" => "mortgage_or_bills",
+                "stay_in_home" => "mortgage_or_bills",
+                "household_bills" => "mortgage_or_bills",
+                "lifelong_protection" => "leave_something",
+                "cash_value_growth" => "leave_something",
+                "future_access" => "leave_something",
+                "leave_legacy" => "leave_something",
+                "leave_small_benefit" => "leave_something",
+                _ => normalized
+            };
         }
 
         private static string NormalizeProtectingWho(string? value)
