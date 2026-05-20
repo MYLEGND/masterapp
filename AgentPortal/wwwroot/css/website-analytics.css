@@ -3112,15 +3112,11 @@ body {
 }
 
 .kpi-card-conversion {
-    background:
-        radial-gradient(420px 180px at 100% 0%, rgba(199,153,49,.1), transparent 60%),
-        linear-gradient(160deg, #0d1837 0%, #14254e 100%) !important;
+    background: #18284c !important;
 }
 
 .kpi-card-context {
-    background:
-        radial-gradient(420px 180px at 100% 0%, rgba(148,163,184,.12), transparent 62%),
-        linear-gradient(160deg, #0d1837 0%, #14224a 100%) !important;
+    background: #18284c !important;
 }
 
 .kpi-card-context .fa-kpi-value {
@@ -3616,9 +3612,7 @@ body {
 
 .wa-kpi-command-surface .fa-kpi-grid .kpi-card {
     min-height: 134px;
-    background:
-        radial-gradient(360px 160px at 100% 0%, rgba(199,153,49,.08), transparent 60%),
-        linear-gradient(160deg, rgba(17,31,63,.96) 0%, rgba(12,24,52,.98) 100%);
+    background: #18284c;
     border: 1.4px solid rgba(199,153,49,.34);
     box-shadow:
         0 16px 30px rgba(0,0,0,.2),
@@ -3627,9 +3621,7 @@ body {
 
 .wa-kpi-command-surface .fa-kpi-grid-secondary .kpi-card {
     min-height: 118px;
-    background:
-        radial-gradient(360px 160px at 100% 0%, rgba(148,163,184,.1), transparent 62%),
-        linear-gradient(160deg, rgba(14,24,55,.94) 0%, rgba(11,22,48,.98) 100%);
+    background: #18284c;
 }
 
 .wa-kpi-command-surface .fa-kpi-title {
@@ -3754,9 +3746,7 @@ body {
     min-height: 118px;
     padding: .9rem .95rem .85rem;
     border-radius: 16px;
-    background:
-        radial-gradient(360px 160px at 100% 0%, rgba(199,153,49,.08), transparent 60%),
-        linear-gradient(160deg, rgba(17,31,63,.96) 0%, rgba(12,24,52,.98) 100%);
+    background: #18284c;
     border: 1.4px solid rgba(199,153,49,.34);
     box-shadow:
         0 16px 30px rgba(0,0,0,.2),
@@ -3786,9 +3776,7 @@ body {
 }
 
 .wa-workbench-surface .fa-module-muted {
-    background:
-        radial-gradient(360px 160px at 100% 0%, rgba(219,183,79,.12), transparent 60%),
-        linear-gradient(160deg, rgba(92,78,41,.96) 0%, rgba(120,95,46,.98) 100%);
+    background: #5f5848;
     border-color: rgba(234,215,163,.4);
 }
 
@@ -3922,7 +3910,7 @@ body {
 .wa-page-header {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(320px, auto);
-    align-items: flex-start;
+    align-items: end;
     padding: 1rem 1.2rem;
     gap: .75rem 1rem;
 }
@@ -3944,35 +3932,40 @@ body {
 }
 
 .wa-header-right {
-    display: grid;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
     justify-self: end;
-    justify-items: end;
-    gap: .5rem;
-    min-width: min(100%, 28rem);
+    justify-content: flex-end;
+    gap: .55rem;
+    min-width: 0;
+    width: max-content;
+    max-width: 100%;
 }
 
 .wa-header-rail-main {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: max-content;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
     justify-content: end;
     gap: .55rem .65rem;
-    width: 100%;
+    width: auto;
 }
 
 .wa-header-rail-meta {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-end;
     gap: .45rem .55rem;
-    width: 100%;
+    width: auto;
 }
 
 .wa-header-stack {
     display: grid;
     gap: .22rem;
     min-width: 0;
+    flex: 0 0 auto;
 }
 
 .wa-header-stack-label {
@@ -3995,7 +3988,7 @@ body {
 .wa-scope-chip-static {
     display: inline-flex;
     align-items: center;
-    min-width: 10.75rem;
+    min-width: 9.6rem;
     justify-content: flex-start;
 }
 
@@ -4008,8 +4001,10 @@ body {
 }
 
 .wa-scope-picker {
-    min-width: min(100%, 232px);
+    min-width: 13rem;
     gap: .2rem;
+    width: auto;
+    flex: 0 0 auto;
 }
 
 .wa-scope-picker-head {
@@ -4041,12 +4036,14 @@ body {
     border-radius: 999px;
     font-size: .72rem;
     letter-spacing: .015em;
+    white-space: nowrap;
 }
 
 .wa-team-btn {
     min-height: 36px;
     padding: .45rem .85rem;
     font-size: .8rem;
+    white-space: nowrap;
     box-shadow:
         0 10px 18px rgba(0,0,0,.16),
         inset 0 1px 0 rgba(255,255,255,.18);
@@ -4156,6 +4153,7 @@ body {
 }
 
 .fa-kpi-grid .kpi-card::before {
+    display: none;
     inset: auto -26px -26px auto;
     width: 92px;
     height: 92px;
@@ -4232,6 +4230,7 @@ body {
 }
 
 .fa-module::before {
+    display: none;
     top: -34px;
     right: -24px;
     width: 104px;
@@ -4304,19 +4303,26 @@ body {
     }
 
     .wa-header-right {
+        display: grid;
         justify-self: stretch;
         justify-items: stretch;
         min-width: 0;
+        width: 100%;
+        max-width: none;
     }
 
     .wa-header-rail-main {
+        display: grid;
         grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         grid-auto-flow: row;
         grid-auto-columns: auto;
         justify-content: stretch;
+        width: 100%;
     }
 
     .wa-header-rail-meta {
+        width: 100%;
+        flex-wrap: wrap;
         justify-content: flex-start;
     }
 
