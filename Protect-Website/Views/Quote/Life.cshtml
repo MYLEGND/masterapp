@@ -1918,38 +1918,6 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     font-weight: 820;
     line-height: 1.2;
 }
-.lq-contact-first-start-rail {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    margin-bottom: 12px;
-    padding: 10px 12px;
-    border-radius: 14px;
-    border: 1px solid rgba(231,194,110,0.18);
-    background:
-        linear-gradient(180deg, rgba(255,244,222,0.03) 0%, rgba(255,244,222,0.015) 100%);
-}
-.lq-contact-first-start-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 26px;
-    padding: 5px 9px;
-    border-radius: 999px;
-    background: rgba(224,177,74,0.16);
-    color: #f8e7b2;
-    font-size: .64rem;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-.lq-contact-first-start-copy {
-    color: rgba(243,239,232,0.78);
-    font-size: .8rem;
-    font-weight: 760;
-    line-height: 1.3;
-}
 .lq-contact-first-form-surface {
     background:
         radial-gradient(circle at top right, rgba(224,177,74,0.11), transparent 34%),
@@ -2392,11 +2360,6 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-cont
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chip {
     color: rgba(245,241,233,0.82);
 }
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-start-rail {
-    border-color: rgba(231,194,110,0.20);
-    background:
-        linear-gradient(180deg, rgba(255,244,222,0.05) 0%, rgba(255,244,222,0.025) 100%);
-}
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
     background: var(--cf-funnel-surface-bg);
     border: 1px solid var(--cf-funnel-surface-border);
@@ -2761,23 +2724,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         font-size: .69rem;
     }
 
-    .lq-contact-first-start-rail {
-        gap: 8px;
-        margin-bottom: 10px;
-        padding: 10px 11px;
-    }
-
-    .lq-contact-first-start-pill {
-        min-height: 24px;
-        padding: 5px 8px;
-        font-size: .64rem;
-    }
-
-    .lq-contact-first-start-copy {
-        font-size: .78rem;
-        line-height: 1.32;
-    }
-
     .lq-contact-first-form-surface {
         padding: 16px 16px 15px;
     }
@@ -2967,11 +2913,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         </div>
 
                         <div class="lq-contact-first-form-surface lq-contact-first-flow-surface">
-                            <div class="lq-contact-first-start-rail">
-                                <span class="lq-contact-first-start-pill">Start here</span>
-                                <div class="lq-contact-first-start-copy">Answer 5 quick questions to see your estimate before contact.</div>
-                            </div>
-
                             <div class="lq-step-panel lq-step1-panel lq-contact-first-wizard-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
                                     @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
