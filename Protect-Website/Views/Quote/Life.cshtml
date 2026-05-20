@@ -32,6 +32,22 @@
     IReadOnlyList<Protect_Website.Models.LifeWizardStep> viewSteps = (cfg.Steps?.Take(5).ToList() ?? new List<Protect_Website.Models.LifeWizardStep>());
     if (viewSteps.Count < 5)
     {
+        var fallbackCoverageOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+            ? new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("25000","$25,000"),
+                new("50000","$50,000"),
+                new("75000","$75,000"),
+                new("100000","$100,000"),
+            }
+            : new List<Protect_Website.Models.LifeWizardOption>
+            {
+                new("100000","$100,000"),
+                new("250000","$250,000"),
+                new("500000","$500,000"),
+                new("1000000","$1,000,000+"),
+            };
+
         viewSteps = new List<Protect_Website.Models.LifeWizardStep>
         {
             new("Who are you looking to protect?", new List<Protect_Website.Models.LifeWizardOption>
@@ -47,13 +63,7 @@
                 new("mortgage_or_bills","Help with mortgage or bills"),
                 new("leave_something","Leave something behind"),
             }, "CoverageGoal"),
-            new("About how much coverage would you like to explore?", new List<Protect_Website.Models.LifeWizardOption>
-            {
-                new("100000","$100,000"),
-                new("250000","$250,000"),
-                new("500000","$500,000"),
-                new("1000000","$1,000,000+"),
-            }, "CoverageAmountOption"),
+            new("About how much coverage would you like to explore?", fallbackCoverageOptions, "CoverageAmountOption"),
             new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("non_smoker","Non-smoker"),
@@ -91,6 +101,14 @@
             },
             "CoverageAmountOption" => normalizedCode switch
             {
+                "25000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+                    => ("badge", "$25K", "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
+                "50000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+                    => ("badge", "$50K", "Common", "A balanced final expense starting point for many households", "tone-coverage"),
+                "75000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+                    => ("badge", "$75K", "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
+                "100000" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
+                    => ("badge", "$100K", "Maximum", "The top end of this final expense range for added peace of mind", "tone-coverage"),
                 "100000" => ("badge", "$100K", "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
                 "250000" => ("badge", "$250K", "Common", "A balanced starting point for many households", "tone-coverage"),
                 "500000" => ("badge", "$500K", "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
