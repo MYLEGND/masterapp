@@ -1364,6 +1364,218 @@
     }
   }
 
+  function normalizeCopiedText(text) {
+    return String(text || '')
+      .replace(/\r\n/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
+  function labelForTrafficType(type) {
+    if (type === 'paid') return 'Ads Only';
+    if (type === 'non_paid') return 'Non-Ads Only';
+    return 'All Traffic';
+  }
+
+  function replaceElementWithTextBlock(element, text) {
+    const block = document.createElement('div');
+    block.className = 'wa-copy-text-block';
+    block.textContent = normalizeCopiedText(text);
+    element.replaceWith(block);
+  }
+
+  function isMeaningfulSelection(select) {
+    if (!(select instanceof HTMLSelectElement)) return false;
+    return asTrimmed(select.value).length > 0;
+  }
+
+  function resolveTableLabel(table) {
+    const fromPanel = asTrimmed(
+      table.closest('.meta-signal-panel')?.querySelector('.meta-signal-panel-head h6')?.textContent
+    );
+    if (fromPanel) return fromPanel;
+
+    const anchor = table.closest('.table-responsive') || table;
+    let sibling = anchor.previousElementSibling;
+    while (sibling) {
+      const ownText = sibling.matches('h6, .bhvr-section-label')
+        ? sibling.textContent
+        : sibling.querySelector('h6, .bhvr-section-label')?.textContent;
+      const normalized = asTrimmed(ownText);
+      if (normalized) return normalized;
+      sibling = sibling.previousElementSibling;
+    }
+
+    const fromContainer = asTrimmed(
+      table.closest('.col, [class*="col-"], .wa-modal-section, .tab-pane')
+        ?.querySelector(':scope > h6, :scope > .bhvr-section-label')
+        ?.textContent
+    );
+    return fromContainer;
+  }
+
+  function serializeTableForCopy(table) {
+    if (!(table instanceof HTMLTableElement)) return '';
+
+    const lines = [];
+    const label = resolveTableLabel(table);
+    if (label) lines.push(label);
+
+    const headerCells = Array.from(table.querySelectorAll('thead th'))
+      .map(cell => asTrimmed(cell.textContent))
+      .filter(Boolean);
+    if (headerCells.length) {
+      lines.push(headerCells.join(' | '));
+    }
+
+    const bodyRows = Array.from(table.querySelectorAll('tbody tr'))
+      .map(row => Array.from(row.querySelectorAll('th, td'))
+        .map(cell => asTrimmed(cell.textContent))
+        .filter(value => value.length > 0))
+      .filter(row => row.length > 0);
+
+    bodyRows.forEach(row => {
+      lines.push(row.join(' | '));
+    });
+
+    return normalizeCopiedText(lines.join('\n'));
+  }
+
+  function extractModalBodyCopyText(modal) {
+    const body = modal?.querySelector('.modal-body');
+    if (!(body instanceof HTMLElement)) return '';
+
+    const clone = body.cloneNode(true);
+
+    clone.querySelectorAll('.nav-tabs, script, style, button, select, input, textarea').forEach(el => el.remove());
+    clone.querySelectorAll('.meta-signal-filter-panel').forEach(el => el.remove());
+    clone.querySelectorAll('[hidden], .d-none').forEach(el => el.remove());
+    clone.querySelectorAll('.tab-pane').forEach(pane => {
+      if (!pane.classList.contains('active')) {
+        pane.remove();
+      } else {
+        pane.classList.remove('fade', 'show', 'active');
+      }
+    });
+
+    clone.querySelectorAll('table').forEach(table => {
+      replaceElementWithTextBlock(table, serializeTableForCopy(table));
+    });
+
+    const temp = document.createElement('div');
+    temp.setAttribute('aria-hidden', 'true');
+    temp.style.position = 'fixed';
+    temp.style.left = '-9999px';
+    temp.style.top = '0';
+    temp.style.width = '1100px';
+    temp.style.opacity = '0';
+    temp.style.pointerEvents = 'none';
+    temp.appendChild(clone);
+    document.body.appendChild(temp);
+
+    const text = normalizeCopiedText(temp.innerText || temp.textContent || '');
+    document.body.removeChild(temp);
+    return text;
+  }
+
+  function collectModalCopyMeta(modalId, modal) {
+    const lines = [];
+    const rangeValue = asTrimmed(
+      modal.querySelector('.wa-modal-range-value, .meta-signal-range-value')?.textContent
+    );
+    if (rangeValue) {
+      lines.push(`Range: ${rangeValue}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(state.trafficType, modalId)) {
+      lines.push(`Traffic View: ${labelForTrafficType(state.trafficType[modalId])}`);
+    }
+
+    const activeTabs = Array.from(modal.querySelectorAll('[data-bs-toggle="tab"].active'))
+      .map(tab => asTrimmed(tab.textContent))
+      .filter(Boolean);
+    if (activeTabs.length) {
+      lines.push(`Active View: ${activeTabs.join(' · ')}`);
+    }
+
+    const selectedFilters = Array.from(modal.querySelectorAll('select'))
+      .filter(select => select instanceof HTMLSelectElement && isMeaningfulSelection(select))
+      .map(select => {
+        const label = asTrimmed(modal.querySelector(`label[for="${select.id}"]`)?.textContent) || select.name || select.id;
+        const selectedOption = select.options[select.selectedIndex];
+        const value = asTrimmed(selectedOption?.textContent) || asTrimmed(select.value);
+        return label && value ? `${label}: ${value}` : '';
+      })
+      .filter(Boolean);
+    if (selectedFilters.length) {
+      lines.push(`Filters: ${selectedFilters.join(' · ')}`);
+    }
+
+    if (state.scope?.scopeLabel) {
+      lines.push(`Scope: ${state.scope.scopeLabel}`);
+    }
+
+    return lines;
+  }
+
+  function buildModalCopyText(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!(modal instanceof HTMLElement)) return '';
+
+    const lines = [];
+    const title = asTrimmed(modal.querySelector('.modal-title')?.textContent);
+    const subtitle = asTrimmed(
+      modal.querySelector('.wa-modal-subtitle, .meta-signal-subtitle')?.textContent
+    );
+
+    if (title) lines.push(title);
+    if (subtitle) lines.push(subtitle);
+
+    const metaLines = collectModalCopyMeta(modalId, modal);
+    if (metaLines.length) {
+      lines.push('');
+      lines.push(...metaLines);
+    }
+
+    const bodyText = extractModalBodyCopyText(modal);
+    if (bodyText) {
+      lines.push('');
+      lines.push(bodyText);
+    }
+
+    return normalizeCopiedText(lines.join('\n'));
+  }
+
+  function setModalCopyButtonState(button, text) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.textContent = text;
+  }
+
+  function initModalCopyButtons() {
+    document.querySelectorAll('[data-copy-modal-view]').forEach(button => {
+      if (!(button instanceof HTMLButtonElement) || button.dataset.wired === 'true') return;
+      button.dataset.wired = 'true';
+      button.dataset.defaultLabel = button.textContent || 'Copy Form';
+
+      button.addEventListener('click', async () => {
+        const modalId = button.dataset.copyModalView || '';
+        const payload = buildModalCopyText(modalId);
+        if (!payload) {
+          setModalCopyButtonState(button, 'Nothing To Copy');
+          window.setTimeout(() => setModalCopyButtonState(button, button.dataset.defaultLabel || 'Copy Form'), 1400);
+          return;
+        }
+
+        const copied = await copyTextWithFallback(payload);
+        setModalCopyButtonState(button, copied ? 'Copied' : 'Copy Failed');
+        window.setTimeout(() => {
+          setModalCopyButtonState(button, button.dataset.defaultLabel || 'Copy Form');
+        }, 1400);
+      });
+    });
+  }
+
   function renderAiReviewSnapshot(data) {
     state.cache.aiSnapshot = data;
     setText('ai-snapshot-generated', data.generatedAtLocal ? formatDisplayDate(data.generatedAtLocal) : '—');
@@ -2322,6 +2534,7 @@
     initTrafficTypeControls();
     initMetaSignalFilterControls();
     initLeadDeleteControls();
+    initModalCopyButtons();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
     attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });
