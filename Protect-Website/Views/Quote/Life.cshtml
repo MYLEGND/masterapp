@@ -175,7 +175,6 @@
     var goalStep = viewSteps[1];
     var coverageAmountStep = viewSteps[2];
     var tobaccoStep = viewSteps[3];
-    var ageStep = viewSteps[4];
     var ageStepOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
         ? new List<(string Value, string Label, int ApproxAge, bool IsWide)>
         {
@@ -193,7 +192,7 @@
             ("55+", "55+", 60, true),
         };
     var ageRangeToNumericJson = JsonSerializer.Serialize(ageStepOptions.ToDictionary(option => option.Value, option => option.ApproxAge));
-    var ageStepQuestionText = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase) ? "Your age range" : ageStep.Question;
+    var ageStepQuestionText = "Your age";
     (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
     {
         var normalizedField = (fieldName ?? string.Empty).Trim();
@@ -331,6 +330,7 @@
     var selectedCoverageAmountOption = !string.IsNullOrWhiteSpace(form.CoverageAmountOption)
         ? form.CoverageAmountOption.Trim()
         : (form.CoverageAmount.HasValue ? form.CoverageAmount.Value.ToString() : string.Empty);
+    var isFinalExpenseOffer = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase);
     var selectedAgeBracket = string.Empty;
     var ageValueNumber = form.Age;
     if (!string.IsNullOrWhiteSpace(form.AgeRange) && (form.AgeRange.Contains('-') || form.AgeRange.Contains('+')))
@@ -352,7 +352,7 @@
     if (string.IsNullOrWhiteSpace(selectedAgeBracket) && ageValueNumber.HasValue)
     {
         var ageNumber = ageValueNumber.Value;
-        if (string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase))
+        if (isFinalExpenseOffer)
         {
             if (ageNumber <= 54) selectedAgeBracket = "45-54";
             else if (ageNumber <= 64) selectedAgeBracket = "55-64";
@@ -368,6 +368,7 @@
             else selectedAgeBracket = "55+";
         }
     }
+    var hasExplicitAgeSelection = ageValueNumber.HasValue || !string.IsNullOrWhiteSpace(selectedAgeBracket);
     if (!ageValueNumber.HasValue)
     {
         ageValueNumber = selectedAgeBracket switch
@@ -383,7 +384,17 @@
             _ => null,
         };
     }
-    var ageValue = ageValueNumber?.ToString() ?? string.Empty;
+    var minSelectableAge = isFinalExpenseOffer ? 45 : 18;
+    var maxSelectableAge = 85;
+    var defaultSliderAge = isFinalExpenseOffer ? 62 : 38;
+    var selectedAgeValue = Math.Clamp(ageValueNumber ?? defaultSliderAge, minSelectableAge, maxSelectableAge);
+    var ageValue = selectedAgeValue.ToString();
+    var ageSliderHelperText = isFinalExpenseOffer
+        ? "Slide to your exact age so we can keep the estimate tighter."
+        : "Slide to your exact age so we can tailor the estimate more closely.";
+    var ageSliderMarkerValues = isFinalExpenseOffer
+        ? new[] { 45, 55, 65, 75, 85 }
+        : new[] { 18, 30, 40, 50, 60, 70, 80, 85 };
     var usesLeanContactFields = true;
     var hasContactInput =
         !string.IsNullOrWhiteSpace(form.FirstName) ||
@@ -1284,8 +1295,128 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-choice-grid.lq-step1-twoup .lq-card .lq-card-title {
     overflow-wrap: anywhere;
 }
-.lq-choice-grid.lq-age-grid .lq-age-wide {
-    grid-column: 1 / -1;
+.lq-age-picker {
+    --age-progress: 0%;
+    display: grid;
+    gap: 14px;
+    padding: 16px 16px 14px;
+    border-radius: 16px;
+    border: 1.5px solid rgba(223,183,90,0.42);
+    background:
+        radial-gradient(circle at top right, rgba(223,183,90,0.16), transparent 42%),
+        linear-gradient(180deg, rgba(28,44,70,0.98) 0%, rgba(18,31,51,0.98) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 12px 28px rgba(0,0,0,0.2);
+}
+.lq-age-picker.is-active {
+    border-color: rgba(244,210,124,0.72);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 16px 30px rgba(0,0,0,0.24),
+        0 0 0 1px rgba(244,210,124,0.2);
+}
+.lq-age-picker-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+.lq-age-picker-copy {
+    display: grid;
+    gap: 4px;
+}
+.lq-age-picker-kicker {
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: rgba(243,215,143,0.84);
+}
+.lq-age-picker-note {
+    color: rgba(248,250,252,0.72);
+    font-size: .9rem;
+    line-height: 1.42;
+}
+.lq-age-pill {
+    min-width: 94px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(244,210,124,0.34);
+    background: rgba(11,18,31,0.56);
+    color: #fff7df;
+    font-size: 1.18rem;
+    font-weight: 950;
+    letter-spacing: -0.03em;
+    text-align: center;
+    white-space: nowrap;
+}
+.lq-age-picker:not(.is-active) .lq-age-pill {
+    color: rgba(248,250,252,0.62);
+}
+.lq-age-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(244,210,124,0.32);
+    background:
+        linear-gradient(90deg, rgba(230,192,107,0.95) 0%, rgba(230,192,107,0.95) var(--age-progress), rgba(79,97,127,0.88) var(--age-progress), rgba(42,56,82,0.88) 100%);
+    box-shadow:
+        inset 0 1px 3px rgba(0,0,0,0.28),
+        0 4px 12px rgba(0,0,0,0.12);
+    cursor: pointer;
+    touch-action: pan-x;
+}
+.lq-age-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid #fff6d8;
+    background: radial-gradient(circle at 30% 30%, #fff6d8 0%, #edc86d 48%, #bf8c23 100%);
+    box-shadow:
+        0 10px 20px rgba(0,0,0,0.3),
+        0 0 0 5px rgba(244,210,124,0.16);
+}
+.lq-age-slider::-moz-range-thumb {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid #fff6d8;
+    background: radial-gradient(circle at 30% 30%, #fff6d8 0%, #edc86d 48%, #bf8c23 100%);
+    box-shadow:
+        0 10px 20px rgba(0,0,0,0.3),
+        0 0 0 5px rgba(244,210,124,0.16);
+}
+.lq-age-slider::-moz-range-track {
+    height: 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(244,210,124,0.32);
+    background: linear-gradient(90deg, rgba(230,192,107,0.95) 0%, rgba(230,192,107,0.95) var(--age-progress), rgba(79,97,127,0.88) var(--age-progress), rgba(42,56,82,0.88) 100%);
+}
+.lq-age-slider:focus-visible {
+    outline: 2px solid rgba(244,210,124,0.95);
+    outline-offset: 4px;
+}
+.lq-age-scale {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    color: rgba(248,250,252,0.72);
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .03em;
+}
+.lq-age-scale span:last-child {
+    text-align: right;
+}
+.lq-age-slider-hint {
+    color: rgba(248,250,252,0.58);
+    font-size: .8rem;
+    font-weight: 700;
 }
 @@media (min-width: 600px) {
     .lq-choice-grid.lq-grid-2 { grid-template-columns: repeat(2, 1fr); }
@@ -1774,6 +1905,22 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
     .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 58px; }
     .lq-choice-grid { gap: 8px; }
+    .lq-age-picker {
+        gap: 12px;
+        padding: 14px 14px 12px;
+        border-radius: 14px;
+    }
+    .lq-age-picker-top {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .lq-age-pill {
+        min-width: 0;
+        width: 100%;
+        font-size: 1.08rem;
+    }
+    .lq-age-picker-note { font-size: .84rem; }
+    .lq-age-scale { font-size: .68rem; }
     .lq-step-actions { margin-top: 10px; }
     .lq-step-actions.dual { align-items: stretch; gap: 8px; }
     .lq-step-actions.dual .btn-ghost { min-height: 44px; padding: 9px 12px; }
@@ -1882,6 +2029,37 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     }
     .lq-choice-grid.lq-step1-twoup .lq-card { min-height: 56px !important; }
     .lq-choice-grid { gap: 7px !important; }
+    .lq-age-picker {
+        gap: 10px !important;
+        padding: 12px 12px 11px !important;
+    }
+    .lq-age-picker-kicker { font-size: .66rem !important; }
+    .lq-age-picker-note {
+        font-size: .8rem !important;
+        line-height: 1.35 !important;
+    }
+    .lq-age-pill {
+        width: 100%;
+        min-width: 0;
+        padding: 9px 12px !important;
+        font-size: 1rem !important;
+    }
+    .lq-age-slider {
+        height: 12px !important;
+    }
+    .lq-age-slider::-webkit-slider-thumb {
+        width: 26px;
+        height: 26px;
+    }
+    .lq-age-slider::-moz-range-thumb {
+        width: 26px;
+        height: 26px;
+    }
+    .lq-age-scale {
+        font-size: .64rem !important;
+        gap: 6px !important;
+    }
+    .lq-age-slider-hint { font-size: .74rem !important; }
     .lq-step-actions.dual { gap: 8px !important; }
     .lq-step-actions.dual .btn-ghost {
         min-width: 84px;
@@ -4214,14 +4392,14 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         <input type="hidden" name="PageKey" value="@pageKey" />
         <input type="hidden" name="PageVariant" value="@pageVariant" />
         <input type="hidden" name="PageMode" value="@pageMode" />
-        <input type="hidden" name="Age" id="Age" value="@ageValue" />
-        <input type="hidden" name="AgeRange" id="AgeRange" value="@selectedAgeBracket" />
+        <input type="hidden" name="Age" id="Age" value="@(hasExplicitAgeSelection ? ageValue : string.Empty)" />
+        <input type="hidden" name="AgeRange" id="AgeRange" value="@(hasExplicitAgeSelection ? selectedAgeBracket : string.Empty)" />
         <input type="hidden" name="CoverageAmount" id="CoverageAmount" value="@(form.CoverageAmount?.ToString() ?? selectedCoverageAmountOption)" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
         <input type="hidden" name="Answer2" id="Answer2" value="@form.Answer2" />
         <input type="hidden" name="Answer3" id="Answer3" value="@(string.IsNullOrWhiteSpace(form.Answer3) ? form.TobaccoUse : form.Answer3)" />
-        <input type="hidden" name="Answer4" id="Answer4" value="@(string.IsNullOrWhiteSpace(selectedAgeBracket) ? form.Answer4 : selectedAgeBracket)" />
+        <input type="hidden" name="Answer4" id="Answer4" value="@(hasExplicitAgeSelection ? ageValue : (form.Answer4 ?? string.Empty))" />
         <input type="hidden" name="SessionId" id="SessionId" />
         <input type="hidden" name="VisitorId" id="VisitorId" />
         <input type="hidden" name="UtmSource" id="UtmSource" />
@@ -4419,21 +4597,33 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
                                         <div class="lq-choice-group">
                                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                            <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                            @foreach (var ageOption in ageStepOptions)
-                            {
-                                var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", ageOption.Value);
-                                <label class="lq-card lq-card-rich @(ageOption.IsWide ? "lq-age-wide " : "")@ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                    <input type="radio" name="AgeBracket" value="@ageOption.Value" data-age="@ageOption.ApproxAge" data-label="@ageOption.Label" @(selectedAgeBracket == ageOption.Value ? "checked" : null) />
-                                    <span class="lq-card-copy">
-                                        <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                        <span class="lq-card-title">@ageOption.Label</span>
-                                        <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                    </span>
-                                </label>
-                            }
+                                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                <div class="lq-age-picker-top">
+                                                    <div class="lq-age-picker-copy">
+                                                        <span class="lq-age-picker-kicker">Age Selector</span>
+                                                        <span class="lq-age-picker-note">@ageSliderHelperText</span>
+                                                    </div>
+                                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="@minSelectableAge"
+                                                    max="@maxSelectableAge"
+                                                    step="1"
+                                                    value="@ageValue"
+                                                    class="lq-age-slider"
+                                                    data-age-slider
+                                                    aria-labelledby="lbl-step1-age"
+                                                    aria-describedby="age-slider-hint-contact-first" />
+                                                <div class="lq-age-scale" aria-hidden="true">
+                                                    @foreach (var markerAge in ageSliderMarkerValues)
+                                                    {
+                                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                                    }
+                                                </div>
+                                                <div class="lq-age-slider-hint" id="age-slider-hint-contact-first">Drag the slider to your exact age.</div>
                                             </div>
-                                            <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
+                                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                         </div>
                                         <div class="lq-step-actions dual">
                                             <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
@@ -4488,7 +4678,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
                                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
                                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                                             </div>
                                             <div class="lq-field">
@@ -4770,21 +4960,33 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                 <div class="lq-micro-step" data-micro-step="4" hidden>
                     <div class="lq-choice-group">
                         <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                        <div class="lq-choice-grid lq-grid-2 lq-age-grid" role="radiogroup" aria-labelledby="lbl-step1-age">
-                            @foreach (var ageOption in ageStepOptions)
-                            {
-                                var ageChoiceMeta = GetChoiceCardMeta("AgeBracket", ageOption.Value);
-                                <label class="lq-card lq-card-rich @(ageOption.IsWide ? "lq-age-wide " : "")@ageChoiceMeta.ToneClass@(string.Equals(ageChoiceMeta.VisualMode, "none", StringComparison.OrdinalIgnoreCase) ? " no-visual" : "")">
-                                    <input type="radio" name="AgeBracket" value="@ageOption.Value" data-age="@ageOption.ApproxAge" data-label="@ageOption.Label" @(selectedAgeBracket == ageOption.Value ? "checked" : null) />
-                                    <span class="lq-card-copy">
-                                        <span class="lq-card-kicker">@ageChoiceMeta.Kicker</span>
-                                        <span class="lq-card-title">@ageOption.Label</span>
-                                        <span class="lq-card-helper">@ageChoiceMeta.Helper</span>
-                                    </span>
-                                </label>
-                            }
+                        <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                            <div class="lq-age-picker-top">
+                                <div class="lq-age-picker-copy">
+                                    <span class="lq-age-picker-kicker">Age Selector</span>
+                                    <span class="lq-age-picker-note">@ageSliderHelperText</span>
+                                </div>
+                                <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                            </div>
+                            <input
+                                type="range"
+                                min="@minSelectableAge"
+                                max="@maxSelectableAge"
+                                step="1"
+                                value="@ageValue"
+                                class="lq-age-slider"
+                                data-age-slider
+                                aria-labelledby="lbl-step1-age"
+                                aria-describedby="age-slider-hint-standard" />
+                            <div class="lq-age-scale" aria-hidden="true">
+                                @foreach (var markerAge in ageSliderMarkerValues)
+                                {
+                                    <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                }
+                            </div>
+                            <div class="lq-age-slider-hint" id="age-slider-hint-standard">Drag the slider to your exact age.</div>
                         </div>
-                        <div class="lq-choice-error" id="err-step1-age">Please choose your age range.</div>
+                        <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                     </div>
                     <div class="lq-step-actions dual">
                         <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
@@ -4839,7 +5041,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
                         <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                 <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
                             </div>
                             <div class="lq-field">
@@ -4992,7 +5194,9 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
-  const ageRangeInputs = Array.from(form.querySelectorAll('input[name="AgeBracket"]'));
+  const agePickers = Array.from(form.querySelectorAll('[data-age-picker]'));
+  const ageSliders = Array.from(form.querySelectorAll('[data-age-slider]'));
+  const ageDisplays = Array.from(form.querySelectorAll('[data-age-display]'));
   const requiredContactFields = isContactFirstEducationVariant
     ? ['FirstName', 'LastName', 'Phone']
     : ['FirstName', 'Phone'];
@@ -5001,6 +5205,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
+  const AGE_MIN = @minSelectableAge;
+  const AGE_MAX = @maxSelectableAge;
+  const AGE_DEFAULT = @selectedAgeValue;
+  const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 1500;
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
@@ -5063,6 +5271,100 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     el.value = value ?? '';
   }
 
+  function resolveAgeBand(ageValue) {
+    const parsedAge = Number.parseInt(String(ageValue ?? ''), 10);
+    if (!Number.isFinite(parsedAge)) {
+      return '';
+    }
+
+    if (quoteType === 'finalexpense') {
+      if (parsedAge <= 54) return '45-54';
+      if (parsedAge <= 64) return '55-64';
+      if (parsedAge <= 74) return '65-74';
+      return '75+';
+    }
+
+    if (parsedAge <= 24) return '18-24';
+    if (parsedAge <= 34) return '25-34';
+    if (parsedAge <= 44) return '35-44';
+    if (parsedAge <= 54) return '45-54';
+    return '55+';
+  }
+
+  function resolveStoredAgeValue(value) {
+    const trimmedValue = String(value ?? '').trim();
+    if (!trimmedValue) {
+      return '';
+    }
+
+    const parsedAge = Number.parseInt(trimmedValue, 10);
+    if (Number.isFinite(parsedAge)) {
+      return String(Math.max(AGE_MIN, Math.min(AGE_MAX, parsedAge)));
+    }
+
+    const mappedAge = AGE_RANGE_TO_NUMERIC[trimmedValue];
+    return Number.isFinite(mappedAge) ? String(mappedAge) : '';
+  }
+
+  function getCurrentSliderAgeValue() {
+    const slider = ageSliders[0];
+    return slider instanceof HTMLInputElement ? resolveStoredAgeValue(slider.value) : '';
+  }
+
+  function hasExplicitAgeSelectionInUi() {
+    return agePickers.some((picker) => picker.dataset.ageSelected === 'true');
+  }
+
+  function syncAgePickerUi(ageValue, isSelected) {
+    const resolvedAge = resolveStoredAgeValue(ageValue) || String(AGE_DEFAULT);
+    const numericAge = Number.parseInt(resolvedAge, 10);
+    const progress = Number.isFinite(numericAge) && AGE_MAX > AGE_MIN
+      ? ((numericAge - AGE_MIN) / (AGE_MAX - AGE_MIN)) * 100
+      : 0;
+    const pillText = isSelected ? resolvedAge : 'Select age';
+
+    agePickers.forEach((picker) => {
+      picker.dataset.ageSelected = isSelected ? 'true' : 'false';
+      picker.classList.toggle('is-active', isSelected);
+      picker.style.setProperty('--age-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    });
+
+    ageSliders.forEach((slider) => {
+      slider.value = resolvedAge;
+      slider.setAttribute('aria-valuetext', isSelected ? `${resolvedAge} years old` : 'Select your age');
+    });
+
+    ageDisplays.forEach((display) => {
+      display.textContent = pillText;
+    });
+  }
+
+  function getSelectedAgeValue() {
+    return hasExplicitAgeSelectionInUi() ? getCurrentSliderAgeValue() : '';
+  }
+
+  function getSelectedAgeBand() {
+    return resolveAgeBand(getSelectedAgeValue());
+  }
+
+  function extractPhoneDigits(value) {
+    return String(value ?? '').replace(/\D/g, '').slice(0, 10);
+  }
+
+  function formatPhoneNumber(value) {
+    const digits = extractPhoneDigits(value);
+    if (!digits) {
+      return '';
+    }
+    if (digits.length < 4) {
+      return `(${digits}`;
+    }
+    if (digits.length < 7) {
+      return `(${digits.slice(0, 3)})${digits.slice(3)}`;
+    }
+    return `(${digits.slice(0, 3)})${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+
   function hasMeaningfulPersistedState(state) {
     if (!state || typeof state !== 'object') {
       return false;
@@ -5081,6 +5383,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     if (stateSelect?.dataset.selected) {
       stateSelect.value = stateSelect.dataset.selected;
     }
+    form.querySelectorAll('input[name="Phone"]').forEach((input) => {
+      if (input instanceof HTMLInputElement) {
+        input.value = formatPhoneNumber(input.value);
+      }
+    });
+    syncAgePickerUi(AGE_DEFAULT, AGE_SELECTION_PROVIDED);
 
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
@@ -5105,7 +5413,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         CoverageGoal: selectedRadio('CoverageGoal')?.value || '',
         CoverageAmountOption: selectedRadio('CoverageAmountOption')?.value || '',
         TobaccoUse: selectedRadio('TobaccoUse')?.value || '',
-        AgeBracket: selectedRadio('AgeBracket')?.value || '',
+        AgeBracket: getSelectedAgeBand(),
+        AgeValue: getSelectedAgeValue(),
         FirstName: asTrimmed(form.querySelector('[name="FirstName"]')?.value || ''),
         LastName: asTrimmed(form.querySelector('[name="LastName"]')?.value || ''),
         Phone: asTrimmed(form.querySelector('[name="Phone"]')?.value || ''),
@@ -5192,12 +5501,18 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     setRadioValue('CoverageGoal', fields.CoverageGoal || '');
     setRadioValue('CoverageAmountOption', fields.CoverageAmountOption || '');
     setRadioValue('TobaccoUse', fields.TobaccoUse || '');
-    setRadioValue('AgeBracket', fields.AgeBracket || '');
+    const restoredAgeValue = resolveStoredAgeValue(fields.AgeValue || fields.AgeBracket || '');
+    syncAgePickerUi(restoredAgeValue || AGE_DEFAULT, !!restoredAgeValue);
     setFieldValue('FirstName', fields.FirstName || '');
     setFieldValue('LastName', fields.LastName || '');
     setFieldValue('Phone', fields.Phone || '');
     setFieldValue('Email', fields.Email || '');
     setFieldValue('State', fields.State || '');
+    form.querySelectorAll('input[name="Phone"]').forEach((input) => {
+      if (input instanceof HTMLInputElement) {
+        input.value = formatPhoneNumber(input.value);
+      }
+    });
 
     latestEstimatePreview = state.latestEstimatePreview || null;
     applyEstimatePreviewToHiddenFields(latestEstimatePreview);
@@ -5232,6 +5547,22 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
     return true;
   }
+
+  syncAgePickerUi(AGE_DEFAULT, AGE_SELECTION_PROVIDED);
+
+  form.querySelectorAll('input[name="Phone"]').forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+
+    const applyMask = () => {
+      input.value = formatPhoneNumber(input.value);
+    };
+
+    applyMask();
+    input.addEventListener('input', applyMask);
+    input.addEventListener('blur', applyMask);
+  });
 
   contactFieldNames.forEach((name) => {
     const el = form.querySelector(`[name="${name}"]`);
@@ -5385,11 +5716,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
-  }
-
-  function normalizedAgeFromRange(ageRange) {
-    const mapped = AGE_RANGE_TO_NUMERIC[ageRange];
-    return Number.isFinite(mapped) ? String(mapped) : '';
   }
 
   function buildMetaProgressMetadata(extra = {}) {
@@ -5552,12 +5878,19 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         : `Please enter your ${name === 'Email' ? 'email' : name === 'Phone' ? 'phone' : name === 'FirstName' ? 'first name' : 'last name'}.`;
     }
 
+    if (name === 'Phone' && extractPhoneDigits(value).length !== 10) {
+      return 'Please enter a valid phone number.';
+    }
+
     return '';
   }
 
   function resolveContactErrorType(name, error) {
     if (name === 'Email' && /valid email/i.test(error || '')) {
       return 'invalid_email';
+    }
+    if (name === 'Phone' && /valid phone/i.test(error || '')) {
+      return 'invalid_phone';
     }
 
     return 'required_missing';
@@ -5690,10 +6023,8 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     const goal = selectedRadio('CoverageGoal');
     const coverageAmount = selectedRadio('CoverageAmountOption');
     const tobaccoUse = selectedRadio('TobaccoUse');
-    const selectedAgeRange = selectedRadio('AgeBracket')?.value || '';
-    const ageFromRange = normalizedAgeFromRange(selectedAgeRange);
-    const fallbackAgeValue = asTrimmed(ageInput?.value);
-    const resolvedAgeValue = ageFromRange || fallbackAgeValue;
+    const selectedAgeValue = getSelectedAgeValue();
+    const selectedAgeRange = getSelectedAgeBand();
 
     if (protecting) {
       answer1Hidden.value = protecting.value;
@@ -5713,10 +6044,10 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       answer3Hidden.value = tobaccoUse?.value || '';
     }
     if (ageInput) {
-      ageInput.value = resolvedAgeValue;
+      ageInput.value = selectedAgeValue;
     }
     if (answer4Hidden) {
-      answer4Hidden.value = selectedAgeRange || resolvedAgeValue;
+      answer4Hidden.value = selectedAgeValue;
     }
     if (ageHidden) {
       ageHidden.value = selectedAgeRange;
@@ -5738,18 +6069,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   }
 
   function validateAgeOnly() {
-    const selectedAgeRange = selectedRadio('AgeBracket')?.value || '';
-    const ageFromRange = normalizedAgeFromRange(selectedAgeRange);
-    if (ageFromRange) {
-      if (ageInput) {
-        ageInput.value = ageFromRange;
-      }
-      showChoiceError('err-step1-age', false);
-      return true;
-    }
-    const ageValue = asTrimmed(ageInput?.value);
+    const ageValue = getSelectedAgeValue();
     const ageNum = Number.parseInt(ageValue, 10);
-    const hasValidAge = Number.isFinite(ageNum) && ageNum >= 18 && ageNum <= 85;
+    const hasValidAge = hasExplicitAgeSelectionInUi()
+      && Number.isFinite(ageNum)
+      && ageNum >= AGE_MIN
+      && ageNum <= AGE_MAX;
     showChoiceError('err-step1-age', !hasValidAge);
     return hasValidAge;
   }
@@ -5969,7 +6294,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
       trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
       metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
       showStep1(4, true);
-      form.querySelector('input[name="AgeBracket"]')?.focus();
+      form.querySelector('[data-age-slider]')?.focus();
       return false;
     }
     return true;
@@ -6069,21 +6394,32 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
   wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', 2, 3);
   wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', 3, 4);
 
-  ageRangeInputs.forEach((radio) => {
-    radio.addEventListener('change', () => {
+  ageSliders.forEach((slider) => {
+    if (!(slider instanceof HTMLInputElement)) {
+      return;
+    }
+
+    slider.addEventListener('input', () => {
+      syncAgePickerUi(slider.value, true);
+      showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('AgeBracket');
+      syncStepOneAnswersFromUI();
+      persistFunnelState();
+    });
+
+    slider.addEventListener('change', () => {
+      syncAgePickerUi(slider.value, true);
       showChoiceError('err-step1-age', false);
       clearQuoteFieldError('AgeBracket');
       clearEstimatePreviewCache();
       syncStepOneAnswersFromUI();
       persistFunnelState();
-      trackEvent('step1_age_entered', { ageRange: radio.value, age: radio.dataset.age || '' });
+      trackEvent('step1_age_entered', {
+        ageRange: getSelectedAgeBand(),
+        age: getSelectedAgeValue()
+      });
       void ensureMetaLeadFormStart();
       queueProcessingAdvanceFromAgeSelection();
-    });
-    radio.closest('label')?.addEventListener('click', () => {
-      setTimeout(() => {
-        if (radio.checked) queueProcessingAdvanceFromAgeSelection();
-      }, 0);
     });
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
