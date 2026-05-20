@@ -20,6 +20,7 @@ namespace Protect_Website.Models
         public LifeEstimateResult? Secondary { get; set; }
         public string OfferKey { get; set; } = "";
         public string DisplayMode { get; set; } = "comparison";
+        public int Age { get; set; }
         public string AgeBand { get; set; } = "";
         public int RequestedCoverageAmount { get; set; }
         public string TobaccoUse { get; set; } = "";

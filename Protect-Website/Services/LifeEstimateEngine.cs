@@ -10,55 +10,61 @@ namespace ProtectWebsite.Services
         public const string EstimateDisclaimer = "Estimates are illustrative only and not a final quote. Actual pricing depends on underwriting, carrier approval, health history, state availability, and coverage details.";
 
         private sealed record BaseRate(int ReferenceCoverage, decimal LowMonthly, decimal HighMonthly);
+        private sealed record AgeRateAnchor(int Age, int ReferenceCoverage, decimal LowMonthly, decimal HighMonthly);
         private sealed record PolicyPair(string PrimaryKey, string SecondaryKey);
 
-        private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, BaseRate>> BaseRateTable =
-            new Dictionary<string, IReadOnlyDictionary<string, BaseRate>>(StringComparer.OrdinalIgnoreCase)
+        // We keep the same reference rate inputs, but anchor them to approximate ages and
+        // interpolate between those points so visitors see a result that changes with the
+        // exact age they entered instead of a wide age bucket.
+        private const double TailGrowthDampingFactor = 0.75d;
+
+        private static readonly IReadOnlyDictionary<string, IReadOnlyList<AgeRateAnchor>> BaseRateTable =
+            new Dictionary<string, IReadOnlyList<AgeRateAnchor>>(StringComparer.OrdinalIgnoreCase)
             {
-                ["term"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                ["term"] = new[]
                 {
-                    ["18-24"] = new(500000, 30m, 36m),
-                    ["25-34"] = new(500000, 31m, 38m),
-                    ["35-44"] = new(500000, 47m, 59m),
-                    ["45-54"] = new(500000, 102m, 137m),
-                    ["55-64"] = new(500000, 286m, 395m),
-                    ["65+"] = new(500000, 430m, 600m),
+                    new AgeRateAnchor(21, 500000, 30m, 36m),
+                    new AgeRateAnchor(30, 500000, 31m, 38m),
+                    new AgeRateAnchor(40, 500000, 47m, 59m),
+                    new AgeRateAnchor(50, 500000, 102m, 137m),
+                    new AgeRateAnchor(60, 500000, 286m, 395m),
+                    new AgeRateAnchor(70, 500000, 430m, 600m),
                 },
-                ["wholelife"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                ["wholelife"] = new[]
                 {
-                    ["18-24"] = new(100000, 51m, 58m),
-                    ["25-34"] = new(100000, 66m, 77m),
-                    ["35-44"] = new(100000, 96m, 114m),
-                    ["45-54"] = new(100000, 148m, 179m),
-                    ["55-64"] = new(100000, 249m, 309m),
-                    ["65+"] = new(100000, 457m, 583m),
+                    new AgeRateAnchor(21, 100000, 51m, 58m),
+                    new AgeRateAnchor(30, 100000, 66m, 77m),
+                    new AgeRateAnchor(40, 100000, 96m, 114m),
+                    new AgeRateAnchor(50, 100000, 148m, 179m),
+                    new AgeRateAnchor(60, 100000, 249m, 309m),
+                    new AgeRateAnchor(70, 100000, 457m, 583m),
                 },
-                ["finalexpense"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                ["finalexpense"] = new[]
                 {
-                    ["18-24"] = new(10000, 16m, 22m),
-                    ["25-34"] = new(10000, 18m, 24m),
-                    ["35-44"] = new(10000, 22m, 29m),
-                    ["45-54"] = new(10000, 30m, 38m),
-                    ["55-64"] = new(10000, 42m, 54m),
-                    ["65+"] = new(10000, 64m, 80m),
+                    new AgeRateAnchor(21, 10000, 16m, 22m),
+                    new AgeRateAnchor(30, 10000, 18m, 24m),
+                    new AgeRateAnchor(40, 10000, 22m, 29m),
+                    new AgeRateAnchor(50, 10000, 30m, 38m),
+                    new AgeRateAnchor(60, 10000, 42m, 54m),
+                    new AgeRateAnchor(70, 10000, 64m, 80m),
                 },
-                ["mortgage"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                ["mortgage"] = new[]
                 {
-                    ["18-24"] = new(250000, 16m, 24m),
-                    ["25-34"] = new(250000, 18m, 28m),
-                    ["35-44"] = new(250000, 25m, 47m),
-                    ["45-54"] = new(250000, 58m, 109m),
-                    ["55-64"] = new(250000, 110m, 190m),
-                    ["65+"] = new(250000, 175m, 300m),
+                    new AgeRateAnchor(21, 250000, 16m, 24m),
+                    new AgeRateAnchor(30, 250000, 18m, 28m),
+                    new AgeRateAnchor(40, 250000, 25m, 47m),
+                    new AgeRateAnchor(50, 250000, 58m, 109m),
+                    new AgeRateAnchor(60, 250000, 110m, 190m),
+                    new AgeRateAnchor(70, 250000, 175m, 300m),
                 },
-                ["iul"] = new Dictionary<string, BaseRate>(StringComparer.OrdinalIgnoreCase)
+                ["iul"] = new[]
                 {
-                    ["18-24"] = new(500000, 170m, 210m),
-                    ["25-34"] = new(500000, 238m, 271m),
-                    ["35-44"] = new(500000, 341m, 398m),
-                    ["45-54"] = new(500000, 447m, 606m),
-                    ["55-64"] = new(500000, 842m, 1023m),
-                    ["65+"] = new(500000, 1180m, 1450m),
+                    new AgeRateAnchor(21, 500000, 170m, 210m),
+                    new AgeRateAnchor(30, 500000, 238m, 271m),
+                    new AgeRateAnchor(40, 500000, 341m, 398m),
+                    new AgeRateAnchor(50, 500000, 447m, 606m),
+                    new AgeRateAnchor(60, 500000, 842m, 1023m),
+                    new AgeRateAnchor(70, 500000, 1180m, 1450m),
                 },
             };
 
@@ -78,13 +84,13 @@ namespace ProtectWebsite.Services
             if (usesComparisonMode)
             {
                 var pair = ResolvePolicyPair(coverageGoal, protectingWho, age, requestedCoverageAmount);
-                primary = BuildEstimate(pair.PrimaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
-                secondary = BuildEstimate(pair.SecondaryKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
+                primary = BuildEstimate(pair.PrimaryKey, age, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
+                secondary = BuildEstimate(pair.SecondaryKey, age, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
             }
             else
             {
                 var primaryPolicyKey = ResolveOfferPolicyKey(normalizedOfferKey);
-                primary = BuildEstimate(primaryPolicyKey, age, ageBand, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
+                primary = BuildEstimate(primaryPolicyKey, age, coverageGoal, protectingWho, tobaccoUse, requestedCoverageAmount, usesComparisonMode);
             }
 
             return new LifeEstimatePreviewResponse
@@ -93,6 +99,7 @@ namespace ProtectWebsite.Services
                 Secondary = secondary,
                 OfferKey = normalizedOfferKey,
                 DisplayMode = usesComparisonMode ? "comparison" : "single",
+                Age = age,
                 AgeBand = ageBand,
                 RequestedCoverageAmount = requestedCoverageAmount ?? primary.CoverageAmount,
                 TobaccoUse = tobaccoUse,
@@ -106,7 +113,6 @@ namespace ProtectWebsite.Services
         private static LifeEstimateResult BuildEstimate(
             string policyKey,
             int age,
-            string ageBand,
             string coverageGoal,
             string protectingWho,
             string tobaccoUse,
@@ -114,7 +120,7 @@ namespace ProtectWebsite.Services
             bool usesComparisonMode)
         {
             var coverageAmount = ResolveCoverageAmount(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount);
-            var baseRate = BaseRateTable[policyKey][ageBand];
+            var baseRate = ResolveBaseRate(policyKey, age);
             var coverageMultiplier = ResolveCoverageMultiplier(policyKey, coverageAmount, baseRate.ReferenceCoverage);
             var tobaccoMultiplier = ResolveTobaccoMultiplier(policyKey, tobaccoUse);
             var healthMultiplier = 1.00m; // Average health assumption.
@@ -137,6 +143,75 @@ namespace ProtectWebsite.Services
                 Disclaimer = EstimateDisclaimer,
                 Reasons = BuildReasons(policyKey, coverageGoal, protectingWho, age, requestedCoverageAmount, usesComparisonMode)
             };
+        }
+
+        private static BaseRate ResolveBaseRate(string policyKey, int age)
+        {
+            var curve = BaseRateTable[policyKey];
+            if (curve.Count == 0)
+            {
+                throw new InvalidOperationException($"No base-rate anchors configured for policy '{policyKey}'.");
+            }
+
+            if (curve.Count == 1)
+            {
+                var onlyAnchor = curve[0];
+                return new BaseRate(onlyAnchor.ReferenceCoverage, onlyAnchor.LowMonthly, onlyAnchor.HighMonthly);
+            }
+
+            if (age <= curve[0].Age)
+            {
+                return InterpolateBaseRate(curve[0], curve[1], age);
+            }
+
+            for (var index = 1; index < curve.Count; index++)
+            {
+                if (age <= curve[index].Age)
+                {
+                    return InterpolateBaseRate(curve[index - 1], curve[index], age);
+                }
+            }
+
+            return ExtrapolateTailBaseRate(curve[curve.Count - 2], curve[curve.Count - 1], age);
+        }
+
+        private static BaseRate InterpolateBaseRate(AgeRateAnchor lower, AgeRateAnchor upper, int age)
+        {
+            var span = Math.Max(1, upper.Age - lower.Age);
+            var progress = (double)(age - lower.Age) / span;
+
+            return new BaseRate(
+                upper.ReferenceCoverage,
+                InterpolateMonthly(lower.LowMonthly, upper.LowMonthly, progress),
+                InterpolateMonthly(lower.HighMonthly, upper.HighMonthly, progress));
+        }
+
+        private static BaseRate ExtrapolateTailBaseRate(AgeRateAnchor lower, AgeRateAnchor upper, int age)
+        {
+            var yearsBeyondUpper = Math.Max(0, age - upper.Age);
+            var lowAnnualLogGrowth = ResolveAnnualLogGrowth(lower.LowMonthly, upper.LowMonthly, lower.Age, upper.Age) * TailGrowthDampingFactor;
+            var highAnnualLogGrowth = ResolveAnnualLogGrowth(lower.HighMonthly, upper.HighMonthly, lower.Age, upper.Age) * TailGrowthDampingFactor;
+
+            return new BaseRate(
+                upper.ReferenceCoverage,
+                (decimal)((double)upper.LowMonthly * Math.Exp(lowAnnualLogGrowth * yearsBeyondUpper)),
+                (decimal)((double)upper.HighMonthly * Math.Exp(highAnnualLogGrowth * yearsBeyondUpper)));
+        }
+
+        private static decimal InterpolateMonthly(decimal start, decimal end, double progress)
+        {
+            var startValue = Math.Max(0.01d, (double)start);
+            var endValue = Math.Max(0.01d, (double)end);
+            var interpolated = startValue * Math.Exp((Math.Log(endValue) - Math.Log(startValue)) * progress);
+            return decimal.Round((decimal)interpolated, 2, MidpointRounding.AwayFromZero);
+        }
+
+        private static double ResolveAnnualLogGrowth(decimal start, decimal end, int startAge, int endAge)
+        {
+            var safeStart = Math.Max(0.01d, (double)start);
+            var safeEnd = Math.Max(0.01d, (double)end);
+            var years = Math.Max(1, endAge - startAge);
+            return Math.Log(safeEnd / safeStart) / years;
         }
 
         private static PolicyPair ResolvePolicyPair(string coverageGoal, string protectingWho, int age, int? requestedCoverageAmount)

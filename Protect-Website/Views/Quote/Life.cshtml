@@ -2596,7 +2596,7 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 }
 .lq-contact-estimate-stats {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
     gap: 10px;
 }
 .lq-contact-estimate-stat {
@@ -6173,8 +6173,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (step2Helper) {
       step2Helper.hidden = false;
       step2Helper.textContent = isSingleOffer
-        ? `You already have a real starting point for ${topicLabel}. If you want help interpreting it, you can unlock the walkthrough below.`
-        : 'You already have a real starting point. If you want help interpreting it, you can unlock the walkthrough below.';
+        ? `You already have an estimated monthly range and a practical starting coverage range for ${topicLabel}. If you want help interpreting it, you can get the walkthrough below.`
+        : 'You already have an estimated monthly range and a practical starting coverage range. If you want help interpreting it, you can get the walkthrough below.';
     }
 
     if (step2ContactTitle) {
@@ -6191,8 +6191,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     if (step2ContactCopy) {
       step2ContactCopy.textContent = isSingleOffer
-        ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and which ${topicLabel} options may fit best.`
-        : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and what else is worth comparing.';
+        ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and where it usually makes sense to size up or down from here.`
+        : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and which coverage range is most worth reviewing next.';
     }
   }
 
