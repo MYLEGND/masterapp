@@ -2,6 +2,7 @@
   const SESSION_KEY_PREFIX = 'carrier-trust-strip-viewed:';
   const FULL_PIXELS_PER_SECOND = 30;
   const COMPACT_PIXELS_PER_SECOND = 32;
+  const DRAG_INTENT_THRESHOLD = 6;
 
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -154,6 +155,88 @@
     element.style.setProperty('--carrier-marquee-duration', `${duration.toFixed(2)}s`);
   }
 
+  function isScrollableViewport(viewport) {
+    if (!(viewport instanceof HTMLElement)) {
+      return false;
+    }
+
+    return (viewport.scrollWidth - viewport.clientWidth) > 8;
+  }
+
+  function bindTouchDragScroll(element) {
+    if (!element || element.dataset.carrierTrustTouchBound === 'true') {
+      return;
+    }
+
+    const viewport = element.querySelector('.lq-carrier-strip-viewport');
+    if (!(viewport instanceof HTMLElement)) {
+      return;
+    }
+
+    element.dataset.carrierTrustTouchBound = 'true';
+
+    const dragState = {
+      active: false,
+      dragging: false,
+      startX: 0,
+      startY: 0,
+      startScrollLeft: 0
+    };
+
+    const resetDragState = () => {
+      dragState.active = false;
+      dragState.dragging = false;
+      dragState.startX = 0;
+      dragState.startY = 0;
+      dragState.startScrollLeft = 0;
+      viewport.classList.remove('is-dragging');
+    };
+
+    viewport.addEventListener('touchstart', (event) => {
+      if (event.touches.length !== 1 || !isScrollableViewport(viewport)) {
+        resetDragState();
+        return;
+      }
+
+      const touch = event.touches[0];
+      dragState.active = true;
+      dragState.dragging = false;
+      dragState.startX = touch.clientX;
+      dragState.startY = touch.clientY;
+      dragState.startScrollLeft = viewport.scrollLeft;
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (event) => {
+      if (!dragState.active || event.touches.length !== 1) {
+        return;
+      }
+
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - dragState.startX;
+      const deltaY = touch.clientY - dragState.startY;
+
+      if (!dragState.dragging) {
+        if (Math.abs(deltaX) < DRAG_INTENT_THRESHOLD && Math.abs(deltaY) < DRAG_INTENT_THRESHOLD) {
+          return;
+        }
+
+        if (Math.abs(deltaX) <= Math.abs(deltaY)) {
+          resetDragState();
+          return;
+        }
+
+        dragState.dragging = true;
+        viewport.classList.add('is-dragging');
+      }
+
+      event.preventDefault();
+      viewport.scrollLeft = dragState.startScrollLeft - deltaX;
+    }, { passive: false });
+
+    viewport.addEventListener('touchend', resetDragState, { passive: true });
+    viewport.addEventListener('touchcancel', resetDragState, { passive: true });
+  }
+
   function bindMarquee(element) {
     if (!element || element.dataset.carrierTrustMarqueeBound === 'true') {
       return;
@@ -164,6 +247,8 @@
     const viewport = element.querySelector('.lq-carrier-strip-viewport');
     const primaryGroup = element.querySelector('.lq-carrier-strip-group');
     const scheduleSync = () => queueMarqueeSync(element);
+
+    bindTouchDragScroll(element);
 
     if ('ResizeObserver' in window) {
       const observer = new ResizeObserver(() => scheduleSync());
@@ -177,6 +262,7 @@
     }
 
     element.querySelectorAll('img').forEach((image) => {
+      image.draggable = false;
       image.addEventListener('load', () => scheduleSync(), { passive: true });
       image.addEventListener('error', () => scheduleSync(), { passive: true });
     });
