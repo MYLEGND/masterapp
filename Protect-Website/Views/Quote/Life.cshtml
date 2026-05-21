@@ -6069,6 +6069,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
+  const firstDiscoveryFieldName = '@firstDiscoveryFieldName';
+  const firstDiscoveryQuestionId = '@firstDiscoveryQuestionId';
   const isPaidLandingExperience = '@(isPaidLandingExperience ? "true" : "false")' === 'true';
   const startEvent = '@cfg.StartEvent';
   const submitEvent = '@cfg.SubmitEvent';
@@ -6093,6 +6095,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
+  const firstQuestionElement = document.getElementById(firstDiscoveryQuestionId);
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
   const AGE_MIN = @minSelectableAge;
@@ -6589,8 +6592,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     firstQuestionViewTracked = true;
     trackEvent('first_question_view', {
-      questionField: '@firstDiscoveryFieldName',
-      questionId: '@firstDiscoveryQuestionId'
+      questionField: firstDiscoveryFieldName,
+      questionId: firstDiscoveryQuestionId
     });
   }
 
@@ -6601,8 +6604,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     firstQuestionAnsweredTracked = true;
     trackEvent('first_question_answered', {
-      questionField: '@firstDiscoveryFieldName',
-      questionId: '@firstDiscoveryQuestionId',
+      questionField: firstDiscoveryFieldName,
+      questionId: firstDiscoveryQuestionId,
       choiceCode: choiceCode || '',
       choiceLabel: choiceLabel || ''
     });
@@ -6705,6 +6708,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
   async function flushSuccessTracking(leadId, metaLeadEventId) {
     const trackingTasks = [
+      trackEvent('lead_form_submit_success'),
       trackEvent('life_step2_submit_success'),
       trackEvent(submitEvent, { submitOutcome: 'success' }),
       trackEvent('results_contact_submit', {
@@ -6723,11 +6727,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
   async function flushContactFirstSuccessTracking(leadId, metaLeadEventId) {
     const trackingTasks = [
+      trackEvent('lead_form_submit_success', { variantFlow: pageVariant }),
       trackEvent('life_contact_first_submit_success'),
-      trackEvent('life_contact_first_complete', { variantFlow: 'contact_first_education' }),
-      trackEvent('life_step2_submit_success', { variantFlow: 'contact_first_education' }),
-      trackEvent(submitEvent, { submitOutcome: 'success', variantFlow: 'contact_first_education' }),
-      trackFormSubmitOutcome('success', { variantFlow: 'contact_first_education' }),
+      trackEvent('life_contact_first_complete', { variantFlow: pageVariant }),
+      trackEvent('life_step2_submit_success', { variantFlow: pageVariant }),
+      trackEvent(submitEvent, { submitOutcome: 'success', variantFlow: pageVariant }),
+      trackFormSubmitOutcome('success', { variantFlow: pageVariant }),
       trackMetaLeadSuccess(leadId, metaLeadEventId)
     ];
 
@@ -7408,9 +7413,40 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     primaryCtaTargets.forEach((target) => observer.observe(target));
   }
 
+  function installFirstQuestionVisibilityTracking() {
+    if (!(firstQuestionElement instanceof HTMLElement)) {
+      return;
+    }
+
+    if (!('IntersectionObserver' in window)) {
+      if (!tracksContactFirstFlow) {
+        trackFirstQuestionViewOnce();
+      }
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting || firstQuestionViewTracked) {
+          return;
+        }
+
+        trackFirstQuestionViewOnce();
+        observer.disconnect();
+      });
+    }, {
+      threshold: 0.6
+    });
+
+    observer.observe(firstQuestionElement);
+  }
+
   function handleStartCtaClick(startSource) {
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
+    if (!('IntersectionObserver' in window)) {
+      trackFirstQuestionViewOnce();
+    }
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
     focusFunnelPanel(activeTarget, {
       behavior: 'smooth'
@@ -7425,6 +7461,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   });
 
   installPrimaryCtaVisibilityTracking();
+  installFirstQuestionVisibilityTracking();
   updateStickyPrimaryCtaVisibility();
   window.addEventListener('scroll', updateStickyPrimaryCtaVisibility, { passive: true });
   window.addEventListener('resize', updateStickyPrimaryCtaVisibility);
@@ -7560,9 +7597,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
     if (options.trackView !== false) {
       trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
-      if (bounded === 0) {
-        trackFirstQuestionViewOnce();
-      }
     }
 
     persistFunnelState();
@@ -7690,6 +7724,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       await trackEstimateSummaryView(latestEstimatePreview);
     }
     if (options.trackView !== false) {
+      trackContactStepViewOnce({
+        handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
+      });
       trackEvent('estimate_contact_continue', {
         handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
       });
@@ -7783,8 +7820,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return '/ThankYou';
   }
 
-  if (isContactFirstEducationVariant) {
-    trackEvent('life_contact_first_view', { variantFlow: 'contact_first_education' });
+  if (tracksContactFirstFlow) {
+    trackEvent('life_contact_first_view', { variantFlow: pageVariant });
   }
 
   function queueMicroAdvance(expectedStep, nextStep) {
@@ -7802,6 +7839,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         syncStepOneAnswersFromUI();
         persistFunnelState();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
+        if (groupName === firstDiscoveryFieldName) {
+          trackFirstQuestionAnsweredOnce(radio.value, radio.dataset.label || radio.value);
+        }
         trackQuoteStepComplete(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         void ensureQuoteStartTracked({ startSource: `${groupName}_change`, fieldName: groupName, choiceCode: radio.value });
         void ensureMetaLeadFormStart();
@@ -7831,6 +7871,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       syncStepOneAnswersFromUI();
       persistFunnelState();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      if (firstDiscoveryFieldName === 'CoverageGoal') {
+        trackFirstQuestionAnsweredOnce(radio.value, radio.dataset.label || radio.value);
+      }
       trackQuoteStepComplete('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
       void ensureQuoteStartTracked({ startSource: 'CoverageGoal_change', fieldName: 'CoverageGoal', choiceCode: radio.value });
       void ensureMetaLeadFormStart();
@@ -8009,10 +8052,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       return;
     }
 
-    if (isContactFirstEducationVariant) {
-      trackEvent('life_contact_first_submit_attempt', { variantFlow: 'contact_first_education' });
+    const submitTrackingMetadata = {
+      handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
+      recommendationPrimaryKey: estimatePreview?.primary?.policyKey || recPrimaryKeyEl?.value || '',
+      recommendationSecondaryKey: estimatePreview?.secondary?.policyKey || recSecondaryKeyEl?.value || ''
+    };
+
+    if (tracksContactFirstFlow) {
+      trackEvent('life_contact_first_submit_attempt', { variantFlow: pageVariant });
     }
-    trackEvent('life_step2_submit_attempt');
+    trackEvent('lead_form_submit_attempt', submitTrackingMetadata);
+    trackEvent('life_step2_submit_attempt', submitTrackingMetadata);
     form._trackSubmitAttempt?.(true, 0);
     if (submitBtn) {
       submitBtn.disabled = true;
@@ -8046,7 +8096,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
       metaSignal?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
       form._trackSubmitSuccess?.();
-      if (isContactFirstEducationVariant) {
+      if (tracksContactFirstFlow) {
         await flushContactFirstSuccessTracking(leadId, metaLeadEventId);
       } else {
         await flushSuccessTracking(leadId, metaLeadEventId);
@@ -8058,6 +8108,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         lifeError.textContent = 'We could not send this right now. Please try again.';
         lifeError.style.display = 'block';
       }
+      trackEvent('lead_form_submit_failure', {
+        handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
+        errorMessage: err instanceof Error ? err.message : 'submit_failed'
+      });
       trackFormSubmitOutcome('error');
     } finally {
       if (submitBtn) {

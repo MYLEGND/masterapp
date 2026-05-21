@@ -342,7 +342,7 @@
 
   function buildRecommendationTier(preview) {
     if (preview.displayMode === 'comparison' && preview.secondary && preview.secondary.policyKey) {
-      return 'Strong match';
+      return 'Likely first option';
     }
 
     return 'Likely fit';
@@ -383,8 +383,8 @@
     }
 
     return preview.displayMode === 'comparison' && preview.secondary && preview.secondary.policyKey
-      ? 'Recommended First'
-      : 'Your Likely Fit';
+      ? 'Likely First Option'
+      : 'Likely Fit';
   }
 
   function buildCommonStartingPointCopy(preview) {
@@ -461,7 +461,6 @@
     const profileSignalsHtml = buildProfileSignalsHtml(normalized);
     const recommendedCoverageRange = buildRecommendedCoverageRange(normalized);
     const secondaryNoteHtml = hasSecondary
-      ? `<div class="lq-contact-estimate-alt">Also worth comparing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
       ? `<div class="lq-contact-estimate-alt">Also worth reviewing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
       : '';
 

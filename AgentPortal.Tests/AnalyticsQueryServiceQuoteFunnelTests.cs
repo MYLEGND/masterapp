@@ -113,8 +113,11 @@ public class AnalyticsQueryServiceQuoteFunnelTests
 
         db.AnalyticsEvents.AddRange(
             E("quote_landing_view", now.AddMinutes(-20), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("primary_cta_seen", now.AddMinutes(-19.5), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
             E("life_contact_first_view", now.AddMinutes(-19), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
             E("life_contact_first_start", now.AddMinutes(-18), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("first_question_view", now.AddMinutes(-17.5), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("first_question_answered", now.AddMinutes(-17.25), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
             E("estimate_results_viewed", now.AddMinutes(-17), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
             E("estimate_contact_continue", now.AddMinutes(-16), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
             E("life_step2_submit_attempt", now.AddMinutes(-15), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing")
@@ -127,6 +130,9 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(1, dto.QuoteStarts);
         Assert.Equal(1, dto.QuoteFormStarts);
         Assert.Equal(1, dto.QuoteSubmitAttempts);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "primary_cta_seen" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_answered" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
     }

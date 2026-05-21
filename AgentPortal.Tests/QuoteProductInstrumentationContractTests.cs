@@ -75,6 +75,25 @@ public class QuoteProductInstrumentationContractTests
         Assert.Contains("AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent", controller, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void GeneralLifeLowFrictionVariant_ExposesConversionFocusedHeroAndExplicitFunnelEvents()
+    {
+        var repoRoot = GetRepoRoot();
+        var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
+        var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
+
+        Assert.Contains("low_friction_options_v1", controller, StringComparison.Ordinal);
+        Assert.Contains("data-life-funnel-start=\"true\"", view, StringComparison.Ordinal);
+        Assert.Contains("primary_cta_seen", view, StringComparison.Ordinal);
+        Assert.Contains("first_question_view", view, StringComparison.Ordinal);
+        Assert.Contains("first_question_answered", view, StringComparison.Ordinal);
+        Assert.Contains("contact_step_view", view, StringComparison.Ordinal);
+        Assert.Contains("lead_form_submit_attempt", view, StringComparison.Ordinal);
+        Assert.Contains("lead_form_submit_success", view, StringComparison.Ordinal);
+        Assert.Contains("lead_form_submit_failure", view, StringComparison.Ordinal);
+        Assert.Contains("What you’ll get first", view, StringComparison.Ordinal);
+    }
+
     private static string Read(string repoRoot, params string[] parts)
     {
         return File.ReadAllText(Path.Combine(parts.Prepend(repoRoot).ToArray()));

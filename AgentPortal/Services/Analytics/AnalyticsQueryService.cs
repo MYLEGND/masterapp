@@ -1336,8 +1336,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var stageMetrics = new List<QuoteStageMetricRow>
         {
             new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
+            new() { StageKey = "primary_cta_seen", Label = "Primary CTA Seen", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "primary_cta_seen") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, e => IsQuoteScopeEvent(e) && (e.EventType == "quote_click" || e.EventType == "quote_cta_click" || e.EventType == "cta_click")) },
             new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
+            new() { StageKey = "first_question_viewed", Label = "First Question Viewed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_view") && IsQuoteScopeEvent(e)) },
+            new() { StageKey = "first_question_answered", Label = "First Question Answered", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select") },
             new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select") },
             new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue") },

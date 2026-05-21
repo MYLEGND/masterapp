@@ -23,6 +23,9 @@ public class AnalyticsEventCatalogTests
         "successful_event",
         "visibility_hidden",
         "visibility_visible",
+        "contact_first_education",
+        "contact_first_education_v1",
+        "low_friction_options_v1",
         "quote_auto",
         "quote_commercial",
         "quote_disability",
@@ -42,6 +45,10 @@ public class AnalyticsEventCatalogTests
     {
         var requiredEvents = new[]
         {
+            "primary_cta_seen",
+            "first_question_view",
+            "first_question_answered",
+            "contact_step_view",
             "life_step1_coverage_select",
             "life_contact_first_view",
             "life_contact_first_start",
@@ -50,8 +57,10 @@ public class AnalyticsEventCatalogTests
             "estimate_contact_continue",
             "estimate_inline_contact_view",
             "lead_form_start",
+            "lead_form_submit_attempt",
             "form_submit_attempt",
             "lead_form_submit_success",
+            "lead_form_submit_failure",
             "form_abandon",
             "quote_cta_click",
             "quote_landing_view",
@@ -216,6 +225,23 @@ public class AnalyticsEventCatalogTests
         if (value is "cta_click" or "quote_click" or "outbound_click" or "risk_assessment_click" or "page_view" or "thank_you_view")
         {
             return true;
+        }
+
+        if (value.StartsWith("primary_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_seen", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_click", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("first_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_answered", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("contact_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase);
         }
 
         if (value.StartsWith("quote_", StringComparison.OrdinalIgnoreCase))
