@@ -761,11 +761,11 @@
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = "Start here";
-    var step1IntroHelper = "Pick the closest fit. You’ll see your estimate before sharing contact info.";
+    var step1IntroHelper = "Pick the closest fit. Answer 5 quick questions to see what may fit and your estimate.";
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         step1IntroTitle = "Start with 5 quick questions";
-        step1IntroHelper = "You’ll see what may fit before deciding whether you want a personal review.";
+        step1IntroHelper = "Answer 5 quick questions to see what may fit and your starting estimate.";
     }
     var requiredContactFieldNames = isContactFirstEducationVariant
         ? new[] { "FirstName", "LastName", "Phone" }
@@ -5358,7 +5358,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <div class="lq-contact-first-form-surface lq-contact-first-flow-surface">
                             @if (isLowFrictionOptionsVariant)
                             {
-                                <div class="lq-low-friction-value-strip" aria-label="What you get before sharing contact information">
+                                <div class="lq-low-friction-value-strip" aria-label="What you get from the quick estimate">
                                     <div class="lq-low-friction-value-title">What you’ll get first</div>
                                     <div class="lq-low-friction-value-chips">
                                         @foreach (var chip in lowFrictionValueChips)
