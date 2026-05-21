@@ -30,41 +30,50 @@ run_stage() {
 
 TEST_PROJECT="AgentPortal.Tests/AgentPortal.Tests.csproj"
 TEST_LOGGER="console;verbosity=minimal"
+RESTORE_ARGS=(--nologo -v minimal --disable-build-servers)
+BUILD_ARGS=(--nologo -v minimal --disable-build-servers --no-restore)
+TEST_ARGS=(--no-build --no-restore --nologo -v minimal --logger:"$TEST_LOGGER" --disable-build-servers)
+
+run_stage "restore: protect website" \
+  dotnet restore Protect-Website/ProtectWebsite.csproj "${RESTORE_ARGS[@]}"
+
+run_stage "restore: agent portal test graph" \
+  dotnet restore "$TEST_PROJECT" "${RESTORE_ARGS[@]}"
 
 run_stage "build verification: shared" \
-  dotnet build SHARED/Shared.csproj --nologo
+  dotnet build SHARED/Shared.csproj "${BUILD_ARGS[@]}"
 
 run_stage "build verification: protect website" \
-  dotnet build Protect-Website/ProtectWebsite.csproj --nologo
+  dotnet build Protect-Website/ProtectWebsite.csproj "${BUILD_ARGS[@]}"
 
 run_stage "build verification: agent portal" \
-  dotnet build AgentPortal/AgentPortal.csproj --nologo
+  dotnet build AgentPortal/AgentPortal.csproj "${BUILD_ARGS[@]}"
 
 run_stage "build verification: tests" \
-  dotnet build "$TEST_PROJECT" --nologo
+  dotnet build "$TEST_PROJECT" "${BUILD_ARGS[@]}"
 
 run_stage "shared catalog tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~AnalyticsEventCatalogTests"
 
 run_stage "ingest tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~AnalyticsIngestControllerTests"
 
 run_stage "quote funnel tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~AnalyticsQueryServiceQuoteFunnelTests|FullyQualifiedName~AnalyticsQueryServiceMarketingHealthTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~ThankYouMetaFallbackContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests"
 
 run_stage "attribution tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~TrafficAttributionTests|FullyQualifiedName~LeadSnapshotAttributionTests"
 
 run_stage "meta signal tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~MetaSignalContractTests"
 
 run_stage "ai review contract tests" \
-  dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
+  dotnet test "$TEST_PROJECT" "${TEST_ARGS[@]}" \
     --filter "FullyQualifiedName~WebsiteAnalyticsAiContractTests|FullyQualifiedName~WebsiteAnalyticsAiRedactorTests"
 
 echo "[marketing-health] overall result: PASS (${SECONDS}s elapsed)"
