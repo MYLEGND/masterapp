@@ -70,7 +70,7 @@ public static class AnalyticsEventCatalog
         Define("capi_event_failure", "meta", AllQuotes, "meta", critical: true, allowServer: true, dashboardMetrics: ["capi_event_failure"]),
         Define(ClientTrackingErrorEventName, "diagnostic", AllQuotes, "diagnostic", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["tracking_error", "tracking_health"]),
 
-        Define("disability_quote_step1_view", "quote", ["disability"], "discovery", funnelStart: true, formStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["step_view", "funnel_start"]),
+        Define("disability_quote_step1_view", "quote", ["disability"], "discovery", critical: true, allowBrowser: true, dashboardMetrics: ["step_view"]),
         Define("disability_quote_contact_step_view", "quote", ["disability"], "contact", contactStep: true, critical: true, allowBrowser: true, dashboardMetrics: ["contact_step_view", "quote_contact_step_view"]),
 
         Define("life_general_form_start", "quote", LifeQuotes, "form", funnelStart: true, formStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["form_start", "funnel_start"]),
@@ -85,9 +85,9 @@ public static class AnalyticsEventCatalog
         Define("life_finalexpense_submit", "quote", ["finalexpense"], "submit", submitAttempt: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
         Define("life_mp_submit", "quote", ["mortgage"], "submit", submitAttempt: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
         Define("life_iul_submit", "quote", ["iul"], "submit", submitAttempt: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
-        Define("life_step1_intro_view", "quote", LifeQuotes, "discovery", funnelStart: true, formStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["form_shell_view", "first_question_view", "funnel_start"]),
-        Define("first_question_view", "quote", AllQuotes, "discovery", funnelStart: true, formStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["first_question_view", "funnel_start"]),
-        Define("life_step1_goal_view", "quote", LifeQuotes, "discovery", funnelStart: true, meta: true, allowBrowser: true, dashboardMetrics: ["first_question_view", "step_view"]),
+        Define("life_step1_intro_view", "quote", LifeQuotes, "discovery", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["form_shell_view", "first_question_view"]),
+        Define("first_question_view", "quote", AllQuotes, "discovery", critical: true, allowBrowser: true, dashboardMetrics: ["first_question_view"]),
+        Define("life_step1_goal_view", "quote", LifeQuotes, "discovery", meta: true, allowBrowser: true, dashboardMetrics: ["first_question_view", "step_view"]),
         Define("first_question_answered", "quote", AllQuotes, "discovery", funnelStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["first_question_answered", "quote_step_complete"]),
         Define("life_step1_goal_select", "quote", LifeQuotes, "discovery", funnelStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["first_question_answered", "quote_step_complete"]),
         Define("goal_completed", "quote", LifeQuotes, "discovery", critical: true, allowBrowser: true, dashboardMetrics: ["quote_step_complete"]),

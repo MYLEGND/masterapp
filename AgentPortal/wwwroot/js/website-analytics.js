@@ -884,6 +884,7 @@
     setText('quote-form-starts', data.quoteFormStarts);
     setText('quote-form-submits', data.quoteFormSubmits);
     const drop = data.dropOffFormStartsToSubmits ?? (data.quoteFormStarts > 0 ? Math.round((1 - (data.quoteFormSubmits / data.quoteFormStarts)) * 100) : null);
+    const startMix = formatQuoteStartMix(data?.ctaStartCount, data?.directFormStartCount);
     const meta = document.getElementById('mod-quote-meta');
     if (meta) {
       const breakdown = formatAttributionBreakdown(
@@ -891,10 +892,18 @@
         data?.nonPaidStartCount,
         data?.unknownStartCount,
         'start');
-      if (drop !== null && breakdown) {
+      if (drop !== null && startMix && breakdown) {
+        meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads · ${startMix} · ${breakdown}`;
+      } else if (drop !== null && startMix) {
+        meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads · ${startMix}`;
+      } else if (drop !== null && breakdown) {
         meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads · ${breakdown}`;
       } else if (drop !== null) {
         meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads`;
+      } else if (startMix && breakdown) {
+        meta.textContent = `${startMix} · ${breakdown}`;
+      } else if (startMix) {
+        meta.textContent = startMix;
       } else if (breakdown) {
         meta.textContent = breakdown;
       } else {
@@ -908,12 +917,19 @@
         data?.nonPaidStartCount,
         data?.unknownStartCount,
         'start');
+      const definition = startMix
+        ? `Starts = explicit CTA clicks or form-entry starts. ${startMix}.`
+        : 'Starts = explicit CTA clicks or form-entry starts.';
       if (data.dropOffStartsToFormStarts != null && breakdown) {
-        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${breakdown}`;
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition} ${breakdown}`;
+      } else if (data.dropOffStartsToFormStarts != null && startMix) {
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
       } else if (data.dropOffStartsToFormStarts != null) {
-        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}%`;
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
+      } else if (breakdown) {
+        meta2.textContent = `${definition} ${breakdown}`;
       } else {
-        meta2.textContent = breakdown || '';
+        meta2.textContent = definition;
       }
     }
     renderTable('quote-stage-body', data.stageMetrics || [], [
@@ -1562,6 +1578,15 @@
 
     const plural = (value) => Number(value) === 1 ? noun : `${noun}s`;
     return `Attribution split: Paid ${paid} · Non-Ads ${nonPaid} · Unknown ${unknown} ${plural(unknown)}`;
+  }
+
+  function formatQuoteStartMix(ctaStarts, directFormStarts) {
+    const cta = Number(ctaStarts ?? 0);
+    const direct = Number(directFormStarts ?? 0);
+    if (cta <= 0 && direct <= 0) {
+      return '';
+    }
+    return `Start mix: CTA ${cta} · Direct/Form-entry ${direct}`;
   }
 
   function replaceElementWithTextBlock(element, text) {

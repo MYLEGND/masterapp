@@ -69,6 +69,8 @@ public sealed class QuoteFunnelDto
     public int QuoteFormStarts { get; set; }
     public int QuoteSubmitAttempts { get; set; }
     public int QuoteFormSubmits { get; set; }
+    public int CtaStartCount { get; set; }
+    public int DirectFormStartCount { get; set; }
     public int PaidStartCount { get; set; }
     public int NonPaidStartCount { get; set; }
     public int UnknownStartCount { get; set; }

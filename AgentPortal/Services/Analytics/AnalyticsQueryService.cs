@@ -424,9 +424,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        // Funnel starts must come from intentional entry signals only. Later-stage progress,
-        // recommendation/contact views, submit attempts, and success aliases are counted in
-        // their own stages so they cannot backfill the funnel-start denominator.
+        // Funnel starts must come from intentional entry signals only. Passive intro/question
+        // visibility, later-stage progress, recommendation/contact views, submit attempts,
+        // and success aliases are counted in their own stages so they cannot backfill the
+        // funnel-start denominator.
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start");
     }
 
@@ -453,6 +454,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(BuildInteractionUnitKey)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
+    }
+
+    private static HashSet<string> BuildDistinctUnitKeySet(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, bool> predicate)
+    {
+        return events
+            .Where(predicate)
+            .Select(BuildInteractionUnitKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private static string? InferQuoteTypeFromKey(string? key)
@@ -1605,6 +1614,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var startBucketCounts = CountDistinctUnitsByReportingBucket(
             allAttributedRows,
             e => IsQuoteCtaIntentEvent(e) || IsQuoteFunnelStartSignalEvent(e));
+        var ctaStartKeys = BuildDistinctUnitKeySet(events, IsQuoteCtaIntentEvent);
+        var formStartKeys = BuildDistinctUnitKeySet(events, IsQuoteFunnelStartSignalEvent);
+        var directFormStartCount = formStartKeys.Count - formStartKeys.Intersect(ctaStartKeys, StringComparer.OrdinalIgnoreCase).Count();
 
         int starts = CountQuoteIntentStarts(events);
         int formStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
@@ -1654,6 +1666,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             QuoteFormStarts = formStarts,
             QuoteSubmitAttempts = submitAttempts,
             QuoteFormSubmits = formSubmits,
+            CtaStartCount = ctaStartKeys.Count,
+            DirectFormStartCount = Math.Max(0, directFormStartCount),
             ByQuoteType = byType,
             StageMetrics = stageMetrics,
             RangeLabel = range.Label,

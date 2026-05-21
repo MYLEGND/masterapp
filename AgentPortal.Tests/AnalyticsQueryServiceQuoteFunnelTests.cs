@@ -101,6 +101,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(4, dto.QuoteStarts);
         Assert.Equal(3, dto.QuoteFormStarts);
         Assert.Equal(2, dto.QuoteFormSubmits);
+        Assert.Equal(2, dto.CtaStartCount);
+        Assert.Equal(2, dto.DirectFormStartCount);
         Assert.Equal(25.00m, dto.DropOffStartsToFormStarts);
         Assert.Equal(33.33m, dto.DropOffFormStartsToSubmits);
     }
@@ -130,6 +132,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(1, dto.QuoteStarts);
         Assert.Equal(1, dto.QuoteFormStarts);
         Assert.Equal(1, dto.QuoteSubmitAttempts);
+        Assert.Equal(0, dto.CtaStartCount);
+        Assert.Equal(1, dto.DirectFormStartCount);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "primary_cta_seen" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_viewed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_answered" && metric.Count == 1);
@@ -182,14 +186,33 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
-    public async Task GetQuoteFunnelAsync_FunnelStarted_OnlyCountsIntentionalEntrySignals()
+    public async Task GetQuoteFunnelAsync_FirstQuestionViewAlone_DoesNotCreateStart()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
 
         db.AnalyticsEvents.AddRange(
-            E("quote_click", now.AddMinutes(-30), "cta-only", quoteType: "life"),
-            E("first_question_view", now.AddMinutes(-29), "real-start", formKey: "quote_life_form", quoteType: "life"),
+            E("first_question_view", now.AddMinutes(-29), "question-only", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(0, dto.QuoteStarts);
+        Assert.Equal(0, dto.QuoteFormStarts);
+        Assert.Equal(0, dto.CtaStartCount);
+        Assert.Equal(0, dto.DirectFormStartCount);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_viewed" && metric.Count == 1);
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_LateStageEvents_DoNotCreateStart()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
             E("estimate_results_viewed", now.AddMinutes(-28), "late-stage-1", formKey: "quote_life_form", quoteType: "life"),
             E("contact_step_view", now.AddMinutes(-27), "late-stage-2", formKey: "quote_life_form", quoteType: "life"),
             E("lead_form_submit_success", now.AddMinutes(-26), "late-stage-3", formKey: "quote_life_form", quoteType: "life"));
@@ -198,12 +221,55 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var service = BuildService(db);
         var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
 
-        Assert.Equal(2, dto.QuoteStarts);
-        Assert.Equal(1, dto.QuoteFormStarts);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
+        Assert.Equal(0, dto.QuoteStarts);
+        Assert.Equal(0, dto.QuoteFormStarts);
+        Assert.Equal(0, dto.CtaStartCount);
+        Assert.Equal(0, dto.DirectFormStartCount);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "server_confirmed_leads" && metric.Count == 1);
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_CtaClick_CreatesStart_WithoutFormStart()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("cta_clicked", now.AddMinutes(-15), "cta-start", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(1, dto.QuoteStarts);
+        Assert.Equal(0, dto.QuoteFormStarts);
+        Assert.Equal(1, dto.CtaStartCount);
+        Assert.Equal(0, dto.DirectFormStartCount);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "cta_clicked" && metric.Count == 1);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_DirectFormEntry_CountsAsDirectFormStart_NotCtaStart()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("form_start", now.AddMinutes(-15), "direct-form", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(1, dto.QuoteStarts);
+        Assert.Equal(1, dto.QuoteFormStarts);
+        Assert.Equal(0, dto.CtaStartCount);
+        Assert.Equal(1, dto.DirectFormStartCount);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
     }
 
     [Fact]
