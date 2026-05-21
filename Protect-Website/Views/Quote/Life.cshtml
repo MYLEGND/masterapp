@@ -10,16 +10,20 @@
     var requestPath = Context?.Request?.Path.Value ?? string.Empty;
     var isLandingPage = Model.IsLandingPage;
     var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
+    const string contactFirstEducationVariant = "contact_first_education_v1";
+    const string lowFrictionOptionsVariant = "low_friction_options_v1";
     var pageVariant = string.IsNullOrWhiteSpace(Model.PageVariant)
-        ? ((isLandingPage || isLandingRoutePath) ? "contact_first_education_v1" : "website")
+        ? ((isLandingPage || isLandingRoutePath) ? contactFirstEducationVariant : "website")
         : Model.PageVariant;
-    var usesContactFirstShell = string.Equals(pageVariant, "contact_first_education_v1", StringComparison.OrdinalIgnoreCase);
+    var isContactFirstEducationVariant = string.Equals(pageVariant, contactFirstEducationVariant, StringComparison.OrdinalIgnoreCase);
+    var isLowFrictionOptionsVariant = string.Equals(pageVariant, lowFrictionOptionsVariant, StringComparison.OrdinalIgnoreCase);
+    var usesContactFirstShell = isContactFirstEducationVariant || isLowFrictionOptionsVariant;
     var isLandingView = isLandingPage || isLandingRoutePath || usesContactFirstShell;
     var offerBodyClass = $"life-offer-{cfg.OfferKey?.ToLowerInvariant()}";
     var pageMode = string.IsNullOrWhiteSpace(Model.PageMode) ? ((isLandingPage || isLandingRoutePath) ? "paid_landing" : "site_mode") : Model.PageMode;
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
     var isStandaloneLandingExperience = isLandingPage || isLandingRoutePath || isPaidLandingExperience;
-    var isContactFirstEducationVariant = usesContactFirstShell;
+    var tracksContactFirstFlow = usesContactFirstShell;
     var normalizedOfferKey = cfg.OfferKey?.Trim().ToLowerInvariant() ?? string.Empty;
     ViewData["Title"] = cfg.PageTitle;
     ViewData["PageKey"] = pageKey;
@@ -575,6 +579,13 @@
     var contactFirstProcessingHeading = "Preparing your estimated options...";
     var contactFirstProcessingHelper = "You’ll see what may fit first.";
     var contactFirstProcessingNote = "Building your estimate...";
+    var lowFrictionHeroKicker = "Explore life insurance options";
+    var lowFrictionHeroHeadline = "See what kind of life coverage may fit your family.";
+    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll get a practical starting point before deciding whether you want a personal follow-up.";
+    var lowFrictionHeroCtaText = "See My Options";
+    var lowFrictionHeroCtaNote = "Estimate first • No pressure • No obligation";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate first", "No obligation" };
+    IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A likely starting point", "A realistic monthly range", "Clear next-step guidance" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var productFocusTitle = "What this estimate is built around";
     var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
@@ -700,6 +711,32 @@
             ("Legacy planning", "Often reviewed when long-range protection and leaving something behind are both priorities.")
         };
     }
+    if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
+    {
+        stepOneContinueButtonText = "See What May Fit";
+        finalSubmitButtonText = "Send My Personalized Review";
+        finalStepHeading = "Where should I follow up with your personalized review?";
+        finalStepHelper = "No pressure. You decide what happens next.";
+        stepTwoContactTitleText = "Where should I follow up with your options?";
+        stepTwoContactCopyText = $"Share the best number and {agentDirectContactName} can walk through what may fit. Email is optional if you'd like a written copy too.";
+        heroHeadline = lowFrictionHeroHeadline;
+        heroSubheadline = lowFrictionHeroSubheadline;
+        heroTrustNote = "Estimate first • No pressure • No obligation";
+        contactFirstProofKicker = "Quick options review";
+        contactFirstProofText = "You’ll see a practical starting point before deciding whether you want personal help comparing options.";
+        contactFirstProofChips = new List<string> { "5 quick questions", "Estimate first", "You stay in control" };
+        contactFirstProcessingHeading = "Putting together your starting options...";
+        contactFirstProcessingHelper = "You’ll see a practical place to start first.";
+        contactFirstProcessingNote = "Sizing your likely fit...";
+        productFocusTitle = "What your result may compare first";
+        productFocusCopy = "Most people exploring general life insurance are really comparing which starting point may fit best before they talk with someone.";
+        productFocusCards = new List<(string Title, string Copy)>
+        {
+            ("A likely starting point", "See which coverage path may fit best based on what matters most to you right now."),
+            ("A realistic range", "Review a practical starting monthly estimate without pretending it is a final underwriting offer."),
+            ("Low-pressure next step", "Only share contact info if you want help interpreting what may fit.")
+        };
+    }
     var contactFirstBridgeText = normalizedOfferKey switch
     {
         "wholelife" => "Start my whole life estimate",
@@ -709,10 +746,19 @@
         "iul" => "Start my IUL estimate",
         _ => "Start my protection estimate"
     };
+    if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
+    {
+        contactFirstBridgeText = lowFrictionHeroCtaText;
+    }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = "Start here";
     var step1IntroHelper = "Pick the closest fit. You’ll see your estimate before sharing contact info.";
+    if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
+    {
+        step1IntroTitle = "Start with 5 quick questions";
+        step1IntroHelper = "You’ll see what may fit before deciding whether you want a personal review.";
+    }
     var requiredContactFieldNames = isContactFirstEducationVariant
         ? new[] { "FirstName", "LastName", "Phone" }
         : new[] { "FirstName", "Phone" };
@@ -4651,6 +4697,168 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 }
 
+/* Low-friction options landing variant */
+body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
+    max-width: 820px;
+}
+body.page-variant-low-friction-options-v1.life-landing .lq-header {
+    margin-bottom: 12px !important;
+}
+.lq-low-friction-hero {
+    display: grid;
+    gap: 12px;
+    text-align: left;
+}
+.lq-low-friction-hero-kicker {
+    color: rgba(240,198,109,0.88);
+    font-size: .74rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-low-friction-subtext {
+    margin: 0 !important;
+    max-width: 34ch;
+}
+.lq-low-friction-hero-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.lq-low-friction-hero-chip,
+.lq-low-friction-value-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(231,194,110,0.24);
+    background: rgba(255,244,222,0.04);
+    color: rgba(241,238,232,0.82);
+    font-size: .74rem;
+    font-weight: 820;
+    line-height: 1.2;
+}
+.lq-low-friction-hero-actions {
+    display: grid;
+    gap: 8px;
+    max-width: 320px;
+}
+.lq-low-friction-hero-cta {
+    width: 100%;
+    min-height: 60px;
+}
+.lq-low-friction-cta-note {
+    color: rgba(236,240,247,0.72);
+    font-size: .82rem;
+    font-weight: 760;
+    line-height: 1.4;
+}
+.lq-low-friction-value-strip {
+    display: grid;
+    gap: 10px;
+    padding: 14px 14px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(231,194,110,0.18);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.10), transparent 36%),
+        linear-gradient(180deg, rgba(20,31,51,0.78) 0%, rgba(12,20,34,0.78) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 14px 26px rgba(0,0,0,0.16);
+}
+.lq-low-friction-value-title {
+    color: #fff4d0;
+    font-size: .88rem;
+    font-weight: 860;
+    line-height: 1.3;
+}
+.lq-low-friction-value-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.lq-sticky-mobile-cta {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 42;
+    display: none;
+    opacity: 0;
+    transform: translateY(120%);
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+}
+.lq-sticky-mobile-cta.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.lq-sticky-mobile-cta-btn {
+    width: 100%;
+    min-height: 58px;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 18px 30px rgba(0,0,0,.30),
+        0 0 0 1px rgba(241,207,128,0.24) !important;
+}
+body.life-final-step-active .lq-sticky-mobile-cta {
+    opacity: 0 !important;
+    transform: translateY(120%) !important;
+    pointer-events: none !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
+        margin-top: 4px !important;
+        padding: 14px 12px 12px !important;
+    }
+
+    body.page-variant-low-friction-options-v1.life-landing .lq-header h1 {
+        max-width: 13.5ch !important;
+        font-size: clamp(1.34rem, 5.4vw, 1.72rem) !important;
+        line-height: 1.06 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+    }
+
+    .lq-low-friction-hero {
+        gap: 10px;
+    }
+
+    .lq-low-friction-hero-actions {
+        max-width: none;
+    }
+
+    .lq-low-friction-hero-cta {
+        min-height: 56px;
+    }
+
+    .lq-low-friction-hero-chip,
+    .lq-low-friction-value-chip {
+        font-size: .69rem;
+        min-height: 28px;
+        padding: 5px 8px;
+    }
+
+    .lq-low-friction-value-strip {
+        padding: 12px 12px 10px;
+        border-radius: 14px;
+    }
+
+    .lq-sticky-mobile-cta {
+        display: block;
+    }
+}
+
+@@media (min-width: 768px) {
+    .lq-sticky-mobile-cta {
+        display: none !important;
+    }
+}
+
 /* Final contact isolation */
 body.life-final-step-active .lq-hero-rail {
     display: none !important;
@@ -4775,7 +4983,25 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
     <div class="lq-hero-rail">
         <div class="lq-header">
-            @if (usesContactFirstShell)
+            @if (isLowFrictionOptionsVariant)
+            {
+                <div class="lq-low-friction-hero">
+                    <div class="lq-low-friction-hero-kicker">@lowFrictionHeroKicker</div>
+                    <h1 class="hero-title">@lowFrictionHeroHeadline</h1>
+                    <div class="lq-subtext lq-low-friction-subtext">@lowFrictionHeroSubheadline</div>
+                    <div class="lq-low-friction-hero-chips" aria-hidden="true">
+                        @foreach (var chip in lowFrictionHeroChips)
+                        {
+                            <span class="lq-low-friction-hero-chip">@chip</span>
+                        }
+                    </div>
+                    <div class="lq-low-friction-hero-actions">
+                        <button type="button" class="btn-gold lq-low-friction-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">@lowFrictionHeroCtaText</button>
+                        <div class="lq-low-friction-cta-note">@lowFrictionHeroCtaNote</div>
+                    </div>
+                </div>
+            }
+            else if (usesContactFirstShell)
             {
                 <figure class="lq-hero-banner-wrap">
                     <img class="lq-hero-banner-image" src="@contactFirstBannerImageUrl" asp-append-version="true" alt="@contactFirstBannerAlt" loading="eager" />
@@ -4825,20 +5051,30 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     </div>
     @if (usesContactFirstShell)
     {
-        <div class="lq-funnel-bridge-wrap">
-            <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" data-cta="life_funnel_start" aria-label="@contactFirstBridgeText">
-                <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
-                <span class="lq-funnel-bridge-core">
-                    <span class="lq-funnel-bridge-arrow" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none">
-                            <path d="M7 8.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
-                            <path d="M7 4.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
-                        </svg>
+        @if (!isLowFrictionOptionsVariant)
+        {
+            <div class="lq-funnel-bridge-wrap">
+                <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="bridge" aria-label="@contactFirstBridgeText">
+                    <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+                    <span class="lq-funnel-bridge-core">
+                        <span class="lq-funnel-bridge-arrow" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M7 8.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M7 4.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
+                            </svg>
+                        </span>
+                        <span class="lq-funnel-bridge-copy">@contactFirstBridgeText</span>
                     </span>
-                    <span class="lq-funnel-bridge-copy">@contactFirstBridgeText</span>
-                </span>
-                <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
-            </button>
+                    <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+                </button>
+            </div>
+        }
+    }
+
+    @if (isLowFrictionOptionsVariant)
+    {
+        <div class="lq-sticky-mobile-cta" id="lifeStickyPrimaryCtaWrap" aria-hidden="true">
+            <button type="button" class="btn-gold lq-sticky-mobile-cta-btn" id="lifeStickyPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="sticky">@lowFrictionHeroCtaText</button>
         </div>
     }
 
@@ -4909,6 +5145,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         </div>
 
                         <div class="lq-contact-first-form-surface lq-contact-first-flow-surface">
+                            @if (isLowFrictionOptionsVariant)
+                            {
+                                <div class="lq-low-friction-value-strip" aria-label="What you get before sharing contact information">
+                                    <div class="lq-low-friction-value-title">What you’ll get first</div>
+                                    <div class="lq-low-friction-value-chips">
+                                        @foreach (var chip in lowFrictionValueChips)
+                                        {
+                                            <span class="lq-low-friction-value-chip">@chip</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
                             <div class="lq-step-panel lq-step1-panel lq-contact-first-wizard-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
                                     @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
@@ -5207,9 +5455,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name <span style="color:#f87171">*</span></label>
-                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" required />
-                                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
+                                                <label for="LastName">Last Name@(isContactFirstEducationVariant ? Html.Raw(" <span style=\"color:#f87171\">*</span>") : Html.Raw(" (optional)"))</label>
+                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" @(isContactFirstEducationVariant ? "required" : null) />
+                                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
                                             </div>
                                         </div>
                                         <div class="lq-field-row two full">
@@ -5776,7 +6024,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   if (!form) return;
 
   const contactFirstPanel = document.getElementById('lifeEducationContactPanel');
-  const funnelBridgeBtn = document.getElementById('lifeFunnelBridge');
+  const startCtaButtons = Array.from(document.querySelectorAll('[data-life-funnel-start]'));
+  const primaryCtaTargets = Array.from(document.querySelectorAll('[data-primary-cta]'));
+  const stickyPrimaryCtaWrap = document.getElementById('lifeStickyPrimaryCtaWrap');
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
@@ -5826,6 +6076,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const hasServerErrors = '@(ViewData.ModelState.ErrorCount > 0 ? "true" : "false")' === 'true';
   const hasAgentTrustProfile = '@(showAgentTrustCard ? "true" : "false")' === 'true';
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
+  const isLowFrictionOptionsVariant = '@(isLowFrictionOptionsVariant ? "true" : "false")' === 'true';
+  const tracksContactFirstFlow = '@(tracksContactFirstFlow ? "true" : "false")' === 'true';
   const agentDirectContactName = @Html.Raw(JsonSerializer.Serialize(agentDirectContactName));
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
@@ -5877,6 +6129,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let latestEstimatePreview = null;
   let estimatePreviewPromise = null;
   let isRestoringFunnelState = false;
+  let primaryCtaSeenTracked = false;
+  let firstQuestionViewTracked = false;
+  let firstQuestionAnsweredTracked = false;
+  let contactStepViewTracked = false;
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
@@ -6285,14 +6541,14 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     quoteStartTracked = true;
-    if (!isContactFirstEducationVariant) {
+    if (!tracksContactFirstFlow) {
       return trackQuoteStart(metadata);
     }
 
     return Promise.allSettled([
       trackQuoteStart(metadata),
       trackEvent('life_contact_first_start', {
-        variantFlow: 'contact_first_education',
+        variantFlow: pageVariant,
         ...metadata
       })
     ]).then(() => undefined);
@@ -6313,6 +6569,52 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         ...metadata
       })
     }) ?? Promise.resolve();
+  }
+
+  function trackPrimaryCtaSeenOnce(placement) {
+    if (primaryCtaSeenTracked) {
+      return;
+    }
+
+    primaryCtaSeenTracked = true;
+    trackEvent('primary_cta_seen', {
+      placement: placement || 'hero'
+    });
+  }
+
+  function trackFirstQuestionViewOnce() {
+    if (firstQuestionViewTracked) {
+      return;
+    }
+
+    firstQuestionViewTracked = true;
+    trackEvent('first_question_view', {
+      questionField: '@firstDiscoveryFieldName',
+      questionId: '@firstDiscoveryQuestionId'
+    });
+  }
+
+  function trackFirstQuestionAnsweredOnce(choiceCode, choiceLabel) {
+    if (firstQuestionAnsweredTracked) {
+      return;
+    }
+
+    firstQuestionAnsweredTracked = true;
+    trackEvent('first_question_answered', {
+      questionField: '@firstDiscoveryFieldName',
+      questionId: '@firstDiscoveryQuestionId',
+      choiceCode: choiceCode || '',
+      choiceLabel: choiceLabel || ''
+    });
+  }
+
+  function trackContactStepViewOnce(metadata = {}) {
+    if (contactStepViewTracked) {
+      return;
+    }
+
+    contactStepViewTracked = true;
+    trackEvent('contact_step_view', metadata);
   }
 
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
@@ -6889,6 +7191,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (heroTrustStrip) {
       heroTrustStrip.hidden = activePanel === step2Panel;
     }
+    updateStickyPrimaryCtaVisibility();
     persistFunnelState();
   }
 
@@ -7056,14 +7359,75 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
   }
 
-  funnelBridgeBtn?.addEventListener('click', () => {
-    void ensureQuoteStartTracked({ startSource: 'bridge_click' });
-    void ensureMetaLeadFormStart({ startSource: 'bridge_click' });
+  function updateStickyPrimaryCtaVisibility() {
+    if (!(stickyPrimaryCtaWrap instanceof HTMLElement) || !isLowFrictionOptionsVariant) {
+      return;
+    }
+
+    const isMobileViewport = window.matchMedia('(max-width: 767.98px)').matches;
+    if (!isMobileViewport || document.body.classList.contains('life-final-step-active')) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
+      return;
+    }
+
+    const targetPanel = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
+    if (!(targetPanel instanceof HTMLElement)) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
+      return;
+    }
+
+    const rect = targetPanel.getBoundingClientRect();
+    const panelVisible = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.18;
+    stickyPrimaryCtaWrap.classList.toggle('is-visible', !panelVisible);
+  }
+
+  function installPrimaryCtaVisibilityTracking() {
+    if (!primaryCtaTargets.length) {
+      return;
+    }
+
+    if (!('IntersectionObserver' in window)) {
+      trackPrimaryCtaSeenOnce('fallback');
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting || primaryCtaSeenTracked) {
+          return;
+        }
+
+        const placement = entry.target.getAttribute('data-primary-cta') || 'hero';
+        trackPrimaryCtaSeenOnce(placement);
+        observer.disconnect();
+      });
+    }, {
+      threshold: 0.65
+    });
+
+    primaryCtaTargets.forEach((target) => observer.observe(target));
+  }
+
+  function handleStartCtaClick(startSource) {
+    void ensureQuoteStartTracked({ startSource });
+    void ensureMetaLeadFormStart({ startSource });
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
     focusFunnelPanel(activeTarget, {
       behavior: 'smooth'
     });
+  }
+
+  startCtaButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const placement = button.getAttribute('data-primary-cta') || 'bridge';
+      handleStartCtaClick(`${placement}_click`);
+    });
   });
+
+  installPrimaryCtaVisibilityTracking();
+  updateStickyPrimaryCtaVisibility();
+  window.addEventListener('scroll', updateStickyPrimaryCtaVisibility, { passive: true });
+  window.addEventListener('resize', updateStickyPrimaryCtaVisibility);
 
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
@@ -7196,6 +7560,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
     if (options.trackView !== false) {
       trackEvent(microStepViewEvents[bounded], { microStep: bounded + 1 });
+      if (bounded === 0) {
+        trackFirstQuestionViewOnce();
+      }
     }
 
     persistFunnelState();

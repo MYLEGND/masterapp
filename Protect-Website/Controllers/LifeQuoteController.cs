@@ -30,6 +30,7 @@ namespace Protect_Website.Controllers
         private const string WebsitePageVariant = "website";
         private const string LandingPageVariant = "landing";
         private const string ContactFirstEducationLandingVariant = "contact_first_education_v1";
+        private const string LowFrictionOptionsLandingVariant = "low_friction_options_v1";
 
         private readonly string tenantId;
         private readonly string clientId;
@@ -1536,6 +1537,12 @@ namespace Protect_Website.Controllers
             if (string.Equals(normalizedVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(normalizedVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase))
                 return ContactFirstEducationLandingVariant;
+
+            if (string.Equals(normalizedVariant, LowFrictionOptionsLandingVariant, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(LifeOfferResolver.Normalize(offerKey), LifeOfferKeys.Life, StringComparison.OrdinalIgnoreCase))
+            {
+                return LowFrictionOptionsLandingVariant;
+            }
 
             return null;
         }
