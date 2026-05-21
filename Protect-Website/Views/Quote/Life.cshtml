@@ -587,6 +587,8 @@
     IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate first", "No obligation" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A likely starting point", "A realistic monthly range", "Clear next-step guidance" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
+    var isGeneralLifeOffer = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
+    var showCarrierReviewBeforeContact = !isGeneralLifeOffer;
     var productFocusTitle = "What this estimate is built around";
     var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
@@ -595,6 +597,15 @@
         ("Relevant tradeoffs", "Review the main tradeoffs that matter for this protection path, not every life product."),
         ("Clear next steps", "Keep the walkthrough focused on what may fit without extra product noise.")
     };
+
+    if (isGeneralLifeOffer)
+    {
+        stepTwoContactTitleText = "Want help reviewing whether this actually fits?";
+        stepTwoContactCopyText = "We’ll walk through what influenced the estimate and what may be worth comparing next.";
+        finalStepHeading = "Your estimate is ready";
+        finalStepHelper = "You already have an estimated monthly range and a practical starting coverage range.";
+        finalSubmitButtonText = "Get My Personal Review";
+    }
 
     if (normalizedOfferKey == "wholelife")
     {
@@ -2796,6 +2807,76 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-contact-estimate-card-wrap .lq-estimate-card {
     height: auto;
 }
+.lq-contact-estimate-wrap.is-general-life-lite {
+    gap: 10px;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-rec-card {
+    padding: 16px 16px 15px;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-estimate-card-top {
+    justify-content: flex-start;
+    margin-bottom: 6px;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-estimate-coverage,
+.lq-contact-estimate-wrap.is-general-life-lite .lq-estimate-reason,
+.lq-contact-estimate-wrap.is-general-life-lite .lq-rec-bullets {
+    display: none;
+}
+.lq-contact-estimate-product {
+    color: #fff7df;
+    font-size: 1.26rem;
+    font-weight: 920;
+    line-height: 1.12;
+    letter-spacing: -0.02em;
+}
+.lq-contact-estimate-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+.lq-contact-estimate-metric {
+    display: grid;
+    gap: 4px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background: rgba(11,19,34,0.56);
+    text-align: center;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 9px 18px rgba(0,0,0,0.12);
+}
+.lq-contact-estimate-metric-label {
+    color: rgba(248,250,252,0.56);
+    font-size: .68rem;
+    font-weight: 820;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-metric-value {
+    color: #fff7df;
+    font-size: 1rem;
+    font-weight: 920;
+    line-height: 1.2;
+}
+.lq-contact-estimate-signal.is-general-life-lite {
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-contact-estimate-signal-copy {
+    font-size: .86rem;
+    text-align: center;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-contact-estimate-chips {
+    gap: 7px;
+}
+.lq-contact-estimate-wrap.is-general-life-lite .lq-estimate-disclaimer {
+    font-size: .76rem;
+}
 .lq-contact-estimate-alt {
     text-align: center;
     color: rgba(232,238,247,0.72);
@@ -2920,6 +3001,19 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
     .lq-contact-estimate-copy,
     .lq-contact-estimate-alt {
         font-size: .8rem;
+    }
+    .lq-contact-estimate-product {
+        font-size: 1.08rem;
+    }
+    .lq-contact-estimate-metrics {
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .lq-contact-estimate-metric {
+        padding: 10px 10px 9px;
+    }
+    .lq-contact-estimate-metric-value {
+        font-size: .92rem;
     }
 }
 @@media (max-width: 767.98px) {
@@ -5553,21 +5647,24 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                                         </div>
-                                        <div class="full">
-                                            @if (showCarrierDisclosure)
-                                            {
-                                                <details class="lq-carrier-disclosure">
-                                                    <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
-                                                    <div class="lq-carrier-disclosure-body">
-                                                        @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
-                                                    </div>
-                                                </details>
-                                            }
-                                            else
-                                            {
-                                                @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
-                                            }
-                                        </div>
+                                        @if (showCarrierReviewBeforeContact)
+                                        {
+                                            <div class="full">
+                                                @if (showCarrierDisclosure)
+                                                {
+                                                    <details class="lq-carrier-disclosure">
+                                                        <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
+                                                        <div class="lq-carrier-disclosure-body">
+                                                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                                        </div>
+                                                    </details>
+                                                }
+                                                else
+                                                {
+                                                    @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                                }
+                                            </div>
+                                        }
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
                                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
@@ -6002,21 +6099,24 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                         </div>
-                        <div class="full">
-                            @if (showCarrierDisclosure)
-                            {
-                                <details class="lq-carrier-disclosure">
-                                    <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
-                                    <div class="lq-carrier-disclosure-body">
-                                        @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
-                                    </div>
-                                </details>
-                            }
-                            else
-                            {
-                                @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
-                            }
-                        </div>
+                        @if (showCarrierReviewBeforeContact)
+                        {
+                            <div class="full">
+                                @if (showCarrierDisclosure)
+                                {
+                                    <details class="lq-carrier-disclosure">
+                                        <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
+                                        <div class="lq-carrier-disclosure-body">
+                                            @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                        </div>
+                                    </details>
+                                }
+                                else
+                                {
+                                    @await Html.PartialAsync("_TrustedCarrierStrip", carrierTrustContactStripModel)
+                                }
+                            </div>
+                        }
                         <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
@@ -7019,16 +7119,21 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     const topicLabel = resolveStep2TopicLabel(preview);
     const isSingleOffer = isSingleOfferEstimate(preview);
+    const isGeneralLifeEstimate = String(preview?.offerKey || quoteType || '').trim().toLowerCase() === 'life';
 
     if (step2Heading) {
-      step2Heading.textContent = isSingleOffer
+      step2Heading.textContent = isGeneralLifeEstimate
+        ? 'Your estimate is ready'
+        : isSingleOffer
         ? `Your ${topicLabel} estimate is ready`
         : 'Your estimate is ready';
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = isSingleOffer
+      step2Helper.textContent = isGeneralLifeEstimate
+        ? 'You already have an estimated monthly range and a practical starting coverage range.'
+        : isSingleOffer
         ? `You already have an estimated monthly range and a practical starting coverage range for ${topicLabel}. If you want help interpreting it, you can get the walkthrough below.`
         : 'You already have an estimated monthly range and a practical starting coverage range. If you want help interpreting it, you can get the walkthrough below.';
     }
@@ -7036,11 +7141,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const fitDescriptor = resolveStep2FitDescriptor(topicLabel);
 
     if (step2ContactTitle) {
-      step2ContactTitle.textContent = defaultStep2ContactTitleText;
+      step2ContactTitle.textContent = isGeneralLifeEstimate
+        ? 'Want help reviewing whether this actually fits?'
+        : defaultStep2ContactTitleText;
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = hasAgentTrustProfile && agentDirectContactName
+      step2ContactCopy.textContent = isGeneralLifeEstimate
+        ? 'We’ll walk through what influenced the estimate and what may be worth comparing next.'
+        : hasAgentTrustProfile && agentDirectContactName
         ? `Share your info and ${agentDirectContactName} will walk through what may fit your ${fitDescriptor}. No obligation.`
         : `Share your info and we’ll walk through what may fit your ${fitDescriptor}. No obligation.`;
     }

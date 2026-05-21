@@ -140,6 +140,10 @@
       && String(preview?.offerKey || '').trim().toLowerCase() !== 'life';
   }
 
+  function isGeneralLifePreview(preview) {
+    return String(preview?.offerKey || '').trim().toLowerCase() === 'life';
+  }
+
   function resolveOfferTopic(preview) {
     switch (String(preview?.offerKey || '').trim().toLowerCase()) {
       case 'term':
@@ -242,6 +246,18 @@
       humanizeProtectingWho(preview.protectingWho) ? `Protecting ${humanizeProtectingWho(preview.protectingWho)}` : '',
       humanizeCoverageGoal(preview.coverageGoal),
       coverageTarget ? `${coverageTarget} target` : ''
+    ].filter(Boolean);
+  }
+
+  function buildGeneralLifeSignals(preview) {
+    const protectingLabel = humanizeProtectingWho(preview.protectingWho);
+    const goalLabel = humanizeCoverageGoal(preview.coverageGoal);
+
+    return [
+      formatAgeSignal(preview),
+      humanizeTobaccoUse(preview.tobaccoUse),
+      protectingLabel ? `Protecting ${protectingLabel}` : '',
+      goalLabel
     ].filter(Boolean);
   }
 
@@ -453,8 +469,65 @@
     return `<div class="lq-contact-estimate-chips" aria-label="Profile signals">${chipsHtml}</div>`;
   }
 
+  function buildGeneralLifeSignalsHtml(preview) {
+    const signals = buildGeneralLifeSignals(preview);
+    if (signals.length === 0) {
+      return '';
+    }
+
+    const chipsHtml = signals
+      .map((signal) => `<span class="lq-contact-estimate-chip">${escapeHtml(signal)}</span>`)
+      .join('');
+
+    return `<div class="lq-contact-estimate-chips" aria-label="Estimate inputs">${chipsHtml}</div>`;
+  }
+
+  function buildGeneralLifeWhySentence(preview) {
+    const policyType = escapeHtml(preview?.primary?.policyType || 'Life Insurance');
+    return `Based on what you shared, ${policyType} looks like the clearest place to start reviewing options.`;
+  }
+
+  function buildGeneralLifeContactSummaryHtml(preview) {
+    const normalized = normalizePreview(preview);
+    const recommendedCoverageRange = buildRecommendedCoverageRange(normalized)
+      || formatCoverageFigure(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
+    const profileSignalsHtml = buildGeneralLifeSignalsHtml(normalized);
+
+    return `
+      <div class="lq-contact-estimate-wrap is-general-life-lite" id="lifeStep2EstimateSummary">
+        <div class="lq-contact-estimate-card-wrap">
+          <article class="lq-rec-card lq-estimate-card primary lq-estimate-card-compact" aria-label="Primary recommendation">
+            <div class="lq-estimate-card-top">
+              <span class="lq-rec-badge primary">${escapeHtml(buildRecommendationTier(normalized))}</span>
+            </div>
+            <div class="lq-contact-estimate-product">${escapeHtml(normalized.primary.policyType || 'Life Insurance')}</div>
+            <div class="lq-contact-estimate-metrics" aria-label="Estimate highlights">
+              <div class="lq-contact-estimate-metric">
+                <div class="lq-contact-estimate-metric-label">Estimated monthly range</div>
+                <div class="lq-contact-estimate-metric-value">${escapeHtml(formatCurrencyRangeCompact(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
+              </div>
+              <div class="lq-contact-estimate-metric">
+                <div class="lq-contact-estimate-metric-label">Recommended coverage range</div>
+                <div class="lq-contact-estimate-metric-value">${escapeHtml(recommendedCoverageRange)}</div>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div class="lq-contact-estimate-signal is-general-life-lite">
+          <div class="lq-contact-estimate-signal-copy">${buildGeneralLifeWhySentence(normalized)}</div>
+        </div>
+        ${profileSignalsHtml}
+        <div class="lq-estimate-disclaimer">Estimates are illustrative only and not a final quote.</div>
+      </div>
+    `;
+  }
+
   function buildContactSummaryHtml(preview) {
     const normalized = normalizePreview(preview);
+    if (isGeneralLifePreview(normalized)) {
+      return buildGeneralLifeContactSummaryHtml(normalized);
+    }
+
     const secondary = normalized.secondary;
     const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
     const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
