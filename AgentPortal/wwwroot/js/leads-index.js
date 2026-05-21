@@ -1998,6 +1998,15 @@ const dIntakeIds = $("#dIntakeIds");
 const dIntakeRecommendation = $("#dIntakeRecommendation");
 const dIntakeDiscovery = $("#dIntakeDiscovery");
 const dIntakeRawMeta = $("#dIntakeRawMeta");
+const dAppointmentSection = $("#dAppointmentSection");
+const dAppointmentStatus = $("#dAppointmentStatus");
+const dAppointmentTime = $("#dAppointmentTime");
+const dAppointmentSource = $("#dAppointmentSource");
+const dAppointmentTimeline = $("#dAppointmentTimeline");
+const dAppointmentMeetingLink = $("#dAppointmentMeetingLink");
+const dAppointmentCalendarLink = $("#dAppointmentCalendarLink");
+const dAppointmentStatusSelect = $("#dAppointmentStatusSelect");
+const btnSaveAppointmentStatus = $("#btnSaveAppointmentStatus");
 
 const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
@@ -2027,6 +2036,9 @@ const leadSourcePreview = $("#leadSourcePreview");
 const leadLatestIntakePreview = $("#leadLatestIntakePreview");
 const leadRecommendationPreview = $("#leadRecommendationPreview");
 const leadDiscoveryPreview = $("#leadDiscoveryPreview");
+const leadAppointmentStatusPreview = $("#leadAppointmentStatusPreview");
+const leadAppointmentTimePreview = $("#leadAppointmentTimePreview");
+const leadAppointmentSourcePreview = $("#leadAppointmentSourcePreview");
 
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
@@ -2075,6 +2087,7 @@ function leadWarningSummary(row){
 function refreshLeadOverviewSummary(){
   const row = activeLeadRow();
   const snapshot = activeClientDetail?.intakeSnapshot || null;
+  const appointment = activeClientDetail?.latestAppointment || null;
   if (leadContactStatusPreview){
     leadContactStatusPreview.textContent = contactStatusLabel(dContactStatus?.value);
   }
@@ -2104,6 +2117,15 @@ function refreshLeadOverviewSummary(){
   }
   if (leadDiscoveryPreview){
     leadDiscoveryPreview.textContent = summarizeLeadDiscovery(snapshot);
+  }
+  if (leadAppointmentStatusPreview){
+    leadAppointmentStatusPreview.textContent = summarizeLeadAppointmentStatus(appointment);
+  }
+  if (leadAppointmentTimePreview){
+    leadAppointmentTimePreview.textContent = summarizeLeadAppointmentTime(appointment);
+  }
+  if (leadAppointmentSourcePreview){
+    leadAppointmentSourcePreview.textContent = summarizeLeadAppointmentSource(appointment);
   }
 }
 
@@ -2195,6 +2217,125 @@ function summarizeLeadDiscovery(snapshot){
   return snapshot.discoveryItems
     .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
     .join(" • ");
+}
+
+function humanizeAppointmentStatus(value){
+  const raw = norm(value);
+  if (!raw) return "No appointment recorded";
+  if (raw === "NoShow") return "No Show";
+  return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function humanizeAppointmentSource(value){
+  const raw = norm(value);
+  if (!raw) return "Not tracked yet";
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatAppointmentTimestamp(value){
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? "—"
+    : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function formatAppointmentDateTimeRange(snapshot){
+  const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
+  const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
+
+  if (!start || Number.isNaN(start.getTime())){
+    return "No appointment scheduled";
+  }
+
+  if (!end || Number.isNaN(end.getTime())){
+    return start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+
+  if (sameDay){
+    return `${start.toLocaleDateString([], { dateStyle: "medium" })} • ${start.toLocaleTimeString([], { timeStyle: "short" })} - ${end.toLocaleTimeString([], { timeStyle: "short" })}`;
+  }
+
+  return `${start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} - ${end.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+}
+
+function appointmentStatusTimestampText(snapshot){
+  if (!snapshot) return "—";
+  const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
+  const value = formatAppointmentTimestamp(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
+  return value === "—" ? label : `${label} • ${value}`;
+}
+
+function summarizeLeadAppointmentStatus(snapshot){
+  return snapshot?.statusLabel || humanizeAppointmentStatus(snapshot?.status);
+}
+
+function summarizeLeadAppointmentTime(snapshot){
+  return snapshot ? formatAppointmentDateTimeRange(snapshot) : "No appointment scheduled";
+}
+
+function summarizeLeadAppointmentSource(snapshot){
+  return snapshot?.bookingSourceLabel || humanizeAppointmentSource(snapshot?.bookingSource);
+}
+
+function renderAppointmentLink(node, url, label){
+  if (!node) return;
+  const cleanUrl = norm(url);
+  if (!cleanUrl){
+    node.textContent = "—";
+    return;
+  }
+
+  node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+}
+
+function renderAppointmentSnapshot(snapshot){
+  const hasLeadLoaded = !!activeClientId;
+  const nodes = [
+    dAppointmentStatus,
+    dAppointmentTime,
+    dAppointmentSource,
+    dAppointmentTimeline,
+    dAppointmentMeetingLink,
+    dAppointmentCalendarLink
+  ];
+
+  if (dAppointmentSection) dAppointmentSection.hidden = !hasLeadLoaded;
+
+  if (!hasLeadLoaded){
+    nodes.forEach(node => { if (node) node.textContent = "—"; });
+    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
+    return;
+  }
+
+  if (!snapshot){
+    if (dAppointmentStatus) dAppointmentStatus.textContent = "No appointment recorded";
+    if (dAppointmentTime) dAppointmentTime.textContent = "No appointment scheduled";
+    if (dAppointmentSource) dAppointmentSource.textContent = "Not tracked yet";
+    if (dAppointmentTimeline) dAppointmentTimeline.textContent = "No appointment status updates yet";
+    if (dAppointmentMeetingLink) dAppointmentMeetingLink.textContent = "—";
+    if (dAppointmentCalendarLink) dAppointmentCalendarLink.textContent = "—";
+    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+    return;
+  }
+
+  if (dAppointmentStatus) dAppointmentStatus.textContent = summarizeLeadAppointmentStatus(snapshot);
+  if (dAppointmentTime) dAppointmentTime.textContent = formatAppointmentDateTimeRange(snapshot);
+  if (dAppointmentSource) dAppointmentSource.textContent = summarizeLeadAppointmentSource(snapshot);
+  if (dAppointmentTimeline) dAppointmentTimeline.textContent = appointmentStatusTimestampText(snapshot);
+  renderAppointmentLink(dAppointmentMeetingLink, snapshot.meetingUrl, "Open meeting link");
+  renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");
+  if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = snapshot.status || "Requested";
+  if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
 }
 
 function renderIntakeSnapshot(snapshot){
@@ -3928,6 +4069,7 @@ async function openDrawerForRow(row){
   renderTimeline([]);
   renderMentionNotes([]);
   renderIntakeSnapshot(null);
+  renderAppointmentSnapshot(null);
   refreshLeadOverviewSummary();
   dSaved.textContent = "Loading…";
 
@@ -4001,6 +4143,7 @@ async function openDrawerForRow(row){
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
     renderIntakeSnapshot(detail.intakeSnapshot || null);
+    renderAppointmentSnapshot(detail.latestAppointment || null);
     refreshLeadOverviewSummary();
 
     renderPortalActions(row, detail);
@@ -4009,6 +4152,7 @@ async function openDrawerForRow(row){
   }catch(err){
     console.error(err);
     renderIntakeSnapshot(null);
+    renderAppointmentSnapshot(null);
     dSaved.textContent = "Load failed";
     toast("Failed to load lead details.");
   }
@@ -4290,6 +4434,7 @@ function renderMentionNotes(items){
 function closeDrawer(){
   drawerEditing = false;
   activeClientId = null;
+  activeClientDetail = null;
   if (drawer) drawer.dataset.clientId = "";
   leadActionsLoadPromise = null;
   if (leadActionsHubModal && window.bootstrap){
@@ -4299,6 +4444,9 @@ function closeDrawer(){
   drawer.classList.remove("open");
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
+  renderIntakeSnapshot(null);
+  renderAppointmentSnapshot(null);
+  refreshLeadOverviewSummary();
   unlockPageScrollForQuickView();
 }
 function openLeadActionsHub(){
@@ -5670,6 +5818,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     dWaitingOnPill.textContent = data.waitingOnLabel || waitingLabel(data.waitingOn || "WaitingOnAgent");
     renderMentionNotes(data.collaboration?.mentionNotes || []);
     renderIntakeSnapshot(data.intakeSnapshot || activeClientDetail?.intakeSnapshot || null);
+    renderAppointmentSnapshot(data.latestAppointment || activeClientDetail?.latestAppointment || null);
     refreshLeadOverviewSummary();
     dSaved.textContent = successMessage || "Saved ✔";
   }
@@ -6823,10 +6972,17 @@ async function createCalendarEventFromDrawer(){
     const data = await postJson("/calendar/create-event", payload);
     row.dataset.sLasttouch = data.crmLastTouch || todayISO();
     hydrateRow(row);
-    activeClientDetail = { ...(activeClientDetail || {}), activities: data.activities || [], lastCalendarEventWebLink: data.webLink || "" };
+    activeClientDetail = {
+      ...(activeClientDetail || {}),
+      activities: data.activities || [],
+      lastCalendarEventWebLink: data.webLink || "",
+      latestAppointment: data.latestAppointment || activeClientDetail?.latestAppointment || null
+    };
     renderTimeline(data.activities || []);
+    renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
     dLastTouch.value = data.crmLastTouch || todayISO();
     dSaved.textContent = "Calendar event synced ✔";
+    refreshLeadOverviewSummary();
     refreshCalendarBusyPanel();
     toast("Calendar event created");
   }catch(err){
@@ -6836,6 +6992,56 @@ async function createCalendarEventFromDrawer(){
 }
 
 btnCreateCalendarEvent?.addEventListener("click", createCalendarEventFromDrawer);
+
+async function saveLeadAppointmentStatus(){
+  if (!activeClientId) return toast("Open a lead first.");
+  const nextStatus = norm(dAppointmentStatusSelect?.value);
+  if (!nextStatus) return toast("Choose an appointment status first.");
+
+  const row = rows.find(r => r.dataset.clientId === activeClientId);
+  const appointmentId = activeClientDetail?.latestAppointment?.id || null;
+  if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
+
+  try{
+    const response = await postJson("/Leads/UpdateLeadAppointmentStatus", {
+      clientUserId: activeClientId,
+      appointmentId,
+      status: nextStatus
+    });
+    const data = response?.payload || response || {};
+
+    if (row){
+      row.dataset.sLasttouch = data.crmLastTouch || row.dataset.sLasttouch || todayISO();
+      row.dataset.sNotes = data.agentNotes || data.crmNotes || row.dataset.sNotes || "";
+      row.dataset.sMeetingLocation = data.meetingLocation || row.dataset.sMeetingLocation || "";
+      row.dataset.sZoom = data.zoomJoinUrl || row.dataset.sZoom || "";
+      row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : (row.dataset.sUsezoom || "false");
+      row.dataset.sMeetingTime = data.meetingTime || row.dataset.sMeetingTime || "09:00";
+      row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
+      row.dataset.sAttemptstoday = String(data.attemptsToday ?? row.dataset.sAttemptstoday ?? 0);
+      row.dataset.sAttemptsweek = String(data.attemptsThisWeek ?? row.dataset.sAttemptsweek ?? 0);
+      row.dataset.sAttemptslife = String(data.attemptsLifetime ?? row.dataset.sAttemptslife ?? 0);
+      row.dataset.crmNotes = data.agentNotes || data.crmNotes || row.dataset.crmNotes || "";
+      hydrateRow(row);
+    }
+
+    activeClientDetail = { ...(activeClientDetail || {}), ...data };
+    if (dLastTouch) dLastTouch.value = data.crmLastTouch || dLastTouch.value || todayISO();
+    renderTimeline(data.activities || activeClientDetail?.activities || []);
+    renderIntakeSnapshot(data.intakeSnapshot || activeClientDetail?.intakeSnapshot || null);
+    renderAppointmentSnapshot(data.latestAppointment || null);
+    refreshLeadOverviewSummary();
+    dSaved.textContent = "Appointment updated ✔";
+    toast(`Appointment marked ${humanizeAppointmentStatus(nextStatus)}`);
+  }catch(err){
+    console.error(err);
+    toast(err?.message || "Appointment update failed.");
+  }finally{
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+  }
+}
+
+btnSaveAppointmentStatus?.addEventListener("click", saveLeadAppointmentStatus);
 
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){

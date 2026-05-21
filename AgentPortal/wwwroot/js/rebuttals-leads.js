@@ -589,6 +589,7 @@
     const contextStartEl = bridge.querySelector('[data-lb-context-start]');
     const contextSourceEl = bridge.querySelector('[data-lb-context-source]');
     const contextSubmittedEl = bridge.querySelector('[data-lb-context-submitted]');
+    const contextAppointmentEl = bridge.querySelector('[data-lb-context-appointment]');
     const contextMetaEl = bridge.querySelector('[data-lb-context-meta]');
     const scriptProductEl = bridge.querySelector('[data-lb-script-product]');
     const scriptSourceEl = bridge.querySelector('[data-lb-script-source]');
@@ -645,6 +646,15 @@
     const editIntakeRecommendation = document.getElementById('dIntakeRecommendation');
     const editIntakeDiscovery = document.getElementById('dIntakeDiscovery');
     const editIntakeRawMeta = document.getElementById('dIntakeRawMeta');
+    const editAppointmentSection = document.getElementById('dAppointmentSection');
+    const editAppointmentStatus = document.getElementById('dAppointmentStatus');
+    const editAppointmentTime = document.getElementById('dAppointmentTime');
+    const editAppointmentSource = document.getElementById('dAppointmentSource');
+    const editAppointmentTimeline = document.getElementById('dAppointmentTimeline');
+    const editAppointmentMeetingLink = document.getElementById('dAppointmentMeetingLink');
+    const editAppointmentCalendarLink = document.getElementById('dAppointmentCalendarLink');
+    const editAppointmentStatusSelect = document.getElementById('dAppointmentStatusSelect');
+    const editSaveAppointmentStatusBtn = document.getElementById('btnSaveAppointmentStatus');
     const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
     const drawerOutcomeButtons = Array.from(editDrawer?.querySelectorAll('.outcome-btn[data-outcome]') || []);
     const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
@@ -945,6 +955,7 @@
       applyEditDrawerLeadTypeDisplay(lead);
       syncEditDrawerHeader(lead);
       renderEditIntakeSnapshot(lead);
+      renderEditAppointmentSnapshot(lead);
       renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
       setEditStatus('Ready');
     }
@@ -1163,6 +1174,66 @@
         setEditStatus(err?.message || 'Save failed', 'bad');
       } finally {
         if (editSaveBtn) editSaveBtn.disabled = false;
+      }
+    }
+
+    async function saveEditAppointmentStatus(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      const nextStatus = String(editAppointmentStatusSelect?.value || '').trim();
+      if (!nextStatus){
+        setEditStatus('Choose an appointment status first', 'bad');
+        return;
+      }
+
+      if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = true;
+      setEditStatus('Saving appointment…');
+
+      try {
+        const res = await fetch('/Leads/UpdateLeadAppointmentStatus', withDialHeaders({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            clientUserId: lead.leadId || '',
+            appointmentId: lead?.latestAppointment?.id || null,
+            status: nextStatus
+          })
+        }));
+        if (!res.ok){
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `Appointment update failed: ${res.status}`);
+        }
+
+        const response = await res.json().catch(() => ({}));
+        const saved = response?.payload || response || {};
+        const patchLead = (item) => {
+          if (!item || item.leadId !== lead.leadId) return;
+          applyLeadPayload(item, saved);
+        };
+        baseLeads.forEach(patchLead);
+        leads.forEach(patchLead);
+        applyLeadPayload(lead, saved);
+        broadcastLeadUpdate(lead, saved);
+        populateEditDrawer({
+          ...lead,
+          ...saved,
+          zipCode: saved?.zipCode || lead?.zipCode || ''
+        });
+        showCurrent({ lead });
+        setEditStatus(`Appointment marked ${humanizeAppointmentStatus(nextStatus)}`, 'good');
+      } catch (err){
+        console.error(err);
+        setEditStatus(err?.message || 'Appointment save failed', 'bad');
+      } finally {
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
       }
     }
 
@@ -1702,6 +1773,83 @@
       return `${count} intake${count === 1 ? '' : 's'} on file`;
     }
 
+    function humanizeAppointmentStatus(value){
+      const raw = normalizeSummaryText(value);
+      if (!raw) return 'No appointment recorded';
+      if (raw === 'NoShow') return 'No Show';
+      return raw.replace(/([a-z])([A-Z])/g, '$1 $2');
+    }
+
+    function humanizeAppointmentSource(value){
+      const raw = normalizeSummaryText(value);
+      if (!raw) return 'Not tracked yet';
+      return raw
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function formatAppointmentDateTime(value){
+      if (!value) return '—';
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? '—'
+        : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function formatAppointmentRange(snapshot){
+      const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
+      const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
+
+      if (!start || Number.isNaN(start.getTime())){
+        return 'No appointment scheduled';
+      }
+
+      if (!end || Number.isNaN(end.getTime())){
+        return start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+      }
+
+      const sameDay =
+        start.getFullYear() === end.getFullYear() &&
+        start.getMonth() === end.getMonth() &&
+        start.getDate() === end.getDate();
+
+      if (sameDay){
+        return `${start.toLocaleDateString([], { dateStyle: 'medium' })} • ${start.toLocaleTimeString([], { timeStyle: 'short' })} - ${end.toLocaleTimeString([], { timeStyle: 'short' })}`;
+      }
+
+      return `${start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} - ${end.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+    }
+
+    function appointmentStatusTimestampText(snapshot){
+      if (!snapshot) return 'No appointment status updates yet';
+      const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
+      const value = formatAppointmentDateTime(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
+      return value === '—' ? label : `${label} • ${value}`;
+    }
+
+    function buildLatestAppointmentText(appointment){
+      if (!appointment){
+        return 'No appointment is linked yet.\nStatus controls stay internal until public embedded booking is turned on.';
+      }
+
+      return [
+        appointment.statusLabel || humanizeAppointmentStatus(appointment.status),
+        formatAppointmentRange(appointment),
+        appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource)
+      ].filter(Boolean).join('\n');
+    }
+
+    function renderAppointmentLink(node, url, label){
+      if (!node) return;
+      const cleanUrl = normalizeSummaryText(url);
+      if (!cleanUrl){
+        node.textContent = '—';
+        return;
+      }
+
+      node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+    }
+
     function leadFirstName(lead){
       return normalizeSummaryText(lead?.firstName) || 'there';
     }
@@ -1838,8 +1986,12 @@
     }
 
     function buildContextMetaChips(lead, snapshot){
+      const appointment = lead?.latestAppointment || null;
       if (!snapshot){
-        return ['CRM-only lead context'];
+        return [
+          'CRM-only lead context',
+          appointment?.statusLabel || ''
+        ].filter(Boolean);
       }
 
       const chips = [
@@ -1848,7 +2000,8 @@
         snapshot.sourcePageKey ? `Page ${snapshot.sourcePageKey}` : '',
         snapshot.pageVariant ? `Variant ${humanizeContextToken(snapshot.pageVariant)}` : '',
         snapshot.pageMode ? `Mode ${humanizeContextToken(snapshot.pageMode)}` : '',
-        historyCountLabel(snapshot)
+        historyCountLabel(snapshot),
+        appointment?.statusLabel ? `Appointment ${appointment.statusLabel}` : ''
       ];
 
       return chips.filter(Boolean);
@@ -1926,6 +2079,7 @@
 
     function buildLeadOverlayContext(lead){
       const snapshot = lead?.intakeSnapshot || null;
+      const appointment = lead?.latestAppointment || null;
       return {
         leadId: normalizeSummaryText(lead?.leadId),
         leadName: `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead',
@@ -1936,7 +2090,8 @@
           whatTheyAskedFor: buildWhatTheyAskedForText(lead, snapshot),
           recommendedStartingPoint: buildRecommendedStartingPointText(lead, snapshot),
           sourceCampaign: buildSourceCampaignText(snapshot),
-          lastSubmitted: buildLastSubmittedText(snapshot)
+          lastSubmitted: buildLastSubmittedText(snapshot),
+          latestAppointment: buildLatestAppointmentText(appointment)
         },
         scripts: {
           productAwareOpener: buildProductAwareOpenerText(lead, snapshot),
@@ -1956,6 +2111,7 @@
       if (contextStartEl) contextStartEl.textContent = context.cards.recommendedStartingPoint;
       if (contextSourceEl) contextSourceEl.textContent = context.cards.sourceCampaign;
       if (contextSubmittedEl) contextSubmittedEl.textContent = context.cards.lastSubmitted;
+      if (contextAppointmentEl) contextAppointmentEl.textContent = context.cards.latestAppointment;
       if (scriptProductEl) scriptProductEl.textContent = context.scripts.productAwareOpener;
       if (scriptSourceEl) scriptSourceEl.textContent = context.scripts.sourceAwareOpener;
       if (scriptEstimateEl) scriptEstimateEl.textContent = context.scripts.estimateAwareTalkingPoints;
@@ -2040,6 +2196,49 @@
             .join(' • ')
         : '—';
       if (editIntakeRawMeta) editIntakeRawMeta.textContent = snapshot.rawMetadataJson || '—';
+    }
+
+    function renderEditAppointmentSnapshot(lead){
+      const appointment = lead?.latestAppointment || null;
+      const hasLead = !!lead;
+      const nodes = [
+        editAppointmentStatus,
+        editAppointmentTime,
+        editAppointmentSource,
+        editAppointmentTimeline,
+        editAppointmentMeetingLink,
+        editAppointmentCalendarLink
+      ];
+
+      if (editAppointmentSection) editAppointmentSection.hidden = !hasLead;
+
+      if (!hasLead){
+        nodes.forEach(node => { if (node) node.textContent = '—'; });
+        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = true;
+        return;
+      }
+
+      if (!appointment){
+        if (editAppointmentStatus) editAppointmentStatus.textContent = 'No appointment recorded';
+        if (editAppointmentTime) editAppointmentTime.textContent = 'No appointment scheduled';
+        if (editAppointmentSource) editAppointmentSource.textContent = 'Not tracked yet';
+        if (editAppointmentTimeline) editAppointmentTimeline.textContent = 'No appointment status updates yet';
+        if (editAppointmentMeetingLink) editAppointmentMeetingLink.textContent = '—';
+        if (editAppointmentCalendarLink) editAppointmentCalendarLink.textContent = '—';
+        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
+        return;
+      }
+
+      if (editAppointmentStatus) editAppointmentStatus.textContent = appointment.statusLabel || humanizeAppointmentStatus(appointment.status);
+      if (editAppointmentTime) editAppointmentTime.textContent = formatAppointmentRange(appointment);
+      if (editAppointmentSource) editAppointmentSource.textContent = appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource);
+      if (editAppointmentTimeline) editAppointmentTimeline.textContent = appointmentStatusTimestampText(appointment);
+      renderAppointmentLink(editAppointmentMeetingLink, appointment.meetingUrl, 'Open meeting link');
+      renderAppointmentLink(editAppointmentCalendarLink, appointment.calendarEventWebLink, 'Open Outlook event');
+      if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = appointment.status || 'Requested';
+      if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
     }
 
     function setOrigin(lead){
@@ -2553,6 +2752,7 @@
       target.dialsToday = payload.dialsToday ?? target.attemptsToday;
       target.dialsWeek = payload.dialsWeek ?? target.attemptsThisWeek;
       target.intakeSnapshot = payload.intakeSnapshot ?? target.intakeSnapshot;
+      target.latestAppointment = payload.latestAppointment ?? target.latestAppointment;
       target.agentUserId = payload.agentUserId ?? target.agentUserId;
       normalizeLeadAgeFromDob(target);
       updateAgentWideDials(payload);
@@ -2597,6 +2797,7 @@
           setOrigin(lead);
           renderLeadOverlayContext(lead);
           renderEditIntakeSnapshot(lead);
+          renderEditAppointmentSnapshot(lead);
         }
       } catch {}
     }
@@ -3058,6 +3259,7 @@
         void hydrateLeadIntakeSnapshot(lead);
       } else {
         renderEditIntakeSnapshot(lead);
+        renderEditAppointmentSnapshot(lead);
       }
       window.__currentLead = lead || null;
       try {
@@ -3489,6 +3691,10 @@
 
     editSaveBtn?.addEventListener('click', () => {
       saveEditClientDrawer();
+    });
+
+    editSaveAppointmentStatusBtn?.addEventListener('click', () => {
+      saveEditAppointmentStatus();
     });
 
     editInputs.pipelineStage?.addEventListener('change', () => {

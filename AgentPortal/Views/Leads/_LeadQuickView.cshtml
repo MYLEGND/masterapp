@@ -58,6 +58,18 @@
                         <label>Latest Intake</label>
                         <div id="leadLatestIntakePreview">No public intake captured</div>
                     </div>
+                    <div class="lead-overview-card">
+                        <label>Appointment Status</label>
+                        <div id="leadAppointmentStatusPreview">No appointment recorded</div>
+                    </div>
+                    <div class="lead-overview-card">
+                        <label>Appointment Time</label>
+                        <div id="leadAppointmentTimePreview">No appointment scheduled</div>
+                    </div>
+                    <div class="lead-overview-card">
+                        <label>Appointment Source</label>
+                        <div id="leadAppointmentSourcePreview">Not tracked yet</div>
+                    </div>
                 </div>
                 <div class="lead-overview-wide">
                     <label>Next Action</label>
@@ -228,6 +240,61 @@
                 <div class="f" style="margin-top:10px;">
                     <label>Raw Metadata</label>
                     <pre id="dIntakeRawMeta" class="lead-intake-raw">—</pre>
+                </div>
+            </div>
+        </details>
+
+        <details class="section section-gold qv-disclosure" id="dAppointmentSection" open hidden>
+            <summary>
+                <div class="qv-section-header">
+                    <div class="qv-section-title">Latest Appointment</div>
+                    <div class="qv-section-copy">Structured appointment record linked to this lead for Workstation and future embedded booking.</div>
+                </div>
+            </summary>
+            <div class="qv-section-body">
+                <div class="grid2">
+                    <div class="f">
+                        <label>Status</label>
+                        <div id="dAppointmentStatus">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Appointment Time</label>
+                        <div id="dAppointmentTime">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Source</label>
+                        <div id="dAppointmentSource">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Status Timestamp</label>
+                        <div id="dAppointmentTimeline">—</div>
+                    </div>
+                </div>
+                <div class="f" style="margin-top:10px;">
+                    <label>Meeting Link</label>
+                    <div id="dAppointmentMeetingLink">—</div>
+                </div>
+                <div class="f" style="margin-top:10px;">
+                    <label>Calendar Event</label>
+                    <div id="dAppointmentCalendarLink">—</div>
+                </div>
+                <div class="f" style="margin-top:10px;">
+                    <label>Update Appointment Status</label>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                        <select id="dAppointmentStatusSelect" style="min-width:220px;">
+                            <option value="Requested">Requested</option>
+                            <option value="Booked">Booked</option>
+                            <option value="Confirmed">Confirmed</option>
+                            <option value="Completed">Completed</option>
+                            <option value="NoShow">No Show</option>
+                            <option value="Cancelled">Cancelled</option>
+                            <option value="Rescheduled">Rescheduled</option>
+                        </select>
+                        <button type="button" class="btn btn-ghost" id="btnSaveAppointmentStatus">Save Appointment Status</button>
+                    </div>
+                    <div class="tiny" style="margin-top:8px;color:rgba(255,255,255,0.72);">
+                        Internal only for now. If no appointment exists yet, start with <strong>Requested</strong>.
+                    </div>
                 </div>
             </div>
         </details>

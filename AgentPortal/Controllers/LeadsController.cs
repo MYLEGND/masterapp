@@ -10,6 +10,7 @@ using Domain.Enums;
 using Infrastructure.Data;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -559,6 +560,31 @@ public class LeadsController : Controller
         public string? MetaAdId { get; init; }
     }
     private sealed record LeadIntakeSummary(LeadIntakeListRow Latest, int HistoryCount);
+    private sealed record LeadAppointmentListRow
+    {
+        public Guid Id { get; init; }
+        public string WorkstationLeadId { get; init; } = "";
+        public string OwnerAgentUserId { get; init; } = "";
+        public Guid? WebsiteLeadIntakeLinkId { get; init; }
+        public LeadAppointmentStatus Status { get; init; }
+        public string BookingSource { get; init; } = LeadAppointmentBookingSources.InternalManual;
+        public string? CalendarEventId { get; init; }
+        public string? CalendarEventWebLink { get; init; }
+        public DateTime? ScheduledStartUtc { get; init; }
+        public DateTime? ScheduledEndUtc { get; init; }
+        public string? MeetingUrl { get; init; }
+        public DateTime CreatedUtc { get; init; }
+        public DateTime UpdatedUtc { get; init; }
+        public DateTime? LastStatusChangedUtc { get; init; }
+        public DateTime? RequestedUtc { get; init; }
+        public DateTime? BookedUtc { get; init; }
+        public DateTime? ConfirmedUtc { get; init; }
+        public DateTime? CompletedUtc { get; init; }
+        public DateTime? NoShowUtc { get; init; }
+        public DateTime? CancelledUtc { get; init; }
+        public DateTime? RescheduledUtc { get; init; }
+    }
+    private sealed record LeadAppointmentSummary(LeadAppointmentListRow Latest);
 
     private static string ResolveLeadState(WorkstationLeadProfile lead, IReadOnlyDictionary<string, string>? fallbackStatesByPhone)
     {
@@ -674,6 +700,45 @@ public class LeadsController : Controller
         return string.Join(" • ", parts.Where(x => !string.IsNullOrWhiteSpace(x)));
     }
 
+    private static string HumanizeAppointmentStatus(LeadAppointmentStatus status)
+    {
+        return status switch
+        {
+            LeadAppointmentStatus.NoShow => "No Show",
+            _ => status.ToString()
+        };
+    }
+
+    private static string HumanizeAppointmentSource(string? source)
+    {
+        var normalized = (source ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            LeadAppointmentBookingSources.InternalManual => "Internal manual",
+            LeadAppointmentBookingSources.WorkstationCalendar => "Workstation calendar",
+            LeadAppointmentBookingSources.WebsiteEmbed => "Website embed",
+            LeadAppointmentBookingSources.WebsiteModal => "Website modal",
+            LeadAppointmentBookingSources.ExternalRedirectFallback => "External redirect fallback",
+            _ when string.IsNullOrWhiteSpace(source) => "Unknown source",
+            _ => source!.Trim().Replace('_', ' ')
+        };
+    }
+
+    private static DateTime? ResolveAppointmentStatusTimestamp(LeadAppointmentListRow appointment)
+    {
+        return appointment.Status switch
+        {
+            LeadAppointmentStatus.Requested => appointment.RequestedUtc,
+            LeadAppointmentStatus.Booked => appointment.BookedUtc,
+            LeadAppointmentStatus.Confirmed => appointment.ConfirmedUtc,
+            LeadAppointmentStatus.Completed => appointment.CompletedUtc,
+            LeadAppointmentStatus.NoShow => appointment.NoShowUtc,
+            LeadAppointmentStatus.Cancelled => appointment.CancelledUtc,
+            LeadAppointmentStatus.Rescheduled => appointment.RescheduledUtc,
+            _ => appointment.LastStatusChangedUtc
+        };
+    }
+
     private static string FormatRawMetadataJson(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -703,6 +768,29 @@ public class LeadsController : Controller
             }
 
             if (current.Message.Contains("WebsiteLeadIntakeLinks", StringComparison.OrdinalIgnoreCase) &&
+                (current.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) ||
+                 current.Message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsMissingLeadAppointmentsTable(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is SqliteException sqliteEx &&
+                sqliteEx.SqliteErrorCode == 1 &&
+                sqliteEx.Message.Contains("LeadAppointments", StringComparison.OrdinalIgnoreCase) &&
+                sqliteEx.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (current.Message.Contains("LeadAppointments", StringComparison.OrdinalIgnoreCase) &&
                 (current.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) ||
                  current.Message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase)))
             {
@@ -781,6 +869,65 @@ public class LeadsController : Controller
             .ToDictionary(
                 g => g.Key,
                 g => new LeadIntakeSummary(g.First(), g.Count()),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task<Dictionary<string, LeadAppointmentSummary>> LoadLeadAppointmentSummariesAsync(IEnumerable<string> leadIds, CancellationToken ct = default)
+    {
+        var ids = leadIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ids.Count == 0)
+            return new Dictionary<string, LeadAppointmentSummary>(StringComparer.OrdinalIgnoreCase);
+
+        List<LeadAppointmentListRow> rows;
+        try
+        {
+            rows = await _db.LeadAppointments
+                .AsNoTracking()
+                .Where(x => ids.Contains(x.WorkstationLeadId))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.ScheduledStartUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .Select(x => new LeadAppointmentListRow
+                {
+                    Id = x.Id,
+                    WorkstationLeadId = x.WorkstationLeadId,
+                    OwnerAgentUserId = x.OwnerAgentUserId,
+                    WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
+                    Status = x.Status,
+                    BookingSource = x.BookingSource,
+                    CalendarEventId = x.CalendarEventId,
+                    CalendarEventWebLink = x.CalendarEventWebLink,
+                    ScheduledStartUtc = x.ScheduledStartUtc,
+                    ScheduledEndUtc = x.ScheduledEndUtc,
+                    MeetingUrl = x.MeetingUrl,
+                    CreatedUtc = x.CreatedUtc,
+                    UpdatedUtc = x.UpdatedUtc,
+                    LastStatusChangedUtc = x.LastStatusChangedUtc,
+                    RequestedUtc = x.RequestedUtc,
+                    BookedUtc = x.BookedUtc,
+                    ConfirmedUtc = x.ConfirmedUtc,
+                    CompletedUtc = x.CompletedUtc,
+                    NoShowUtc = x.NoShowUtc,
+                    CancelledUtc = x.CancelledUtc,
+                    RescheduledUtc = x.RescheduledUtc
+                })
+                .ToListAsync(ct);
+        }
+        catch (Exception ex) when (IsMissingLeadAppointmentsTable(ex))
+        {
+            _logger.LogWarning(ex, "LeadAppointments table is unavailable; Leads will render without appointment enrichment.");
+            return new Dictionary<string, LeadAppointmentSummary>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return rows
+            .GroupBy(x => x.WorkstationLeadId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new LeadAppointmentSummary(g.First()),
                 StringComparer.OrdinalIgnoreCase);
     }
 
@@ -928,6 +1075,7 @@ public class LeadsController : Controller
             .ToList();
 
         var intakeSummaries = await LoadLeadIntakeSummariesAsync(rawLeads.Select(x => x.LeadId), HttpContext.RequestAborted);
+        var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(rawLeads.Select(x => x.LeadId), HttpContext.RequestAborted);
         var fallbackStatesByPhone = await GetFallbackStatesByPhoneAsync(agentId);
 
         var leads = rawLeads.Select(x =>
@@ -938,6 +1086,7 @@ public class LeadsController : Controller
             var state = ResolveLeadState(x, fallbackStatesByPhone);
             var crmMeta = ReadLeadMeta(x);
             intakeSummaries.TryGetValue(x.LeadId, out var intakeSummary);
+            appointmentSummaries.TryGetValue(x.LeadId, out var appointmentSummary);
             return new
             {
             x.LeadId,
@@ -987,7 +1136,8 @@ public class LeadsController : Controller
             DialsWeek = attempts.Week,
             DialsTodayAgentWide = agentWideDialTotals.Today,
             DialsWeekAgentWide = agentWideDialTotals.Week,
-            intakeSnapshot = BuildIntakeSnapshotPayload(intakeSummary?.Latest, intakeSummary?.HistoryCount ?? 0)
+            intakeSnapshot = BuildIntakeSnapshotPayload(intakeSummary?.Latest, intakeSummary?.HistoryCount ?? 0),
+            latestAppointment = BuildLeadAppointmentPayload(appointmentSummary?.Latest)
         };
         }).ToList();
 
@@ -1419,6 +1569,7 @@ public class LeadsController : Controller
     }
 
     public record LeadOutcomeRequest(string clientUserId, string outcomeCode, string? customNote);
+    public record LeadAppointmentStatusRequest(string clientUserId, Guid? appointmentId, string? status);
     public record LeadQuickViewRequest(
         string clientUserId,
         string? firstName,
@@ -1481,7 +1632,8 @@ public class LeadsController : Controller
         TimeZoneInfo? dialTimeZone = null)
     {
         var intakeContext = await LoadLeadIntakeSnapshotContextAsync(lead.LeadId);
-        return LeadPayload(lead, intakeContext.Latest, intakeContext.HistoryCount, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
+        var appointmentContext = await LoadLeadAppointmentSnapshotContextAsync(lead.LeadId);
+        return LeadPayload(lead, intakeContext.Latest, intakeContext.HistoryCount, appointmentContext, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
     }
 
     private async Task<(WebsiteLeadIntakeLink? Latest, int HistoryCount)> LoadLeadIntakeSnapshotContextAsync(string leadId)
@@ -1505,10 +1657,54 @@ public class LeadsController : Controller
         return (rows.FirstOrDefault(), rows.Count);
     }
 
+    private async Task<LeadAppointmentListRow?> LoadLeadAppointmentSnapshotContextAsync(string leadId)
+    {
+        try
+        {
+            return await _db.LeadAppointments
+                .AsNoTracking()
+                .Where(x => x.WorkstationLeadId == leadId)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.ScheduledStartUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .Select(x => new LeadAppointmentListRow
+                {
+                    Id = x.Id,
+                    WorkstationLeadId = x.WorkstationLeadId,
+                    OwnerAgentUserId = x.OwnerAgentUserId,
+                    WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
+                    Status = x.Status,
+                    BookingSource = x.BookingSource,
+                    CalendarEventId = x.CalendarEventId,
+                    CalendarEventWebLink = x.CalendarEventWebLink,
+                    ScheduledStartUtc = x.ScheduledStartUtc,
+                    ScheduledEndUtc = x.ScheduledEndUtc,
+                    MeetingUrl = x.MeetingUrl,
+                    CreatedUtc = x.CreatedUtc,
+                    UpdatedUtc = x.UpdatedUtc,
+                    LastStatusChangedUtc = x.LastStatusChangedUtc,
+                    RequestedUtc = x.RequestedUtc,
+                    BookedUtc = x.BookedUtc,
+                    ConfirmedUtc = x.ConfirmedUtc,
+                    CompletedUtc = x.CompletedUtc,
+                    NoShowUtc = x.NoShowUtc,
+                    CancelledUtc = x.CancelledUtc,
+                    RescheduledUtc = x.RescheduledUtc
+                })
+                .FirstOrDefaultAsync();
+        }
+        catch (Exception ex) when (IsMissingLeadAppointmentsTable(ex))
+        {
+            _logger.LogWarning(ex, "LeadAppointments table is unavailable; Leads quick view will render without appointment context.");
+            return null;
+        }
+    }
+
     private static object LeadPayload(
         WorkstationLeadProfile lead,
         WebsiteLeadIntakeLink? latestIntake,
         int intakeHistoryCount,
+        LeadAppointmentListRow? latestAppointment,
         DateTime? utcNow = null,
         int? dialsTodayAgentWide = null,
         int? dialsWeekAgentWide = null,
@@ -1596,7 +1792,8 @@ public class LeadsController : Controller
             callCount = lead.CallCount,
             lastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
             originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket),
-            intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake, intakeHistoryCount)
+            intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake, intakeHistoryCount),
+            latestAppointment = BuildLeadAppointmentPayload(latestAppointment)
         };
     }
 
@@ -1701,6 +1898,71 @@ public class LeadsController : Controller
             discoveryItems,
             rawMetadataJson = FormatRawMetadataJson(intake.SnapshotJson),
             snapshotJson = intake.SnapshotJson
+        };
+    }
+
+    private static object? BuildLeadAppointmentPayload(LeadAppointment? appointment)
+    {
+        if (appointment == null)
+            return null;
+
+        return BuildLeadAppointmentPayload(new LeadAppointmentListRow
+        {
+            Id = appointment.Id,
+            WorkstationLeadId = appointment.WorkstationLeadId,
+            OwnerAgentUserId = appointment.OwnerAgentUserId,
+            WebsiteLeadIntakeLinkId = appointment.WebsiteLeadIntakeLinkId,
+            Status = appointment.Status,
+            BookingSource = appointment.BookingSource,
+            CalendarEventId = appointment.CalendarEventId,
+            CalendarEventWebLink = appointment.CalendarEventWebLink,
+            ScheduledStartUtc = appointment.ScheduledStartUtc,
+            ScheduledEndUtc = appointment.ScheduledEndUtc,
+            MeetingUrl = appointment.MeetingUrl,
+            CreatedUtc = appointment.CreatedUtc,
+            UpdatedUtc = appointment.UpdatedUtc,
+            LastStatusChangedUtc = appointment.LastStatusChangedUtc,
+            RequestedUtc = appointment.RequestedUtc,
+            BookedUtc = appointment.BookedUtc,
+            ConfirmedUtc = appointment.ConfirmedUtc,
+            CompletedUtc = appointment.CompletedUtc,
+            NoShowUtc = appointment.NoShowUtc,
+            CancelledUtc = appointment.CancelledUtc,
+            RescheduledUtc = appointment.RescheduledUtc
+        });
+    }
+
+    private static object? BuildLeadAppointmentPayload(LeadAppointmentListRow? appointment)
+    {
+        if (appointment == null)
+            return null;
+
+        return new
+        {
+            id = appointment.Id,
+            workstationLeadId = appointment.WorkstationLeadId,
+            ownerAgentUserId = appointment.OwnerAgentUserId,
+            websiteLeadIntakeLinkId = appointment.WebsiteLeadIntakeLinkId,
+            status = appointment.Status.ToString(),
+            statusLabel = HumanizeAppointmentStatus(appointment.Status),
+            bookingSource = appointment.BookingSource,
+            bookingSourceLabel = HumanizeAppointmentSource(appointment.BookingSource),
+            calendarEventId = appointment.CalendarEventId,
+            calendarEventWebLink = appointment.CalendarEventWebLink,
+            scheduledStartUtc = appointment.ScheduledStartUtc,
+            scheduledEndUtc = appointment.ScheduledEndUtc,
+            meetingUrl = appointment.MeetingUrl,
+            createdUtc = appointment.CreatedUtc,
+            updatedUtc = appointment.UpdatedUtc,
+            lastStatusChangedUtc = appointment.LastStatusChangedUtc,
+            statusTimestampUtc = ResolveAppointmentStatusTimestamp(appointment),
+            requestedUtc = appointment.RequestedUtc,
+            bookedUtc = appointment.BookedUtc,
+            confirmedUtc = appointment.ConfirmedUtc,
+            completedUtc = appointment.CompletedUtc,
+            noShowUtc = appointment.NoShowUtc,
+            cancelledUtc = appointment.CancelledUtc,
+            rescheduledUtc = appointment.RescheduledUtc
         };
     }
 
@@ -1874,6 +2136,121 @@ public class LeadsController : Controller
         await _db.SaveChangesAsync();
 
         return Json(new { payload = await BuildLeadPayloadAsync(lead, dialTimeZone: dialTimeZone) });
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> UpdateLeadAppointmentStatus([FromBody] LeadAppointmentStatusRequest req)
+    {
+        if (string.IsNullOrWhiteSpace(req.clientUserId)) return BadRequest("Lead id required");
+        if (!Enum.TryParse<LeadAppointmentStatus>(req.status ?? string.Empty, ignoreCase: true, out var nextStatus))
+            return BadRequest("Valid appointment status required");
+
+        string agentId;
+        try { agentId = GetAgentIdOrChallenge(); }
+        catch { return Challenge(); }
+
+        var lead = await LoadCanonicalLeadAsync(agentId, req.clientUserId, "UpdateLeadAppointmentStatus");
+        if (lead == null) return NotFound();
+
+        var nowUtc = DateTime.UtcNow;
+        var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+
+        LeadAppointment? appointment;
+        try
+        {
+            appointment = req.appointmentId.HasValue
+                ? await _db.LeadAppointments.FirstOrDefaultAsync(x => x.Id == req.appointmentId.Value && x.WorkstationLeadId == lead.LeadId)
+                : await _db.LeadAppointments
+                    .Where(x => x.WorkstationLeadId == lead.LeadId)
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .ThenByDescending(x => x.ScheduledStartUtc)
+                    .ThenByDescending(x => x.CreatedUtc)
+                    .FirstOrDefaultAsync();
+        }
+        catch (Exception ex) when (IsMissingLeadAppointmentsTable(ex))
+        {
+            _logger.LogWarning(ex, "LeadAppointments table is unavailable; appointment status updates are blocked.");
+            return StatusCode(StatusCodes.Status409Conflict, "Lead appointments are unavailable until the latest migration is applied.");
+        }
+
+        Guid? latestIntakeLinkId = null;
+        if (appointment?.WebsiteLeadIntakeLinkId == null)
+        {
+            try
+            {
+                latestIntakeLinkId = await _db.WebsiteLeadIntakeLinks
+                    .AsNoTracking()
+                    .Where(x => x.WorkstationLeadId == lead.LeadId)
+                    .OrderByDescending(x => x.SubmittedUtc)
+                    .ThenByDescending(x => x.CapturedUtc)
+                    .Select(x => (Guid?)x.Id)
+                    .FirstOrDefaultAsync();
+            }
+            catch (Exception ex) when (IsMissingWebsiteLeadIntakeLinksTable(ex))
+            {
+                _logger.LogWarning(ex, "WebsiteLeadIntakeLinks table is unavailable; appointment status update will persist without intake linkage.");
+            }
+        }
+
+        if (appointment == null)
+        {
+            if (nextStatus != LeadAppointmentStatus.Requested)
+                return BadRequest("Create a requested appointment first, or sync a calendar event before updating later statuses.");
+
+            appointment = new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = lead.LeadId,
+                OwnerAgentUserId = agentId,
+                WebsiteLeadIntakeLinkId = latestIntakeLinkId,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = nowUtc,
+                UpdatedUtc = nowUtc
+            };
+            _db.LeadAppointments.Add(appointment);
+        }
+        else
+        {
+            appointment.OwnerAgentUserId = agentId;
+            if (appointment.WebsiteLeadIntakeLinkId == null)
+                appointment.WebsiteLeadIntakeLinkId = latestIntakeLinkId;
+        }
+
+        if (nextStatus == LeadAppointmentStatus.Booked && !appointment.RequestedUtc.HasValue)
+            appointment.RequestedUtc = nowUtc;
+        appointment.ApplyStatus(nextStatus, nowUtc);
+
+        var meta = ReadLeadMeta(lead);
+        meta.Activities ??= new List<ClientCrmActivity>();
+        var localNow = dialTimeZone is null
+            ? nowUtc
+            : TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(nowUtc, DateTimeKind.Utc), dialTimeZone);
+        var scheduledDetail = appointment.ScheduledStartUtc.HasValue
+            ? $" for {appointment.ScheduledStartUtc.Value:u}".Replace("Z", " UTC", StringComparison.Ordinal)
+            : string.Empty;
+        meta.Activities.Add(new ClientCrmActivity
+        {
+            Type = "Meeting",
+            Date = localNow.ToString("yyyy-MM-dd"),
+            Note = $"Appointment marked {HumanizeAppointmentStatus(nextStatus)}{scheduledDetail}.",
+            MeetingLink = appointment.MeetingUrl,
+            CalendarEventId = appointment.CalendarEventId,
+            CalendarWebLink = appointment.CalendarEventWebLink,
+            IsSystem = true,
+            CreatedBy = agentId
+        });
+
+        lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+        lead.AgentUserId = agentId;
+        lead.UpdatedUtc = nowUtc;
+
+        await _db.SaveChangesAsync();
+
+        var agentWideDialTotals = await GetAgentWideDialTotalsAsync(agentId, nowUtc, dialTimeZone);
+        return Json(new
+        {
+            payload = await BuildLeadPayloadAsync(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone)
+        });
     }
 
     [HttpPost]

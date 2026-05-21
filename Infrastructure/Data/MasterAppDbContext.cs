@@ -26,6 +26,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
     public DbSet<WebsiteLeadIntakeLink> WebsiteLeadIntakeLinks => Set<WebsiteLeadIntakeLink>();
+    public DbSet<LeadAppointment> LeadAppointments => Set<LeadAppointment>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
@@ -556,6 +557,36 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.Email);
 
             e.Property(x => x.RowVersion).IsRowVersion();
+        });
+
+        modelBuilder.Entity<LeadAppointment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("LeadAppointments");
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.CalendarEventId).HasMaxLength(256);
+            e.Property(x => x.CalendarEventWebLink).HasMaxLength(2048);
+            e.Property(x => x.MeetingUrl).HasMaxLength(2048);
+
+            e.HasIndex(x => x.WorkstationLeadId);
+            e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });
+            e.HasIndex(x => new { x.WorkstationLeadId, x.ScheduledStartUtc });
+            e.HasIndex(x => new { x.OwnerAgentUserId, x.Status, x.ScheduledStartUtc });
+            e.HasIndex(x => x.CalendarEventId);
+            e.HasIndex(x => x.WebsiteLeadIntakeLinkId);
+
+            e.HasOne(x => x.WorkstationLead)
+                .WithMany()
+                .HasForeignKey(x => x.WorkstationLeadId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.WebsiteLeadIntakeLink)
+                .WithMany()
+                .HasForeignKey(x => x.WebsiteLeadIntakeLinkId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // PROPOSALS

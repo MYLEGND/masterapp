@@ -169,6 +169,72 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task Leads_List_Returns_Latest_Appointment_Snapshot_For_Workstation_Context()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-LIST-APPT-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            OriginalLeadType = "MortgageProtection",
+            FirstName = "Avery",
+            LastName = "Booked",
+            Email = "avery@example.com",
+            Phone = "6025550110",
+            CreatedUtc = new DateTime(2026, 5, 20, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        db.LeadAppointments.AddRange(
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-APPT-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+                CreatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-APPT-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Booked,
+                BookingSource = LeadAppointmentBookingSources.WorkstationCalendar,
+                CalendarEventId = "evt-42",
+                CalendarEventWebLink = "https://outlook.test/events/42",
+                ScheduledStartUtc = new DateTime(2026, 5, 22, 16, 0, 0, DateTimeKind.Utc),
+                ScheduledEndUtc = new DateTime(2026, 5, 22, 16, 30, 0, DateTimeKind.Utc),
+                MeetingUrl = "https://zoom.example.com/j/42",
+                RequestedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                BookedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc),
+                CreatedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc),
+                LastStatusChangedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc)
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Leads(null);
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+        var row = Assert.Single(doc.RootElement.EnumerateArray());
+        var appointment = row.GetProperty("latestAppointment");
+
+        Assert.Equal("Booked", appointment.GetProperty("status").GetString());
+        Assert.Equal("Booked", appointment.GetProperty("statusLabel").GetString());
+        Assert.Equal("workstation_calendar", appointment.GetProperty("bookingSource").GetString());
+        Assert.Equal("Workstation calendar", appointment.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("evt-42", appointment.GetProperty("calendarEventId").GetString());
+        Assert.Equal("https://zoom.example.com/j/42", appointment.GetProperty("meetingUrl").GetString());
+    }
+
+    [Fact]
     public async Task IncrementCall_Targets_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
@@ -311,6 +377,46 @@ public class LeadsControllerTests
             intake.GetProperty("recommendationSummary").GetString());
         Assert.Contains("\"OfferKey\": \"term\"", intake.GetProperty("rawMetadataJson").GetString());
         Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_Creates_Requested_Appointment_When_None_Exists()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-CREATE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Requested",
+            Email = "jordan@example.com",
+            Phone = "6025550135",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-CREATE-1", null, "Requested"));
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        var latestAppointment = doc.RootElement.GetProperty("payload").GetProperty("latestAppointment");
+
+        var appointment = Assert.Single(db.LeadAppointments);
+        Assert.Equal("L-APPT-CREATE-1", appointment.WorkstationLeadId);
+        Assert.Equal("agent-1", appointment.OwnerAgentUserId);
+        Assert.Equal(LeadAppointmentStatus.Requested, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.InternalManual, appointment.BookingSource);
+        Assert.NotNull(appointment.RequestedUtc);
+        Assert.Equal("Requested", latestAppointment.GetProperty("status").GetString());
+        Assert.Equal("Requested", latestAppointment.GetProperty("statusLabel").GetString());
+        Assert.Equal("internal_manual", latestAppointment.GetProperty("bookingSource").GetString());
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Net.Http;
 using AgentPortal.Controllers;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
@@ -14,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.Identity.Web;
 using Moq;
 
 namespace AgentPortal.Tests;
@@ -127,6 +129,35 @@ internal static class ControllerTestHelpers
         hubContext.Setup(h => h.Clients).Returns(hubClients.Object);
 
         return new LeadBridgeController(db, stateService, hubContext.Object, effCtx)
+        {
+            ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
+        };
+    }
+
+    public static CalendarController BuildCalendarController(
+        MasterAppDbContext db,
+        ClaimsPrincipal user,
+        HttpMessageHandler handler,
+        string accessToken = "test-access-token")
+    {
+        var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
+        var tokenAcquisition = new Mock<ITokenAcquisition>();
+        tokenAcquisition
+            .Setup(x => x.GetAccessTokenForUserAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<ClaimsPrincipal>(),
+                It.IsAny<TokenAcquisitionOptions>()))
+            .ReturnsAsync(accessToken);
+
+        var client = new HttpClient(handler, disposeHandler: false);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient(It.IsAny<string>()))
+            .Returns(client);
+
+        return new CalendarController(tokenAcquisition.Object, NullLogger<CalendarController>.Instance, db, httpClientFactory.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
