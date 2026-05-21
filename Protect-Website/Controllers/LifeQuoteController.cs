@@ -636,6 +636,73 @@ namespace Protect_Website.Controllers
                     ReceivedUtc= DateTime.UtcNow,
                     MetadataJson = JsonSerializer.Serialize(eventMetadata)
                 });
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "capi_event_attempt",
+                    PageKey    = pageMode.EffectivePageKey,
+                    FormKey    = pageMode.EffectivePageKey + "_form",
+                    QuoteType  = cfg.ProductType,
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    UtmId      = lead.UtmId,
+                    Fbclid     = lead.Fbclid,
+                    MetaCampaignId = lead.MetaCampaignId,
+                    MetaAdSetId = lead.MetaAdSetId,
+                    MetaAdId = lead.MetaAdId,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        EventId = metaLeadEventId,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                    })
+                });
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                    PageKey    = pageMode.EffectivePageKey,
+                    FormKey    = pageMode.EffectivePageKey + "_form",
+                    QuoteType  = cfg.ProductType,
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    UtmId      = lead.UtmId,
+                    Fbclid     = lead.Fbclid,
+                    MetaCampaignId = lead.MetaCampaignId,
+                    MetaAdSetId = lead.MetaAdSetId,
+                    MetaAdId = lead.MetaAdId,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = DateTime.UtcNow,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        EventId = metaLeadEventId,
+                        Status = metaCapiResult.Status,
+                        Sent = metaCapiResult.Sent,
+                        Note = metaCapiResult.Note,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                    })
+                });
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
                     "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",

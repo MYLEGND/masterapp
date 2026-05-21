@@ -53,7 +53,7 @@ run_stage "ingest tests" \
 
 run_stage "quote funnel tests" \
   dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
-    --filter "FullyQualifiedName~AnalyticsQueryServiceQuoteFunnelTests|FullyQualifiedName~AnalyticsQueryServiceMarketingHealthTests|FullyQualifiedName~ThankYouMetaFallbackContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests"
+    --filter "FullyQualifiedName~AnalyticsQueryServiceQuoteFunnelTests|FullyQualifiedName~AnalyticsQueryServiceMarketingHealthTests|FullyQualifiedName~QuoteProductInstrumentationContractTests|FullyQualifiedName~ThankYouMetaFallbackContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests"
 
 run_stage "attribution tests" \
   dotnet test "$TEST_PROJECT" --no-build --nologo --logger:"$TEST_LOGGER" \
