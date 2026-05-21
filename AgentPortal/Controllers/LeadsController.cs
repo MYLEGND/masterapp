@@ -521,24 +521,43 @@ public class LeadsController : Controller
 
     private sealed record ProductionSnapshot(ProductionStatus? Status, decimal Amount, decimal Submitted, decimal Issued, decimal Paid, decimal Personal);
     private sealed record LeadOriginInfo(string Label, string Tone);
-    private sealed record LeadIntakeListRow(
-        string WorkstationLeadId,
-        DateTime SubmittedUtc,
-        string? PageMode,
-        string? PageVariant,
-        string? InterestType,
-        string? OfferKey,
-        string? ProductType,
-        string? UtmSource,
-        string? UtmMedium,
-        string? UtmCampaign,
-        string? EstimateSummary,
-        string? RecommendationPrimaryTitle,
-        string? RecommendationSecondaryTitle,
-        string? Fbclid,
-        string? MetaCampaignId,
-        string? MetaAdSetId,
-        string? MetaAdId);
+    private sealed record LeadIntakeListRow
+    {
+        public string WorkstationLeadId { get; init; } = "";
+        public string? AgentUserId { get; init; }
+        public string? Bucket { get; init; }
+        public DateTime SubmittedUtc { get; init; }
+        public DateTime CapturedUtc { get; init; }
+        public string? SourcePageKey { get; init; }
+        public string? SourceCtaKey { get; init; }
+        public string? PageMode { get; init; }
+        public string? PageVariant { get; init; }
+        public string? PagePath { get; init; }
+        public string? LandingPageUrl { get; init; }
+        public string? ReferrerUrl { get; init; }
+        public string? InterestType { get; init; }
+        public string? OfferKey { get; init; }
+        public string? ProductType { get; init; }
+        public string? UtmSource { get; init; }
+        public string? UtmMedium { get; init; }
+        public string? UtmCampaign { get; init; }
+        public string? UtmId { get; init; }
+        public string? UtmTerm { get; init; }
+        public string? UtmContent { get; init; }
+        public string? EstimateSummary { get; init; }
+        public string? RecommendationPrimaryKey { get; init; }
+        public string? RecommendationPrimaryTitle { get; init; }
+        public string? RecommendationSecondaryKey { get; init; }
+        public string? RecommendationSecondaryTitle { get; init; }
+        public string? SessionId { get; init; }
+        public string? VisitorId { get; init; }
+        public string? DiscoverySummaryJson { get; init; }
+        public string? SnapshotJson { get; init; }
+        public string? Fbclid { get; init; }
+        public string? MetaCampaignId { get; init; }
+        public string? MetaAdSetId { get; init; }
+        public string? MetaAdId { get; init; }
+    }
     private sealed record LeadIntakeSummary(LeadIntakeListRow Latest, int HistoryCount);
 
     private static string ResolveLeadState(WorkstationLeadProfile lead, IReadOnlyDictionary<string, string>? fallbackStatesByPhone)
@@ -712,24 +731,43 @@ public class LeadsController : Controller
                 .Where(x => ids.Contains(x.WorkstationLeadId))
                 .OrderByDescending(x => x.SubmittedUtc)
                 .ThenByDescending(x => x.CapturedUtc)
-                .Select(x => new LeadIntakeListRow(
-                    x.WorkstationLeadId,
-                    x.SubmittedUtc,
-                    x.PageMode,
-                    x.PageVariant,
-                    x.InterestType,
-                    x.OfferKey,
-                    x.ProductType,
-                    x.UtmSource,
-                    x.UtmMedium,
-                    x.UtmCampaign,
-                    x.EstimateSummary,
-                    x.RecommendationPrimaryTitle,
-                    x.RecommendationSecondaryTitle,
-                    x.Fbclid,
-                    x.MetaCampaignId,
-                    x.MetaAdSetId,
-                    x.MetaAdId))
+                .Select(x => new LeadIntakeListRow
+                {
+                    WorkstationLeadId = x.WorkstationLeadId,
+                    AgentUserId = x.AgentUserId,
+                    Bucket = x.Bucket,
+                    SubmittedUtc = x.SubmittedUtc,
+                    CapturedUtc = x.CapturedUtc,
+                    SourcePageKey = x.SourcePageKey,
+                    SourceCtaKey = x.SourceCtaKey,
+                    PageMode = x.PageMode,
+                    PageVariant = x.PageVariant,
+                    PagePath = x.PagePath,
+                    LandingPageUrl = x.LandingPageUrl,
+                    ReferrerUrl = x.ReferrerUrl,
+                    InterestType = x.InterestType,
+                    OfferKey = x.OfferKey,
+                    ProductType = x.ProductType,
+                    UtmSource = x.UtmSource,
+                    UtmMedium = x.UtmMedium,
+                    UtmCampaign = x.UtmCampaign,
+                    UtmId = x.UtmId,
+                    UtmTerm = x.UtmTerm,
+                    UtmContent = x.UtmContent,
+                    EstimateSummary = x.EstimateSummary,
+                    RecommendationPrimaryKey = x.RecommendationPrimaryKey,
+                    RecommendationPrimaryTitle = x.RecommendationPrimaryTitle,
+                    RecommendationSecondaryKey = x.RecommendationSecondaryKey,
+                    RecommendationSecondaryTitle = x.RecommendationSecondaryTitle,
+                    SessionId = x.SessionId,
+                    VisitorId = x.VisitorId,
+                    DiscoverySummaryJson = x.DiscoverySummaryJson,
+                    SnapshotJson = x.SnapshotJson,
+                    Fbclid = x.Fbclid,
+                    MetaCampaignId = x.MetaCampaignId,
+                    MetaAdSetId = x.MetaAdSetId,
+                    MetaAdId = x.MetaAdId
+                })
                 .ToListAsync(ct);
         }
         catch (Exception ex) when (IsMissingWebsiteLeadIntakeLinksTable(ex))
@@ -889,6 +927,7 @@ public class LeadsController : Controller
         rawLeads = LeadCanonicalizer.Canonicalize(rawLeads, _logger, "Leads/Leads api")
             .ToList();
 
+        var intakeSummaries = await LoadLeadIntakeSummariesAsync(rawLeads.Select(x => x.LeadId), HttpContext.RequestAborted);
         var fallbackStatesByPhone = await GetFallbackStatesByPhoneAsync(agentId);
 
         var leads = rawLeads.Select(x =>
@@ -898,6 +937,7 @@ public class LeadsController : Controller
             var stage = ResolveEffectivePipelineStage(x, originalLeadType ?? "Contacted");
             var state = ResolveLeadState(x, fallbackStatesByPhone);
             var crmMeta = ReadLeadMeta(x);
+            intakeSummaries.TryGetValue(x.LeadId, out var intakeSummary);
             return new
             {
             x.LeadId,
@@ -946,7 +986,8 @@ public class LeadsController : Controller
             DialsToday = attempts.Today,
             DialsWeek = attempts.Week,
             DialsTodayAgentWide = agentWideDialTotals.Today,
-            DialsWeekAgentWide = agentWideDialTotals.Week
+            DialsWeekAgentWide = agentWideDialTotals.Week,
+            intakeSnapshot = BuildIntakeSnapshotPayload(intakeSummary?.Latest, intakeSummary?.HistoryCount ?? 0)
         };
         }).ToList();
 
@@ -1560,6 +1601,50 @@ public class LeadsController : Controller
     }
 
     private static object? BuildIntakeSnapshotPayload(WebsiteLeadIntakeLink? intake, int historyCount = 0)
+    {
+        if (intake == null)
+            return null;
+
+        return BuildIntakeSnapshotPayload(new LeadIntakeListRow
+        {
+            WorkstationLeadId = intake.WorkstationLeadId,
+            AgentUserId = intake.AgentUserId,
+            Bucket = intake.Bucket,
+            SubmittedUtc = intake.SubmittedUtc,
+            CapturedUtc = intake.CapturedUtc,
+            SourcePageKey = intake.SourcePageKey,
+            SourceCtaKey = intake.SourceCtaKey,
+            PageMode = intake.PageMode,
+            PageVariant = intake.PageVariant,
+            PagePath = intake.PagePath,
+            LandingPageUrl = intake.LandingPageUrl,
+            ReferrerUrl = intake.ReferrerUrl,
+            InterestType = intake.InterestType,
+            OfferKey = intake.OfferKey,
+            ProductType = intake.ProductType,
+            UtmSource = intake.UtmSource,
+            UtmMedium = intake.UtmMedium,
+            UtmCampaign = intake.UtmCampaign,
+            UtmId = intake.UtmId,
+            UtmTerm = intake.UtmTerm,
+            UtmContent = intake.UtmContent,
+            EstimateSummary = intake.EstimateSummary,
+            RecommendationPrimaryKey = intake.RecommendationPrimaryKey,
+            RecommendationPrimaryTitle = intake.RecommendationPrimaryTitle,
+            RecommendationSecondaryKey = intake.RecommendationSecondaryKey,
+            RecommendationSecondaryTitle = intake.RecommendationSecondaryTitle,
+            SessionId = intake.SessionId,
+            VisitorId = intake.VisitorId,
+            DiscoverySummaryJson = intake.DiscoverySummaryJson,
+            SnapshotJson = intake.SnapshotJson,
+            Fbclid = intake.Fbclid,
+            MetaCampaignId = intake.MetaCampaignId,
+            MetaAdSetId = intake.MetaAdSetId,
+            MetaAdId = intake.MetaAdId
+        }, historyCount);
+    }
+
+    private static object? BuildIntakeSnapshotPayload(LeadIntakeListRow? intake, int historyCount = 0)
     {
         if (intake == null)
             return null;

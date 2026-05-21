@@ -1233,6 +1233,134 @@ body.note-self-open{
     display: none;
 }
 
+.lb-context-shell{
+    display: grid;
+    gap: 10px;
+    padding: 12px 13px;
+    border-radius: 16px;
+    border: 1px solid rgba(166,128,35,.30);
+    background:
+        radial-gradient(120% 180% at 100% 0%, rgba(255,255,255,.72) 0%, rgba(255,248,227,.58) 46%, rgba(247,231,188,.40) 100%),
+        linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,250,240,.78) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.92),
+        0 10px 22px rgba(15,23,42,.08),
+        0 2px 6px rgba(166,128,35,.08);
+}
+
+.lb-context-head,
+.lb-script-head{
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.lb-context-head-copy{
+    min-width: 0;
+    display: grid;
+    gap: 4px;
+}
+
+.lb-context-kicker,
+.lb-script-kicker{
+    color: #8a6116;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.lb-context-title,
+.lb-script-title{
+    color: #111827;
+    font-size: 18px;
+    font-weight: 950;
+    line-height: 1.12;
+}
+
+.lb-context-sub,
+.lb-script-note{
+    color: #5b6472;
+    font-size: 12.5px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.lb-context-chip-row{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+
+.lb-context-chip{
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 5px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(166,128,35,.30);
+    background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,248,227,.86) 100%);
+    color: #3f2d08;
+    font-size: 11.5px;
+    font-weight: 860;
+    letter-spacing: .02em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.92);
+}
+
+.lb-context-grid,
+.lb-script-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.lb-context-card,
+.lb-script-card{
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 10px 11px;
+    border-radius: 13px;
+    border: 1px solid rgba(166,128,35,.24);
+    background: linear-gradient(180deg, rgba(255,255,255,.94) 0%, rgba(255,250,240,.84) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.94),
+        0 6px 14px rgba(15,23,42,.06);
+}
+
+.lb-context-card-wide,
+.lb-script-card-wide{
+    grid-column: 1 / -1;
+}
+
+.lb-context-label,
+.lb-script-label{
+    color: #8a6116;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.lb-context-value,
+.lb-script-copy{
+    color: #111827;
+    font-size: 13px;
+    font-weight: 760;
+    line-height: 1.48;
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+.lb-script-shell{
+    display: grid;
+    gap: 10px;
+    padding-top: 2px;
+    border-top: 1px solid rgba(166,128,35,.14);
+}
+
 .lead-bridge .lb-row{
     display: flex;
     flex-wrap: wrap;
@@ -15257,6 +15385,15 @@ details.section{
         min-width: 100%;
     }
 
+    .lb-context-head,
+    .lb-script-head{
+        flex-direction: column;
+    }
+
+    .lb-context-chip-row{
+        justify-content: flex-start;
+    }
+
     #rbShell .rebuttal-workspace-grid{
         grid-template-columns: 1fr;
     }
@@ -15305,6 +15442,11 @@ details.section{
     #rbShell .rebuttal-workspace-grid .content-head-shortcuts{
         display: none !important;
     }
+
+    .lb-context-grid,
+    .lb-script-grid{
+        grid-template-columns: 1fr;
+    }
 }
 
 /* ========================================================================
@@ -15317,6 +15459,38 @@ details.section{
 #rbShell .lead-contact-zone .lb-filterbar{
     gap: 8px;
     margin-bottom: 8px;
+}
+
+#rbShell .lead-contact-zone .lb-context-shell{
+    padding: 10px 11px;
+    gap: 8px;
+}
+
+#rbShell .lead-contact-zone .lb-context-title,
+#rbShell .lead-contact-zone .lb-script-title{
+    font-size: 16px;
+}
+
+#rbShell .lead-contact-zone .lb-context-sub,
+#rbShell .lead-contact-zone .lb-script-note{
+    font-size: 12px;
+}
+
+#rbShell .lead-contact-zone .lb-context-grid,
+#rbShell .lead-contact-zone .lb-script-grid{
+    gap: 7px;
+}
+
+#rbShell .lead-contact-zone .lb-context-card,
+#rbShell .lead-contact-zone .lb-script-card{
+    padding: 9px 10px;
+    border-radius: 12px;
+}
+
+#rbShell .lead-contact-zone .lb-context-value,
+#rbShell .lead-contact-zone .lb-script-copy{
+    font-size: 12.5px;
+    line-height: 1.42;
 }
 
 #rbShell .lead-contact-zone .lb-row{

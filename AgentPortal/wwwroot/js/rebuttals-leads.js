@@ -91,6 +91,10 @@
       const controller = pickLeadBridgeController(queueKey);
       return controller ? controller.getCurrentLead() : null;
     };
+    window.LeadBridge.getCurrentContext = (queueKey) => {
+      const controller = pickLeadBridgeController(queueKey);
+      return controller ? controller.getCurrentContext() : null;
+    };
     window.LeadBridge.sendTextMessage = async ({ message, queueKey } = {}) => {
       const controller = pickLeadBridgeController(queueKey);
       if (!controller || !message) return false;
@@ -580,6 +584,15 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
+    const contextWhyEl = bridge.querySelector('[data-lb-context-why]');
+    const contextAskEl = bridge.querySelector('[data-lb-context-ask]');
+    const contextStartEl = bridge.querySelector('[data-lb-context-start]');
+    const contextSourceEl = bridge.querySelector('[data-lb-context-source]');
+    const contextSubmittedEl = bridge.querySelector('[data-lb-context-submitted]');
+    const contextMetaEl = bridge.querySelector('[data-lb-context-meta]');
+    const scriptProductEl = bridge.querySelector('[data-lb-script-product]');
+    const scriptSourceEl = bridge.querySelector('[data-lb-script-source]');
+    const scriptEstimateEl = bridge.querySelector('[data-lb-script-estimate]');
     const drawerNoteOpenBtn = document.getElementById('noteSelfOpen');
     const globalizeQuickViewNode = (node) => {
       if (!node) return null;
@@ -620,13 +633,18 @@
     const editLoanLabel = document.getElementById('dLoanLabel');
     const editIntakeSection = document.getElementById('dIntakeSection');
     const editIntakeSubmitted = document.getElementById('dIntakeSubmitted');
+    const editIntakeHistory = document.getElementById('dIntakeHistory');
+    const editIntakeOrigin = document.getElementById('dIntakeOrigin');
     const editIntakeOwner = document.getElementById('dIntakeOwner');
     const editIntakeProduct = document.getElementById('dIntakeProduct');
+    const editIntakeQuoteType = document.getElementById('dIntakeQuoteType');
     const editIntakePage = document.getElementById('dIntakePage');
     const editIntakeSource = document.getElementById('dIntakeSource');
+    const editIntakeLanding = document.getElementById('dIntakeLanding');
     const editIntakeIds = document.getElementById('dIntakeIds');
     const editIntakeRecommendation = document.getElementById('dIntakeRecommendation');
     const editIntakeDiscovery = document.getElementById('dIntakeDiscovery');
+    const editIntakeRawMeta = document.getElementById('dIntakeRawMeta');
     const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
     const drawerOutcomeButtons = Array.from(editDrawer?.querySelectorAll('.outcome-btn[data-outcome]') || []);
     const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
@@ -729,6 +747,7 @@
     let textMenuEl = null;
     let editDrawerOpen = false;
     let editTimelineFilter = 'all';
+    let currentLeadOverlayContext = null;
 
     function restoreMobileLeadControls(){
       if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
@@ -1589,17 +1608,382 @@
         .join(' • ') || '—';
     }
 
+    function normalizeSummaryText(value){
+      return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function normalizeContextToken(value){
+      return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+    }
+
+    function humanizeContextToken(value){
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      return raw
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function resolveLeadContextBucket(lead, snapshot){
+      const tokenMap = Object.freeze({
+        mortgage: 'MortgageProtection',
+        mortgageprotection: 'MortgageProtection',
+        lifemp: 'MortgageProtection',
+        term: 'TermLife',
+        termlife: 'TermLife',
+        lifeterm: 'TermLife',
+        wholelife: 'WholeLife',
+        lifewhole: 'WholeLife',
+        iul: 'IUL',
+        lifeiul: 'IUL',
+        finalexpense: 'FinalExpense',
+        lifefinalexpense: 'FinalExpense',
+        life: 'LifeInsurance',
+        lifegeneral: 'LifeInsurance',
+        lifeinsurance: 'LifeInsurance'
+      });
+
+      const candidates = [
+        snapshot?.quoteTypeLabel,
+        snapshot?.interestLabel,
+        snapshot?.offerKey,
+        snapshot?.productType,
+        leadOriginalLeadType(lead),
+        snapshot?.bucket,
+        normalizedQueueKey,
+        normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '')
+      ];
+
+      for (const candidate of candidates){
+        const normalizedCandidate = normalizeQueueKey(candidate || '');
+        if (productBuckets.has(normalizedCandidate)) return normalizedCandidate;
+
+        const mapped = tokenMap[normalizeContextToken(candidate)];
+        if (mapped) return mapped;
+      }
+
+      return normalizedQueueKey || leadOriginalLeadType(lead) || 'LifeInsurance';
+    }
+
+    function resolveLeadContextProductLabel(lead, snapshot){
+      const direct = normalizeSummaryText(snapshot?.quoteTypeLabel)
+        || normalizeSummaryText(snapshot?.interestLabel);
+      if (direct) return direct;
+
+      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+      const label = bucketLabel(bucketKey);
+      return label && label !== 'Lead' ? label : 'Life Insurance';
+    }
+
+    function summarizeDiscoveryItems(snapshot, limit = 2){
+      const items = Array.isArray(snapshot?.discoveryItems) ? snapshot.discoveryItems : [];
+      if (!items.length) return '';
+
+      return items
+        .slice(0, Math.max(1, limit))
+        .map(item => {
+          const label = normalizeSummaryText(item?.label || 'Detail');
+          const value = normalizeSummaryText(item?.value || '—');
+          return `${label}: ${value}`;
+        })
+        .join(' • ');
+    }
+
+    function historyCountLabel(snapshot){
+      const count = Number(snapshot?.historyCount || 0);
+      if (count <= 0) return 'No web intakes';
+      return `${count} intake${count === 1 ? '' : 's'} on file`;
+    }
+
+    function leadFirstName(lead){
+      return normalizeSummaryText(lead?.firstName) || 'there';
+    }
+
+    function defaultWhyTheyCameInText(bucketKey, productLabel){
+      switch (bucketKey){
+        case 'MortgageProtection':
+          return 'They came in to protect the home and keep the payment burden off the household.';
+        case 'TermLife':
+          return 'They came in looking for practical family and income protection during the heavy financial years.';
+        case 'WholeLife':
+          return 'They came in looking at permanent protection and long-range value, not just a temporary term.';
+        case 'IUL':
+          return 'They came in exploring permanent coverage with flexibility and cash-value strategy potential.';
+        case 'FinalExpense':
+          return 'They came in to keep burial costs, final bills, and family burden from landing on loved ones.';
+        default:
+          return `They came in to figure out what kind of ${productLabel.toLowerCase()} may fit best.`;
+      }
+    }
+
+    function defaultStartingLaneText(bucketKey){
+      switch (bucketKey){
+        case 'MortgageProtection':
+          return 'Start in the mortgage lane and confirm the home, the lender, and the payment or balance they wanted protected.';
+        case 'TermLife':
+          return 'Start in the life opener and confirm the family, income, or bill protection window they were trying to cover.';
+        case 'WholeLife':
+          return 'Start in the life opener and steer early into permanent protection, long-term fit, and stable value.';
+        case 'IUL':
+          return 'Start in the life opener and frame the conversation around permanent protection, flexibility, and future cash-value access.';
+        case 'FinalExpense':
+          return 'Start in the final expense lane and anchor the conversation around burial costs, final bills, and family burden relief.';
+        default:
+          return 'Start in the life opener and confirm whether they were leaning term, whole life, or another permanent option.';
+      }
+    }
+
+    function buildWhyTheyCameInText(lead, snapshot){
+      if (!snapshot){
+        return 'No public intake is attached yet.\nConfirm the protection reason early and work from the saved CRM details.';
+      }
+
+      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+      const productLabel = resolveLeadContextProductLabel(lead, snapshot);
+      const discovery = summarizeDiscoveryItems(snapshot, 2);
+      const lines = [defaultWhyTheyCameInText(bucketKey, productLabel)];
+
+      if (discovery){
+        lines.push(`Intake signals: ${discovery}`);
+      }
+
+      return lines.join('\n');
+    }
+
+    function buildWhatTheyAskedForText(lead, snapshot){
+      const productLabel = resolveLeadContextProductLabel(lead, snapshot);
+      if (!snapshot){
+        return `Requested: ${productLabel}\nNo website intake answers are attached to this lead yet.`;
+      }
+
+      const lines = [
+        `Requested: ${joinIntakeParts([
+          productLabel,
+          snapshot.offerKey ? `Offer ${humanizeContextToken(snapshot.offerKey)}` : '',
+          snapshot.productType ? `Type ${humanizeContextToken(snapshot.productType)}` : ''
+        ])}`
+      ];
+
+      const discovery = summarizeDiscoveryItems(snapshot, 3);
+      if (discovery){
+        lines.push(`Discovery: ${discovery}`);
+      }
+
+      const estimateSummary = normalizeSummaryText(snapshot.estimateSummary);
+      if (estimateSummary){
+        lines.push(`Estimate context: ${estimateSummary}`);
+      }
+
+      return lines.join('\n');
+    }
+
+    function buildRecommendedStartingPointText(lead, snapshot){
+      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+      const lines = [defaultStartingLaneText(bucketKey)];
+      const primary = normalizeSummaryText(snapshot?.recommendationPrimaryTitle);
+      const secondary = normalizeSummaryText(snapshot?.recommendationSecondaryTitle);
+      const estimateSummary = normalizeSummaryText(snapshot?.estimateSummary);
+
+      if (primary){
+        lines.push(secondary
+          ? `Lead with ${primary} first and keep ${secondary} ready as the comparison backup.`
+          : `Lead with ${primary} as the starting recommendation.`);
+      }
+
+      if (estimateSummary){
+        lines.push(`Bridge off the estimate they already touched: ${estimateSummary}`);
+      }
+
+      return lines.join('\n');
+    }
+
+    function buildSourceCampaignText(snapshot){
+      if (!snapshot){
+        return 'No website attribution is attached to this lead yet.';
+      }
+
+      const attribution = joinIntakeParts([
+        snapshot.utmSource,
+        snapshot.utmMedium,
+        snapshot.utmCampaign
+      ]);
+      const pageContext = joinIntakeParts([
+        snapshot.sourcePageKey,
+        snapshot.pageVariant ? `Variant ${humanizeContextToken(snapshot.pageVariant)}` : '',
+        snapshot.pageMode ? `Mode ${humanizeContextToken(snapshot.pageMode)}` : ''
+      ]);
+
+      return [
+        attribution === '—' ? (snapshot.originLabel || 'Website intake') : attribution,
+        pageContext === '—' ? '' : pageContext
+      ].filter(Boolean).join('\n');
+    }
+
+    function buildLastSubmittedText(snapshot){
+      if (!snapshot){
+        return 'No website submission is attached to this lead yet.';
+      }
+
+      return [
+        formatIntakeDate(snapshot.submittedUtc),
+        historyCountLabel(snapshot)
+      ].join('\n');
+    }
+
+    function buildContextMetaChips(lead, snapshot){
+      if (!snapshot){
+        return ['CRM-only lead context'];
+      }
+
+      const chips = [
+        bucketLabel(resolveLeadContextBucket(lead, snapshot)),
+        normalizeSummaryText(snapshot.originLabel),
+        snapshot.sourcePageKey ? `Page ${snapshot.sourcePageKey}` : '',
+        snapshot.pageVariant ? `Variant ${humanizeContextToken(snapshot.pageVariant)}` : '',
+        snapshot.pageMode ? `Mode ${humanizeContextToken(snapshot.pageMode)}` : '',
+        historyCountLabel(snapshot)
+      ];
+
+      return chips.filter(Boolean);
+    }
+
+    function buildProductAwareOpenerText(lead, snapshot){
+      const firstName = leadFirstName(lead);
+      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+      const opener = (() => {
+        switch (bucketKey){
+          case 'MortgageProtection':
+            return `Hi ${firstName}, I'm calling about the mortgage protection request you filled out so we can review the home and what you wanted protected first.`;
+          case 'TermLife':
+            return `Hi ${firstName}, I'm calling about the term life request you filled out so we can review the family and income protection you were looking for.`;
+          case 'WholeLife':
+            return `Hi ${firstName}, I'm calling about the whole life request you filled out so we can review the permanent protection fit you were exploring.`;
+          case 'IUL':
+            return `Hi ${firstName}, I'm calling about the IUL request you filled out so we can review the permanent protection and flexibility you were exploring.`;
+          case 'FinalExpense':
+            return `Hi ${firstName}, I'm calling about the final expense request you filled out so we can review what costs you wanted handled first.`;
+          default:
+            return `Hi ${firstName}, I'm calling about the life insurance request you filled out so we can review the protection direction you were looking for.`;
+        }
+      })();
+
+      return `${opener}\nStay anchored to the request they already started before widening the product conversation.`;
+    }
+
+    function buildSourceAwareOpenerText(lead, snapshot){
+      const firstName = leadFirstName(lead);
+      if (!snapshot){
+        return `Hi ${firstName}, I'm following up on the request we received so we can make sure we're reviewing the right protection fit.`;
+      }
+
+      const taggedSource = joinIntakeParts([
+        snapshot.utmSource,
+        snapshot.utmCampaign
+      ]);
+
+      if (normalizeSummaryText(snapshot.originLabel) === 'Paid Landing' || taggedSource !== '—'){
+        const sourceDescriptor = taggedSource !== '—' ? taggedSource : 'the online estimate request';
+        return `Lead with the request they already started: "You recently asked for info through ${sourceDescriptor}, so I'm following up on the request you already submitted."`;
+      }
+
+      return `Lead with the website request itself: "You recently asked for information on the site, so I'm following up on that request and where you wanted to start."`;
+    }
+
+    function buildEstimateTalkingPointsText(lead, snapshot){
+      const points = [];
+      const discovery = summarizeDiscoveryItems(snapshot, 3);
+      const estimateSummary = normalizeSummaryText(snapshot?.estimateSummary);
+      const primary = normalizeSummaryText(snapshot?.recommendationPrimaryTitle);
+      const secondary = normalizeSummaryText(snapshot?.recommendationSecondaryTitle);
+
+      if (estimateSummary){
+        points.push(`Use the estimate as the bridge: ${estimateSummary}`);
+      } else {
+        points.push(defaultStartingLaneText(resolveLeadContextBucket(lead, snapshot)));
+      }
+
+      if (primary){
+        points.push(secondary
+          ? `Position ${primary} first and keep ${secondary} ready if they need a comparison.`
+          : `Position ${primary} as the clearest starting recommendation.`);
+      }
+
+      if (discovery){
+        points.push(`Tie the explanation back to their intake answers: ${discovery}`);
+      }
+
+      points.push('Ask for a small confirmation before presenting: "Is that still the direction you wanted to look at?"');
+
+      return points.map(point => `- ${point}`).join('\n');
+    }
+
+    function buildLeadOverlayContext(lead){
+      const snapshot = lead?.intakeSnapshot || null;
+      return {
+        leadId: normalizeSummaryText(lead?.leadId),
+        leadName: `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead',
+        bucket: resolveLeadContextBucket(lead, snapshot),
+        snapshot,
+        cards: {
+          whyTheyCameIn: buildWhyTheyCameInText(lead, snapshot),
+          whatTheyAskedFor: buildWhatTheyAskedForText(lead, snapshot),
+          recommendedStartingPoint: buildRecommendedStartingPointText(lead, snapshot),
+          sourceCampaign: buildSourceCampaignText(snapshot),
+          lastSubmitted: buildLastSubmittedText(snapshot)
+        },
+        scripts: {
+          productAwareOpener: buildProductAwareOpenerText(lead, snapshot),
+          sourceAwareOpener: buildSourceAwareOpenerText(lead, snapshot),
+          estimateAwareTalkingPoints: buildEstimateTalkingPointsText(lead, snapshot)
+        },
+        metaChips: buildContextMetaChips(lead, snapshot)
+      };
+    }
+
+    function renderLeadOverlayContext(lead){
+      const context = buildLeadOverlayContext(lead);
+      currentLeadOverlayContext = context;
+
+      if (contextWhyEl) contextWhyEl.textContent = context.cards.whyTheyCameIn;
+      if (contextAskEl) contextAskEl.textContent = context.cards.whatTheyAskedFor;
+      if (contextStartEl) contextStartEl.textContent = context.cards.recommendedStartingPoint;
+      if (contextSourceEl) contextSourceEl.textContent = context.cards.sourceCampaign;
+      if (contextSubmittedEl) contextSubmittedEl.textContent = context.cards.lastSubmitted;
+      if (scriptProductEl) scriptProductEl.textContent = context.scripts.productAwareOpener;
+      if (scriptSourceEl) scriptSourceEl.textContent = context.scripts.sourceAwareOpener;
+      if (scriptEstimateEl) scriptEstimateEl.textContent = context.scripts.estimateAwareTalkingPoints;
+      if (contextMetaEl){
+        contextMetaEl.innerHTML = context.metaChips.length
+          ? context.metaChips.map(chip => `<span class="lb-context-chip">${escapeHtml(chip)}</span>`).join('')
+          : '<span class="lb-context-chip">No intake context loaded yet</span>';
+      }
+
+      return context;
+    }
+
     function renderEditIntakeSnapshot(lead){
       const snapshot = lead?.intakeSnapshot || null;
       const nodes = [
         editIntakeSubmitted,
+        editIntakeHistory,
+        editIntakeOrigin,
         editIntakeOwner,
         editIntakeProduct,
+        editIntakeQuoteType,
         editIntakePage,
         editIntakeSource,
+        editIntakeLanding,
         editIntakeIds,
         editIntakeRecommendation,
-        editIntakeDiscovery
+        editIntakeDiscovery,
+        editIntakeRawMeta
       ];
 
       if (!snapshot){
@@ -1610,12 +1994,18 @@
 
       if (editIntakeSection) editIntakeSection.hidden = false;
       if (editIntakeSubmitted) editIntakeSubmitted.textContent = formatIntakeDate(snapshot.submittedUtc);
+      if (editIntakeHistory) editIntakeHistory.textContent = historyCountLabel(snapshot);
+      if (editIntakeOrigin) editIntakeOrigin.textContent = joinIntakeParts([
+        snapshot.originLabel,
+        snapshot.originTone ? `Tone: ${snapshot.originTone}` : ''
+      ]);
       if (editIntakeOwner) editIntakeOwner.textContent = snapshot.agentUserId || lead?.agentUserId || '—';
       if (editIntakeProduct) editIntakeProduct.textContent = joinIntakeParts([
         snapshot.interestLabel,
         snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : '',
         snapshot.productType ? `Type: ${snapshot.productType}` : ''
       ]);
+      if (editIntakeQuoteType) editIntakeQuoteType.textContent = snapshot.quoteTypeLabel || '—';
       if (editIntakePage) editIntakePage.textContent = joinIntakeParts([
         snapshot.sourcePageKey,
         snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : '',
@@ -1627,6 +2017,10 @@
         snapshot.utmMedium,
         snapshot.utmCampaign,
         snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ''
+      ]);
+      if (editIntakeLanding) editIntakeLanding.textContent = joinIntakeParts([
+        snapshot.landingPageUrl,
+        snapshot.referrerUrl
       ]);
       if (editIntakeIds) editIntakeIds.textContent = joinIntakeParts([
         snapshot.utmId ? `utm_id ${snapshot.utmId}` : '',
@@ -1645,6 +2039,7 @@
             .map(item => `${String(item?.label || 'Detail').trim()}: ${String(item?.value || '—').trim()}`)
             .join(' • ')
         : '—';
+      if (editIntakeRawMeta) editIntakeRawMeta.textContent = snapshot.rawMetadataJson || '—';
     }
 
     function setOrigin(lead){
@@ -2200,6 +2595,7 @@
         const currentLead = resolveCurrentLead();
         if (currentLead?.leadId === lead.leadId){
           setOrigin(lead);
+          renderLeadOverlayContext(lead);
           renderEditIntakeSnapshot(lead);
         }
       } catch {}
@@ -2292,6 +2688,7 @@
         setStatusMessage('No leads found');
         posEl.textContent = 'Lead 0 of 0';
         setOrigin(null);
+        renderLeadOverlayContext(null);
         renderAgentWideDialCounters();
         updateCommunicationAvailability(null);
         return;
@@ -2656,6 +3053,7 @@
       const lead = options.lead || resolveCurrentLead();
       const renderState = resolveRenderState(lead);
       renderLead(lead, renderState.index, renderState.total);
+      const leadContext = renderLeadOverlayContext(lead);
       if (lead && !lead.intakeSnapshot){
         void hydrateLeadIntakeSnapshot(lead);
       } else {
@@ -2667,6 +3065,7 @@
           detail: {
             queueKey,
             lead: lead || null,
+            context: leadContext,
             position: renderState.index + 1,
             total: renderState.total
           }
@@ -2738,6 +3137,7 @@
       rawQueueKey: queueKey || '',
       selectLeadById,
       getCurrentLead: () => resolveCurrentLead(),
+      getCurrentContext: () => currentLeadOverlayContext,
       sendTextMessage: (message) => sendCustomTextMessage(message)
     });
 

@@ -227,6 +227,66 @@
 
     @await Html.PartialAsync("~/Views/Leads/_LeadQuickView.cshtml")
 
+    <section class="lb-context-shell" data-lb-context-shell aria-label="Lead intake context">
+        <div class="lb-context-head">
+            <div class="lb-context-head-copy">
+                <div class="lb-context-kicker">Lead context</div>
+                <div class="lb-context-title">Work the lead with the intake in view</div>
+                <div class="lb-context-sub">Keep the why, the ask, the recommended lane, and the talking points visible while you close.</div>
+            </div>
+            <div class="lb-context-chip-row" data-lb-context-meta>
+                <span class="lb-context-chip">No intake context loaded yet</span>
+            </div>
+        </div>
+
+        <div class="lb-context-grid">
+            <article class="lb-context-card">
+                <div class="lb-context-label">Why they came in</div>
+                <div class="lb-context-value" data-lb-context-why>No lead selected yet.</div>
+            </article>
+            <article class="lb-context-card">
+                <div class="lb-context-label">What they asked for</div>
+                <div class="lb-context-value" data-lb-context-ask>LeadBridge will fill this from the latest intake snapshot.</div>
+            </article>
+            <article class="lb-context-card lb-context-card-wide">
+                <div class="lb-context-label">Recommended starting point</div>
+                <div class="lb-context-value" data-lb-context-start>Open the right product lane and confirm the request they already started.</div>
+            </article>
+            <article class="lb-context-card">
+                <div class="lb-context-label">Source / campaign</div>
+                <div class="lb-context-value" data-lb-context-source>Source, medium, and campaign will appear here.</div>
+            </article>
+            <article class="lb-context-card">
+                <div class="lb-context-label">Last submitted</div>
+                <div class="lb-context-value" data-lb-context-submitted>Latest submission timing and intake count will appear here.</div>
+            </article>
+        </div>
+
+        <div class="lb-script-shell" data-lb-script-shell>
+            <div class="lb-script-head">
+                <div>
+                    <div class="lb-script-kicker">Script overlay</div>
+                    <div class="lb-script-title">Static call cues built from the lead context</div>
+                </div>
+                <div class="lb-script-note">Product-aware | Source-aware | Estimate-aware | No AI generation</div>
+            </div>
+            <div class="lb-script-grid">
+                <article class="lb-script-card">
+                    <div class="lb-script-label">Product-aware opener</div>
+                    <div class="lb-script-copy" data-lb-script-product>Pick a lead to load the product opener.</div>
+                </article>
+                <article class="lb-script-card">
+                    <div class="lb-script-label">Source-aware opener</div>
+                    <div class="lb-script-copy" data-lb-script-source>Lead attribution context will shape this opener.</div>
+                </article>
+                <article class="lb-script-card lb-script-card-wide">
+                    <div class="lb-script-label">Estimate-aware talking points</div>
+                    <div class="lb-script-copy" data-lb-script-estimate>Estimate and recommendation cues will appear here.</div>
+                </article>
+            </div>
+        </div>
+    </section>
+
     <div class="lb-row lb-row-fields">
         <div class="lead-field mobile-allowed" data-lf="name">
             <span class="lf-label">Name</span>

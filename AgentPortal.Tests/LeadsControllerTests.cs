@@ -85,6 +85,90 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task Leads_List_Returns_Latest_Intake_Snapshot_For_Workstation_Context()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-LIST-INTAKE-1",
+            AgentUserId = "agent-1",
+            Bucket = "TermLife",
+            OriginalLeadType = "TermLife",
+            FirstName = "Parker",
+            LastName = "Context",
+            Email = "parker@example.com",
+            Phone = "6025550199",
+            CreatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeadIntakeLinks.AddRange(
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 201,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 20, 10, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 20, 10, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life"
+            },
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 202,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 21, 11, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life_landing",
+                PageVariant = "low_friction_options",
+                PageMode = "paid_landing",
+                InterestType = "life_term",
+                OfferKey = "term",
+                ProductType = "life_term",
+                UtmSource = "facebook",
+                UtmMedium = "paid_social",
+                UtmCampaign = "term_retarget",
+                EstimateSummary = "Best fit: Term Life · Coverage target: $250,000",
+                RecommendationPrimaryTitle = "Term Life",
+                RecommendationSecondaryTitle = "Whole Life",
+                DiscoverySummaryJson = JsonSerializer.Serialize(new[]
+                {
+                    new { Label = "Protecting", Value = "Family" },
+                    new { Label = "Goal", Value = "Replace Income" }
+                })
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Leads(null);
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+        var row = Assert.Single(doc.RootElement.EnumerateArray());
+        var intake = row.GetProperty("intakeSnapshot");
+
+        Assert.Equal(2, intake.GetProperty("historyCount").GetInt32());
+        Assert.Equal("quote_term_life_landing", intake.GetProperty("sourcePageKey").GetString());
+        Assert.Equal("low_friction_options", intake.GetProperty("pageVariant").GetString());
+        Assert.Equal("paid_landing", intake.GetProperty("pageMode").GetString());
+        Assert.Equal("facebook", intake.GetProperty("utmSource").GetString());
+        Assert.Equal("paid_social", intake.GetProperty("utmMedium").GetString());
+        Assert.Equal("term_retarget", intake.GetProperty("utmCampaign").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("interestLabel").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("quoteTypeLabel").GetString());
+        Assert.Equal("Best fit: Term Life · Coverage target: $250,000", intake.GetProperty("estimateSummary").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("recommendationPrimaryTitle").GetString());
+        Assert.Equal("Whole Life", intake.GetProperty("recommendationSecondaryTitle").GetString());
+        Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
     public async Task IncrementCall_Targets_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
