@@ -118,6 +118,21 @@ public class QuoteProductInstrumentationContractTests
         Assert.Contains("Estimates are illustrative only and not a final quote.", renderer, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TrackingAssets_UseCacheBustingAndLiveAnalyticsConfigInjection()
+    {
+        var repoRoot = GetRepoRoot();
+        var layout = Read(repoRoot, "Protect-Website", "Views", "Shared", "_Layout.cshtml");
+        var lifeView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
+
+        Assert.Contains("window.LEGEND_ANALYTICS_CONFIG =", layout, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"~/js/tracking.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"~/js/lead-modal.js\" asp-append-version=\"true\"></script>", layout, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"~/js/meta-signal-intelligence.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"~/js/life-estimate-engine.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
+        Assert.Contains("<script src=\"~/js/trusted-carrier-strip.js\" asp-append-version=\"true\"></script>", lifeView, StringComparison.Ordinal);
+    }
+
     private static string Read(string repoRoot, params string[] parts)
     {
         return File.ReadAllText(Path.Combine(parts.Prepend(repoRoot).ToArray()));

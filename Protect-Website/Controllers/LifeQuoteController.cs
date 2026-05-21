@@ -20,6 +20,7 @@ using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using Shared.Meta;
+using Microsoft.AspNetCore.Http;
 
 namespace Protect_Website.Controllers
 {
@@ -68,7 +69,16 @@ namespace Protect_Website.Controllers
 
         // ===================== GET =====================
         [HttpGet("Life")]
-        public Task<IActionResult> LifeQuote([FromQuery] string? offer = null) => RenderWizard(string.IsNullOrWhiteSpace(offer) ? "life" : offer);
+        public Task<IActionResult> LifeQuote([FromQuery] string? offer = null)
+        {
+            if (!string.IsNullOrWhiteSpace(offer))
+            {
+                var normalizedOffer = LifeOfferResolver.Normalize(offer);
+                return Task.FromResult<IActionResult>(Redirect(BuildCanonicalQuoteUrl(normalizedOffer)));
+            }
+
+            return RenderWizard(LifeOfferKeys.Life);
+        }
         [HttpGet("Life/landing")]
         public Task<IActionResult> LifeLandingQuote() => RenderWizard(LifeOfferKeys.Life, isLandingPage: true);
         [HttpGet("Term-Life")]
@@ -1454,6 +1464,30 @@ namespace Protect_Website.Controllers
             return NormalizeLandingVariantToken(requestedVariant, cfg.OfferKey);
         }
 
+        private string BuildCanonicalQuoteUrl(string offerKey)
+        {
+            var path = GetQuoteRoutePath(offerKey);
+            var pathBase = Request?.PathBase.Value ?? string.Empty;
+            var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
+            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
+            var slugPrefix = !isFounderPath && !string.IsNullOrWhiteSpace(trackingSlug)
+                ? $"/a/{trackingSlug.Trim()}"
+                : string.Empty;
+
+            var queryPairs = Request?.Query
+                .Where(kvp => !string.Equals(kvp.Key, "offer", StringComparison.OrdinalIgnoreCase))
+                .SelectMany(
+                    kvp => kvp.Value,
+                    (kvp, value) => new KeyValuePair<string, string?>(kvp.Key, value))
+                .ToArray() ?? [];
+
+            var queryString = queryPairs.Length > 0
+                ? QueryString.Create(queryPairs).ToUriComponent()
+                : string.Empty;
+
+            return $"{pathBase}{slugPrefix}{path}{queryString}";
+        }
+
         private static string BuildVariantPageKey(string basePageKey, bool isLandingPage, string? landingVariant = null)
         {
             if (!isLandingPage)
@@ -1585,6 +1619,20 @@ namespace Protect_Website.Controllers
                 LifeOfferKeys.WholeLife => "/Quote/Whole-Life/landing",
                 LifeOfferKeys.Iul => "/Quote/IUL/landing",
                 _ => "/Quote/Life/landing"
+            };
+        }
+
+        private static string GetQuoteRoutePath(string offerKey)
+        {
+            var normalized = LifeOfferResolver.Normalize(offerKey);
+            return normalized switch
+            {
+                LifeOfferKeys.Mortgage => "/Quote/Mortgage-Protection",
+                LifeOfferKeys.FinalExpense => "/Quote/Final-Expense",
+                LifeOfferKeys.Term => "/Quote/Term-Life",
+                LifeOfferKeys.WholeLife => "/Quote/Whole-Life",
+                LifeOfferKeys.Iul => "/Quote/IUL",
+                _ => "/Quote/Life"
             };
         }
 

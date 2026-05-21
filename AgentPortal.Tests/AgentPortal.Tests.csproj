@@ -29,6 +29,7 @@
     <ProjectReference Include="..\\ClientApp\\ClientApp.csproj" />
     <ProjectReference Include="..\\Domain\\Domain.csproj" />
     <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
+    <ProjectReference Include="..\\Protect-Website\\ProtectWebsite.csproj" />
     <ProjectReference Include="..\\SHARED\\Shared.csproj" />
   </ItemGroup>
 

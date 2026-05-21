@@ -12,6 +12,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -146,5 +147,31 @@ public class AnalyticsIngestControllerTests
         var acceptedOk = Assert.IsType<OkObjectResult>(accepted);
         Assert.Equal("ok", ReadStatus(acceptedOk.Value));
         Assert.IsType<BadRequestObjectResult>(rejected);
+    }
+
+    [Theory]
+    [InlineData("first_question_view")]
+    [InlineData("primary_cta_seen")]
+    public async Task Ingest_Accepts_CatalogedQuoteBrowserEvents(string eventType)
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+
+        Assert.True(AnalyticsEventCatalog.TryGet(eventType, out var definition));
+        Assert.True(definition.AllowBrowser);
+
+        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            EventType = eventType,
+            Host = "test",
+            Path = "/Quote/Life/landing",
+            PageKey = "quote_life_landing",
+            QuoteType = "life",
+            EventUtc = DateTime.UtcNow
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("ok", ReadStatus(ok.Value));
     }
 }
