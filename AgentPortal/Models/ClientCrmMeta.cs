@@ -22,6 +22,7 @@ public sealed class ClientCrmMeta
     public string? Gender { get; set; }
     public DateTime? DOB { get; set; }
     public string? CrmPriority { get; set; }
+    public string? ContactStatus { get; set; }
     public DateTime? CrmNextDate { get; set; }
     public string? CrmNextText { get; set; }
     public string? CrmTags { get; set; }
@@ -158,6 +159,17 @@ public static class ClientCrmMetaSerializer
         "WaitingOnDocs"
     };
 
+    public static readonly string[] AllowedContactStatuses =
+    {
+        "NotSet",
+        "NoContactYet",
+        "AttemptingContact",
+        "Connected",
+        "Quoted",
+        "WaitingOnDecision",
+        "Unresponsive"
+    };
+
     public static ClientCrmMeta Deserialize(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
@@ -213,6 +225,7 @@ public static class ClientCrmMetaSerializer
         if (meta.DOB.HasValue)
             meta.DOB = meta.DOB.Value.Date;
         meta.CrmPriority = NormalizePriority(meta.CrmPriority);
+        meta.ContactStatus = NormalizeContactStatus(meta.ContactStatus);
         if (meta.CrmNextDate.HasValue)
             meta.CrmNextDate = meta.CrmNextDate.Value.Date;
         meta.CrmNextText = Clean(meta.CrmNextText);
@@ -317,6 +330,16 @@ public static class ClientCrmMetaSerializer
 
         var match = AllowedWaitingOnStates.FirstOrDefault(x => x.Equals(cleaned, StringComparison.OrdinalIgnoreCase));
         return match ?? ClientCrmMeta.DefaultWaitingOn;
+    }
+
+    public static string NormalizeContactStatus(string? value)
+    {
+        var cleaned = Clean(value);
+        if (string.IsNullOrWhiteSpace(cleaned))
+            return "NotSet";
+
+        var match = AllowedContactStatuses.FirstOrDefault(x => x.Equals(cleaned, StringComparison.OrdinalIgnoreCase));
+        return match ?? "NotSet";
     }
 
     private static string NormalizePriority(string? value)

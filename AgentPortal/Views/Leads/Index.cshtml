@@ -460,6 +460,7 @@ else
                 var sMeetingTime = (c.MeetingTime ?? "09:00").Trim();
                 var sMeetingDuration = c.MeetingDurationMinutes <= 0 ? 30 : c.MeetingDurationMinutes;
                 var sWaitingOn = (c.WaitingOn ?? AgentPortal.Models.ClientCrmMeta.DefaultWaitingOn).Trim();
+                var sContactStatus = (c.ContactStatus ?? "NotSet").Trim();
                 var sPinnedBrief = (c.PinnedBrief ?? "").Trim();
                 var sStageEntered = c.StageEnteredUtc.ToString("yyyy-MM-dd");
                 var sPipelineOrder = c.PipelineOrder.ToString(CultureInfo.InvariantCulture);
@@ -478,6 +479,29 @@ var sCity = (c.City ?? "").Trim();
                 var sAge = (c.Age ?? "").Trim();
                 var sBtc = (c.Btc ?? "").Trim();
                 var sOriginalLeadType = (c.OriginalLeadType ?? "").Trim();
+                var sLeadOrigin = (c.LeadOriginLabel ?? "Manual Lead").Trim();
+                var sLeadOriginTone = (c.LeadOriginTone ?? "manual").Trim().ToLowerInvariant();
+                var sProductInterest = (c.ProductInterestLabel ?? "").Trim();
+                var sQuoteType = (c.QuoteTypeLabel ?? "").Trim();
+                var sAttributionSource = (c.AttributionSource ?? "").Trim();
+                var sAttributionMedium = (c.AttributionMedium ?? "").Trim();
+                var sAttributionCampaign = (c.AttributionCampaign ?? "").Trim();
+                var sLatestSubmission = c.LatestSubmissionUtc?.ToString("O") ?? "";
+                var sLatestSubmissionDisplay = c.LatestSubmissionUtc?.ToString("MMM d, yyyy h:mm tt 'UTC'") ?? "";
+                var sLatestRecommendation = (c.LatestRecommendationSummary ?? "").Trim();
+                var sIntakeVariant = (c.IntakePageVariant ?? "").Trim();
+                var sIntakeMode = (c.IntakePageMode ?? "").Trim();
+                var sAttributionSummary = string.Join(" / ", new[] { sAttributionSource, sAttributionMedium, sAttributionCampaign }.Where(part => !string.IsNullOrWhiteSpace(part)));
+                var sContactStatusDisplay = sContactStatus switch
+                {
+                    "NoContactYet" => "No contact yet",
+                    "AttemptingContact" => "Attempting contact",
+                    "Connected" => "Connected",
+                    "Quoted" => "Quoted",
+                    "WaitingOnDecision" => "Waiting on decision",
+                    "Unresponsive" => "Unresponsive",
+                    _ => "Contact status not set"
+                };
                 var dialPhone = (c.Phone ?? "").Trim();
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
                 var prodPaid = c.ProductionPaidAmount;
@@ -513,6 +537,7 @@ var sCity = (c.City ?? "").Trim();
                     data-s-meeting-time="@sMeetingTime"
                     data-s-meeting-duration="@sMeetingDuration"
                     data-s-waiting="@sWaitingOn"
+                    data-s-contactstatus="@sContactStatus"
                     data-s-pinnedbrief="@sPinnedBrief"
                     data-s-stageentered="@sStageEntered"
                     data-s-pipelineorder="@sPipelineOrder"
@@ -541,6 +566,18 @@ var sCity = (c.City ?? "").Trim();
                     data-dob="@sDob"
                     data-mortgage-lender="@sLender"
                     data-mortgagelender="@sLender"
+                    data-intake-origin="@sLeadOrigin"
+                    data-intake-origin-tone="@sLeadOriginTone"
+                    data-intake-product-interest="@sProductInterest"
+                    data-intake-quote-type="@sQuoteType"
+                    data-intake-source="@sAttributionSource"
+                    data-intake-medium="@sAttributionMedium"
+                    data-intake-campaign="@sAttributionCampaign"
+                    data-intake-submitted="@sLatestSubmission"
+                    data-intake-recommendation="@sLatestRecommendation"
+                    data-intake-history="@c.IntakeHistoryCount"
+                    data-intake-variant="@sIntakeVariant"
+                    data-intake-mode="@sIntakeMode"
                     data-paid="@c.PaidAmount"
                     data-personal="@c.PersonalAmount"
                     data-prod-paid="@prodPaid"
@@ -573,6 +610,36 @@ var sCity = (c.City ?? "").Trim();
                             {
                                 <span class="muted">—</span>
                             }
+
+                            <div class="lead-command-stack">
+                                <div class="lead-command-chips">
+                                    <span class="meta-chip lead-origin-chip lead-origin-@sLeadOriginTone" data-origin-badge>@sLeadOrigin</span>
+                                    @if (!string.IsNullOrWhiteSpace(sProductInterest))
+                                    {
+                                        <span class="meta-chip" data-product-interest>@sProductInterest</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(sQuoteType))
+                                    {
+                                        <span class="meta-chip" data-quote-type>Quote: @sQuoteType</span>
+                                    }
+                                    @if (c.IntakeHistoryCount > 0)
+                                    {
+                                        <span class="meta-chip" data-intake-history>@c.IntakeHistoryCount intake@(c.IntakeHistoryCount == 1 ? "" : "s")</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(sAttributionSummary))
+                                {
+                                    <span class="tiny lead-meta-line" data-attribution-summary>@sAttributionSummary</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(sLatestSubmissionDisplay))
+                                {
+                                    <span class="tiny lead-meta-line" data-submission-summary>Latest intake: @sLatestSubmissionDisplay</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(sLatestRecommendation))
+                                {
+                                    <span class="tiny lead-meta-line" data-recommendation-summary>@sLatestRecommendation</span>
+                                }
+                            </div>
 
                             @if (c.PaidAmount > 0 || c.PersonalAmount > 0)
                             {
@@ -633,6 +700,7 @@ var sCity = (c.City ?? "").Trim();
                                 <span class="dot"></span>
                                 <span data-status-text>Active Client</span>
                             </span>
+                            <span class="meta-chip" data-contact-status-text>@sContactStatusDisplay</span>
                             <span class="meta-chip" data-waiting-text>Waiting On Agent</span>
                         </div>
                     </td>
@@ -645,10 +713,13 @@ var sCity = (c.City ?? "").Trim();
                     </td>
 
                     <td data-label="Next Action" data-col="next">
-                        <span class="nextpill none" data-nextpill title="Set Next Action in Quick View">
-                            <span class="flag">—</span>
-                            <span class="txt" data-nextaction>—</span>
-                        </span>
+                        <div class="cell-stack">
+                            <span class="nextpill none" data-nextpill title="Set Next Action in Quick View">
+                                <span class="flag">—</span>
+                                <span class="txt" data-nextaction>—</span>
+                            </span>
+                            <span class="tiny lead-warning-text" data-command-warning>—</span>
+                        </div>
                     </td>
 
                     <td data-label="Last Touch" data-col="touch">
@@ -660,6 +731,7 @@ var sCity = (c.City ?? "").Trim();
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-quickview open-drawer">Quick View</button>
+                        <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
                         <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
                     </td>
                 </tr>

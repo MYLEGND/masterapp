@@ -711,6 +711,7 @@ async function loadQuickView(clientId){
       btc: lead?.btc || row.dataset.btc || "",
       crmStatus: row.dataset.crmStatus || row.dataset.sStatus || "Lead",
       crmPriority: row.dataset.crmPriority || row.dataset.sPriority || "Normal",
+      contactStatus: row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet",
       crmLastTouch: row.dataset.crmLastTouch || row.dataset.sLasttouch || "",
       crmNextDate: row.dataset.crmNextDate || row.dataset.sNextdate || "",
       crmNextText: row.dataset.crmNextText || row.dataset.sNexttext || "",
@@ -765,6 +766,7 @@ async function loadQuickView(clientId){
       btc: lead.btc || "",
       crmStatus: lead.crmStatus || "Lead",
       crmPriority: lead.crmPriority || "Normal",
+      contactStatus: lead.contactStatus || "NotSet",
       crmLastTouch: lead.crmLastTouch || lead.updatedUtc || "",
       crmNextDate: lead.crmNextDate || "",
       crmNextText: lead.crmNextText || "",
@@ -1833,6 +1835,7 @@ const dPipelineStage = $("#dPipelineStage");
 const dLastTouch = $("#dLastTouch");
 const dTags = $("#dTags");
 const dNotes = $("#dNotes");
+const dContactStatus = $("#dContactStatus");
 
 const dNextDate = $("#dNextDate");
 const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
@@ -1874,13 +1877,18 @@ const dMentionNote = $("#dMentionNote");
 const mentionList = $("#mentionList");
 const dIntakeSection = $("#dIntakeSection");
 const dIntakeSubmitted = $("#dIntakeSubmitted");
+const dIntakeHistory = $("#dIntakeHistory");
+const dIntakeOrigin = $("#dIntakeOrigin");
 const dIntakeOwner = $("#dIntakeOwner");
 const dIntakeProduct = $("#dIntakeProduct");
+const dIntakeQuoteType = $("#dIntakeQuoteType");
 const dIntakePage = $("#dIntakePage");
 const dIntakeSource = $("#dIntakeSource");
+const dIntakeLanding = $("#dIntakeLanding");
 const dIntakeIds = $("#dIntakeIds");
 const dIntakeRecommendation = $("#dIntakeRecommendation");
 const dIntakeDiscovery = $("#dIntakeDiscovery");
+const dIntakeRawMeta = $("#dIntakeRawMeta");
 
 const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
@@ -1901,6 +1909,8 @@ const btnClearTimeline = $("#btnClearTimeline");
 const btnCreateCalendarEvent = $("#btnCreateCalendarEvent");
 const timeline = $("#timeline");
 const timelineFilters = $("#timelineFilters");
+const leadContactStatusPreview = $("#leadContactStatusPreview");
+const leadLastTouchPreview = $("#leadLastTouchPreview");
 const leadNextActionDatePreview = $("#leadNextActionDatePreview");
 const leadNextActionPreview = $("#leadNextActionPreview");
 const leadNotePreview = $("#leadNotePreview");
@@ -1908,7 +1918,55 @@ const leadNotePreview = $("#leadNotePreview");
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
 
+function normalizeContactStatusValue(value){
+  const raw = norm(value);
+  if (!raw) return "NotSet";
+  const allowed = new Set([
+    "NotSet",
+    "NoContactYet",
+    "AttemptingContact",
+    "Connected",
+    "Quoted",
+    "WaitingOnDecision",
+    "Unresponsive"
+  ]);
+  return allowed.has(raw) ? raw : "NotSet";
+}
+
+function contactStatusLabel(value){
+  switch (normalizeContactStatusValue(value)){
+    case "NoContactYet": return "No contact yet";
+    case "AttemptingContact": return "Attempting contact";
+    case "Connected": return "Connected";
+    case "Quoted": return "Quoted";
+    case "WaitingOnDecision": return "Waiting on decision";
+    case "Unresponsive": return "Unresponsive";
+    default: return "Contact status not set";
+  }
+}
+
+function leadWarningSummary(row){
+  if (!row) return "";
+  const nextDate = norm(row.dataset.crmNextDate);
+  const lastTouch = norm(row.dataset.crmLastTouch);
+  const contactStatus = normalizeContactStatusValue(row.dataset.crmContactStatus);
+
+  if (!lastTouch) return "No touch logged yet";
+  if (isOverdue(nextDate)) return "Overdue follow-up";
+  if (!nextDate && (contactStatus === "NotSet" || contactStatus === "NoContactYet")) return "No contact plan set";
+  if (!nextDate && stageAgeDays(row) >= 7) return "Stale: next step missing";
+  if (contactStatus === "Unresponsive" && stageAgeDays(row) >= 7) return "Stale: follow-up needs reset";
+  return "";
+}
+
 function refreshLeadOverviewSummary(){
+  if (leadContactStatusPreview){
+    leadContactStatusPreview.textContent = contactStatusLabel(dContactStatus?.value);
+  }
+  if (leadLastTouchPreview){
+    const lastTouch = norm(dLastTouch?.value);
+    leadLastTouchPreview.textContent = lastTouch || "Not tracked";
+  }
   if (leadNextActionDatePreview){
     const nextDate = norm(dNextDate?.value);
     leadNextActionDatePreview.textContent = nextDate || "Not tracked";
@@ -1938,13 +1996,18 @@ function joinIntakeParts(parts){
 function renderIntakeSnapshot(snapshot){
   const nodes = [
     dIntakeSubmitted,
+    dIntakeHistory,
+    dIntakeOrigin,
     dIntakeOwner,
     dIntakeProduct,
+    dIntakeQuoteType,
     dIntakePage,
     dIntakeSource,
+    dIntakeLanding,
     dIntakeIds,
     dIntakeRecommendation,
-    dIntakeDiscovery
+    dIntakeDiscovery,
+    dIntakeRawMeta
   ];
 
   if (!snapshot){
@@ -1955,12 +2018,15 @@ function renderIntakeSnapshot(snapshot){
 
   if (dIntakeSection) dIntakeSection.hidden = false;
   if (dIntakeSubmitted) dIntakeSubmitted.textContent = formatIntakeSnapshotDate(snapshot.submittedUtc);
+  if (dIntakeHistory) dIntakeHistory.textContent = `${Number(snapshot.historyCount || 1)} public submission${Number(snapshot.historyCount || 1) === 1 ? "" : "s"}`;
+  if (dIntakeOrigin) dIntakeOrigin.textContent = snapshot.originLabel || "—";
   if (dIntakeOwner) dIntakeOwner.textContent = snapshot.agentUserId || activeClientDetail?.agentUserId || "—";
   if (dIntakeProduct) dIntakeProduct.textContent = joinIntakeParts([
     snapshot.interestLabel,
     snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : "",
     snapshot.productType ? `Type: ${snapshot.productType}` : ""
   ]);
+  if (dIntakeQuoteType) dIntakeQuoteType.textContent = snapshot.quoteTypeLabel || "—";
   if (dIntakePage) dIntakePage.textContent = joinIntakeParts([
     snapshot.sourcePageKey,
     snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : "",
@@ -1973,6 +2039,10 @@ function renderIntakeSnapshot(snapshot){
     snapshot.utmCampaign,
     snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ""
   ]);
+  if (dIntakeLanding) dIntakeLanding.textContent = joinIntakeParts([
+    snapshot.landingPageUrl ? `Landing: ${snapshot.landingPageUrl}` : "",
+    snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ""
+  ]);
   if (dIntakeIds) dIntakeIds.textContent = joinIntakeParts([
     snapshot.utmId ? `utm_id ${snapshot.utmId}` : "",
     snapshot.fbclid ? `fbclid ${snapshot.fbclid}` : "",
@@ -1980,7 +2050,7 @@ function renderIntakeSnapshot(snapshot){
     snapshot.metaAdSetId ? `adset ${snapshot.metaAdSetId}` : "",
     snapshot.metaAdId ? `ad ${snapshot.metaAdId}` : ""
   ]);
-  if (dIntakeRecommendation) dIntakeRecommendation.textContent = joinIntakeParts([
+  if (dIntakeRecommendation) dIntakeRecommendation.textContent = snapshot.recommendationSummary || joinIntakeParts([
     snapshot.estimateSummary,
     snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : "",
     snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ""
@@ -1990,6 +2060,7 @@ function renderIntakeSnapshot(snapshot){
         .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
         .join(" • ")
     : "—";
+  if (dIntakeRawMeta) dIntakeRawMeta.textContent = snapshot.rawMetadataJson || "—";
 }
 
 // Quick View autosave (debounced)
@@ -2013,6 +2084,7 @@ function buildLeadQuickViewOverrides(){
   return {
     crmStatus: norm(dStatus.value) || "Lead",
     crmPriority: norm(dPriority.value) || "Normal",
+    contactStatus: normalizeContactStatusValue(dContactStatus?.value),
     crmLastTouch: norm(dLastTouch.value) || null,
     crmNextDate: norm(dNextDate.value) || null,
     crmNextText: norm(dNextText.value),
@@ -2070,7 +2142,7 @@ function wireQuickViewAutosave(){
     // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
     // They will autosave on blur instead (see wireContactFieldBlur below).
     dFirst,dLast,dDob,dAge,dGender,dBtc,dLender,dLoanAmount,
-    dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
+    dStatus,dPriority,dContactStatus,dLastTouch,dNextDate,dNextText,dTags,dNotes,
     dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,
     dUsePersonalZoomLink,dWaitingOn,dPinnedBrief,
     dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
@@ -2249,6 +2321,7 @@ function hydrateRow(row){
   const priority  = row.dataset.sPriority  || "Normal";
   const pipeline  = normalizePipelineStageValue(row.dataset.sPipeline, "MortgageProtection");
   const waitingOn = row.dataset.sWaiting   || "WaitingOnAgent";
+  const contactStatus = normalizeContactStatusValue(row.dataset.sContactstatus || row.dataset.crmContactStatus);
   const pinnedBrief = row.dataset.sPinnedbrief || "";
   const stageEntered = row.dataset.sStageentered || todayISO();
   const attemptsToday = row.dataset.sAttemptstoday || "0";
@@ -2275,6 +2348,7 @@ function hydrateRow(row){
   row.dataset.crmPriority  = priority;
   row.dataset.crmPipeline  = pipeline;
   row.dataset.crmWaitingOn = waitingOn;
+  row.dataset.crmContactStatus = contactStatus;
   row.dataset.crmPinnedBrief = pinnedBrief;
   row.dataset.crmStageEntered = stageEntered;
   row.dataset.crmAttemptsToday = attemptsToday;
@@ -2300,12 +2374,15 @@ function hydrateRow(row){
   const nextTextEl = $("[data-nextaction]", row);
   const nextPill = $("[data-nextpill]", row);
   const waitingTextEl = $("[data-waiting-text]", row);
+  const contactStatusTextEl = $("[data-contact-status-text]", row);
+  const commandWarningEl = $("[data-command-warning]", row);
   const stageAgeEl = $("[data-stageage]", row);
 
   syncRowEmailDisplays(row);
 
   if (statusText) statusText.textContent = crmStatusLabel(status);
   if (waitingTextEl) waitingTextEl.textContent = waitingLabel(waitingOn);
+  if (contactStatusTextEl) contactStatusTextEl.textContent = contactStatusLabel(contactStatus);
   if (stageAgeEl) stageAgeEl.textContent = `Stage Age: ${stageAgeDays(row)}d`;
 
   const cls = classifyBadge(status, row);
@@ -2358,6 +2435,12 @@ function hydrateRow(row){
       pillCls === "today" ? "Due Today" :
       pillCls === "soon" ? "Due Soon" :
       (!nextDate && !nextText) ? "Set Next Action in Quick View" : "Next Action";
+  }
+
+  if (commandWarningEl){
+    const warning = leadWarningSummary(row);
+    commandWarningEl.textContent = warning || "—";
+    commandWarningEl.classList.toggle("is-active", !!warning);
   }
 
   setLeadProduction(row, prodStatus, prodAmount);

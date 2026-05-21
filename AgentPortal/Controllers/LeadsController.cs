@@ -368,6 +368,7 @@ public class LeadsController : Controller
                 }
             }
 
+            var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentId, ProductionSide.Lead);
 
             var vm = leads.Select(l =>
@@ -377,7 +378,32 @@ public class LeadsController : Controller
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket);
                 var crmMeta = ReadLeadMeta(lead);
+                var contactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(crmMeta.ContactStatus);
                 var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
+                intakeSummaryLookup.TryGetValue(lead.LeadId, out var intakeSummary);
+                var origin = intakeSummary == null
+                    ? ResolveLeadOriginInfo(null, null, null, null, null, null, hasWebsiteIntake: false, email: lead.Email)
+                    : ResolveLeadOriginInfo(
+                        intakeSummary.Latest.PageMode,
+                        intakeSummary.Latest.UtmMedium,
+                        intakeSummary.Latest.Fbclid,
+                        intakeSummary.Latest.MetaCampaignId,
+                        intakeSummary.Latest.MetaAdSetId,
+                        intakeSummary.Latest.MetaAdId,
+                        hasWebsiteIntake: true,
+                        email: lead.Email);
+                var productInterest = intakeSummary == null
+                    ? ResolveBucketDisplayLabel(originalLeadType ?? stage)
+                    : ResolveIntakeInterestLabel(intakeSummary.Latest.InterestType, intakeSummary.Latest.OfferKey, intakeSummary.Latest.ProductType);
+                var quoteType = intakeSummary == null
+                    ? ResolveBucketDisplayLabel(originalLeadType ?? stage)
+                    : ResolveIntakeQuoteTypeLabel(intakeSummary.Latest.OfferKey, intakeSummary.Latest.ProductType);
+                var recommendationSummary = intakeSummary == null
+                    ? string.Empty
+                    : BuildRecommendationSummary(
+                        intakeSummary.Latest.EstimateSummary,
+                        intakeSummary.Latest.RecommendationPrimaryTitle,
+                        intakeSummary.Latest.RecommendationSecondaryTitle);
                 productionLookup.TryGetValue(lead.LeadId, out var prod);
                 return new ClientListItemViewModel
                 {
@@ -406,6 +432,7 @@ public class LeadsController : Controller
                     MortgageLender = lead.MortgageLender,
                     LoanAmount = lead.LoanAmount,
                     OriginalLeadType = originalLeadType,
+                    ContactStatus = contactStatus,
                     PipelineStage = stage,
                     PipelineOrder = lead.CrmOrder,
                     MeetingLocation = crmMeta.MeetingLocation,
@@ -429,6 +456,18 @@ public class LeadsController : Controller
                     HasDuplicateHousehold = false,
                     AssignedOwner = crmMeta.Collaboration?.Owner ?? "",
                     WatchersCsv = LeadWatchersCsv(crmMeta),
+                    LatestSubmissionUtc = intakeSummary?.Latest.SubmittedUtc,
+                    IntakeHistoryCount = intakeSummary?.HistoryCount ?? 0,
+                    LeadOriginLabel = origin.Label,
+                    LeadOriginTone = origin.Tone,
+                    ProductInterestLabel = productInterest,
+                    QuoteTypeLabel = quoteType,
+                    AttributionSource = intakeSummary?.Latest.UtmSource,
+                    AttributionMedium = intakeSummary?.Latest.UtmMedium,
+                    AttributionCampaign = intakeSummary?.Latest.UtmCampaign,
+                    LatestRecommendationSummary = recommendationSummary,
+                    IntakePageVariant = intakeSummary?.Latest.PageVariant,
+                    IntakePageMode = intakeSummary?.Latest.PageMode,
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
@@ -480,6 +519,26 @@ public class LeadsController : Controller
         => (state ?? "").Trim().ToUpperInvariant();
 
     private sealed record ProductionSnapshot(ProductionStatus? Status, decimal Amount, decimal Submitted, decimal Issued, decimal Paid, decimal Personal);
+    private sealed record LeadOriginInfo(string Label, string Tone);
+    private sealed record LeadIntakeListRow(
+        string WorkstationLeadId,
+        DateTime SubmittedUtc,
+        string? PageMode,
+        string? PageVariant,
+        string? InterestType,
+        string? OfferKey,
+        string? ProductType,
+        string? UtmSource,
+        string? UtmMedium,
+        string? UtmCampaign,
+        string? EstimateSummary,
+        string? RecommendationPrimaryTitle,
+        string? RecommendationSecondaryTitle,
+        string? Fbclid,
+        string? MetaCampaignId,
+        string? MetaAdSetId,
+        string? MetaAdId);
+    private sealed record LeadIntakeSummary(LeadIntakeListRow Latest, int HistoryCount);
 
     private static string ResolveLeadState(WorkstationLeadProfile lead, IReadOnlyDictionary<string, string>? fallbackStatesByPhone)
     {
@@ -497,6 +556,161 @@ public class LeadsController : Controller
             return state2;
 
         return "";
+    }
+
+    private static bool LooksLikePlaceholderEmail(string? email)
+    {
+        var normalized = (email ?? string.Empty).Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return false;
+
+        return (normalized.StartsWith("no-email@", StringComparison.OrdinalIgnoreCase) && normalized.EndsWith(".com", StringComparison.OrdinalIgnoreCase))
+            || (normalized.StartsWith("lead-", StringComparison.OrdinalIgnoreCase) && normalized.EndsWith("@scripts.local", StringComparison.OrdinalIgnoreCase))
+            || normalized.EndsWith("@leads.local", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveBucketDisplayLabel(string? bucket)
+        => NormalizeBucket(bucket) switch
+        {
+            "MortgageProtection" => "Mortgage Protection",
+            "LifeInsurance" => "Life Insurance",
+            "TermLife" => "Term Life",
+            "WholeLife" => "Whole Life",
+            "IUL" => "IUL",
+            "FinalExpense" => "Final Expense",
+            "DisabilityInsurance" => "Disability Insurance",
+            "AutoInsurance" => "Auto Insurance",
+            "HomeInsurance" => "Home Insurance",
+            "HealthInsurance" => "Health Insurance",
+            "CommercialInsurance" => "Commercial Insurance",
+            _ => string.IsNullOrWhiteSpace(bucket) ? "Lead" : bucket.Trim()
+        };
+
+    private static string ResolveIntakeQuoteTypeLabel(string? offerKey, string? productType)
+    {
+        var key = Norm(offerKey);
+        if (string.IsNullOrWhiteSpace(key))
+            key = Norm(productType);
+
+        return key switch
+        {
+            "life" or "lifegeneral" => "Life",
+            "term" or "termlife" or "lifeterm" => "Term Life",
+            "wholelife" or "lifewhole" => "Whole Life",
+            "finalexpense" or "lifefinalexpense" => "Final Expense",
+            "mortgage" or "lifemp" => "Mortgage Protection",
+            "iul" or "lifeiul" => "IUL",
+            "autoinsurance" or "auto" => "Auto Insurance",
+            "homeinsurance" or "home" => "Home Insurance",
+            "commercialinsurance" or "commercial" => "Commercial Insurance",
+            "disabilityinsurance" or "disability" => "Disability Insurance",
+            "healthinsurance" or "health" => "Health Insurance",
+            _ => string.IsNullOrWhiteSpace(key) ? string.Empty : key
+        };
+    }
+
+    private static LeadOriginInfo ResolveLeadOriginInfo(
+        string? pageMode,
+        string? utmMedium,
+        string? fbclid,
+        string? metaCampaignId,
+        string? metaAdSetId,
+        string? metaAdId,
+        bool hasWebsiteIntake,
+        string? email)
+    {
+        if (hasWebsiteIntake)
+        {
+            var normalizedMedium = Norm(utmMedium);
+            var isPaidMedium = normalizedMedium is "cpc" or "ppc" or "paid" or "paidsocial" or "paid_social" or "display";
+            var hasPaidSignals =
+                string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase)
+                || isPaidMedium
+                || !string.IsNullOrWhiteSpace(fbclid)
+                || !string.IsNullOrWhiteSpace(metaCampaignId)
+                || !string.IsNullOrWhiteSpace(metaAdSetId)
+                || !string.IsNullOrWhiteSpace(metaAdId);
+
+            return hasPaidSignals
+                ? new LeadOriginInfo("Paid Landing", "paid")
+                : new LeadOriginInfo("Website Intake", "site");
+        }
+
+        if (LooksLikePlaceholderEmail(email))
+            return new LeadOriginInfo("Imported Lead", "import");
+
+        return new LeadOriginInfo("Manual Lead", "manual");
+    }
+
+    private static string BuildRecommendationSummary(string? estimateSummary, string? primaryTitle, string? secondaryTitle)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(estimateSummary))
+            parts.Add(estimateSummary.Trim());
+        if (!string.IsNullOrWhiteSpace(primaryTitle))
+            parts.Add($"Primary: {primaryTitle.Trim()}");
+        if (!string.IsNullOrWhiteSpace(secondaryTitle))
+            parts.Add($"Secondary: {secondaryTitle.Trim()}");
+        return string.Join(" • ", parts.Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+
+    private static string FormatRawMetadataJson(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return string.Empty;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch
+        {
+            return raw.Trim();
+        }
+    }
+
+    private async Task<Dictionary<string, LeadIntakeSummary>> LoadLeadIntakeSummariesAsync(IEnumerable<string> leadIds, CancellationToken ct = default)
+    {
+        var ids = leadIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ids.Count == 0)
+            return new Dictionary<string, LeadIntakeSummary>(StringComparer.OrdinalIgnoreCase);
+
+        var rows = await _db.WebsiteLeadIntakeLinks
+            .AsNoTracking()
+            .Where(x => ids.Contains(x.WorkstationLeadId))
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .Select(x => new LeadIntakeListRow(
+                x.WorkstationLeadId,
+                x.SubmittedUtc,
+                x.PageMode,
+                x.PageVariant,
+                x.InterestType,
+                x.OfferKey,
+                x.ProductType,
+                x.UtmSource,
+                x.UtmMedium,
+                x.UtmCampaign,
+                x.EstimateSummary,
+                x.RecommendationPrimaryTitle,
+                x.RecommendationSecondaryTitle,
+                x.Fbclid,
+                x.MetaCampaignId,
+                x.MetaAdSetId,
+                x.MetaAdId))
+            .ToListAsync(ct);
+
+        return rows
+            .GroupBy(x => x.WorkstationLeadId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new LeadIntakeSummary(g.First(), g.Count()),
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<Dictionary<string, string>> GetFallbackStatesByPhoneAsync(string agentId, CancellationToken ct = default)
@@ -900,6 +1114,7 @@ public class LeadsController : Controller
             }
         }
 
+        var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
         var items = leads
             .Where(x => MatchesLeadQueue(x, queueKey))
             .Select(l =>
@@ -907,7 +1122,32 @@ public class LeadsController : Controller
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(l, nowUtc, dialTimeZone);
                 var originalLeadType = ResolveOriginalLeadType(l.OriginalLeadType, l.Bucket);
                 var crmMeta = ReadLeadMeta(l);
+                var contactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(crmMeta.ContactStatus);
                 var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? l.CreatedUtc : crmMeta.StageEnteredUtc;
+                intakeSummaryLookup.TryGetValue(l.LeadId, out var intakeSummary);
+                var origin = intakeSummary == null
+                    ? ResolveLeadOriginInfo(null, null, null, null, null, null, hasWebsiteIntake: false, email: l.Email)
+                    : ResolveLeadOriginInfo(
+                        intakeSummary.Latest.PageMode,
+                        intakeSummary.Latest.UtmMedium,
+                        intakeSummary.Latest.Fbclid,
+                        intakeSummary.Latest.MetaCampaignId,
+                        intakeSummary.Latest.MetaAdSetId,
+                        intakeSummary.Latest.MetaAdId,
+                        hasWebsiteIntake: true,
+                        email: l.Email);
+                var productInterest = intakeSummary == null
+                    ? ResolveBucketDisplayLabel(originalLeadType ?? ResolveEffectivePipelineStage(l, "Contacted"))
+                    : ResolveIntakeInterestLabel(intakeSummary.Latest.InterestType, intakeSummary.Latest.OfferKey, intakeSummary.Latest.ProductType);
+                var quoteType = intakeSummary == null
+                    ? ResolveBucketDisplayLabel(originalLeadType ?? ResolveEffectivePipelineStage(l, "Contacted"))
+                    : ResolveIntakeQuoteTypeLabel(intakeSummary.Latest.OfferKey, intakeSummary.Latest.ProductType);
+                var recommendationSummary = intakeSummary == null
+                    ? string.Empty
+                    : BuildRecommendationSummary(
+                        intakeSummary.Latest.EstimateSummary,
+                        intakeSummary.Latest.RecommendationPrimaryTitle,
+                        intakeSummary.Latest.RecommendationSecondaryTitle);
                 productionLookup.TryGetValue(l.LeadId, out var prod);
 
                 return new ClientListItemViewModel
@@ -937,6 +1177,7 @@ public class LeadsController : Controller
                     MortgageLender = l.MortgageLender,
                     LoanAmount = l.LoanAmount,
                     OriginalLeadType = originalLeadType,
+                    ContactStatus = contactStatus,
                     PipelineStage = ResolveEffectivePipelineStage(l, "Contacted"),
                     PipelineOrder = l.CrmOrder,
                     MeetingLocation = crmMeta.MeetingLocation,
@@ -960,6 +1201,18 @@ public class LeadsController : Controller
                     HasDuplicateHousehold = false,
                     AssignedOwner = crmMeta.Collaboration?.Owner ?? "",
                     WatchersCsv = LeadWatchersCsv(crmMeta),
+                    LatestSubmissionUtc = intakeSummary?.Latest.SubmittedUtc,
+                    IntakeHistoryCount = intakeSummary?.HistoryCount ?? 0,
+                    LeadOriginLabel = origin.Label,
+                    LeadOriginTone = origin.Tone,
+                    ProductInterestLabel = productInterest,
+                    QuoteTypeLabel = quoteType,
+                    AttributionSource = intakeSummary?.Latest.UtmSource,
+                    AttributionMedium = intakeSummary?.Latest.UtmMedium,
+                    AttributionCampaign = intakeSummary?.Latest.UtmCampaign,
+                    LatestRecommendationSummary = recommendationSummary,
+                    IntakePageVariant = intakeSummary?.Latest.PageVariant,
+                    IntakePageMode = intakeSummary?.Latest.PageMode,
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
                     ProductionStatus = prod?.Status?.ToString() ?? "",
@@ -1111,6 +1364,7 @@ public class LeadsController : Controller
         string? loanAmount,
         string? crmStatus,
         string? crmPriority,
+        string? contactStatus,
         string? crmLastTouch,
         string? crmNextDate,
         string? crmNextText,
@@ -1152,21 +1406,26 @@ public class LeadsController : Controller
         int? dialsWeekAgentWide = null,
         TimeZoneInfo? dialTimeZone = null)
     {
-        var latestIntake = await LoadLatestIntakeSnapshotAsync(lead.LeadId);
-        return LeadPayload(lead, latestIntake, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
+        var intakeContext = await LoadLeadIntakeSnapshotContextAsync(lead.LeadId);
+        return LeadPayload(lead, intakeContext.Latest, intakeContext.HistoryCount, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
     }
 
-    private async Task<WebsiteLeadIntakeLink?> LoadLatestIntakeSnapshotAsync(string leadId)
-        => await _db.WebsiteLeadIntakeLinks
+    private async Task<(WebsiteLeadIntakeLink? Latest, int HistoryCount)> LoadLeadIntakeSnapshotContextAsync(string leadId)
+    {
+        var rows = await _db.WebsiteLeadIntakeLinks
             .AsNoTracking()
             .Where(x => x.WorkstationLeadId == leadId)
             .OrderByDescending(x => x.SubmittedUtc)
             .ThenByDescending(x => x.CapturedUtc)
-            .FirstOrDefaultAsync();
+            .ToListAsync();
+
+        return (rows.FirstOrDefault(), rows.Count);
+    }
 
     private static object LeadPayload(
         WorkstationLeadProfile lead,
         WebsiteLeadIntakeLink? latestIntake,
+        int intakeHistoryCount,
         DateTime? utcNow = null,
         int? dialsTodayAgentWide = null,
         int? dialsWeekAgentWide = null,
@@ -1178,6 +1437,7 @@ public class LeadsController : Controller
         var crmMeta = ReadLeadMeta(lead);
         var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
         var crmPriority = string.IsNullOrWhiteSpace(crmMeta.CrmPriority) ? "Normal" : crmMeta.CrmPriority;
+        var contactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(crmMeta.ContactStatus);
         var watchers = (crmMeta.Collaboration?.Watchers ?? new List<string>())
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1205,6 +1465,7 @@ public class LeadsController : Controller
             btc = lead.Btc,
             crmStatus = lead.CrmStatus,
             crmPriority,
+            contactStatus,
             crmLastTouch = lead.UpdatedUtc.ToString("yyyy-MM-dd"),
             updatedUtc = lead.UpdatedUtc,
             crmNextDate = crmMeta.CrmNextDate?.ToString("yyyy-MM-dd"),
@@ -1252,22 +1513,34 @@ public class LeadsController : Controller
             callCount = lead.CallCount,
             lastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
             originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket),
-            intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake)
+            intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake, intakeHistoryCount)
         };
     }
 
-    private static object? BuildIntakeSnapshotPayload(WebsiteLeadIntakeLink? intake)
+    private static object? BuildIntakeSnapshotPayload(WebsiteLeadIntakeLink? intake, int historyCount = 0)
     {
         if (intake == null)
             return null;
 
         var discoveryItems = ParseIntakeDiscoverySummary(intake.DiscoverySummaryJson);
+        var origin = ResolveLeadOriginInfo(
+            intake.PageMode,
+            intake.UtmMedium,
+            intake.Fbclid,
+            intake.MetaCampaignId,
+            intake.MetaAdSetId,
+            intake.MetaAdId,
+            hasWebsiteIntake: true,
+            email: null);
         return new
         {
             submittedUtc = intake.SubmittedUtc,
             capturedUtc = intake.CapturedUtc,
+            historyCount,
             agentUserId = intake.AgentUserId,
             bucket = intake.Bucket,
+            originLabel = origin.Label,
+            originTone = origin.Tone,
             sourcePageKey = intake.SourcePageKey,
             sourceCtaKey = intake.SourceCtaKey,
             pageVariant = intake.PageVariant,
@@ -1277,6 +1550,7 @@ public class LeadsController : Controller
             referrerUrl = intake.ReferrerUrl,
             interestType = intake.InterestType,
             interestLabel = ResolveIntakeInterestLabel(intake.InterestType, intake.OfferKey, intake.ProductType),
+            quoteTypeLabel = ResolveIntakeQuoteTypeLabel(intake.OfferKey, intake.ProductType),
             offerKey = intake.OfferKey,
             productType = intake.ProductType,
             utmSource = intake.UtmSource,
@@ -1292,11 +1566,13 @@ public class LeadsController : Controller
             sessionId = intake.SessionId,
             visitorId = intake.VisitorId,
             estimateSummary = intake.EstimateSummary,
+            recommendationSummary = BuildRecommendationSummary(intake.EstimateSummary, intake.RecommendationPrimaryTitle, intake.RecommendationSecondaryTitle),
             recommendationPrimaryKey = intake.RecommendationPrimaryKey,
             recommendationPrimaryTitle = intake.RecommendationPrimaryTitle,
             recommendationSecondaryKey = intake.RecommendationSecondaryKey,
             recommendationSecondaryTitle = intake.RecommendationSecondaryTitle,
             discoveryItems,
+            rawMetadataJson = FormatRawMetadataJson(intake.SnapshotJson),
             snapshotJson = intake.SnapshotJson
         };
     }
@@ -1422,6 +1698,7 @@ public class LeadsController : Controller
         lead.Bucket = normalizedStage;
 
         meta.CrmPriority = normalizedPriority;
+        meta.ContactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(req.contactStatus);
         meta.CrmNextDate = normalizedNextDate;
         meta.CrmNextText = normalizedNextText;
         meta.CrmTags = string.IsNullOrWhiteSpace(req.crmTags) ? null : req.crmTags.Trim();

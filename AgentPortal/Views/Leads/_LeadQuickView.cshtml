@@ -31,6 +31,33 @@
     </div>
 
     <div class="dbody">
+        <div class="section section-blue lead-command-overview">
+            <div class="qv-section-body">
+                <div class="qv-overview-grid qv-grid-3 lead-command-overview-grid">
+                    <div class="lead-overview-card">
+                        <label>Contact Status</label>
+                        <div id="leadContactStatusPreview">Not set</div>
+                    </div>
+                    <div class="lead-overview-card">
+                        <label>Last Touch</label>
+                        <div id="leadLastTouchPreview">Not tracked</div>
+                    </div>
+                    <div class="lead-overview-card">
+                        <label>Next Action Date</label>
+                        <div id="leadNextActionDatePreview">Not tracked</div>
+                    </div>
+                </div>
+                <div class="lead-overview-wide">
+                    <label>Next Action</label>
+                    <div id="leadNextActionPreview">Not tracked for this lead yet.</div>
+                </div>
+                <div class="lead-overview-wide">
+                    <label>CRM Note</label>
+                    <div id="leadNotePreview">No CRM note yet.</div>
+                </div>
+            </div>
+        </div>
+
         <div class="section section-teal qv-contact-card">
             <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
                 <h4 style="margin:0;">Contact &amp; Profile</h4>
@@ -136,12 +163,24 @@
                         <div id="dIntakeSubmitted">—</div>
                     </div>
                     <div class="f">
+                        <label>Intake History</label>
+                        <div id="dIntakeHistory">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Lead Origin</label>
+                        <div id="dIntakeOrigin">—</div>
+                    </div>
+                    <div class="f">
                         <label>Assigned Owner</label>
                         <div id="dIntakeOwner">—</div>
                     </div>
                     <div class="f">
                         <label>Product Interest</label>
                         <div id="dIntakeProduct">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Quote Type</label>
+                        <div id="dIntakeQuoteType">—</div>
                     </div>
                     <div class="f">
                         <label>Page Context</label>
@@ -153,6 +192,10 @@
                     <div id="dIntakeSource">—</div>
                 </div>
                 <div class="f" style="margin-top:10px;">
+                    <label>Landing / Referrer</label>
+                    <div id="dIntakeLanding">—</div>
+                </div>
+                <div class="f" style="margin-top:10px;">
                     <label>Tracking IDs</label>
                     <div id="dIntakeIds">—</div>
                 </div>
@@ -161,8 +204,12 @@
                     <div id="dIntakeRecommendation">—</div>
                 </div>
                 <div class="f" style="margin-top:10px;">
-                    <label>Qualification Snapshot</label>
+                    <label>Discovery Answer Summary</label>
                     <div id="dIntakeDiscovery">—</div>
+                </div>
+                <div class="f" style="margin-top:10px;">
+                    <label>Raw Metadata</label>
+                    <pre id="dIntakeRawMeta" class="lead-intake-raw">—</pre>
                 </div>
             </div>
         </details>
@@ -250,12 +297,24 @@
                     <h5>Relationship Control</h5>
                     <div class="grid2">
                         <div class="f">
-                            <label>Status</label>
+                            <label>CRM Status</label>
                             <select id="dStatus">
                                 <option value="Lead">Lead</option>
                                 <option value="Prospect">Prospect</option>
                                 <option value="Active">Portal Client</option>
                                 <option value="Dormant">Inactive</option>
+                            </select>
+                        </div>
+                        <div class="f">
+                            <label>Contact Status</label>
+                            <select id="dContactStatus">
+                                <option value="NotSet">Not set</option>
+                                <option value="NoContactYet">No contact yet</option>
+                                <option value="AttemptingContact">Attempting contact</option>
+                                <option value="Connected">Connected</option>
+                                <option value="Quoted">Quoted</option>
+                                <option value="WaitingOnDecision">Waiting on decision</option>
+                                <option value="Unresponsive">Unresponsive</option>
                             </select>
                         </div>
                         <div class="f">
