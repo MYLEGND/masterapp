@@ -182,11 +182,18 @@ The AI payload now includes `MarketingHealth` with:
 Added:
 
 - `AgentPortal.Tests/AnalyticsEventCatalogTests.cs`
+- `AgentPortal.Tests/AnalyticsQueryServiceMarketingHealthTests.cs`
+- `AgentPortal.Tests/MetaSignalContractTests.cs`
+- `AgentPortal.Tests/TrackingFailLoudContractTests.cs`
+- `AgentPortal.Tests/ThankYouMetaFallbackContractTests.cs`
+- `AgentPortal.Tests/WebsiteAnalyticsAiContractTests.cs`
 - `AgentPortal.Tests/TrafficAttributionTests.cs`
 
 Updated:
 
+- `AgentPortal.Tests/AgentPortal.Tests.csproj`
 - `AgentPortal.Tests/AnalyticsIngestControllerTests.cs`
+- `AgentPortal.Tests/LeadSnapshotAttributionTests.cs`
 - `AgentPortal.Tests/AnalyticsQueryServiceQuoteFunnelTests.cs`
 - `AgentPortal.Tests/WebsiteAnalyticsDeleteLeadTests.cs`
 - `AgentPortal.Tests/WebsiteAnalyticsScopeTests.cs`
@@ -196,23 +203,109 @@ Coverage improved for:
 - frontend/backend event-catalog parity
 - browser-ingest acceptance rules
 - life contact-first funnel classification
+- marketing-health truthfulness and inferred-start detection
+- thank-you context and Meta fallback contract checks
+- fail-loud tracking contract checks
+- AI review contract rendering / payload safety
 - attribution bucket semantics
 - unknown-vs-direct protection
 
-## Verification
+## Final Verification
 
-Verified during this pass:
+### Verification fixes made during this pass
 
-- `dotnet build SHARED/Shared.csproj` passed
-- `dotnet build Protect-Website/ProtectWebsite.csproj` passed
-- `dotnet build AgentPortal/AgentPortal.csproj` passed
-- targeted `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj` slices exited successfully
-- added `scripts/verify-marketing-platform-health.sh`
+This pass did not add new product features. It tightened verification truth and repaired the verification harness where it was masking real status.
 
-Note:
+Key fixes made before rerunning final verification:
 
-- the full script entered the long-running test phase in this environment and did not emit a final completion line during the observation window
-- package warnings remain in `AgentPortal.Tests` restore output (`NU1603`, `NU1903`, `NU1904`)
+- staged `scripts/verify-marketing-platform-health.sh` into explicit build/test gates with per-stage PASS output and final overall PASS/FAIL
+- fixed `AgentPortal.Tests` execution as a real test project:
+  - marked it as a test project
+  - ensured runtime config is available to `testhost`
+  - ensured adapter files are copied for xUnit discovery
+  - enabled local test dependency copy so execution does not silently degrade into build-only behavior
+- corrected analytics query truth:
+  - `lead_persisted` health counts now use actual `lead_persisted` events
+  - quote submit success uses canonical success classification instead of requiring a narrower downstream signal
+  - inferred-start detection now distinguishes explicit starts from later implied progression
+- corrected an attribution test fixture that accidentally labeled a fake `fbclid` value as `Test / QA` traffic because it literally contained the token `test`
+
+### Exact commands run
+
+Direct verification commands observed during this pass:
+
+- `git branch --show-current`
+- `dotnet build SHARED/Shared.csproj --nologo`
+- `dotnet build Protect-Website/ProtectWebsite.csproj --nologo`
+- `dotnet build AgentPortal/AgentPortal.csproj --nologo`
+- `dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj --nologo`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsEventCatalogTests"`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsIngestControllerTests"`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsQueryServiceQuoteFunnelTests|FullyQualifiedName~AnalyticsQueryServiceMarketingHealthTests|FullyQualifiedName~ThankYouMetaFallbackContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests"`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~TrafficAttributionTests|FullyQualifiedName~LeadSnapshotAttributionTests"`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~MetaSignalContractTests"`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~WebsiteAnalyticsAiContractTests|FullyQualifiedName~WebsiteAnalyticsAiRedactorTests"`
+- `./scripts/verify-marketing-platform-health.sh`
+
+### Full verification status
+
+Fully observed wrapper-script result:
+
+- `./scripts/verify-marketing-platform-health.sh`
+- final output: `[marketing-health] overall result: PASS (18s elapsed)`
+- status: PASS
+- elapsed time: 18 seconds
+- hanging tests: none observed
+- failing tests at final run: none
+
+Observed per-stage results:
+
+- build verification: shared: PASS
+- build verification: protect website: PASS
+- build verification: agent portal: PASS
+- build verification: tests: PASS
+- shared catalog tests: PASS
+  - Failed: 0, Passed: 5, Skipped: 0, Total: 5
+- ingest tests: PASS
+  - Failed: 0, Passed: 3, Skipped: 0, Total: 3
+- quote funnel tests: PASS
+  - Failed: 0, Passed: 11, Skipped: 0, Total: 11
+- attribution tests: PASS
+  - Failed: 0, Passed: 10, Skipped: 0, Total: 10
+- meta signal tests: PASS
+  - Failed: 0, Passed: 3, Skipped: 0, Total: 3
+- ai review contract tests: PASS
+  - Failed: 0, Passed: 18, Skipped: 0, Total: 18
+
+Aggregate staged tests observed green:
+
+- Failed: 0
+- Passed: 50
+- Skipped: 0
+- Total: 50
+
+### What was specifically verified
+
+- all browser-side analytics events under source inspection are cataloged or explicitly excluded as non-analytics literals
+- ingest validation is catalog-backed and rejects unknown/browser-disallowed events
+- Life contact-first and estimate flow analytics remain accepted and query-visible
+- fail-loud tracking hooks exist for HTTP-status inspection, retry, queueing, flush, and client diagnostics
+- thank-you context and Life Meta fallback contracts remain present
+- attribution no longer silently collapses unknown traffic into direct traffic
+- AI review contract exposes growth score, scale-readiness, trust warnings, and guarded next actions
+- wrapper verification script now finishes with an explicit end-state instead of requiring inference
+
+### Tests failed
+
+- none in the final observed verification run
+
+### Diagnostics from earlier in this pass
+
+Before the final green run, the main blockers were verification-harness issues rather than product-surface regressions:
+
+- `AgentPortal.Tests` initially behaved like a buildable library more than a fully executable test project
+- sandboxed `dotnet test` runs hit `TcpListener` permission issues, so final execution was rerun outside the sandbox as required
+- one attribution test fixture was self-contradictory because its fake `fbclid` value included the token `test`
 
 ## Remaining Risks / Limitations
 
@@ -224,6 +317,9 @@ Note:
 - Health Center UI in Website Analytics is **not yet** built
 - full quote-product QA matrix from the mission brief is **not yet** executed
 - no live Meta Events Manager validation was performed in this pass
+- dependency advisory warnings remain in test-project restore/build output:
+  - `NU1904` `Microsoft.AspNetCore.DataProtection` 10.0.0
+  - `NU1903` `System.Security.Cryptography.Xml` 10.0.0
 
 ### Important truth constraints
 
@@ -245,7 +341,7 @@ Note:
 
 ## Readiness Verdict
 
-**Not ready to scale ad spend aggressively yet.**
+**Stable enough to merge and move into the next strategic build phase, but not yet certified for aggressive live scaling.**
 
 The platform is materially stronger than the baseline and is much closer to being trustworthy, but it still needs:
 
