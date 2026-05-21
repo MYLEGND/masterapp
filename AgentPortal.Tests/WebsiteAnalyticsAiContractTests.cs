@@ -50,10 +50,13 @@ public class WebsiteAnalyticsAiContractTests
         Assert.Contains("[HttpGet(\"marketing-health\")]", controllerFile, StringComparison.Ordinal);
         Assert.Contains("endpoints.marketingHealth", uiFile, StringComparison.Ordinal);
         Assert.Contains("function renderMarketingHealth(data)", uiFile, StringComparison.Ordinal);
+        Assert.Contains("function renderMarketingHealthTrackingErrors(rows)", uiFile, StringComparison.Ordinal);
         Assert.Contains("loadMarketingHealth()", uiFile, StringComparison.Ordinal);
         Assert.Contains("Marketing Health Center", viewFile, StringComparison.Ordinal);
         Assert.Contains("id=\"mh-warning-list\"", viewFile, StringComparison.Ordinal);
         Assert.Contains("id=\"mh-score\"", viewFile, StringComparison.Ordinal);
+        Assert.Contains("Recent Tracking Errors", viewFile, StringComparison.Ordinal);
+        Assert.Contains("id=\"mh-errors-body\"", viewFile, StringComparison.Ordinal);
     }
 
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")

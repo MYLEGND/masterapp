@@ -81,6 +81,28 @@ public sealed class QuoteStageMetricRow
     public int Count { get; set; }
 }
 
+public sealed class MarketingHealthTrackingErrorDto
+{
+    public DateTime EventUtc { get; set; }
+    public string LocalDisplayTime { get; set; } = "";
+    public string? PageKey { get; set; }
+    public string? PageUrl { get; set; }
+    public string? PagePath { get; set; }
+    public string? QuoteType { get; set; }
+    public string AttemptedEventName { get; set; } = "";
+    public string ErrorMessage { get; set; } = "";
+    public int? StatusCode { get; set; }
+    public string? AttemptedEndpoint { get; set; }
+    public int RetryCount { get; set; }
+    public bool? Recovered { get; set; }
+    public string? SessionIdShort { get; set; }
+    public string? VisitorIdShort { get; set; }
+    public string? Source { get; set; }
+    public string? Campaign { get; set; }
+    public string Severity { get; set; } = "Medium";
+    public string SuggestedAction { get; set; } = "";
+}
+
 public sealed class MarketingHealthDto
 {
     public int ClientTrackingErrors { get; set; }
@@ -97,6 +119,7 @@ public sealed class MarketingHealthDto
     public int TestTrafficSessions { get; set; }
     public int BotSuspiciousSessions { get; set; }
     public List<string> Warnings { get; set; } = new();
+    public List<MarketingHealthTrackingErrorDto> RecentTrackingErrors { get; set; } = new();
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; }
 }

@@ -17,6 +17,7 @@ namespace AgentPortal.Services.Analytics;
 public sealed class AnalyticsQueryService : IAnalyticsQueryService
 {
     private const int LowSampleThreshold = 20;
+    private const int MarketingHealthRecentTrackingErrorLimit = 10;
     private const double PageDwellHardCapMs = 30 * 60 * 1000;       // 30 minutes
     private const double SessionDurationHardCapMs = 2 * 60 * 60 * 1000; // 2 hours
     private const double TrimFractionPerSide = 0.025;               // 2.5% each tail
@@ -925,6 +926,49 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return BuildSessionOrVisitorKey(e);
     }
 
+    private sealed record TrackingErrorMetadata(
+        string AttemptedEventName,
+        int? StatusCode,
+        string ErrorMessage,
+        int RetryCount,
+        string QueueReason,
+        string Route,
+        string FetchUrl,
+        string Method,
+        string SessionId,
+        string VisitorId,
+        string Trigger);
+
+    private static TrackingErrorMetadata ReadTrackingErrorMetadata(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+        {
+            return new TrackingErrorMetadata(string.Empty, null, string.Empty, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+        }
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+            var root = doc.RootElement;
+            return new TrackingErrorMetadata(
+                AttemptedEventName: ReadJsonString(root, "attemptedEventName") ?? string.Empty,
+                StatusCode: ReadJsonInt(root, "statusCode"),
+                ErrorMessage: ReadJsonString(root, "errorMessage") ?? string.Empty,
+                RetryCount: ReadJsonInt(root, "retryCount") ?? 0,
+                QueueReason: ReadJsonString(root, "queueReason") ?? string.Empty,
+                Route: ReadJsonString(root, "route") ?? string.Empty,
+                FetchUrl: ReadJsonString(root, "fetchUrl") ?? string.Empty,
+                Method: ReadJsonString(root, "method") ?? string.Empty,
+                SessionId: ReadJsonString(root, "sessionId") ?? string.Empty,
+                VisitorId: ReadJsonString(root, "visitorId") ?? string.Empty,
+                Trigger: ReadJsonString(root, "trigger") ?? string.Empty);
+        }
+        catch
+        {
+            return new TrackingErrorMetadata(string.Empty, null, string.Empty, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+        }
+    }
+
     private static string? ReadMetadataStringValue(string? metadataJson, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
@@ -946,6 +990,233 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         }
 
         return null;
+    }
+
+    private static string? ReadJsonString(System.Text.Json.JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var value))
+            return null;
+
+        return value.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => value.GetString()?.Trim(),
+            System.Text.Json.JsonValueKind.Number => value.ToString(),
+            System.Text.Json.JsonValueKind.True => "true",
+            System.Text.Json.JsonValueKind.False => "false",
+            _ => null
+        };
+    }
+
+    private static int? ReadJsonInt(System.Text.Json.JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var value))
+            return null;
+
+        if (value.ValueKind == System.Text.Json.JsonValueKind.Number && value.TryGetInt32(out var number))
+            return number;
+
+        if (value.ValueKind == System.Text.Json.JsonValueKind.String &&
+            int.TryParse(value.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+            return parsed;
+
+        return null;
+    }
+
+    private static string? FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim();
+
+    private static string? ShortTrackingId(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return normalized.Length <= 8 ? normalized : normalized[..8];
+    }
+
+    private static string? TrimTrackingUrl(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absolute))
+        {
+            var pathAndQuery = absolute.PathAndQuery;
+            return string.IsNullOrWhiteSpace(pathAndQuery) ? absolute.AbsolutePath : pathAndQuery;
+        }
+
+        return normalized;
+    }
+
+    private static bool MatchesTrackingIdentity(AnalyticsEvent candidate, string? sessionId, string? visitorId)
+    {
+        if (!string.IsNullOrWhiteSpace(sessionId) &&
+            string.Equals(candidate.SessionId, sessionId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(visitorId) &&
+            string.Equals(candidate.VisitorId, visitorId, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
+    private static bool? ResolveTrackingErrorRecoveredState(
+        string attemptedEventName,
+        AnalyticsEvent errorEvent,
+        IReadOnlyCollection<AnalyticsEvent> allEvents,
+        string? sessionId,
+        string? visitorId)
+    {
+        if (string.IsNullOrWhiteSpace(attemptedEventName) ||
+            (!AnalyticsEventCatalog.TryGet(attemptedEventName, out _) &&
+             !string.Equals(attemptedEventName, "fetch_non_ok", StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(attemptedEventName, "fetch_failed", StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        if (string.Equals(attemptedEventName, "fetch_non_ok", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(attemptedEventName, "fetch_failed", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(attemptedEventName, "window_error", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(attemptedEventName, "unhandled_rejection", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(sessionId) && string.IsNullOrWhiteSpace(visitorId))
+            return null;
+
+        var recovered = allEvents.Any(candidate =>
+            !string.Equals(candidate.EventType, AnalyticsEventCatalog.ClientTrackingErrorEventName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(candidate.EventType, attemptedEventName, StringComparison.OrdinalIgnoreCase) &&
+            candidate.EventUtc > errorEvent.EventUtc &&
+            MatchesTrackingIdentity(candidate, sessionId, visitorId));
+
+        return recovered;
+    }
+
+    private static bool IsCoreTrackingFailure(string attemptedEventName)
+    {
+        if (string.IsNullOrWhiteSpace(attemptedEventName))
+            return false;
+
+        return string.Equals(attemptedEventName, "lead_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(attemptedEventName, "lead_persisted", StringComparison.OrdinalIgnoreCase) ||
+               AnalyticsEventCatalog.MatchesDashboardMetric(attemptedEventName, "submit_success") ||
+               AnalyticsEventCatalog.MatchesDashboardMetric(attemptedEventName, "confirmed_lead");
+    }
+
+    private static string ResolveTrackingErrorSeverity(string attemptedEventName, int? statusCode, bool? recovered)
+    {
+        var isCriticalEvent = AnalyticsEventCatalog.TryGet(attemptedEventName, out var definition) && definition.IsCritical;
+        var isCoreFailure = IsCoreTrackingFailure(attemptedEventName);
+
+        if (recovered == true)
+            return isCriticalEvent ? "Medium" : "Low";
+
+        if (recovered == false)
+        {
+            if (isCoreFailure)
+                return "Critical";
+
+            return isCriticalEvent ? "High" : "Medium";
+        }
+
+        if (statusCode is >= 500)
+            return isCriticalEvent ? "High" : "Medium";
+
+        return isCriticalEvent ? "Medium" : "Low";
+    }
+
+    private static string ResolveTrackingErrorSuggestedAction(int? statusCode, string? errorMessage)
+    {
+        if (statusCode == 400)
+            return "Check event catalog / payload schema";
+        if (statusCode == 401 || statusCode == 403)
+            return "Check auth/anti-forgery/session permissions";
+        if (statusCode == 404)
+            return "Check endpoint route";
+        if (statusCode is >= 500)
+            return "Check server logs";
+
+        var message = errorMessage?.Trim() ?? string.Empty;
+        if (message.Contains("timeout", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("network", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("failed to fetch", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("load failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Check connectivity or retry queue";
+        }
+
+        return "Inspect browser console and server ingest logs";
+    }
+
+    private static string ResolveTrackingAttemptedEndpoint(TrackingErrorMetadata metadata)
+    {
+        var fetchUrl = TrimTrackingUrl(metadata.FetchUrl);
+        if (!string.IsNullOrWhiteSpace(fetchUrl))
+            return fetchUrl!;
+
+        return "/api/analytics/ingest";
+    }
+
+    private static string BuildTrackingErrorWarningSummary(int count, MarketingHealthTrackingErrorDto? recentError)
+    {
+        if (recentError == null)
+            return $"{count} tracking errors detected.";
+
+        var eventName = string.IsNullOrWhiteSpace(recentError.AttemptedEventName) ? "tracking event" : recentError.AttemptedEventName;
+        var page = FirstNonBlank(recentError.PageKey, recentError.PagePath, recentError.QuoteType) ?? "unknown page";
+        var status = recentError.StatusCode.HasValue
+            ? $"HTTP {recentError.StatusCode.Value}"
+            : string.IsNullOrWhiteSpace(recentError.ErrorMessage)
+                ? "an unknown error"
+                : recentError.ErrorMessage;
+
+        return $"{count} tracking errors detected. Most recent: {eventName} failed on {page} with {status}.";
+    }
+
+    private static string BuildTrackingErrorActionWarning(MarketingHealthTrackingErrorDto detail)
+    {
+        var page = FirstNonBlank(detail.PageKey, detail.PagePath, detail.QuoteType) ?? "this page";
+        return $"Tracking errors detected on {page}. {detail.SuggestedAction}.";
+    }
+
+    private static MarketingHealthTrackingErrorDto BuildTrackingErrorDetail(
+        AnalyticsEvent errorEvent,
+        IReadOnlyCollection<AnalyticsEvent> allEvents,
+        TimeZoneInfo viewerTimeZone)
+    {
+        var metadata = ReadTrackingErrorMetadata(errorEvent.MetadataJson);
+        var sessionId = FirstNonBlank(errorEvent.SessionId, metadata.SessionId);
+        var visitorId = FirstNonBlank(errorEvent.VisitorId, metadata.VisitorId);
+        var attemptedEventName = metadata.AttemptedEventName;
+        var recovered = ResolveTrackingErrorRecoveredState(attemptedEventName, errorEvent, allEvents, sessionId, visitorId);
+        var severity = ResolveTrackingErrorSeverity(attemptedEventName, metadata.StatusCode, recovered);
+
+        return new MarketingHealthTrackingErrorDto
+        {
+            EventUtc = errorEvent.EventUtc,
+            LocalDisplayTime = ViewerLocal(errorEvent.EventUtc, viewerTimeZone).ToString("MM/dd/yyyy h:mm tt", CultureInfo.InvariantCulture),
+            PageKey = errorEvent.PageKey,
+            PageUrl = TrimTrackingUrl(errorEvent.Url),
+            PagePath = FirstNonBlank(errorEvent.Path, metadata.Route),
+            QuoteType = errorEvent.QuoteType,
+            AttemptedEventName = attemptedEventName,
+            ErrorMessage = FirstNonBlank(metadata.ErrorMessage, "tracking_error") ?? "tracking_error",
+            StatusCode = metadata.StatusCode,
+            AttemptedEndpoint = ResolveTrackingAttemptedEndpoint(metadata),
+            RetryCount = Math.Max(metadata.RetryCount, 0),
+            Recovered = recovered,
+            SessionIdShort = ShortTrackingId(sessionId),
+            VisitorIdShort = ShortTrackingId(visitorId),
+            Source = errorEvent.UtmSource,
+            Campaign = FirstNonBlank(errorEvent.UtmCampaign, errorEvent.MetaCampaignName, errorEvent.MetaCampaignId),
+            Severity = severity,
+            SuggestedAction = ResolveTrackingErrorSuggestedAction(metadata.StatusCode, metadata.ErrorMessage)
+        };
     }
 
     private static int CountConvertedSessions(IEnumerable<WebsiteLead> leads) =>
@@ -1384,6 +1655,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var clientTrackingErrorEvents = events
             .Where(e => string.Equals(e.EventType, "client_tracking_error", StringComparison.OrdinalIgnoreCase))
             .ToList();
+        var recentTrackingErrors = clientTrackingErrorEvents
+            .OrderByDescending(e => e.EventUtc)
+            .Take(MarketingHealthRecentTrackingErrorLimit)
+            .Select(e => BuildTrackingErrorDetail(e, events, range.ViewerTimeZone))
+            .ToList();
 
         var startUnits = events
             .Where(IsQuoteExplicitStartSignalEvent)
@@ -1441,7 +1717,36 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var warnings = new List<string>();
         if (clientTrackingErrorEvents.Count > 0)
-            warnings.Add($"Client tracking errors detected: {clientTrackingErrorEvents.Count}.");
+        {
+            var mostRecentTrackingError = recentTrackingErrors.FirstOrDefault();
+            warnings.Add(BuildTrackingErrorWarningSummary(clientTrackingErrorEvents.Count, mostRecentTrackingError));
+
+            var mostActionableTrackingError = recentTrackingErrors
+                .OrderByDescending(detail =>
+                    string.Equals(detail.Severity, "Critical", StringComparison.OrdinalIgnoreCase) ? 4 :
+                    string.Equals(detail.Severity, "High", StringComparison.OrdinalIgnoreCase) ? 3 :
+                    string.Equals(detail.Severity, "Medium", StringComparison.OrdinalIgnoreCase) ? 2 : 1)
+                .ThenByDescending(detail => detail.EventUtc)
+                .FirstOrDefault();
+
+            if (mostActionableTrackingError != null)
+                warnings.Add(BuildTrackingErrorActionWarning(mostActionableTrackingError));
+
+            var recoveredCritical = recentTrackingErrors.FirstOrDefault(detail =>
+                detail.Recovered == true &&
+                (string.Equals(detail.Severity, "Medium", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(detail.Severity, "High", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(detail.Severity, "Critical", StringComparison.OrdinalIgnoreCase)));
+            if (recoveredCritical != null)
+                warnings.Add($"Critical event retry recovered successfully for {recoveredCritical.AttemptedEventName}.");
+
+            var unrecoveredCritical = recentTrackingErrors.FirstOrDefault(detail =>
+                detail.Recovered == false &&
+                (string.Equals(detail.Severity, "High", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(detail.Severity, "Critical", StringComparison.OrdinalIgnoreCase)));
+            if (unrecoveredCritical != null)
+                warnings.Add($"Critical event failed after retries for {unrecoveredCritical.AttemptedEventName}. Funnel data may be incomplete.");
+        }
         if (inferredStartUnits.Count > 0)
             warnings.Add($"Missing funnel start events suspected for {inferredStartUnits.Count} sessions.");
         if (workstationFailureEvents.Count > 0)
@@ -1484,6 +1789,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TestTrafficSessions = sessionTrafficRows.Count(r => r.TrafficType == TrafficType.Test),
             BotSuspiciousSessions = sessionTrafficRows.Count(r => r.TrafficType == TrafficType.BotSuspicious),
             Warnings = warnings,
+            RecentTrackingErrors = recentTrackingErrors,
             RangeLabel = range.Label,
             TrafficType = trafficType
         };

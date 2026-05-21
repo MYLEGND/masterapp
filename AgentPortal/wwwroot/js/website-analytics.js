@@ -36,6 +36,7 @@
     openModal: null,
     cache: {
       summary: null,
+      marketingHealth: null,
       conversions: null,
       leads: null,
       agentPerf: null,
@@ -627,6 +628,88 @@
         ? warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')
         : '<li>No active health warnings in the selected range.</li>';
     }
+
+    renderMarketingHealthTrackingErrors(data.recentTrackingErrors || []);
+  }
+
+  function trackingErrorSeverityBadge(severity) {
+    const label = asTrimmed(severity) || 'Unknown';
+    const tone = label.toLowerCase();
+    return `<span class="wa-health-severity severity-${escapeHtml(tone)}">${escapeHtml(label)}</span>`;
+  }
+
+  function trackingErrorRecoveredBadge(recovered) {
+    if (recovered === true) {
+      return '<span class="wa-health-recovered is-yes">Recovered</span>';
+    }
+    if (recovered === false) {
+      return '<span class="wa-health-recovered is-no">Not Recovered</span>';
+    }
+    return '<span class="wa-health-recovered is-unknown">Unknown</span>';
+  }
+
+  function renderMarketingHealthTrackingErrors(rows) {
+    const body = document.getElementById('mh-errors-body');
+    if (!body) return;
+
+    if (!Array.isArray(rows) || rows.length === 0) {
+      body.innerHTML = '<tr><td colspan="8" class="fa-empty">No client tracking errors in the selected range.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = rows.map((row) => {
+      const timeLabel = escapeHtml(row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—');
+      const pageLabel = escapeHtml(row?.pageKey || row?.pagePath || row?.quoteType || '—');
+      const pagePath = escapeHtml(row?.pagePath || row?.pageUrl || '');
+      const quoteLabel = asTrimmed(row?.quoteType) ? escapeHtml(prettifyQuoteType(row.quoteType)) : '';
+      const eventLabel = escapeHtml(row?.attemptedEventName || '—');
+      const sessionLabel = row?.sessionIdShort ? `Session ${escapeHtml(row.sessionIdShort)}` : '';
+      const visitorLabel = row?.visitorIdShort ? `Visitor ${escapeHtml(row.visitorIdShort)}` : '';
+      const eventMeta = [sessionLabel, visitorLabel].filter(Boolean).join(' · ');
+      const errorLabel = escapeHtml(row?.errorMessage || '—');
+      const endpointLabel = escapeHtml(row?.attemptedEndpoint || '');
+      const statusLabel = row?.statusCode != null ? `HTTP ${escapeHtml(String(row.statusCode))}` : '—';
+      const retryLabel = escapeHtml(String(row?.retryCount ?? 0));
+      const sourceLabel = asTrimmed(row?.source) ? `Source ${escapeHtml(row.source)}` : '';
+      const campaignLabel = asTrimmed(row?.campaign) ? `Campaign ${escapeHtml(row.campaign)}` : '';
+      const actionMeta = [sourceLabel, campaignLabel].filter(Boolean).join(' · ');
+      const actionLabel = escapeHtml(row?.suggestedAction || 'Inspect browser console and server ingest logs');
+
+      return `
+        <tr>
+          <td>
+            <div class="wa-health-cell-primary">${timeLabel}</div>
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${pageLabel}</div>
+            ${pagePath ? `<div class="wa-health-cell-sub">${pagePath}</div>` : ''}
+            ${quoteLabel ? `<div class="wa-health-cell-sub">${quoteLabel}</div>` : ''}
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${eventLabel}</div>
+            ${eventMeta ? `<div class="wa-health-cell-sub">${eventMeta}</div>` : ''}
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${errorLabel}</div>
+            ${endpointLabel ? `<div class="wa-health-cell-sub">Endpoint ${endpointLabel}</div>` : ''}
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${trackingErrorSeverityBadge(row?.severity)}</div>
+            <div class="wa-health-cell-sub">${statusLabel}</div>
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${retryLabel}</div>
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${trackingErrorRecoveredBadge(row?.recovered)}</div>
+          </td>
+          <td>
+            <div class="wa-health-cell-primary">${actionLabel}</div>
+            ${actionMeta ? `<div class="wa-health-cell-sub">${actionMeta}</div>` : ''}
+          </td>
+        </tr>
+      `;
+    }).join('');
   }
 
   function renderTable(bodyId, rows, cols) {
@@ -1823,6 +1906,7 @@
       if (warningsEl) {
         warningsEl.innerHTML = `<li>${escapeHtml((err && err.message) ? err.message : 'Unable to load marketing health.')}</li>`;
       }
+      setTableMessage('mh-errors-body', 8, (err && err.message) ? err.message : 'Unable to load marketing health.', 'text-danger');
       setText('mh-verdict', 'Unavailable');
       setText('mh-score', '—');
       console.error(err);

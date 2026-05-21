@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
@@ -58,6 +59,29 @@ public class AnalyticsQueryServiceMarketingHealthTests
             Environment = "production",
             Host = "portal.mylegnd.com"
         };
+
+    private static string TrackingErrorMetadata(
+        string? attemptedEventName = null,
+        int? statusCode = null,
+        string? errorMessage = null,
+        int? retryCount = null,
+        string? route = null,
+        string? fetchUrl = null,
+        string? queueReason = null,
+        string? visitorId = null)
+        => JsonSerializer.Serialize(new
+        {
+            attemptedEventName,
+            statusCode,
+            errorMessage,
+            retryCount,
+            route,
+            fetchUrl,
+            queueReason,
+            sessionId = (string?)null,
+            visitorId,
+            trigger = "send_event"
+        });
 
     private static WebsiteLead Lead(
         DateTime createdUtc,
@@ -122,8 +146,127 @@ public class AnalyticsQueryServiceMarketingHealthTests
         Assert.Equal(1, dto.InferredFormStarts);
         Assert.Equal(1, dto.MissingStartEventSessions);
         Assert.Equal(1, dto.UnknownAttributedLeads);
-        Assert.Contains(dto.Warnings, warning => warning.Contains("Client tracking errors detected", StringComparison.OrdinalIgnoreCase));
+        Assert.Single(dto.RecentTrackingErrors);
+        Assert.Contains(dto.Warnings, warning => warning.Contains("tracking errors detected", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(dto.Warnings, warning => warning.Contains("Missing funnel start events suspected", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(dto.Warnings, warning => warning.Contains("no-owner failures", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task GetMarketingHealthAsync_IncludesTrackingErrorDiagnostics_WithSeverityRecoveryAndActions()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        var criticalUnrecovered = E(
+            "client_tracking_error",
+            now.AddMinutes(-4),
+            "s-critical",
+            formKey: "quote_life_form",
+            quoteType: "life",
+            metadataJson: TrackingErrorMetadata(
+                attemptedEventName: "lead_form_start",
+                statusCode: 400,
+                errorMessage: "invalid_event_type",
+                retryCount: 3,
+                route: "/Quote/Life/landing"));
+        criticalUnrecovered.PageKey = "quote_life_landing";
+        criticalUnrecovered.Path = "/Quote/Life/landing";
+        criticalUnrecovered.UtmSource = "facebook";
+        criticalUnrecovered.UtmCampaign = "life-launch";
+
+        var criticalRecovered = E(
+            "client_tracking_error",
+            now.AddMinutes(-8),
+            "s-medium",
+            formKey: "quote_life_form",
+            quoteType: "life",
+            metadataJson: TrackingErrorMetadata(
+                attemptedEventName: "quote_cta_click",
+                statusCode: null,
+                errorMessage: "Failed to fetch",
+                retryCount: 1,
+                route: "/Quote/Life/landing"));
+        criticalRecovered.PageKey = "quote_life_landing";
+        criticalRecovered.Path = "/Quote/Life/landing";
+
+        var nonCriticalRecovered = E(
+            "client_tracking_error",
+            now.AddMinutes(-12),
+            "s-low",
+            formKey: "quote_life_form",
+            quoteType: "life",
+            metadataJson: TrackingErrorMetadata(
+                attemptedEventName: "page_engaged_5s",
+                statusCode: null,
+                errorMessage: "NetworkError when attempting to fetch resource",
+                retryCount: 1,
+                route: "/Quote/Life/landing"));
+        nonCriticalRecovered.PageKey = "quote_life_landing";
+        nonCriticalRecovered.Path = "/Quote/Life/landing";
+
+        db.AnalyticsEvents.AddRange(
+            criticalUnrecovered,
+            criticalRecovered,
+            nonCriticalRecovered,
+            E("quote_cta_click", now.AddMinutes(-7), "s-medium", formKey: "quote_life_form", quoteType: "life"),
+            E("page_engaged_5s", now.AddMinutes(-11), "s-low", formKey: "quote_life_form", quoteType: "life"));
+
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetMarketingHealthAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(3, dto.ClientTrackingErrors);
+        Assert.Equal(3, dto.RecentTrackingErrors.Count);
+
+        var mostRecent = dto.RecentTrackingErrors[0];
+        Assert.Equal("lead_form_start", mostRecent.AttemptedEventName);
+        Assert.Equal("Critical", mostRecent.Severity);
+        Assert.False(mostRecent.Recovered);
+        Assert.Equal(400, mostRecent.StatusCode);
+        Assert.Equal("Check event catalog / payload schema", mostRecent.SuggestedAction);
+        Assert.Equal("s-critic", mostRecent.SessionIdShort);
+        Assert.Equal("facebook", mostRecent.Source);
+        Assert.Equal("life-launch", mostRecent.Campaign);
+
+        var recoveredCritical = dto.RecentTrackingErrors.Single(detail => detail.AttemptedEventName == "quote_cta_click");
+        Assert.Equal("Medium", recoveredCritical.Severity);
+        Assert.True(recoveredCritical.Recovered);
+        Assert.Equal("Check connectivity or retry queue", recoveredCritical.SuggestedAction);
+
+        var recoveredLow = dto.RecentTrackingErrors.Single(detail => detail.AttemptedEventName == "page_engaged_5s");
+        Assert.Equal("Low", recoveredLow.Severity);
+        Assert.True(recoveredLow.Recovered);
+        Assert.Equal("Check connectivity or retry queue", recoveredLow.SuggestedAction);
+
+        Assert.Contains(dto.Warnings, warning => warning.Contains("Most recent: lead_form_start failed on quote_life_landing with HTTP 400", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(dto.Warnings, warning => warning.Contains("Check event catalog / payload schema", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(dto.Warnings, warning => warning.Contains("Critical event retry recovered successfully for quote_cta_click", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(dto.Warnings, warning => warning.Contains("Critical event failed after retries for lead_form_start", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task GetMarketingHealthAsync_HandlesTrackingErrorDiagnosticsWithMissingMetadataSafely()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        var diagnostic = E("client_tracking_error", now.AddMinutes(-2), "s-null", formKey: "quote_life_form", quoteType: "life");
+        diagnostic.PageKey = "quote_life_landing";
+        diagnostic.Path = "/Quote/Life/landing";
+        db.AnalyticsEvents.Add(diagnostic);
+
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetMarketingHealthAsync(BuildRange(now), ScopeContext.Global);
+
+        var detail = Assert.Single(dto.RecentTrackingErrors);
+        Assert.Equal(string.Empty, detail.AttemptedEventName);
+        Assert.Equal("tracking_error", detail.ErrorMessage);
+        Assert.Null(detail.StatusCode);
+        Assert.Null(detail.Recovered);
+        Assert.Equal("Inspect browser console and server ingest logs", detail.SuggestedAction);
     }
 }

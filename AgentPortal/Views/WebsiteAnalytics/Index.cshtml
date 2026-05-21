@@ -384,6 +384,31 @@
                         <li>Loading current health checks…</li>
                     </ul>
                 </div>
+                <div class="wa-health-diagnostics">
+                    <div class="wa-health-warnings-title">Recent Tracking Errors</div>
+                    <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and the next thing to check.</div>
+                    <div class="table-responsive wa-health-diagnostics-table-wrap">
+                        <table class="table wa-health-diagnostics-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Page</th>
+                                    <th>Event</th>
+                                    <th>Error</th>
+                                    <th>Status</th>
+                                    <th>Retry</th>
+                                    <th>Recovered</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="mh-errors-body">
+                                <tr>
+                                    <td colspan="8" class="fa-empty">Loading current tracking diagnostics…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
