@@ -30,15 +30,8 @@ run_stage() {
 
 TEST_PROJECT="AgentPortal.Tests/AgentPortal.Tests.csproj"
 TEST_LOGGER="console;verbosity=minimal"
-RESTORE_ARGS=(--nologo -v minimal --disable-build-servers)
 BUILD_ARGS=(--nologo -v minimal --disable-build-servers --no-restore)
 TEST_ARGS=(--no-build --no-restore --nologo -v minimal --logger:"$TEST_LOGGER" --disable-build-servers)
-
-run_stage "restore: protect website" \
-  dotnet restore Protect-Website/ProtectWebsite.csproj "${RESTORE_ARGS[@]}"
-
-run_stage "restore: agent portal test graph" \
-  dotnet restore "$TEST_PROJECT" "${RESTORE_ARGS[@]}"
 
 run_stage "build verification: shared" \
   dotnet build SHARED/Shared.csproj "${BUILD_ARGS[@]}"
