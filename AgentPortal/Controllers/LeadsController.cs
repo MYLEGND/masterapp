@@ -11,6 +11,7 @@ using Infrastructure.Data;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Shared.Auth;
 using Microsoft.Extensions.Logging;
@@ -670,6 +671,29 @@ public class LeadsController : Controller
         }
     }
 
+    private static bool IsMissingWebsiteLeadIntakeLinksTable(Exception ex)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current is SqliteException sqliteEx &&
+                sqliteEx.SqliteErrorCode == 1 &&
+                sqliteEx.Message.Contains("WebsiteLeadIntakeLinks", StringComparison.OrdinalIgnoreCase) &&
+                sqliteEx.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (current.Message.Contains("WebsiteLeadIntakeLinks", StringComparison.OrdinalIgnoreCase) &&
+                (current.Message.Contains("no such table", StringComparison.OrdinalIgnoreCase) ||
+                 current.Message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private async Task<Dictionary<string, LeadIntakeSummary>> LoadLeadIntakeSummariesAsync(IEnumerable<string> leadIds, CancellationToken ct = default)
     {
         var ids = leadIds
@@ -680,30 +704,39 @@ public class LeadsController : Controller
         if (ids.Count == 0)
             return new Dictionary<string, LeadIntakeSummary>(StringComparer.OrdinalIgnoreCase);
 
-        var rows = await _db.WebsiteLeadIntakeLinks
-            .AsNoTracking()
-            .Where(x => ids.Contains(x.WorkstationLeadId))
-            .OrderByDescending(x => x.SubmittedUtc)
-            .ThenByDescending(x => x.CapturedUtc)
-            .Select(x => new LeadIntakeListRow(
-                x.WorkstationLeadId,
-                x.SubmittedUtc,
-                x.PageMode,
-                x.PageVariant,
-                x.InterestType,
-                x.OfferKey,
-                x.ProductType,
-                x.UtmSource,
-                x.UtmMedium,
-                x.UtmCampaign,
-                x.EstimateSummary,
-                x.RecommendationPrimaryTitle,
-                x.RecommendationSecondaryTitle,
-                x.Fbclid,
-                x.MetaCampaignId,
-                x.MetaAdSetId,
-                x.MetaAdId))
-            .ToListAsync(ct);
+        List<LeadIntakeListRow> rows;
+        try
+        {
+            rows = await _db.WebsiteLeadIntakeLinks
+                .AsNoTracking()
+                .Where(x => ids.Contains(x.WorkstationLeadId))
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .Select(x => new LeadIntakeListRow(
+                    x.WorkstationLeadId,
+                    x.SubmittedUtc,
+                    x.PageMode,
+                    x.PageVariant,
+                    x.InterestType,
+                    x.OfferKey,
+                    x.ProductType,
+                    x.UtmSource,
+                    x.UtmMedium,
+                    x.UtmCampaign,
+                    x.EstimateSummary,
+                    x.RecommendationPrimaryTitle,
+                    x.RecommendationSecondaryTitle,
+                    x.Fbclid,
+                    x.MetaCampaignId,
+                    x.MetaAdSetId,
+                    x.MetaAdId))
+                .ToListAsync(ct);
+        }
+        catch (Exception ex) when (IsMissingWebsiteLeadIntakeLinksTable(ex))
+        {
+            _logger.LogWarning(ex, "WebsiteLeadIntakeLinks table is unavailable; Leads will render without intake summary enrichment.");
+            return new Dictionary<string, LeadIntakeSummary>(StringComparer.OrdinalIgnoreCase);
+        }
 
         return rows
             .GroupBy(x => x.WorkstationLeadId, StringComparer.OrdinalIgnoreCase)
@@ -1412,12 +1445,21 @@ public class LeadsController : Controller
 
     private async Task<(WebsiteLeadIntakeLink? Latest, int HistoryCount)> LoadLeadIntakeSnapshotContextAsync(string leadId)
     {
-        var rows = await _db.WebsiteLeadIntakeLinks
-            .AsNoTracking()
-            .Where(x => x.WorkstationLeadId == leadId)
-            .OrderByDescending(x => x.SubmittedUtc)
-            .ThenByDescending(x => x.CapturedUtc)
-            .ToListAsync();
+        List<WebsiteLeadIntakeLink> rows;
+        try
+        {
+            rows = await _db.WebsiteLeadIntakeLinks
+                .AsNoTracking()
+                .Where(x => x.WorkstationLeadId == leadId)
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .ToListAsync();
+        }
+        catch (Exception ex) when (IsMissingWebsiteLeadIntakeLinksTable(ex))
+        {
+            _logger.LogWarning(ex, "WebsiteLeadIntakeLinks table is unavailable; Leads quick view will render without intake snapshot context.");
+            return (null, 0);
+        }
 
         return (rows.FirstOrDefault(), rows.Count);
     }

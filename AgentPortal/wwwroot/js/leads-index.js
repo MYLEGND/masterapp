@@ -1282,8 +1282,32 @@ function resolveQuickViewLeadType(row, detail, stageOverride){
     || normalizeOriginalLeadTypeValue(row?.dataset?.sPipeline);
 }
 
+function resolveWorkLeadTypeHint(...values){
+  for (const value of values){
+    const raw = norm(value).toLowerCase();
+    if (!raw) continue;
+    if (raw === "term" || raw.includes("term life")) return "TermLife";
+    if (raw.includes("whole")) return "WholeLife";
+    if (raw === "iul" || raw.includes("indexed universal")) return "IUL";
+    if (raw.includes("final")) return "FinalExpense";
+    if (raw.includes("mortgage")) return "MortgageProtection";
+    if (raw.includes("disability")) return "DisabilityInsurance";
+    if (raw.includes("life")) return "LifeInsurance";
+  }
+
+  return "";
+}
+
 function resolveWorkLeadDestination(row, detail){
-  const leadType = resolveQuickViewLeadType(row, detail, detail?.pipelineStage || row?.dataset?.crmPipeline || row?.dataset?.sPipeline);
+  const leadType = resolveQuickViewLeadType(row, detail, detail?.pipelineStage || row?.dataset?.crmPipeline || row?.dataset?.sPipeline)
+    || resolveWorkLeadTypeHint(
+      detail?.intakeSnapshot?.offerKey,
+      detail?.intakeSnapshot?.productType,
+      detail?.intakeSnapshot?.quoteTypeLabel,
+      detail?.intakeSnapshot?.interestLabel,
+      row?.dataset?.intakeQuoteType,
+      row?.dataset?.intakeProductInterest
+    );
 
   if (leadType === "FinalExpense"){
     return {

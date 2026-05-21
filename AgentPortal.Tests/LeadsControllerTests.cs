@@ -10,6 +10,7 @@ using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -226,6 +227,101 @@ public class LeadsControllerTests
             intake.GetProperty("recommendationSummary").GetString());
         Assert.Contains("\"OfferKey\": \"term\"", intake.GetProperty("rawMetadataJson").GetString());
         Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Index_Fails_Open_When_Intake_Table_Is_Unavailable()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-SAFE-INDEX-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            OriginalLeadType = "MortgageProtection",
+            FirstName = "Jamie",
+            LastName = "Safe",
+            Email = "jamie@example.com",
+            Phone = "6025550144",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc),
+            RowVersion = new byte[] { 1 }
+        });
+        await db.SaveChangesAsync();
+
+        await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Index();
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsAssignableFrom<IEnumerable<ClientListItemViewModel>>(view.Model);
+        var lead = Assert.Single(model);
+
+        Assert.Equal(0, lead.IntakeHistoryCount);
+        Assert.Equal("Manual Lead", lead.LeadOriginLabel);
+        Assert.Equal("Mortgage Protection", lead.ProductInterestLabel);
+        Assert.Equal("Mortgage Protection", lead.QuoteTypeLabel);
+        Assert.Null(lead.LatestSubmissionUtc);
+    }
+
+    [Fact]
+    public async Task Lead_Fails_Open_When_Intake_Table_Is_Unavailable()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-SAFE-LEAD-1",
+            AgentUserId = "agent-1",
+            Bucket = "TermLife",
+            OriginalLeadType = "TermLife",
+            FirstName = "Casey",
+            LastName = "Fallback",
+            Email = "casey@example.com",
+            Phone = "6025550155",
+            CreatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 7, 30, 0, DateTimeKind.Utc),
+            RowVersion = new byte[] { 1 }
+        });
+        await db.SaveChangesAsync();
+
+        await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Lead("L-SAFE-LEAD-1");
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+
+        Assert.True(doc.RootElement.TryGetProperty("intakeSnapshot", out var intakeSnapshot));
+        Assert.Equal(JsonValueKind.Null, intakeSnapshot.ValueKind);
     }
 
     [Fact]
@@ -504,7 +600,7 @@ public class LeadsControllerTests
             "L-5",            // clientUserId
             "Updated",        // firstName
             null, null, null, null, null, null, null, null, null, null, null, null, null, null, // lastName..loanAmount
-            null, null, null, null, null, null, null, // crmStatus..agentNotes
+            null, null, null, null, null, null, null, null, // crmStatus..agentNotes
             "MortgageProtection", // pipelineStage
             null, null, null, null, null, null, null, // meetingLocation..pinnedBrief
             null, null, null, null, null,             // doc flags
@@ -563,6 +659,7 @@ public class LeadsControllerTests
             null,
             "Lead",
             "High",
+            "AttemptingContact",
             now.ToString("yyyy-MM-dd"),
             now.AddDays(1).ToString("yyyy-MM-dd"),
             "Follow up on docs",
