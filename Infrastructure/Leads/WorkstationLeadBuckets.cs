@@ -12,6 +12,10 @@ public static class WorkstationLeadBuckets
     public const string WholeLife = "WholeLife";
     public const string Iul = "IUL";
     public const string FinalExpense = "FinalExpense";
+    public const string AutoInsurance = "AutoInsurance";
+    public const string HomeInsurance = "HomeInsurance";
+    public const string HealthInsurance = "HealthInsurance";
+    public const string CommercialInsurance = "CommercialInsurance";
     public const string DisabilityInsurance = "DisabilityInsurance";
 
     public static readonly string[] ProductBuckets =
@@ -22,6 +26,10 @@ public static class WorkstationLeadBuckets
         WholeLife,
         Iul,
         FinalExpense,
+        AutoInsurance,
+        HomeInsurance,
+        HealthInsurance,
+        CommercialInsurance,
         DisabilityInsurance
     };
 
@@ -67,6 +75,18 @@ public static class WorkstationLeadBuckets
         ["finalexpense"] = FinalExpense,
         ["finalexpenseleads"] = FinalExpense,
         ["finalexpenserebuttals"] = FinalExpense,
+        ["auto"] = AutoInsurance,
+        ["autoinsurance"] = AutoInsurance,
+        ["autoinsuranceleads"] = AutoInsurance,
+        ["home"] = HomeInsurance,
+        ["homeinsurance"] = HomeInsurance,
+        ["homeinsuranceleads"] = HomeInsurance,
+        ["health"] = HealthInsurance,
+        ["healthinsurance"] = HealthInsurance,
+        ["healthinsuranceleads"] = HealthInsurance,
+        ["commercial"] = CommercialInsurance,
+        ["commercialinsurance"] = CommercialInsurance,
+        ["commercialinsuranceleads"] = CommercialInsurance,
         ["disabilityinsurance"] = DisabilityInsurance,
         ["disabilityinsuranceleads"] = DisabilityInsurance,
         ["disabilityinsurancerebuttals"] = DisabilityInsurance
@@ -110,9 +130,19 @@ public static class WorkstationLeadBuckets
         return normalized != null && RequestedAmountBuckets.Contains(normalized);
     }
 
-    public static string ResolveWebsiteLifeBucket(string? productType, string? offerKey = null)
+    public static string ResolveWebsiteLeadBucket(string? productType, string? offerKey = null)
     {
         var normalizedProductType = NormalizeWebsiteKey(productType);
+        if (normalizedProductType is "auto" or "autoinsurance")
+            return AutoInsurance;
+        if (normalizedProductType is "home" or "homeinsurance")
+            return HomeInsurance;
+        if (normalizedProductType is "health" or "healthinsurance")
+            return HealthInsurance;
+        if (normalizedProductType is "commercial" or "commercialinsurance")
+            return CommercialInsurance;
+        if (normalizedProductType is "disability" or "disabilityinsurance")
+            return DisabilityInsurance;
         if (normalizedProductType == "lifeterm")
             return TermLife;
         if (normalizedProductType == "lifewhole")
@@ -129,6 +159,11 @@ public static class WorkstationLeadBuckets
         var normalizedOfferKey = NormalizeWebsiteKey(offerKey);
         return normalizedOfferKey switch
         {
+            "auto" => AutoInsurance,
+            "home" => HomeInsurance,
+            "health" => HealthInsurance,
+            "commercial" => CommercialInsurance,
+            "disability" => DisabilityInsurance,
             "term" => TermLife,
             "wholelife" => WholeLife,
             "iul" => Iul,
@@ -137,6 +172,9 @@ public static class WorkstationLeadBuckets
             _ => LifeInsurance
         };
     }
+
+    public static string ResolveWebsiteLifeBucket(string? productType, string? offerKey = null)
+        => ResolveWebsiteLeadBucket(productType, offerKey);
 
     private static string NormalizeWebsiteKey(string? raw)
     {

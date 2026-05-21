@@ -1432,6 +1432,9 @@
         pageKey: PAGE_KEY
       });
       sendEvent({ EventType: 'form_start', FormKey: formKey });
+      if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
+        sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
+      }
     };
     form.addEventListener('focusin', handler, { once: true });
     form.addEventListener('change', handler, { once: true });

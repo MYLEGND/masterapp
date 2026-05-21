@@ -5068,7 +5068,126 @@ body {
     background: rgba(8,15,34,.36);
 }
 
+.wa-kpi-band-health {
+    gap: 1rem;
+}
+
+.wa-health-summary {
+    display: flex;
+    align-items: center;
+    gap: .85rem;
+    flex-wrap: wrap;
+}
+
+.wa-health-score-wrap {
+    display: grid;
+    gap: .15rem;
+}
+
+.wa-health-score-label {
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: rgba(226,232,241,.72);
+}
+
+.wa-health-score {
+    font-size: 1.9rem;
+    font-weight: 900;
+    color: #fff1c8;
+    line-height: 1;
+}
+
+.wa-health-verdict {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    padding: .55rem .9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(199,153,49,.28);
+    background: rgba(8,15,34,.65);
+    color: #f1ddb0;
+    font-weight: 850;
+}
+
+.wa-health-verdict.healthy {
+    border-color: rgba(52,211,153,.38);
+    color: #bbf7d0;
+}
+
+.wa-health-verdict.watch,
+.wa-health-verdict.stabilize {
+    border-color: rgba(251,191,36,.38);
+    color: #fde68a;
+}
+
+.wa-health-verdict.critical {
+    border-color: rgba(248,113,113,.38);
+    color: #fecaca;
+}
+
+.wa-health-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.wa-health-foot {
+    display: grid;
+    gap: .85rem;
+}
+
+.wa-health-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+}
+
+.wa-health-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    min-height: 34px;
+    padding: .5rem .75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(199,153,49,.18);
+    background: rgba(8,15,34,.52);
+    color: rgba(226,232,241,.82);
+    font-size: .82rem;
+}
+
+.wa-health-warnings {
+    padding: .95rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(199,153,49,.16);
+    background: rgba(8,15,34,.46);
+}
+
+.wa-health-warnings-title {
+    font-size: .8rem;
+    font-weight: 800;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: #f1ddb0;
+    margin-bottom: .45rem;
+}
+
+.wa-health-warning-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    color: rgba(226,232,241,.82);
+}
+
+.wa-health-warning-list li + li {
+    margin-top: .35rem;
+}
+
 @media (max-width: 991.98px) {
+    .wa-health-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .wa-modal-header-main {
         grid-template-columns: 1fr;
     }
@@ -5084,6 +5203,10 @@ body {
 }
 
 @media (max-width: 767.98px) {
+    .wa-health-grid {
+        grid-template-columns: 1fr;
+    }
+
     .wa-modal-dialog,
     .wa-modal-dialog.wa-modal-dialog-compact {
         max-width: calc(100vw - 1rem);

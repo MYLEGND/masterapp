@@ -1541,6 +1541,33 @@
 
     <script>
     let currentStep = 1;
+    const trackAutoQuote = (window.legendTrack && typeof window.legendTrack === 'function')
+        ? window.legendTrack
+        : null;
+    const autoCompletedSteps = new Set();
+    const autoViewedContactSteps = new Set();
+
+    function emitAutoStepComplete(stepNumber, nextStep) {
+        if (!trackAutoQuote || autoCompletedSteps.has(stepNumber)) return;
+        autoCompletedSteps.add(stepNumber);
+        trackAutoQuote({
+            EventType: 'quote_step_complete',
+            FormKey: 'quote_auto_form',
+            PageKey: 'quote_auto',
+            MetadataJson: JSON.stringify({ stepNumber, nextStep })
+        });
+    }
+
+    function emitAutoContactStepView(stepNumber) {
+        if (!trackAutoQuote || autoViewedContactSteps.has(stepNumber)) return;
+        autoViewedContactSteps.add(stepNumber);
+        trackAutoQuote({
+            EventType: 'quote_contact_step_view',
+            FormKey: 'quote_auto_form',
+            PageKey: 'quote_auto',
+            MetadataJson: JSON.stringify({ stepNumber, source: 'wizard_step_view' })
+        });
+    }
 
     function setStep(step) {
         currentStep = step;
@@ -1566,6 +1593,9 @@
         if (step === 5) {
             buildVehicleCoverageCards();
         }
+        if (step === 1) {
+            emitAutoContactStepView(step);
+        }
     }
 
     function validateCurrentStep() {
@@ -1585,7 +1615,10 @@
 
     function goNext() {
         if (!validateCurrentStep()) return;
-        if (currentStep < 5) setStep(currentStep + 1);
+        if (currentStep < 5) {
+            emitAutoStepComplete(currentStep, currentStep + 1);
+            setStep(currentStep + 1);
+        }
     }
 
     function goBack() {

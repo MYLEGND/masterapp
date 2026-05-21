@@ -1514,6 +1514,11 @@
             const stepLabel = document.getElementById('stepLabel');
             const progressFill = document.getElementById('progressFill');
             const currentStepInput = document.getElementById('CurrentStep');
+            const trackCommercialQuote = (window.legendTrack && typeof window.legendTrack === 'function')
+                ? window.legendTrack
+                : null;
+            const commercialCompletedSteps = new Set();
+            const commercialViewedContactSteps = new Set();
 
             if (!form) return;
 
@@ -1535,6 +1540,15 @@
 
                 if (stepLabel) stepLabel.textContent = `Step ${step} of ${totalSteps}`;
                 if (progressFill) progressFill.style.width = Math.round((step / totalSteps) * 100) + '%';
+                if (step === 3 && trackCommercialQuote && !commercialViewedContactSteps.has(step)) {
+                    commercialViewedContactSteps.add(step);
+                    trackCommercialQuote({
+                        EventType: 'quote_contact_step_view',
+                        FormKey: 'quote_commercial_form',
+                        PageKey: 'quote_commercial',
+                        MetadataJson: JSON.stringify({ stepNumber: step, source: 'wizard_step_view' })
+                    });
+                }
 
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }
@@ -1747,6 +1761,15 @@ function enforceRequiredByLabels() {
                 if (nextBtn) {
                     const step = getStep();
                     if (!validateStep(step)) return;
+                    if (trackCommercialQuote && !commercialCompletedSteps.has(step)) {
+                        commercialCompletedSteps.add(step);
+                        trackCommercialQuote({
+                            EventType: 'quote_step_complete',
+                            FormKey: 'quote_commercial_form',
+                            PageKey: 'quote_commercial',
+                            MetadataJson: JSON.stringify({ stepNumber: step, nextStep: step + 1 })
+                        });
+                    }
                     setStep(step + 1);
                 }
 

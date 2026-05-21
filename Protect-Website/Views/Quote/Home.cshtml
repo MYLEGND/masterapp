@@ -1543,6 +1543,33 @@
 
     <script>
         let currentStep = 1;
+        const trackHomeQuote = (window.legendTrack && typeof window.legendTrack === 'function')
+            ? window.legendTrack
+            : null;
+        const homeCompletedSteps = new Set();
+        const homeViewedContactSteps = new Set();
+
+        function emitHomeStepComplete(stepNumber, nextStep) {
+            if (!trackHomeQuote || homeCompletedSteps.has(stepNumber)) return;
+            homeCompletedSteps.add(stepNumber);
+            trackHomeQuote({
+                EventType: 'quote_step_complete',
+                FormKey: 'quote_home_form',
+                PageKey: 'quote_home',
+                MetadataJson: JSON.stringify({ stepNumber, nextStep })
+            });
+        }
+
+        function emitHomeContactStepView(stepNumber) {
+            if (!trackHomeQuote || homeViewedContactSteps.has(stepNumber)) return;
+            homeViewedContactSteps.add(stepNumber);
+            trackHomeQuote({
+                EventType: 'quote_contact_step_view',
+                FormKey: 'quote_home_form',
+                PageKey: 'quote_home',
+                MetadataJson: JSON.stringify({ stepNumber, source: 'wizard_step_view' })
+            });
+        }
 
         function setStep(step) {
             currentStep = step;
@@ -1564,6 +1591,7 @@
             // keep conditional logic correct when moving steps
             if (step === 2) togglePreviousAddress();
             toggleHouseUpdateYearFields();
+            if (step === 2) emitHomeContactStepView(step);
         }
 
         function validateCurrentStep() {
@@ -1587,7 +1615,10 @@
 
         function goNext() {
             if (!validateCurrentStep()) return;
-            if (currentStep < 6) setStep(currentStep + 1);
+            if (currentStep < 6) {
+                emitHomeStepComplete(currentStep, currentStep + 1);
+                setStep(currentStep + 1);
+            }
         }
 
         function goBack() {

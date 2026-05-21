@@ -552,6 +552,7 @@ body.disability-final-step-active #dq-step4 .lq-step-helper {
         ];
         var currentStep = 1;
         var autoTimer = null;
+        var completedSteps = {};
 
         if (!form) return;
 
@@ -593,7 +594,24 @@ body.disability-final-step-active #dq-step4 .lq-step-helper {
             scrollAndFocus(steps[step - 1].group ? '#grp-' + steps[step - 1].group + ' input' : '#FirstName');
             if (step === 4) {
                 track({ EventType: 'disability_quote_contact_step_view', PageKey: 'quote_disability' });
+                track({
+                    EventType: 'quote_contact_step_view',
+                    FormKey: 'quote_disability_form',
+                    PageKey: 'quote_disability',
+                    MetadataJson: JSON.stringify({ stepNumber: step, source: 'wizard_step_view' })
+                });
             }
+        }
+
+        function trackStepComplete(stepNumber, nextStep, source) {
+            if (completedSteps[stepNumber]) return;
+            completedSteps[stepNumber] = true;
+            track({
+                EventType: 'quote_step_complete',
+                FormKey: 'quote_disability_form',
+                PageKey: 'quote_disability',
+                MetadataJson: JSON.stringify({ stepNumber: stepNumber, nextStep: nextStep, source: source })
+            });
         }
 
         function showGroupError(groupName, errorId) {
@@ -626,6 +644,7 @@ body.disability-final-step-active #dq-step4 .lq-step-helper {
                     clearGroupError(s.group, s.err);
                     var card = radio.closest('.lq-card');
                     if (card) { card.classList.add('lq-selected'); card.classList.remove('lq-invalid'); }
+                    trackStepComplete(idx + 1, idx + 2, 'auto_advance');
                     clearTimeout(autoTimer);
                     autoTimer = setTimeout(function () { showStep(idx + 2); }, 220);
                 });
@@ -642,6 +661,7 @@ body.disability-final-step-active #dq-step4 .lq-step-helper {
                     'IncomeProtectionImportance': 'err-IncomeProtectionImportance'
                 };
                 if (groupName && !requireSelection(groupName, map[groupName])) return;
+                trackStepComplete(currentStep, target, 'button_next');
                 showStep(target);
             });
         });

@@ -365,8 +365,18 @@
 document.addEventListener("DOMContentLoaded", function () {
     const form = document.getElementById('healthQuoteForm');
     const checkbox = document.getElementById('disclaimerCheckbox');
+    const trackHealthQuote = (window.legendTrack && typeof window.legendTrack === 'function')
+        ? window.legendTrack
+        : null;
 
     if (!form || !checkbox) return;
+
+    trackHealthQuote?.({
+        EventType: 'quote_contact_step_view',
+        FormKey: 'quote_health_form',
+        PageKey: 'quote_health',
+        MetadataJson: JSON.stringify({ stepNumber: 1, source: 'single_step_form_view' })
+    });
 
     form.addEventListener('submit', function(event) {
         if (!checkbox.checked) {

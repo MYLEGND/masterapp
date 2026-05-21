@@ -5224,6 +5224,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                         </div>
+                                        <div class="full">
+                                            <label class="lq-consent" for="MarketingEmailConsent">
+                                                <input type="checkbox" id="MarketingEmailConsent" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : null) />
+                                                <span class="consent-text">
+                                                    <span class="consent-main">I authorize contact about this life insurance request and personalized review. <span style="color:#f87171">*</span></span>
+                                                    <span class="consent-sub">This consent supports follow-up guidance and, when allowed, contact matching for ad attribution.</span>
+                                                </span>
+                                            </label>
+                                            <div class="lq-field-err" id="err-MarketingEmailConsent">Please authorize us to contact you about this request.</div>
+                                        </div>
                                     </div>
                                     <div class="lq-step-actions">
                                         <div class="lq-submit-row">
@@ -5726,6 +5736,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                 </div>
                             </div>
                         }
+                        <div class="full">
+                            <label class="lq-consent" for="MarketingEmailConsent">
+                                <input type="checkbox" id="MarketingEmailConsent" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : null) />
+                                <span class="consent-text">
+                                    <span class="consent-main">I authorize contact about this life insurance request and personalized review. <span style="color:#f87171">*</span></span>
+                                    <span class="consent-sub">This consent supports follow-up guidance and, when allowed, contact matching for ad attribution.</span>
+                                </span>
+                            </label>
+                            <div class="lq-field-err" id="err-MarketingEmailConsent">Please authorize us to contact you about this request.</div>
+                        </div>
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
@@ -5788,6 +5808,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const focusHidden = document.getElementById('ProtectFocus');
   const submitBtn = document.getElementById('submitLife');
   const submitLabel = submitBtn?.dataset.defaultLabel || 'Submit';
+  const consentCheckbox = form.querySelector('input[name="MarketingEmailConsent"][type="checkbox"]');
   const recPrimaryKeyEl = document.getElementById('RecommendationPrimaryKey');
   const recPrimaryTitleEl = document.getElementById('RecommendationPrimaryTitle');
   const recSecondaryKeyEl = document.getElementById('RecommendationSecondaryKey');
@@ -6042,7 +6063,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         LastName: asTrimmed(form.querySelector('[name="LastName"]')?.value || ''),
         Phone: asTrimmed(form.querySelector('[name="Phone"]')?.value || ''),
         Email: asTrimmed(form.querySelector('[name="Email"]')?.value || ''),
-        State: asTrimmed(form.querySelector('[name="State"]')?.value || '')
+        State: asTrimmed(form.querySelector('[name="State"]')?.value || ''),
+        MarketingEmailConsent: consentCheckbox?.checked ? 'true' : ''
       },
       timestamp: Date.now()
     };
@@ -6131,6 +6153,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     setFieldValue('Phone', fields.Phone || '');
     setFieldValue('Email', fields.Email || '');
     setFieldValue('State', fields.State || '');
+    if (consentCheckbox) {
+      consentCheckbox.checked = String(fields.MarketingEmailConsent || '').toLowerCase() === 'true';
+    }
     form.querySelectorAll('input[name="Phone"]').forEach((input) => {
       if (input instanceof HTMLInputElement) {
         input.value = formatPhoneNumber(input.value);
@@ -6222,6 +6247,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       persistFunnelState();
     });
   });
+
+  if (consentCheckbox) {
+    consentCheckbox.addEventListener('change', () => {
+      clearFieldError('MarketingEmailConsent');
+      const lifeError = document.getElementById('lifeError');
+      if (lifeError) {
+        lifeError.style.display = 'none';
+      }
+      persistFunnelState();
+    });
+  }
 
   let quoteStartTracked = false;
 
@@ -6655,6 +6691,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     Phone: 'phone',
     Email: 'email',
     State: 'state',
+    MarketingEmailConsent: 'consent_contact',
   });
 
   function resolveTrackedFieldName(name) {
@@ -6712,6 +6749,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function getContactFieldError(name) {
+    if (name === 'MarketingEmailConsent') {
+      return consentCheckbox?.checked ? '' : 'Please authorize us to contact you about this request.';
+    }
+
     const el = form.querySelector(`[name="${name}"]`);
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
       return '';
@@ -6754,6 +6795,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (name === 'Phone' && /valid phone/i.test(error || '')) {
       return 'invalid_phone';
     }
+    if (name === 'MarketingEmailConsent') {
+      return 'consent_required';
+    }
 
     return 'required_missing';
   }
@@ -6781,6 +6825,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       firstInvalid ??= form.querySelector('[name="Email"]');
     } else {
       clearFieldError('Email');
+    }
+
+    const consentError = getContactFieldError('MarketingEmailConsent');
+    if (consentError) {
+      setFieldError('MarketingEmailConsent', consentError);
+      trackQuoteFieldError('MarketingEmailConsent', resolveContactErrorType('MarketingEmailConsent', consentError), 'contact');
+      metaSignal?.trackFieldError('MarketingEmailConsent', { fieldContext: 'contact' });
+      firstInvalid ??= consentCheckbox;
+    } else {
+      clearFieldError('MarketingEmailConsent');
     }
 
     if (focusFirst && firstInvalid instanceof HTMLElement) {
@@ -7566,7 +7620,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const lifeSuccess = document.getElementById('lifeSuccess');
     if (lifeError) lifeError.style.display = 'none';
     if (lifeSuccess) lifeSuccess.style.display = 'none';
-    ['FirstName','LastName','Phone','Email','State'].forEach(clearFieldError);
+    ['FirstName','LastName','Phone','Email','State','MarketingEmailConsent'].forEach(clearFieldError);
     await showStep2(false, {
       estimatePreview,
       trackView: false,

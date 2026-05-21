@@ -221,6 +221,16 @@ namespace AgentPortal.Controllers;
         return Json(result);
     }
 
+    [HttpGet("marketing-health")]
+    [HttpGet("/website-analytics/marketing-health")]
+    public async Task<IActionResult> MarketingHealth([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _analytics.GetMarketingHealthAsync(range, scope, trafficType);
+        return Json(result);
+    }
+
     [HttpGet("conversions")]
     [HttpGet("/website-analytics/conversions")]
     public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] int recentTake = 100)

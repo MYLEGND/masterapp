@@ -113,6 +113,7 @@
     pagePerf: '/WebsiteAnalytics/page-performance',
     ctaPerf: '/WebsiteAnalytics/cta-performance',
     quote: '/WebsiteAnalytics/quote-funnel',
+    marketingHealth: '/WebsiteAnalytics/marketing-health',
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
     metaSignal: '/WebsiteAnalytics/meta-signal',
@@ -577,6 +578,55 @@
     if (tp && data.topPage) tp.textContent = `Top page: ${data.topPage}`;
     const tc = document.getElementById('mod-cta-meta');
     if (tc && data.topCta) tc.textContent = `Top CTA: ${data.topCta}`;
+  }
+
+  function calculateMarketingHealthScore(data) {
+    if (!data) return 0;
+    let score = 100;
+    score -= Math.min(30, Number(data.clientTrackingErrors || 0) * 5);
+    score -= Math.min(20, Number(data.inferredFormStarts || 0) * 4);
+    score -= Math.min(20, Number(data.workstationCaptureFailures || 0) * 6);
+    score -= Math.min(15, Number(data.workstationNoOwnerFailures || 0) * 8);
+    score -= Math.min(10, Number(data.unknownAttributedLeads || 0) * 2);
+    score -= Math.min(5, Number(data.botSuspiciousSessions || 0));
+    return Math.max(0, Math.min(100, score));
+  }
+
+  function marketingHealthVerdict(score, data) {
+    if (!data) return 'Unknown';
+    if ((data.clientTrackingErrors || 0) > 0 || (data.workstationCaptureFailures || 0) > 0 || (data.inferredFormStarts || 0) > 0) {
+      return score >= 80 ? 'Stabilize' : 'Critical';
+    }
+    return score >= 90 ? 'Healthy' : 'Watch';
+  }
+
+  function renderMarketingHealth(data) {
+    state.cache.marketingHealth = data;
+    const score = calculateMarketingHealthScore(data);
+    const verdict = marketingHealthVerdict(score, data);
+    setText('mh-score', `${score}`);
+    setText('mh-verdict', verdict);
+    setText('mh-range-label', data.rangeLabel || '');
+    setText('mh-client-errors', data.clientTrackingErrors || 0);
+    setText('mh-inferred-starts', data.inferredFormStarts || 0);
+    setText('mh-lead-persisted', data.leadPersistedEvents || 0);
+    setText('mh-workstation-success', data.workstationCaptureSuccesses || 0);
+    setText('mh-workstation-failures', data.workstationCaptureFailures || 0);
+    setText('mh-unknown-attribution', data.unknownAttributedLeads || 0);
+    setText('mh-no-owner', data.workstationNoOwnerFailures || 0);
+
+    const verdictEl = document.getElementById('mh-verdict');
+    if (verdictEl) {
+      verdictEl.className = `wa-health-verdict ${verdict.toLowerCase()}`;
+    }
+
+    const warningsEl = document.getElementById('mh-warning-list');
+    if (warningsEl) {
+      const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+      warningsEl.innerHTML = warnings.length
+        ? warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')
+        : '<li>No active health warnings in the selected range.</li>';
+    }
   }
 
   function renderTable(bodyId, rows, cols) {
@@ -1755,9 +1805,26 @@
       if (!data) return;
       setSummaryRefreshStatus('', false);
       renderSummary(data);
+      void loadMarketingHealth();
     } catch (err) {
       const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
       setSummaryRefreshStatus(`Live refresh warning: ${message} Showing the last successfully loaded summary.`, true);
+      console.error(err);
+    }
+  }
+
+  async function loadMarketingHealth() {
+    try {
+      const data = await fetchJson('marketing-health', endpoints.marketingHealth, rangeParams());
+      if (!data) return;
+      renderMarketingHealth(data);
+    } catch (err) {
+      const warningsEl = document.getElementById('mh-warning-list');
+      if (warningsEl) {
+        warningsEl.innerHTML = `<li>${escapeHtml((err && err.message) ? err.message : 'Unable to load marketing health.')}</li>`;
+      }
+      setText('mh-verdict', 'Unavailable');
+      setText('mh-score', '—');
       console.error(err);
     }
   }

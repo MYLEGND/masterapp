@@ -23,7 +23,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
     public async Task<WebsiteLifeLeadCaptureResult> UpsertAsync(WebsiteLifeLeadCaptureRequest request, CancellationToken cancellationToken = default)
     {
-        var bucket = WorkstationLeadBuckets.ResolveWebsiteLifeBucket(request.ProductType, request.OfferKey);
+        var bucket = WorkstationLeadBuckets.ResolveWebsiteLeadBucket(request.ProductType, request.OfferKey);
         var agentUserId = await ResolveAgentUserIdAsync(request, cancellationToken);
         if (string.IsNullOrWhiteSpace(agentUserId))
         {
