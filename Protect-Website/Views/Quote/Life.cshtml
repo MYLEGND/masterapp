@@ -587,9 +587,8 @@
     IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate first", "No obligation" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A likely starting point", "A realistic monthly range", "Clear next-step guidance" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
-    var isGeneralLifeOffer = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
-    var showCarrierReviewBeforeContact = !isGeneralLifeOffer;
-    var showPreContactEducationSummary = !isGeneralLifeOffer;
+    var showCarrierReviewBeforeContact = false;
+    var showPreContactEducationSummary = false;
     var productFocusTitle = "What this estimate is built around";
     var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
@@ -598,15 +597,6 @@
         ("Relevant tradeoffs", "Review the main tradeoffs that matter for this protection path, not every life product."),
         ("Clear next steps", "Keep the walkthrough focused on what may fit without extra product noise.")
     };
-
-    if (isGeneralLifeOffer)
-    {
-        stepTwoContactTitleText = "Want help reviewing whether this actually fits?";
-        stepTwoContactCopyText = "We’ll walk through what influenced the estimate and what may be worth comparing next.";
-        finalStepHeading = "Your estimate is ready";
-        finalStepHelper = "You already have an estimated monthly range and a practical starting coverage range.";
-        finalSubmitButtonText = "Get My Personal Review";
-    }
 
     if (normalizedOfferKey == "wholelife")
     {
