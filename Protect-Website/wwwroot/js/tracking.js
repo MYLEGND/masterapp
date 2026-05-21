@@ -809,6 +809,8 @@
       case 'life_step1_goal_select':
       case 'life_step1_coverage_select':
       case 'life_step1_tobacco_select':
+      case 'first_question_view':
+      case 'first_question_answered':
       case 'step1_age_entered':
       case 'form_field_focus':
       case 'form_field_complete':
@@ -823,10 +825,13 @@
         transitionFormState(state, 'progressed', eventType);
         break;
       case 'life_step2_view':
+      case 'contact_step_view':
+      case 'quote_contact_step_view':
       case 'estimate_contact_continue':
         transitionFormState(state, 'contact_viewed', eventType);
         break;
       case 'form_submit_attempt':
+      case 'lead_form_submit_attempt':
       case 'life_step2_submit_attempt':
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
@@ -839,6 +844,12 @@
         break;
       case 'lead_form_submit_success':
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
+        break;
+      case 'lead_form_submit_failed':
+      case 'lead_form_submit_failure':
+      case 'submit_failure':
+        state.submitAttempted = true;
+        state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
       default:
         break;

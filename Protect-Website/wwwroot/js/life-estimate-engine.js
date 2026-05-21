@@ -275,7 +275,7 @@
       return `Estimated ${escapeHtml(resolveOfferTopic(preview).toLowerCase())} range: ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
     }
 
-    return `Estimated ${escapeHtml(preview.primary.policyType)} range: ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
+    return `A likely place to start: ${escapeHtml(preview.primary.policyType)} at ${escapeHtml(formatCurrencyRangeCompact(preview.primary.estimatedLowMonthly, preview.primary.estimatedHighMonthly))}`;
   }
 
   function resolveCoverageRangeLadder(preview) {
@@ -332,7 +332,12 @@
       return `This estimate stays centered on ${escapeHtml(resolveOfferTopic(preview).toLowerCase())}${coveragePhrase} based on the answers you gave.${coverageRangePhrase}`;
     }
 
-    return `A common first comparison for answers like yours starts with ${policyType}${coveragePhrase}.${coverageRangePhrase}`;
+    const secondaryPolicyType = escapeHtml(preview.secondary?.policyType || '');
+    const secondaryComparisonPhrase = preview.secondary?.policyKey
+      ? ` ${secondaryPolicyType} may still be worth reviewing if you want to compare a different long-term coverage path.`
+      : '';
+
+    return `Based on what you shared, ${policyType} looks like the most practical first option${coveragePhrase}.${coverageRangePhrase}${secondaryComparisonPhrase}`;
   }
 
   function buildRecommendationTier(preview) {
@@ -361,7 +366,7 @@
       return `${escapeHtml(preview.primary.policyType)} rose to the top as the clearest starting point for the answers you gave.`;
     }
 
-    return `${joinNaturalLanguage(pieces)} all pushed ${escapeHtml(preview.primary.policyType)} to the top as the clearest starting point.`;
+    return `${joinNaturalLanguage(pieces)} all pointed toward ${escapeHtml(preview.primary.policyType)} as the clearest first option to review.`;
   }
 
   function buildThirdStatLabel(preview) {
@@ -397,10 +402,10 @@
     }
 
     if (preview?.secondary?.policyKey) {
-      return `A common first place to start is reviewing ${primaryPolicyType} in the ${escapeHtml(recommendedCoverageRange)} range, then deciding whether to compare ${secondaryPolicyType}.`;
+      return `A common next step is reviewing ${primaryPolicyType} in the ${escapeHtml(recommendedCoverageRange)} range first, then deciding whether it is worth comparing ${secondaryPolicyType}.`;
     }
 
-    return `A common first place to start is reviewing ${primaryPolicyType} in the ${escapeHtml(recommendedCoverageRange)} range.`;
+    return `A common next step is reviewing ${primaryPolicyType} in the ${escapeHtml(recommendedCoverageRange)} range.`;
   }
 
   function buildPersonalizedProtectionSummary(preview) {
@@ -457,6 +462,7 @@
     const recommendedCoverageRange = buildRecommendedCoverageRange(normalized);
     const secondaryNoteHtml = hasSecondary
       ? `<div class="lq-contact-estimate-alt">Also worth comparing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
+      ? `<div class="lq-contact-estimate-alt">Also worth reviewing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
       : '';
 
     return `
