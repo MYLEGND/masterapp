@@ -57,18 +57,29 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         WorkstationLeadProfile? existing = null;
         if (!string.IsNullOrWhiteSpace(normalizedPhone) || !string.IsNullOrWhiteSpace(normalizedEmail))
         {
-            var candidates = await _db.WorkstationLeadProfiles
-                .Where(x =>
-                    x.AgentUserId == agentUserId &&
-                    ((x.OriginalLeadType != null && x.OriginalLeadType == bucket) ||
-                     ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
+            // Check tracked local leads first so repeated submissions folded into the same unit of work
+            // still attach to the same internal lead before SaveChanges runs.
+            var localCandidates = _db.WorkstationLeadProfiles.Local
+                .Where(x => MatchesBucketCandidate(x, agentUserId, bucket))
                 .OrderByDescending(x => x.UpdatedUtc)
                 .ThenByDescending(x => x.CreatedUtc)
-                .ToListAsync(cancellationToken);
+                .ToList();
 
-            existing = candidates.FirstOrDefault(x =>
-                (!string.IsNullOrWhiteSpace(normalizedPhone) && NormalizePhoneKey(x.Phone) == normalizedPhone) ||
-                (!string.IsNullOrWhiteSpace(normalizedEmail) && NormalizeEmailKey(x.Email) == normalizedEmail));
+            existing = localCandidates.FirstOrDefault(x => MatchesContactCandidate(x, normalizedPhone, normalizedEmail));
+
+            if (existing == null)
+            {
+                var candidates = await _db.WorkstationLeadProfiles
+                    .Where(x =>
+                        x.AgentUserId == agentUserId &&
+                        ((x.OriginalLeadType != null && x.OriginalLeadType == bucket) ||
+                         ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == bucket)))
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .ThenByDescending(x => x.CreatedUtc)
+                    .ToListAsync(cancellationToken);
+
+                existing = candidates.FirstOrDefault(x => MatchesContactCandidate(x, normalizedPhone, normalizedEmail));
+            }
         }
 
         WorkstationLeadProfile lead;
@@ -402,6 +413,15 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
 
     private static string NormalizeEmailKey(string? email)
         => (email ?? string.Empty).Trim().ToLowerInvariant();
+
+    private static bool MatchesBucketCandidate(WorkstationLeadProfile lead, string agentUserId, string bucket)
+        => lead.AgentUserId == agentUserId &&
+           ((lead.OriginalLeadType != null && lead.OriginalLeadType == bucket) ||
+            ((lead.OriginalLeadType == null || lead.OriginalLeadType == "") && lead.Bucket == bucket));
+
+    private static bool MatchesContactCandidate(WorkstationLeadProfile lead, string normalizedPhone, string normalizedEmail)
+        => (!string.IsNullOrWhiteSpace(normalizedPhone) && NormalizePhoneKey(lead.Phone) == normalizedPhone) ||
+           (!string.IsNullOrWhiteSpace(normalizedEmail) && NormalizeEmailKey(lead.Email) == normalizedEmail);
 
     private static string NormalizeStateValue(string? state)
         => (state ?? string.Empty).Trim().ToUpperInvariant();

@@ -925,6 +925,7 @@
 
       applyEditDrawerLeadTypeDisplay(lead);
       syncEditDrawerHeader(lead);
+      renderEditIntakeSnapshot(lead);
       renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
       setEditStatus('Ready');
     }
@@ -1573,6 +1574,79 @@
       setStatusHtml(`<span class="lb-status-note">${escapeHtml(message)}</span>`, tone);
     }
 
+    function formatIntakeDate(value){
+      if (!value) return '—';
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? '—'
+        : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function joinIntakeParts(parts){
+      return parts
+        .map(part => String(part || '').trim())
+        .filter(Boolean)
+        .join(' • ') || '—';
+    }
+
+    function renderEditIntakeSnapshot(lead){
+      const snapshot = lead?.intakeSnapshot || null;
+      const nodes = [
+        editIntakeSubmitted,
+        editIntakeOwner,
+        editIntakeProduct,
+        editIntakePage,
+        editIntakeSource,
+        editIntakeIds,
+        editIntakeRecommendation,
+        editIntakeDiscovery
+      ];
+
+      if (!snapshot){
+        if (editIntakeSection) editIntakeSection.hidden = true;
+        nodes.forEach(node => { if (node) node.textContent = '—'; });
+        return;
+      }
+
+      if (editIntakeSection) editIntakeSection.hidden = false;
+      if (editIntakeSubmitted) editIntakeSubmitted.textContent = formatIntakeDate(snapshot.submittedUtc);
+      if (editIntakeOwner) editIntakeOwner.textContent = snapshot.agentUserId || lead?.agentUserId || '—';
+      if (editIntakeProduct) editIntakeProduct.textContent = joinIntakeParts([
+        snapshot.interestLabel,
+        snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : '',
+        snapshot.productType ? `Type: ${snapshot.productType}` : ''
+      ]);
+      if (editIntakePage) editIntakePage.textContent = joinIntakeParts([
+        snapshot.sourcePageKey,
+        snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : '',
+        snapshot.pageMode ? `Mode: ${snapshot.pageMode}` : '',
+        snapshot.pagePath
+      ]);
+      if (editIntakeSource) editIntakeSource.textContent = joinIntakeParts([
+        snapshot.utmSource,
+        snapshot.utmMedium,
+        snapshot.utmCampaign,
+        snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ''
+      ]);
+      if (editIntakeIds) editIntakeIds.textContent = joinIntakeParts([
+        snapshot.utmId ? `utm_id ${snapshot.utmId}` : '',
+        snapshot.fbclid ? `fbclid ${snapshot.fbclid}` : '',
+        snapshot.metaCampaignId ? `campaign ${snapshot.metaCampaignId}` : '',
+        snapshot.metaAdSetId ? `adset ${snapshot.metaAdSetId}` : '',
+        snapshot.metaAdId ? `ad ${snapshot.metaAdId}` : ''
+      ]);
+      if (editIntakeRecommendation) editIntakeRecommendation.textContent = joinIntakeParts([
+        snapshot.estimateSummary,
+        snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : '',
+        snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ''
+      ]);
+      if (editIntakeDiscovery) editIntakeDiscovery.textContent = Array.isArray(snapshot.discoveryItems) && snapshot.discoveryItems.length
+        ? snapshot.discoveryItems
+            .map(item => `${String(item?.label || 'Detail').trim()}: ${String(item?.value || '—').trim()}`)
+            .join(' • ')
+        : '—';
+    }
+
     function setOrigin(lead){
       if (!originEl) return;
       if (!lead){
@@ -1580,7 +1654,18 @@
         return;
       }
       const origin = leadOriginalLeadType(lead) || bucket || '';
-      originEl.textContent = `Origin: ${bucketLabel(origin || 'Lead')}`;
+      const snapshot = lead.intakeSnapshot || null;
+      const sourceSummary = snapshot
+        ? joinIntakeParts([
+            snapshot.utmSource,
+            snapshot.utmMedium,
+            snapshot.utmCampaign,
+            snapshot.sourcePageKey
+          ])
+        : '';
+      originEl.textContent = sourceSummary
+        ? `Origin: ${bucketLabel(origin || 'Lead')} • ${sourceSummary}`
+        : `Origin: ${bucketLabel(origin || 'Lead')}`;
     }
 
 
@@ -2072,6 +2157,8 @@
       target.attemptsLifetime = payload.attemptsLifetime ?? target.attemptsLifetime ?? target.callCount;
       target.dialsToday = payload.dialsToday ?? target.attemptsToday;
       target.dialsWeek = payload.dialsWeek ?? target.attemptsThisWeek;
+      target.intakeSnapshot = payload.intakeSnapshot ?? target.intakeSnapshot;
+      target.agentUserId = payload.agentUserId ?? target.agentUserId;
       normalizeLeadAgeFromDob(target);
       updateAgentWideDials(payload);
     }
@@ -2095,6 +2182,27 @@
         email: lead.email || "",
         originalLeadType: lead.originalLeadType || ""
       });
+    }
+
+    async function hydrateLeadIntakeSnapshot(lead){
+      if (!lead?.leadId || lead._intakeSnapshotRequested) return;
+      lead._intakeSnapshotRequested = true;
+
+      try {
+        const res = await fetch(`/Leads/Lead?id=${encodeURIComponent(lead.leadId)}`, withDialHeaders({
+          credentials: 'include',
+          cache: 'no-store'
+        }));
+        if (!res.ok) return;
+        const payload = await res.json();
+        applyLeadPayload(lead, payload);
+
+        const currentLead = resolveCurrentLead();
+        if (currentLead?.leadId === lead.leadId){
+          setOrigin(lead);
+          renderEditIntakeSnapshot(lead);
+        }
+      } catch {}
     }
 
     async function launchTextMessageForLead(lead, rawMessage){
@@ -2548,6 +2656,11 @@
       const lead = options.lead || resolveCurrentLead();
       const renderState = resolveRenderState(lead);
       renderLead(lead, renderState.index, renderState.total);
+      if (lead && !lead.intakeSnapshot){
+        void hydrateLeadIntakeSnapshot(lead);
+      } else {
+        renderEditIntakeSnapshot(lead);
+      }
       window.__currentLead = lead || null;
       try {
         window.dispatchEvent(new CustomEvent('leadbridge:currentLead', {
