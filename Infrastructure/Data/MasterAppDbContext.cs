@@ -17,7 +17,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentFinanceToolState> AgentFinanceToolStates => Set<AgentFinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
-public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
+    public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
     public DbSet<Proposal> Proposals => Set<Proposal>();
     public DbSet<UnderwritingRecord> UnderwritingRecords => Set<UnderwritingRecord>();
     public DbSet<OnboardingInvite> OnboardingInvites => Set<OnboardingInvite>();
@@ -25,6 +25,7 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
+    public DbSet<WebsiteLeadIntakeLink> WebsiteLeadIntakeLinks => Set<WebsiteLeadIntakeLink>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
@@ -38,9 +39,9 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
     public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
     public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
 
         modelBuilder.Entity<OnboardingInvite>(e =>
@@ -365,6 +366,58 @@ public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationL
             e.HasIndex(x => x.SourceCtaKey);
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
+        });
+
+        modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.WorkstationLeadId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.AgentUserId).IsRequired().HasMaxLength(180);
+            e.Property(x => x.Bucket).IsRequired().HasMaxLength(80);
+            e.Property(x => x.SourcePageKey).HasMaxLength(160);
+            e.Property(x => x.SourceCtaKey).HasMaxLength(160);
+            e.Property(x => x.PageVariant).HasMaxLength(80);
+            e.Property(x => x.PageMode).HasMaxLength(80);
+            e.Property(x => x.PagePath).HasMaxLength(300);
+            e.Property(x => x.LandingPageUrl).HasMaxLength(500);
+            e.Property(x => x.ReferrerUrl).HasMaxLength(500);
+            e.Property(x => x.InterestType).HasMaxLength(120);
+            e.Property(x => x.OfferKey).HasMaxLength(120);
+            e.Property(x => x.ProductType).HasMaxLength(120);
+            e.Property(x => x.UtmSource).HasMaxLength(160);
+            e.Property(x => x.UtmMedium).HasMaxLength(160);
+            e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.UtmTerm).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.Fbclid).HasMaxLength(160);
+            e.Property(x => x.MetaCampaignId).HasMaxLength(160);
+            e.Property(x => x.MetaAdSetId).HasMaxLength(160);
+            e.Property(x => x.MetaAdId).HasMaxLength(160);
+            e.Property(x => x.SessionId).HasMaxLength(120);
+            e.Property(x => x.VisitorId).HasMaxLength(120);
+            e.Property(x => x.DiscoverySummaryJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.EstimateSummary).HasMaxLength(600);
+            e.Property(x => x.RecommendationPrimaryKey).HasMaxLength(160);
+            e.Property(x => x.RecommendationPrimaryTitle).HasMaxLength(240);
+            e.Property(x => x.RecommendationSecondaryKey).HasMaxLength(160);
+            e.Property(x => x.RecommendationSecondaryTitle).HasMaxLength(240);
+            e.Property(x => x.SnapshotJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+
+            e.HasIndex(x => x.WebsiteLeadRowId).IsUnique();
+            e.HasIndex(x => new { x.WorkstationLeadId, x.SubmittedUtc });
+            e.HasIndex(x => new { x.AgentUserId, x.SubmittedUtc });
+
+            e.HasOne<WebsiteLead>()
+                .WithMany()
+                .HasForeignKey(x => x.WebsiteLeadRowId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<WorkstationLeadProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.WorkstationLeadId)
+                .HasPrincipalKey(x => x.LeadId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // AGENT TRACKING

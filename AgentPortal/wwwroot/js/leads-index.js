@@ -735,7 +735,8 @@ async function loadQuickView(clientId){
       attemptsLifetime: attemptsLife,
       lastContactChannel: row.dataset.crmLastChannel || row.dataset.sChannel || "",
       docChecklist: { completedCount: row.dataset.sDoccount || 0 },
-      collaboration: { watchers: (row.dataset.crmWatchers || row.dataset.sWatchers || "").split(/,\s*/).filter(Boolean) }
+      collaboration: { watchers: (row.dataset.crmWatchers || row.dataset.sWatchers || "").split(/,\s*/).filter(Boolean) },
+      intakeSnapshot: lead?.intakeSnapshot || null
     };
   }
 
@@ -786,7 +787,8 @@ async function loadQuickView(clientId){
       attemptsLifetime: lead.attemptsLifetime ?? lead.callCount ?? 0,
       lastContactChannel: lead.lastContactChannel || "Call",
       docChecklist: lead.docChecklist || { completedCount: 0 },
-      collaboration: lead.collaboration || { watchers: [] }
+      collaboration: lead.collaboration || { watchers: [] },
+      intakeSnapshot: lead.intakeSnapshot || null
     };
   }
 
@@ -1870,6 +1872,15 @@ const dAssignedOwner = $("#dAssignedOwner");
 const dWatchers = $("#dWatchers");
 const dMentionNote = $("#dMentionNote");
 const mentionList = $("#mentionList");
+const dIntakeSection = $("#dIntakeSection");
+const dIntakeSubmitted = $("#dIntakeSubmitted");
+const dIntakeOwner = $("#dIntakeOwner");
+const dIntakeProduct = $("#dIntakeProduct");
+const dIntakePage = $("#dIntakePage");
+const dIntakeSource = $("#dIntakeSource");
+const dIntakeIds = $("#dIntakeIds");
+const dIntakeRecommendation = $("#dIntakeRecommendation");
+const dIntakeDiscovery = $("#dIntakeDiscovery");
 
 const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
@@ -1910,6 +1921,75 @@ function refreshLeadOverviewSummary(){
     const note = norm(dNotes?.value);
     leadNotePreview.textContent = note || "No CRM note yet.";
   }
+}
+
+function formatIntakeSnapshotDate(value){
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? "—"
+    : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function joinIntakeParts(parts){
+  return parts.map(part => norm(part)).filter(Boolean).join(" • ") || "—";
+}
+
+function renderIntakeSnapshot(snapshot){
+  const nodes = [
+    dIntakeSubmitted,
+    dIntakeOwner,
+    dIntakeProduct,
+    dIntakePage,
+    dIntakeSource,
+    dIntakeIds,
+    dIntakeRecommendation,
+    dIntakeDiscovery
+  ];
+
+  if (!snapshot){
+    if (dIntakeSection) dIntakeSection.hidden = true;
+    nodes.forEach(node => { if (node) node.textContent = "—"; });
+    return;
+  }
+
+  if (dIntakeSection) dIntakeSection.hidden = false;
+  if (dIntakeSubmitted) dIntakeSubmitted.textContent = formatIntakeSnapshotDate(snapshot.submittedUtc);
+  if (dIntakeOwner) dIntakeOwner.textContent = snapshot.agentUserId || activeClientDetail?.agentUserId || "—";
+  if (dIntakeProduct) dIntakeProduct.textContent = joinIntakeParts([
+    snapshot.interestLabel,
+    snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : "",
+    snapshot.productType ? `Type: ${snapshot.productType}` : ""
+  ]);
+  if (dIntakePage) dIntakePage.textContent = joinIntakeParts([
+    snapshot.sourcePageKey,
+    snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : "",
+    snapshot.pageMode ? `Mode: ${snapshot.pageMode}` : "",
+    snapshot.pagePath
+  ]);
+  if (dIntakeSource) dIntakeSource.textContent = joinIntakeParts([
+    snapshot.utmSource,
+    snapshot.utmMedium,
+    snapshot.utmCampaign,
+    snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ""
+  ]);
+  if (dIntakeIds) dIntakeIds.textContent = joinIntakeParts([
+    snapshot.utmId ? `utm_id ${snapshot.utmId}` : "",
+    snapshot.fbclid ? `fbclid ${snapshot.fbclid}` : "",
+    snapshot.metaCampaignId ? `campaign ${snapshot.metaCampaignId}` : "",
+    snapshot.metaAdSetId ? `adset ${snapshot.metaAdSetId}` : "",
+    snapshot.metaAdId ? `ad ${snapshot.metaAdId}` : ""
+  ]);
+  if (dIntakeRecommendation) dIntakeRecommendation.textContent = joinIntakeParts([
+    snapshot.estimateSummary,
+    snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : "",
+    snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ""
+  ]);
+  if (dIntakeDiscovery) dIntakeDiscovery.textContent = Array.isArray(snapshot.discoveryItems) && snapshot.discoveryItems.length
+    ? snapshot.discoveryItems
+        .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
+        .join(" • ")
+    : "—";
 }
 
 // Quick View autosave (debounced)
@@ -3529,6 +3609,7 @@ async function openDrawerForRow(row){
   dActNote.value = "";
   renderTimeline([]);
   renderMentionNotes([]);
+  renderIntakeSnapshot(null);
   refreshLeadOverviewSummary();
   dSaved.textContent = "Loading…";
 
@@ -3596,6 +3677,7 @@ async function openDrawerForRow(row){
     refreshCalendarBusyPanel();
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
+    renderIntakeSnapshot(detail.intakeSnapshot || null);
     refreshLeadOverviewSummary();
 
     renderPortalActions(row, detail);
@@ -3603,6 +3685,7 @@ async function openDrawerForRow(row){
     dSaved.textContent = "Loaded";
   }catch(err){
     console.error(err);
+    renderIntakeSnapshot(null);
     dSaved.textContent = "Load failed";
     toast("Failed to load lead details.");
   }
@@ -5234,6 +5317,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     dAttempts.textContent = `Attempts: ${data.attemptsToday || 0} today • ${data.attemptsThisWeek || 0} week • ${data.attemptsLifetime || 0} total`;
     dWaitingOnPill.textContent = data.waitingOnLabel || waitingLabel(data.waitingOn || "WaitingOnAgent");
     renderMentionNotes(data.collaboration?.mentionNotes || []);
+    renderIntakeSnapshot(data.intakeSnapshot || activeClientDetail?.intakeSnapshot || null);
     refreshLeadOverviewSummary();
     dSaved.textContent = successMessage || "Saved ✔";
   }

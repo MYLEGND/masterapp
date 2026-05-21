@@ -618,6 +618,15 @@
     const editLoanField = document.getElementById('dLoanField');
     const editLenderLabel = document.getElementById('dLenderLabel');
     const editLoanLabel = document.getElementById('dLoanLabel');
+    const editIntakeSection = document.getElementById('dIntakeSection');
+    const editIntakeSubmitted = document.getElementById('dIntakeSubmitted');
+    const editIntakeOwner = document.getElementById('dIntakeOwner');
+    const editIntakeProduct = document.getElementById('dIntakeProduct');
+    const editIntakePage = document.getElementById('dIntakePage');
+    const editIntakeSource = document.getElementById('dIntakeSource');
+    const editIntakeIds = document.getElementById('dIntakeIds');
+    const editIntakeRecommendation = document.getElementById('dIntakeRecommendation');
+    const editIntakeDiscovery = document.getElementById('dIntakeDiscovery');
     const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
     const drawerOutcomeButtons = Array.from(editDrawer?.querySelectorAll('.outcome-btn[data-outcome]') || []);
     const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);

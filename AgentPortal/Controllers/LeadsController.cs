@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using AgentPortal.Helpers;
 using AgentPortal.Models;
 using AgentPortal.Services;
@@ -1087,7 +1088,7 @@ public class LeadsController : Controller
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
         var agentWideDialTotals = await GetAgentWideDialTotalsAsync(agentId, nowUtc, dialTimeZone);
-        return Json(LeadPayload(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone));
+        return Json(await BuildLeadPayloadAsync(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone));
     }
 
     public record LeadOutcomeRequest(string clientUserId, string outcomeCode, string? customNote);
@@ -1144,8 +1145,28 @@ public class LeadsController : Controller
         public bool DryRun { get; set; } = false;
     }
 
+    private async Task<object> BuildLeadPayloadAsync(
+        WorkstationLeadProfile lead,
+        DateTime? utcNow = null,
+        int? dialsTodayAgentWide = null,
+        int? dialsWeekAgentWide = null,
+        TimeZoneInfo? dialTimeZone = null)
+    {
+        var latestIntake = await LoadLatestIntakeSnapshotAsync(lead.LeadId);
+        return LeadPayload(lead, latestIntake, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
+    }
+
+    private async Task<WebsiteLeadIntakeLink?> LoadLatestIntakeSnapshotAsync(string leadId)
+        => await _db.WebsiteLeadIntakeLinks
+            .AsNoTracking()
+            .Where(x => x.WorkstationLeadId == leadId)
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .FirstOrDefaultAsync();
+
     private static object LeadPayload(
         WorkstationLeadProfile lead,
+        WebsiteLeadIntakeLink? latestIntake,
         DateTime? utcNow = null,
         int? dialsTodayAgentWide = null,
         int? dialsWeekAgentWide = null,
@@ -1164,6 +1185,7 @@ public class LeadsController : Controller
         return new
         {
             lead.LeadId,
+            agentUserId = lead.AgentUserId,
             firstName = lead.FirstName,
             lastName = lead.LastName,
             email = lead.Email,
@@ -1229,7 +1251,106 @@ public class LeadsController : Controller
             dialsWeekAgentWide,
             callCount = lead.CallCount,
             lastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
-            originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket)
+            originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket),
+            intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake)
+        };
+    }
+
+    private static object? BuildIntakeSnapshotPayload(WebsiteLeadIntakeLink? intake)
+    {
+        if (intake == null)
+            return null;
+
+        var discoveryItems = ParseIntakeDiscoverySummary(intake.DiscoverySummaryJson);
+        return new
+        {
+            submittedUtc = intake.SubmittedUtc,
+            capturedUtc = intake.CapturedUtc,
+            agentUserId = intake.AgentUserId,
+            bucket = intake.Bucket,
+            sourcePageKey = intake.SourcePageKey,
+            sourceCtaKey = intake.SourceCtaKey,
+            pageVariant = intake.PageVariant,
+            pageMode = intake.PageMode,
+            pagePath = intake.PagePath,
+            landingPageUrl = intake.LandingPageUrl,
+            referrerUrl = intake.ReferrerUrl,
+            interestType = intake.InterestType,
+            interestLabel = ResolveIntakeInterestLabel(intake.InterestType, intake.OfferKey, intake.ProductType),
+            offerKey = intake.OfferKey,
+            productType = intake.ProductType,
+            utmSource = intake.UtmSource,
+            utmMedium = intake.UtmMedium,
+            utmCampaign = intake.UtmCampaign,
+            utmId = intake.UtmId,
+            utmTerm = intake.UtmTerm,
+            utmContent = intake.UtmContent,
+            fbclid = intake.Fbclid,
+            metaCampaignId = intake.MetaCampaignId,
+            metaAdSetId = intake.MetaAdSetId,
+            metaAdId = intake.MetaAdId,
+            sessionId = intake.SessionId,
+            visitorId = intake.VisitorId,
+            estimateSummary = intake.EstimateSummary,
+            recommendationPrimaryKey = intake.RecommendationPrimaryKey,
+            recommendationPrimaryTitle = intake.RecommendationPrimaryTitle,
+            recommendationSecondaryKey = intake.RecommendationSecondaryKey,
+            recommendationSecondaryTitle = intake.RecommendationSecondaryTitle,
+            discoveryItems,
+            snapshotJson = intake.SnapshotJson
+        };
+    }
+
+    private static IReadOnlyList<object> ParseIntakeDiscoverySummary(string? discoverySummaryJson)
+    {
+        if (string.IsNullOrWhiteSpace(discoverySummaryJson))
+            return Array.Empty<object>();
+
+        try
+        {
+            using var doc = JsonDocument.Parse(discoverySummaryJson);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                return Array.Empty<object>();
+
+            return doc.RootElement
+                .EnumerateArray()
+                .Select(item => new
+                {
+                    label = item.TryGetProperty("Label", out var label) ? label.GetString() ?? string.Empty : string.Empty,
+                    value = item.TryGetProperty("Value", out var value) ? value.GetString() ?? string.Empty : string.Empty
+                })
+                .Where(item => !string.IsNullOrWhiteSpace(item.label) && !string.IsNullOrWhiteSpace(item.value))
+                .Cast<object>()
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<object>();
+        }
+    }
+
+    private static string ResolveIntakeInterestLabel(string? interestType, string? offerKey, string? productType)
+    {
+        var key = Norm(offerKey);
+        if (string.IsNullOrWhiteSpace(key))
+            key = Norm(interestType);
+        if (string.IsNullOrWhiteSpace(key))
+            key = Norm(productType);
+
+        return key switch
+        {
+            "life" or "lifegeneral" => "Life Insurance",
+            "term" or "termlife" or "lifeterm" => "Term Life",
+            "wholelife" or "lifewhole" => "Whole Life",
+            "finalexpense" or "lifefinalexpense" => "Final Expense",
+            "mortgage" or "lifemp" => "Mortgage Protection",
+            "iul" or "lifeiul" => "IUL",
+            "autoinsurance" or "auto" => "Auto Insurance",
+            "homeinsurance" or "home" => "Home Insurance",
+            "commercialinsurance" or "commercial" => "Commercial Insurance",
+            "disabilityinsurance" or "disability" => "Disability Insurance",
+            "healthinsurance" or "health" => "Health Insurance",
+            _ => string.IsNullOrWhiteSpace(key) ? "Website Intake" : key
         };
     }
 
@@ -1348,7 +1469,7 @@ public class LeadsController : Controller
 
         await _db.SaveChangesAsync();
 
-        return Json(new { payload = LeadPayload(lead, dialTimeZone: dialTimeZone) });
+        return Json(new { payload = await BuildLeadPayloadAsync(lead, dialTimeZone: dialTimeZone) });
     }
 
     [HttpPost]
@@ -1384,7 +1505,7 @@ public class LeadsController : Controller
 
         return Json(new
         {
-            payload = LeadPayload(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone),
+            payload = await BuildLeadPayloadAsync(lead, nowUtc, agentWideDialTotals.Today, agentWideDialTotals.Week, dialTimeZone),
             suggestion = new { nextDate = (string?)null, nextText = req.customNote }
         });
     }
