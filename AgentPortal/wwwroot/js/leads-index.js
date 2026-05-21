@@ -2027,7 +2027,6 @@ const leadSourcePreview = $("#leadSourcePreview");
 const leadLatestIntakePreview = $("#leadLatestIntakePreview");
 const leadRecommendationPreview = $("#leadRecommendationPreview");
 const leadDiscoveryPreview = $("#leadDiscoveryPreview");
-const leadNotePreview = $("#leadNotePreview");
 
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
@@ -2105,10 +2104,6 @@ function refreshLeadOverviewSummary(){
   }
   if (leadDiscoveryPreview){
     leadDiscoveryPreview.textContent = summarizeLeadDiscovery(snapshot);
-  }
-  if (leadNotePreview){
-    const note = norm(dNotes?.value);
-    leadNotePreview.textContent = note || "No CRM note yet.";
   }
 }
 
