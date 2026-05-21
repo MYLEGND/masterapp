@@ -658,6 +658,8 @@
     }
 
     body.innerHTML = rows.map((row) => {
+      const severityTone = asTrimmed(row?.severity).toLowerCase() || 'unknown';
+      const recoveredTone = row?.recovered === true ? 'yes' : row?.recovered === false ? 'no' : 'unknown';
       const timeLabel = escapeHtml(row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—');
       const pageLabel = escapeHtml(row?.pageKey || row?.pagePath || row?.quoteType || '—');
       const pagePath = escapeHtml(row?.pagePath || row?.pageUrl || '');
@@ -676,7 +678,7 @@
       const actionLabel = escapeHtml(row?.suggestedAction || 'Inspect browser console and server ingest logs');
 
       return `
-        <tr>
+        <tr data-severity="${escapeHtml(severityTone)}" data-recovered="${escapeHtml(recoveredTone)}">
           <td>
             <div class="wa-health-cell-primary">${timeLabel}</div>
           </td>

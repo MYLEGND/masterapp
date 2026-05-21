@@ -5069,73 +5069,110 @@ body {
 }
 
 .wa-kpi-band-health {
+    position: relative;
+    overflow: hidden;
     gap: 1rem;
+    padding: 1.05rem;
+    border-color: rgba(212, 168, 74, .24);
+    background:
+        radial-gradient(circle at top left, rgba(226, 186, 93, .16) 0%, rgba(226, 186, 93, 0) 33%),
+        radial-gradient(circle at top right, rgba(72, 187, 255, .12) 0%, rgba(72, 187, 255, 0) 28%),
+        linear-gradient(180deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.018) 100%),
+        rgba(8,15,34,.34);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 20px 36px rgba(0,0,0,.18);
 }
 
-.wa-health-summary {
+.wa-kpi-band-health::before,
+.wa-kpi-band-health::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    border-radius: 999px;
+    filter: blur(10px);
+}
+
+.wa-kpi-band-health::before {
+    width: 240px;
+    height: 240px;
+    top: -120px;
+    right: -70px;
+    background: radial-gradient(circle, rgba(226,186,93,.22) 0%, rgba(226,186,93,0) 70%);
+}
+
+.wa-kpi-band-health::after {
+    width: 220px;
+    height: 220px;
+    left: -90px;
+    bottom: -120px;
+    background: radial-gradient(circle, rgba(72,187,255,.12) 0%, rgba(72,187,255,0) 72%);
+}
+
+.wa-health-hero,
+.wa-health-grid,
+.wa-health-lower {
+    position: relative;
+    z-index: 1;
+}
+
+.wa-health-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, .72fr);
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.wa-health-copy {
+    display: grid;
+    gap: .78rem;
+    align-content: start;
+}
+
+.wa-health-kicker-row {
     display: flex;
     align-items: center;
-    gap: .85rem;
+    justify-content: space-between;
+    gap: .6rem 1rem;
     flex-wrap: wrap;
 }
 
-.wa-health-score-wrap {
-    display: grid;
-    gap: .15rem;
-}
-
-.wa-health-score-label {
-    font-size: .72rem;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    color: rgba(226,232,241,.72);
-}
-
-.wa-health-score {
-    font-size: 1.9rem;
-    font-weight: 900;
-    color: #fff1c8;
-    line-height: 1;
-}
-
-.wa-health-verdict {
+.wa-health-live-pill {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 40px;
-    padding: .55rem .9rem;
+    min-height: 32px;
+    padding: .38rem .7rem;
     border-radius: 999px;
-    border: 1px solid rgba(199,153,49,.28);
-    background: rgba(8,15,34,.65);
-    color: #f1ddb0;
+    border: 1px solid rgba(72,187,255,.26);
+    background:
+        linear-gradient(180deg, rgba(72,187,255,.16) 0%, rgba(72,187,255,.06) 100%);
+    color: #b8e7ff;
+    font-size: .72rem;
     font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    box-shadow:
+        0 12px 20px rgba(0,0,0,.14),
+        inset 0 1px 0 rgba(255,255,255,.06);
 }
 
-.wa-health-verdict.healthy {
-    border-color: rgba(52,211,153,.38);
-    color: #bbf7d0;
+.wa-health-heading {
+    margin: 0;
+    max-width: 20ch;
+    color: #fff3cf;
+    font-size: clamp(1.2rem, 2vw, 1.7rem);
+    font-weight: 950;
+    line-height: 1.02;
+    letter-spacing: -.04em;
 }
 
-.wa-health-verdict.watch,
-.wa-health-verdict.stabilize {
-    border-color: rgba(251,191,36,.38);
-    color: #fde68a;
-}
-
-.wa-health-verdict.critical {
-    border-color: rgba(248,113,113,.38);
-    color: #fecaca;
-}
-
-.wa-health-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 1rem;
-}
-
-.wa-health-foot {
-    display: grid;
-    gap: .85rem;
+.wa-health-subcopy {
+    max-width: 48rem;
+    color: rgba(226,232,241,.78);
+    font-size: .9rem;
+    font-weight: 600;
+    line-height: 1.55;
 }
 
 .wa-health-meta {
@@ -5147,114 +5184,495 @@ body {
 .wa-health-pill {
     display: inline-flex;
     align-items: center;
-    gap: .35rem;
-    min-height: 34px;
-    padding: .5rem .75rem;
+    gap: .42rem;
+    min-height: 36px;
+    padding: .52rem .82rem;
     border-radius: 999px;
-    border: 1px solid rgba(199,153,49,.18);
-    background: rgba(8,15,34,.52);
-    color: rgba(226,232,241,.82);
+    border: 1px solid rgba(226,186,93,.18);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,.01) 100%),
+        rgba(7,14,32,.58);
+    color: rgba(226,232,241,.84);
     font-size: .82rem;
+    font-weight: 720;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
-.wa-health-warnings {
-    padding: .95rem 1rem;
+.wa-health-pill strong {
+    color: #fff4cb;
+    font-weight: 850;
+}
+
+.wa-health-focus-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .55rem;
+}
+
+.wa-health-focus-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: .36rem .72rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.045);
+    color: rgba(243, 222, 163, .88);
+    font-size: .72rem;
+    font-weight: 820;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.wa-health-summary {
+    display: grid;
+    gap: .75rem;
+    align-content: start;
+}
+
+.wa-health-summary-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: end;
+    padding: 1rem 1.05rem;
+    border-radius: 22px;
+    border: 1px solid rgba(226,186,93,.18);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.02) 100%),
+        rgba(9,16,37,.7);
+    box-shadow:
+        0 18px 30px rgba(0,0,0,.18),
+        inset 0 1px 0 rgba(255,255,255,.05);
+    overflow: hidden;
+}
+
+.wa-health-summary-card::before {
+    content: "";
+    position: absolute;
+    width: 180px;
+    height: 180px;
+    right: -54px;
+    top: -94px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(226,186,93,.16) 0%, rgba(226,186,93,0) 72%);
+    pointer-events: none;
+}
+
+.wa-health-score-wrap {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: .2rem;
+}
+
+.wa-health-score-label {
+    font-size: .7rem;
+    text-transform: uppercase;
+    letter-spacing: .16em;
+    color: rgba(226,232,241,.7);
+    font-weight: 850;
+}
+
+.wa-health-score {
+    font-size: clamp(2.7rem, 4.2vw, 3.6rem);
+    font-weight: 950;
+    color: #fff1c8;
+    line-height: .96;
+    letter-spacing: -.05em;
+    text-shadow: 0 8px 24px rgba(226,186,93,.12);
+}
+
+.wa-health-summary-note {
+    padding: .9rem .95rem;
     border-radius: 16px;
-    border: 1px solid rgba(199,153,49,.16);
-    background: rgba(8,15,34,.46);
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(7,14,32,.62);
+    color: rgba(216,222,234,.76);
+    font-size: .82rem;
+    font-weight: 650;
+    line-height: 1.52;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wa-health-verdict {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: .62rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(199,153,49,.28);
+    background: rgba(8,15,34,.76);
+    color: #f1ddb0;
+    font-size: .94rem;
+    font-weight: 900;
+    letter-spacing: -.01em;
+    box-shadow:
+        0 12px 22px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.wa-health-verdict.healthy {
+    border-color: rgba(52,211,153,.38);
+    color: #bbf7d0;
+    background: rgba(7, 46, 38, .42);
+}
+
+.wa-health-verdict.watch,
+.wa-health-verdict.stabilize {
+    border-color: rgba(251,191,36,.38);
+    color: #fde68a;
+    background: rgba(73, 49, 3, .34);
+}
+
+.wa-health-verdict.critical {
+    border-color: rgba(248,113,113,.42);
+    color: #fecaca;
+    background: rgba(88, 16, 16, .34);
+}
+
+.wa-health-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .95rem;
+}
+
+.wa-health-metric {
+    --wa-health-accent: #e2ba5d;
+    --wa-health-accent-soft: rgba(226,186,93,.18);
+    position: relative;
+    overflow: hidden;
+    min-height: 144px;
+    padding: 1rem 1rem .95rem;
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.06);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.01) 100%),
+        rgba(11,20,46,.82);
+    box-shadow:
+        0 18px 28px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.05);
+    isolation: isolate;
+}
+
+.wa-health-metric::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, var(--wa-health-accent) 0%, rgba(255,255,255,0) 80%);
+    opacity: .95;
+}
+
+.wa-health-metric::after {
+    content: "";
+    position: absolute;
+    width: 150px;
+    height: 150px;
+    right: -42px;
+    top: -58px;
+    border-radius: 50%;
+    background: radial-gradient(circle, var(--wa-health-accent-soft) 0%, rgba(0,0,0,0) 72%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.wa-health-metric.is-risk {
+    --wa-health-accent: #ff8b87;
+    --wa-health-accent-soft: rgba(255,139,135,.22);
+}
+
+.wa-health-metric.is-funnel {
+    --wa-health-accent: #7cc5ff;
+    --wa-health-accent-soft: rgba(124,197,255,.2);
+}
+
+.wa-health-metric.is-confirmed {
+    --wa-health-accent: #93f2cb;
+    --wa-health-accent-soft: rgba(147,242,203,.2);
+}
+
+.wa-health-metric.is-success {
+    --wa-health-accent: #72e2a9;
+    --wa-health-accent-soft: rgba(114,226,169,.18);
+}
+
+.wa-health-metric.is-alert {
+    --wa-health-accent: #ffba66;
+    --wa-health-accent-soft: rgba(255,186,102,.22);
+}
+
+.wa-health-metric.is-attribution {
+    --wa-health-accent: #d8b4fe;
+    --wa-health-accent-soft: rgba(216,180,254,.2);
+}
+
+.wa-health-metric-kicker {
+    position: relative;
+    z-index: 1;
+    margin-bottom: .52rem;
+    color: var(--wa-health-accent);
+    font-size: .66rem;
+    font-weight: 900;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+}
+
+.wa-health-metric .fa-kpi-title,
+.wa-health-metric .fa-kpi-value,
+.wa-health-metric .fa-kpi-sub {
+    position: relative;
+    z-index: 1;
+}
+
+.wa-health-metric .fa-kpi-title {
+    color: #fff3cf;
+    font-size: .98rem;
+    font-weight: 860;
+    letter-spacing: -.02em;
+}
+
+.wa-health-metric .fa-kpi-value {
+    color: #ffffff;
+    font-size: clamp(1.95rem, 2.5vw, 2.4rem);
+    font-weight: 950;
+    line-height: 1;
+    letter-spacing: -.05em;
+}
+
+.wa-health-metric .fa-kpi-sub {
+    max-width: 28ch;
+    color: rgba(226,232,241,.74);
+    font-size: .83rem;
+    font-weight: 620;
+    line-height: 1.48;
+}
+
+.wa-health-lower {
+    display: grid;
+    grid-template-columns: minmax(280px, .82fr) minmax(0, 1.55fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.wa-health-warnings,
+.wa-health-diagnostics {
+    padding: 1rem;
+    border-radius: 20px;
+    border: 1px solid rgba(226,186,93,.14);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.045) 0%, rgba(255,255,255,.012) 100%),
+        rgba(7,14,32,.62);
+    box-shadow:
+        0 18px 30px rgba(0,0,0,.16),
+        inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wa-health-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .8rem 1rem;
+    margin-bottom: .8rem;
+}
+
+.wa-health-panel-kicker {
+    color: rgba(226,186,93,.72);
+    font-size: .66rem;
+    font-weight: 900;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+}
+
+.wa-health-panel-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: .35rem .66rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.04);
+    color: rgba(255,243,207,.86);
+    font-size: .68rem;
+    font-weight: 850;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .wa-health-warnings-title {
-    font-size: .8rem;
-    font-weight: 800;
-    letter-spacing: .05em;
-    text-transform: uppercase;
-    color: #f1ddb0;
-    margin-bottom: .45rem;
+    color: #fff1c8;
+    font-size: 1.04rem;
+    font-weight: 900;
+    letter-spacing: -.02em;
+    margin: .16rem 0 0;
 }
 
 .wa-health-warning-list {
     margin: 0;
-    padding-left: 1.1rem;
-    color: rgba(226,232,241,.82);
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: .68rem;
 }
 
-.wa-health-warning-list li + li {
-    margin-top: .35rem;
-}
-
-.wa-health-diagnostics {
-    padding: .95rem 1rem;
+.wa-health-warning-list li {
+    position: relative;
+    padding: .88rem .92rem .88rem 2.3rem;
     border-radius: 16px;
-    border: 1px solid rgba(199,153,49,.16);
-    background: rgba(8,15,34,.46);
+    border: 1px solid rgba(226,186,93,.14);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,.012) 100%),
+        rgba(11,20,46,.82);
+    color: rgba(239,244,250,.84);
+    font-size: .88rem;
+    font-weight: 650;
+    line-height: 1.48;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wa-health-warning-list li::before {
+    content: "";
+    position: absolute;
+    left: .92rem;
+    top: 1rem;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #e8c068;
+    box-shadow: 0 0 0 4px rgba(232,192,104,.14);
 }
 
 .wa-health-diagnostics-sub {
-    color: rgba(216,222,234,.76);
-    font-size: .82rem;
-    line-height: 1.45;
-    margin-bottom: .8rem;
+    margin-top: .2rem;
+    color: rgba(216,222,234,.78);
+    font-size: .84rem;
+    font-weight: 620;
+    line-height: 1.5;
+    max-width: 48rem;
 }
 
 .wa-health-diagnostics-table-wrap {
-    border-radius: 14px;
+    border-radius: 18px;
     overflow: auto;
+    padding: .42rem;
+    border: 1px solid rgba(226,186,93,.14);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.01) 100%),
+        rgba(4,9,22,.76);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .wa-health-diagnostics-table {
-    min-width: 980px;
+    min-width: 1040px;
     margin-bottom: 0;
-    border-spacing: 0 8px;
+    border-spacing: 0 10px;
     background: transparent;
 }
 
 .wa-health-diagnostics-table thead th {
-    background: rgba(7,13,30,.96);
-    color: #e2ba5d;
-    font-size: .74rem;
-    font-weight: 850;
-    letter-spacing: .08em;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: rgba(9,17,39,.94);
+    color: #e6bf64;
+    font-size: .73rem;
+    font-weight: 900;
+    letter-spacing: .14em;
     text-transform: uppercase;
-    border-color: transparent;
-    padding: .75rem .8rem;
-    line-height: 1.3;
+    border: 0;
+    padding: .82rem .86rem;
+    line-height: 1.25;
+    backdrop-filter: blur(12px);
+}
+
+.wa-health-diagnostics-table thead th:first-child {
+    border-top-left-radius: 14px;
+    border-bottom-left-radius: 14px;
+}
+
+.wa-health-diagnostics-table thead th:last-child {
+    border-top-right-radius: 14px;
+    border-bottom-right-radius: 14px;
 }
 
 .wa-health-diagnostics-table tbody td {
     color: #eef2f8;
-    background: rgba(13,24,53,.92);
-    border-top: 1px solid rgba(199,153,49,.22);
-    border-bottom: 1px solid rgba(199,153,49,.22);
-    padding: .8rem;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.04) 0%, rgba(255,255,255,.012) 100%),
+        rgba(13,24,53,.92);
+    border-top: 1px solid rgba(255,255,255,.07);
+    border-bottom: 1px solid rgba(255,255,255,.07);
+    padding: .85rem;
     vertical-align: top;
-    line-height: 1.4;
+    line-height: 1.42;
+    transition: background .18s ease, border-color .18s ease;
 }
 
 .wa-health-diagnostics-table tbody td:first-child {
-    border-left: 1px solid rgba(199,153,49,.22);
-    border-top-left-radius: 12px;
-    border-bottom-left-radius: 12px;
+    border-left: 1px solid rgba(255,255,255,.07);
+    border-top-left-radius: 14px;
+    border-bottom-left-radius: 14px;
 }
 
 .wa-health-diagnostics-table tbody td:last-child {
-    border-right: 1px solid rgba(199,153,49,.22);
-    border-top-right-radius: 12px;
-    border-bottom-right-radius: 12px;
+    border-right: 1px solid rgba(255,255,255,.07);
+    border-top-right-radius: 14px;
+    border-bottom-right-radius: 14px;
 }
 
 .wa-health-diagnostics-table tbody tr:hover td {
-    background: rgba(16,29,62,.96);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.014) 100%),
+        rgba(16,29,62,.98);
+}
+
+.wa-health-diagnostics-table tbody tr[data-severity="low"] td:first-child {
+    border-left-color: rgba(96,165,250,.6);
+    box-shadow: inset 4px 0 0 rgba(96,165,250,.65);
+}
+
+.wa-health-diagnostics-table tbody tr[data-severity="medium"] td:first-child {
+    border-left-color: rgba(251,191,36,.62);
+    box-shadow: inset 4px 0 0 rgba(251,191,36,.68);
+}
+
+.wa-health-diagnostics-table tbody tr[data-severity="high"] td:first-child {
+    border-left-color: rgba(251,146,60,.64);
+    box-shadow: inset 4px 0 0 rgba(251,146,60,.72);
+}
+
+.wa-health-diagnostics-table tbody tr[data-severity="critical"] td:first-child {
+    border-left-color: rgba(248,113,113,.72);
+    box-shadow: inset 4px 0 0 rgba(248,113,113,.78);
+}
+
+.wa-health-diagnostics-table tbody tr[data-severity="critical"] td {
+    border-top-color: rgba(248,113,113,.18);
+    border-bottom-color: rgba(248,113,113,.18);
+}
+
+.wa-health-diagnostics-table tbody td.fa-empty,
+.wa-health-diagnostics-table tbody td.text-danger {
+    text-align: center;
+    color: rgba(226,232,241,.78);
+    font-style: italic;
 }
 
 .wa-health-cell-primary {
     color: #f8fafc;
-    font-size: .88rem;
+    font-size: .89rem;
     font-weight: 780;
 }
 
 .wa-health-cell-sub {
-    margin-top: .25rem;
+    margin-top: .28rem;
     color: rgba(216,222,234,.7);
     font-size: .76rem;
     line-height: 1.45;
@@ -5265,45 +5683,58 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 28px;
-    padding: .28rem .58rem;
+    min-height: 30px;
+    padding: .32rem .66rem;
     border-radius: 999px;
-    border: 1px solid rgba(199,153,49,.22);
+    border: 1px solid rgba(255,255,255,.1);
     background: rgba(255,255,255,.06);
-    font-size: .72rem;
-    font-weight: 850;
-    letter-spacing: .04em;
+    font-size: .7rem;
+    font-weight: 900;
+    letter-spacing: .08em;
     text-transform: uppercase;
     white-space: nowrap;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .wa-health-severity.severity-low,
 .wa-health-recovered.is-yes {
-    border-color: rgba(96,165,250,.34);
-    color: #bfdbfe;
+    border-color: rgba(74,222,128,.32);
+    color: #bbf7d0;
+    background: rgba(10,77,52,.32);
 }
 
 .wa-health-severity.severity-medium,
 .wa-health-recovered.is-unknown {
-    border-color: rgba(251,191,36,.34);
+    border-color: rgba(251,191,36,.32);
     color: #fde68a;
+    background: rgba(90,61,4,.28);
 }
 
 .wa-health-severity.severity-high,
 .wa-health-recovered.is-no {
-    border-color: rgba(248,113,113,.34);
+    border-color: rgba(251,146,60,.34);
     color: #fdba74;
+    background: rgba(105,51,7,.28);
 }
 
 .wa-health-severity.severity-critical {
     border-color: rgba(239,68,68,.42);
     color: #fecaca;
-    background: rgba(127,29,29,.28);
+    background: rgba(127,29,29,.3);
 }
 
 @media (max-width: 991.98px) {
+    .wa-health-hero,
+    .wa-health-lower {
+        grid-template-columns: 1fr;
+    }
+
     .wa-health-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .wa-health-summary-card {
+        grid-template-columns: minmax(0, 1fr) auto;
     }
 
     .wa-modal-header-main {
@@ -5323,6 +5754,30 @@ body {
 @media (max-width: 767.98px) {
     .wa-health-grid {
         grid-template-columns: 1fr;
+    }
+
+    .wa-health-summary-card {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: .85rem;
+    }
+
+    .wa-health-panel-head {
+        flex-direction: column;
+    }
+
+    .wa-health-verdict {
+        justify-self: start;
+    }
+
+    .wa-health-focus-strip {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 2px;
+    }
+
+    .wa-health-diagnostics-table {
+        min-width: 900px;
     }
 
     .wa-modal-dialog,

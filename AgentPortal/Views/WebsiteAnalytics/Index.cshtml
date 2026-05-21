@@ -328,65 +328,95 @@
         </div>
 
         <div class="wa-kpi-band wa-kpi-band-health" aria-labelledby="marketing-health-title">
-            <div class="wa-kpi-band-head">
-                <div>
-                    <div class="wa-kpi-band-label" id="marketing-health-title">Marketing Health Center</div>
-                    <div class="wa-kpi-band-copy">Tracking integrity, attribution clarity, and lead-pipeline reliability</div>
+            <div class="wa-health-hero">
+                <div class="wa-health-copy">
+                    <div class="wa-health-kicker-row">
+                        <div class="wa-kpi-band-label" id="marketing-health-title">Marketing Health Center</div>
+                        <div class="wa-health-live-pill">Operator Diagnostic Surface</div>
+                    </div>
+                    <div class="wa-health-heading">Tracking integrity, attribution clarity, and lead-pipeline reliability</div>
+                    <div class="wa-health-subcopy">A live production readout for browser telemetry, funnel continuity, lead capture handoff, and source confidence.</div>
+                    <div class="wa-health-meta">
+                        <span class="wa-health-pill">Range <strong id="mh-range-label">—</strong></span>
+                        <span class="wa-health-pill">No Owner Failures <strong id="mh-no-owner">0</strong></span>
+                    </div>
+                    <div class="wa-health-focus-strip">
+                        <span class="wa-health-focus-pill">Browser Tracking</span>
+                        <span class="wa-health-focus-pill">Lead Handoff</span>
+                        <span class="wa-health-focus-pill">Attribution Confidence</span>
+                    </div>
                 </div>
                 <div class="wa-health-summary">
-                    <div class="wa-health-score-wrap">
-                        <div class="wa-health-score-label">Health Score</div>
-                        <div class="wa-health-score" id="mh-score">—</div>
+                    <div class="wa-health-summary-card">
+                        <div class="wa-health-score-wrap">
+                            <div class="wa-health-score-label">Health Score</div>
+                            <div class="wa-health-score" id="mh-score">—</div>
+                        </div>
+                        <div class="wa-health-verdict" id="mh-verdict">Loading</div>
                     </div>
-                    <div class="wa-health-verdict" id="mh-verdict">Loading</div>
+                    <div class="wa-health-summary-note">Any tracking or capture failures keep the system out of Healthy mode until they recover or are explained.</div>
                 </div>
             </div>
             <div class="wa-health-grid">
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-risk">
+                    <div class="wa-health-metric-kicker">Tracking Integrity</div>
                     <div class="fa-kpi-title">Client Tracking Errors</div>
                     <div class="fa-kpi-value" id="mh-client-errors">0</div>
                     <div class="fa-kpi-sub">Browser diagnostic events in range</div>
                 </div>
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-funnel">
+                    <div class="wa-health-metric-kicker">Funnel Continuity</div>
                     <div class="fa-kpi-title">Inferred Starts</div>
                     <div class="fa-kpi-value" id="mh-inferred-starts">0</div>
                     <div class="fa-kpi-sub">Later funnel progress without explicit start</div>
                 </div>
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-confirmed">
+                    <div class="wa-health-metric-kicker">Server Confirmation</div>
                     <div class="fa-kpi-title">Lead Persisted</div>
                     <div class="fa-kpi-value" id="mh-lead-persisted">0</div>
                     <div class="fa-kpi-sub">Confirmed server-side lead persistence</div>
                 </div>
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-success">
+                    <div class="wa-health-metric-kicker">Handoff Success</div>
                     <div class="fa-kpi-title">Workstation Captured</div>
                     <div class="fa-kpi-value" id="mh-workstation-success">0</div>
                     <div class="fa-kpi-sub">Successful workstation lead handoff</div>
                 </div>
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-alert">
+                    <div class="wa-health-metric-kicker">Handoff Risk</div>
                     <div class="fa-kpi-title">Capture Failures</div>
                     <div class="fa-kpi-value" id="mh-workstation-failures">0</div>
                     <div class="fa-kpi-sub">Handoff failures that need attention</div>
                 </div>
-                <div class="kpi-card kpi-card-secondary">
+                <div class="kpi-card kpi-card-secondary wa-health-metric is-attribution">
+                    <div class="wa-health-metric-kicker">Source Clarity</div>
                     <div class="fa-kpi-title">Unknown Attribution</div>
                     <div class="fa-kpi-value" id="mh-unknown-attribution">0</div>
                     <div class="fa-kpi-sub">Leads still missing a trustworthy source</div>
                 </div>
             </div>
-            <div class="wa-health-foot">
-                <div class="wa-health-meta">
-                    <span class="wa-health-pill">Range: <strong id="mh-range-label">—</strong></span>
-                    <span class="wa-health-pill">No Owner Failures: <strong id="mh-no-owner">0</strong></span>
-                </div>
+            <div class="wa-health-lower">
                 <div class="wa-health-warnings">
-                    <div class="wa-health-warnings-title">Active Warnings</div>
+                    <div class="wa-health-panel-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Operator Alerts</div>
+                            <div class="wa-health-warnings-title">Active Warnings</div>
+                        </div>
+                        <div class="wa-health-panel-badge">Live</div>
+                    </div>
                     <ul id="mh-warning-list" class="wa-health-warning-list">
                         <li>Loading current health checks…</li>
                     </ul>
                 </div>
                 <div class="wa-health-diagnostics">
-                    <div class="wa-health-warnings-title">Recent Tracking Errors</div>
-                    <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and the next thing to check.</div>
+                    <div class="wa-health-panel-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Tracking Diagnostics</div>
+                            <div class="wa-health-warnings-title">Recent Tracking Errors</div>
+                            <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and the next thing to check.</div>
+                        </div>
+                        <div class="wa-health-panel-badge">Latest Events</div>
+                    </div>
                     <div class="table-responsive wa-health-diagnostics-table-wrap">
                         <table class="table wa-health-diagnostics-table">
                             <thead>
