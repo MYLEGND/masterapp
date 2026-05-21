@@ -442,11 +442,13 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             TrafficType.NonPaid => query.Where(x =>
                 x.TrafficType == nameof(TrafficType.Organic) ||
                 x.TrafficType == nameof(TrafficType.Direct) ||
-                x.TrafficType == nameof(TrafficType.Referral) ||
-                x.TrafficType == nameof(TrafficType.Unknown)),
+                x.TrafficType == nameof(TrafficType.Referral)),
             TrafficType.Organic => query.Where(x => x.TrafficType == nameof(TrafficType.Organic)),
             TrafficType.Direct => query.Where(x => x.TrafficType == nameof(TrafficType.Direct)),
             TrafficType.Referral => query.Where(x => x.TrafficType == nameof(TrafficType.Referral)),
+            TrafficType.Internal => query.Where(x => x.TrafficType == nameof(TrafficType.Internal)),
+            TrafficType.Test => query.Where(x => x.TrafficType == nameof(TrafficType.Test)),
+            TrafficType.BotSuspicious => query.Where(x => x.TrafficType == nameof(TrafficType.BotSuspicious)),
             TrafficType.Unknown => query.Where(x => x.TrafficType == nameof(TrafficType.Unknown)),
             _ => query
         };
@@ -696,7 +698,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                     CampaignLabel = ResolveCampaignLabel(row),
                     TrafficType = trafficType,
                     IsPaidMetaAttributed = isMetaAttributedPaid,
-                    IsNonPaidOrManual = !isMetaAttributedPaid && trafficType is nameof(TrafficType.Direct) or nameof(TrafficType.Organic) or nameof(TrafficType.Referral) or nameof(TrafficType.Unknown),
+                    IsNonPaidOrManual = !isMetaAttributedPaid && trafficType is nameof(TrafficType.Direct) or nameof(TrafficType.Organic) or nameof(TrafficType.Referral),
                     ExcludedFromMetaLearningReadiness = excluded,
                     BrowserPixelSent = row.MetaBrowserSent,
                     ServerCapiSent = row.MetaServerSent,
@@ -759,6 +761,9 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             nameof(TrafficType.Direct) => "Excluded: direct/manual traffic.",
             nameof(TrafficType.Organic) => "Excluded: organic traffic.",
             nameof(TrafficType.Referral) => "Excluded: referral/social traffic.",
+            nameof(TrafficType.Internal) => "Excluded: internal navigation or preview traffic.",
+            nameof(TrafficType.Test) => "Excluded: test or QA traffic.",
+            nameof(TrafficType.BotSuspicious) => "Excluded: bot or suspicious traffic.",
             nameof(TrafficType.Unknown) => "Excluded: unattributed traffic.",
             _ => "Excluded from Meta learning readiness."
         };

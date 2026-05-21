@@ -10,6 +10,7 @@ using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using System.Linq.Expressions;
 using Shared.Meta;
+using Shared.Analytics;
 
 namespace AgentPortal.Services.Analytics;
 
@@ -299,7 +300,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static bool IsOfficialLeadSuccessEvent(AnalyticsEvent e)
     {
-        return e.EventType == "website_lead_submitted" &&
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "confirmed_lead") &&
                (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
     }
 
@@ -318,7 +319,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!inQuoteScope)
             return false;
 
-        if (e.EventType == "form_submit_attempt" || e.EventType == "life_step2_submit_attempt")
+        if (AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "submit_attempt") &&
+            !string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase))
             return true;
 
         if (!string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase))
@@ -360,29 +362,28 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static bool IsQuoteEarlyDiscoveryInteractionEvent(AnalyticsEvent e)
     {
-        return e.EventType == "life_step1_protecting_select" ||
-               e.EventType == "life_step1_goal_select" ||
-               e.EventType == "life_step1_coverage_select" ||
-               e.EventType == "life_step1_tobacco_select" ||
-               e.EventType == "step1_age_entered";
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") ||
+               (AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete") &&
+                (e.EventType == "life_step1_protecting_select" ||
+                 e.EventType == "life_step1_coverage_select" ||
+                 e.EventType == "life_step1_tobacco_select" ||
+                 e.EventType == "step1_age_entered"));
     }
 
     private static bool IsQuoteDiscoveryCompleteEvent(AnalyticsEvent e)
     {
-        return e.EventType == "life_step1_age_continue";
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "discovery_complete");
     }
 
     private static bool IsQuoteRecommendationViewedEvent(AnalyticsEvent e)
     {
-        return e.EventType == "recommendation_generated" ||
-               e.EventType == "mini_results_view" ||
-               e.EventType == "estimate_results_viewed";
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "recommendation_viewed");
     }
 
     private static bool IsQuoteContactStepReachedEvent(AnalyticsEvent e)
     {
-        return e.EventType == "life_step2_view" ||
-               e.EventType == "estimate_contact_continue";
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "contact_step_view") ||
+               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_contact_step_view");
     }
 
     private static bool IsQuoteFunnelStartSignalEvent(AnalyticsEvent e)
@@ -397,6 +398,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                e.EventType == "life_finalexpense_form_start" ||
                e.EventType == "life_mp_form_start" ||
                e.EventType == "life_iul_form_start" ||
+               e.EventType == "life_contact_first_view" ||
+               e.EventType == "life_contact_first_start" ||
+               e.EventType == "disability_quote_step1_view" ||
+               e.EventType == "quote_landing_view" ||
                (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)) ||
                IsQuoteEarlyDiscoveryInteractionEvent(e) ||
                IsQuoteDiscoveryCompleteEvent(e) ||
@@ -531,6 +536,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         return CountDistinctUnits(events, e =>
             e.EventType == "quote_click" ||
+            e.EventType == "quote_cta_click" ||
             IsQuoteFunnelStartSignalEvent(e));
     }
 
@@ -544,7 +550,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? UtmContent,
         string? MetaCampaignId,
         string? MetaAdSetId,
-        string? MetaAdId);
+        string? MetaAdId,
+        string? ReferrerHost,
+        bool IsInternal,
+        string? Environment,
+        string? Host);
 
     private sealed record AttributedEventRow(
         AnalyticsEvent Event,
@@ -566,7 +576,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             NormalizeAttributionToken(e.UtmContent),
             NormalizeAttributionToken(e.MetaCampaignId),
             NormalizeAttributionToken(e.MetaAdSetId),
-            NormalizeAttributionToken(e.MetaAdId));
+            NormalizeAttributionToken(e.MetaAdId),
+            NormalizeAttributionToken(e.ReferrerHost),
+            e.IsInternal,
+            NormalizeAttributionToken(e.Environment),
+            NormalizeAttributionToken(e.Host));
 
     private static bool HasAttributionSignal(EventAttributionSnapshot snapshot) =>
         !string.IsNullOrWhiteSpace(snapshot.UtmSource) ||
@@ -576,7 +590,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         !string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
         !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
-        !string.IsNullOrWhiteSpace(snapshot.MetaAdId);
+        !string.IsNullOrWhiteSpace(snapshot.MetaAdId) ||
+        Classify(snapshot) is TrafficType.Internal or TrafficType.Test or TrafficType.BotSuspicious;
 
     private static TrafficType Classify(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.Classify(
@@ -584,9 +599,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             snapshot.UtmMedium,
             snapshot.UtmCampaign,
             snapshot.Fbclid,
+            snapshot.ReferrerHost,
             metaCampaignId: snapshot.MetaCampaignId,
             metaAdSetId: snapshot.MetaAdSetId,
-            metaAdId: snapshot.MetaAdId);
+            metaAdId: snapshot.MetaAdId,
+            isInternal: snapshot.IsInternal,
+            environment: snapshot.Environment,
+            host: snapshot.Host);
 
     private static bool IsMetaAttributedPaid(EventAttributionSnapshot snapshot) =>
         TrafficAttribution.IsMetaAttributedPaid(
@@ -596,7 +615,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             snapshot.Fbclid,
             snapshot.MetaCampaignId,
             snapshot.MetaAdSetId,
-            snapshot.MetaAdId);
+            snapshot.MetaAdId,
+            isInternal: snapshot.IsInternal,
+            environment: snapshot.Environment,
+            host: snapshot.Host,
+            referrerHost: snapshot.ReferrerHost);
 
     private static Dictionary<string, EventAttributionSnapshot> BuildSessionAttributionMap(List<AnalyticsEvent> events)
     {
@@ -758,7 +781,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             metadata.UtmContent,
             NormalizeAttributionToken(lead.MetaCampaignId) ?? metadata.MetaCampaignId,
             NormalizeAttributionToken(lead.MetaAdSetId) ?? metadata.MetaAdSetId,
-            NormalizeAttributionToken(lead.MetaAdId) ?? metadata.MetaAdId);
+            NormalizeAttributionToken(lead.MetaAdId) ?? metadata.MetaAdId,
+            null,
+            lead.IsInternal,
+            NormalizeAttributionToken(lead.Environment),
+            NormalizeAttributionToken(lead.Host));
 
         if (HasAttributionSignal(direct))
             return (direct, "lead");
@@ -793,6 +820,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType.Direct => "Direct",
             TrafficType.Organic => "Organic",
             TrafficType.Referral => "Referral",
+            TrafficType.Internal => "Internal",
+            TrafficType.Test => "Test / QA",
+            TrafficType.BotSuspicious => "Bot / Suspicious",
             TrafficType.PaidAds => "Paid (Unattributed)",
             _ => "Unknown"
         };
@@ -827,6 +857,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType.Direct => "Excluded: direct/manual traffic.",
             TrafficType.Organic => "Excluded: organic traffic.",
             TrafficType.Referral => "Excluded: referral/social traffic.",
+            TrafficType.Internal => "Excluded: internal navigation or preview traffic.",
+            TrafficType.Test => "Excluded: test or QA traffic.",
+            TrafficType.BotSuspicious => "Excluded: bot or suspicious traffic.",
             TrafficType.Unknown => "Excluded: unattributed traffic.",
             _ => "Excluded from Meta learning readiness."
         };
@@ -839,6 +872,47 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!string.IsNullOrWhiteSpace(lead.VisitorId))
             return $"vid:{lead.VisitorId}";
         return $"lid:{lead.LeadId:D}";
+    }
+
+    private static string BuildSessionOrVisitorKey(AnalyticsEvent e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.SessionId))
+            return $"sid:{e.SessionId}";
+        if (!string.IsNullOrWhiteSpace(e.VisitorId))
+            return $"vid:{e.VisitorId}";
+        return $"eid:{e.EventId:D}";
+    }
+
+    private static string BuildPipelineUnitKey(AnalyticsEvent e)
+    {
+        var leadId = ReadMetadataStringValue(e.MetadataJson, "LeadId");
+        if (!string.IsNullOrWhiteSpace(leadId))
+            return $"lead:{leadId}";
+
+        return BuildSessionOrVisitorKey(e);
+    }
+
+    private static string? ReadMetadataStringValue(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+            var root = doc.RootElement;
+            if (root.TryGetProperty(propertyName, out var value) &&
+                value.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                return value.GetString()?.Trim();
+            }
+        }
+        catch
+        {
+            // ignored: malformed metadata should not block analytics health checks
+        }
+
+        return null;
     }
 
     private static int CountConvertedSessions(IEnumerable<WebsiteLead> leads) =>
@@ -1228,7 +1302,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var stageMetrics = new List<QuoteStageMetricRow>
         {
-            new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => e.EventType == "page_view" && IsQuoteFormKey(e.PageKey)) },
+            new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
+            new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, e => IsQuoteScopeEvent(e) && (e.EventType == "quote_click" || e.EventType == "quote_cta_click" || e.EventType == "cta_click")) },
             new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
             new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select") },
             new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select") },
@@ -1256,6 +1331,125 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             DropOffFormStartsToSubmits = formStarts > 0
                 ? Math.Round(ClampPercent((decimal)(formStarts - formSubmits) / formStarts * 100), 2)
                 : null
+        };
+    }
+
+    public async Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+    {
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+        var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
+        var events = attributedRows.Select(r => r.Event).ToList();
+        var leads = trafficType == TrafficType.All
+            ? allLeads
+            : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+
+        var clientTrackingErrorEvents = events
+            .Where(e => string.Equals(e.EventType, "client_tracking_error", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var startUnits = events
+            .Where(IsQuoteFunnelStartSignalEvent)
+            .Select(BuildInteractionUnitKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var laterProgressUnits = events
+            .Where(e =>
+                IsQuoteRecommendationViewedEvent(e) ||
+                IsQuoteContactStepReachedEvent(e) ||
+                IsQuoteSubmitAttempt(e) ||
+                IsOfficialLeadSuccessEvent(e))
+            .Select(BuildInteractionUnitKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var inferredStartUnits = laterProgressUnits
+            .Where(key => !startUnits.Contains(key))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var leadPersistedEvents = events
+            .Where(e => string.Equals(e.EventType, "lead_persisted", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var workstationAttemptEvents = events
+            .Where(e => string.Equals(e.EventType, "workstation_capture_attempt", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var workstationSuccessEvents = events
+            .Where(e => string.Equals(e.EventType, "workstation_capture_success", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var workstationFailureEvents = events
+            .Where(e => string.Equals(e.EventType, "workstation_capture_failure", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var sessionAttributionMap = BuildSessionAttributionMap(allEvents);
+        var visitorAttributionMap = BuildVisitorAttributionMap(allEvents);
+
+        var sessionTrafficRows = attributedRows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Event.SessionId))
+            .GroupBy(r => r.Event.SessionId!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g
+                .OrderBy(r => r.Event.EventUtc)
+                .First())
+            .ToList();
+
+        var unknownAttributedLeads = leads.Count(l =>
+        {
+            var resolved = ResolveLeadAttribution(
+                l,
+                sessionAttributionMap,
+                visitorAttributionMap);
+            return Classify(resolved.Attribution) == TrafficType.Unknown;
+        });
+
+        var warnings = new List<string>();
+        if (clientTrackingErrorEvents.Count > 0)
+            warnings.Add($"Client tracking errors detected: {clientTrackingErrorEvents.Count}.");
+        if (inferredStartUnits.Count > 0)
+            warnings.Add($"Missing funnel start events suspected for {inferredStartUnits.Count} sessions.");
+        if (workstationFailureEvents.Count > 0)
+            warnings.Add($"Workstation capture failures detected: {workstationFailureEvents.Count}.");
+        var noOwnerFailures = workstationFailureEvents.Count(e =>
+            string.Equals(ReadMetadataStringValue(e.MetadataJson, "Reason"), "NoAgentOwner", StringComparison.OrdinalIgnoreCase));
+        if (noOwnerFailures > 0)
+            warnings.Add($"Workstation capture had {noOwnerFailures} no-owner failures.");
+        if (unknownAttributedLeads > 0)
+            warnings.Add($"Unknown lead attribution remains on {unknownAttributedLeads} leads.");
+
+        return new MarketingHealthDto
+        {
+            ClientTrackingErrors = clientTrackingErrorEvents.Count,
+            ClientTrackingErrorSessions = clientTrackingErrorEvents
+                .Select(BuildSessionOrVisitorKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count(),
+            InferredFormStarts = inferredStartUnits.Count,
+            MissingStartEventSessions = inferredStartUnits.Count,
+            LeadPersistedEvents = leadPersistedEvents
+                .Select(BuildPipelineUnitKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count(),
+            WorkstationCaptureAttempts = workstationAttemptEvents
+                .Select(BuildPipelineUnitKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count(),
+            WorkstationCaptureSuccesses = workstationSuccessEvents
+                .Select(BuildPipelineUnitKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count(),
+            WorkstationCaptureFailures = workstationFailureEvents
+                .Select(BuildPipelineUnitKey)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count(),
+            WorkstationNoOwnerFailures = noOwnerFailures,
+            UnknownAttributedLeads = unknownAttributedLeads,
+            InternalTrafficSessions = sessionTrafficRows.Count(r => r.TrafficType == TrafficType.Internal),
+            TestTrafficSessions = sessionTrafficRows.Count(r => r.TrafficType == TrafficType.Test),
+            BotSuspiciousSessions = sessionTrafficRows.Count(r => r.TrafficType == TrafficType.BotSuspicious),
+            Warnings = warnings,
+            RangeLabel = range.Label,
+            TrafficType = trafficType
         };
     }
 

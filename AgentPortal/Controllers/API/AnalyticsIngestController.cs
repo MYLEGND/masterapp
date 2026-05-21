@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.RateLimiting;
+using Shared.Analytics;
 
 namespace AgentPortal.Controllers.Api;
 
@@ -33,90 +34,6 @@ public class AnalyticsIngestController : ControllerBase
         _flags = flags.Value;
         _signatureValidator = signatureValidator;
     }
-
-    private static readonly HashSet<string> AllowedEventTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        // Core interaction events (existing)
-        "page_view",
-        "cta_click",
-        "quote_click",
-        "risk_assessment_click",
-        "form_start",
-        "form_submit",
-        "outbound_click",
-        "lead_modal_open",
-        "lead_modal_close",
-        "lead_form_start",
-        "lead_form_submit_success",
-        "lead_form_submit_failed",
-        // Behavior Intelligence Engine events
-        "page_engaged_10s",
-        "page_engaged_30s",
-        "page_engaged_60s",
-        "scroll_depth_25",
-        "scroll_depth_50",
-        "scroll_depth_75",
-        "scroll_depth_90",
-        "scroll_depth_100",
-        "page_exit",
-        "session_end",
-        "form_field_focus",
-        "form_field_complete",
-        "form_field_abandon",
-        "form_field_error",
-        "form_submit_attempt",
-        "form_abandon",
-        // Life quote funnel micro-step + bridge events
-        "life_step1_intro_view",
-        "life_step1_protecting_view",
-        "life_step1_protecting_select",
-        "life_step1_goal_view",
-        "life_step1_goal_select",
-        "life_step1_coverage_view",
-        "life_step1_coverage_select",
-        "life_step1_tobacco_view",
-        "life_step1_tobacco_select",
-        "life_step1_age_view",
-        "life_step1_age_continue",
-        "step1_age_entered",
-        "life_processing_bridge_view",
-        "life_processing_bridge_complete",
-        "life_value_bridge_view",
-        "life_value_bridge_continue",
-        "life_step2_view",
-        "life_step2_back",
-        "life_step2_submit_attempt",
-        "life_step2_submit_success",
-        "life_contact_first_view",
-        "life_contact_first_submit_attempt",
-        "life_contact_first_submit_success",
-        "mini_results_view",
-        "recommendation_generated",
-        "estimate_results_viewed",
-        "estimate_contact_continue",
-        "estimate_results_error",
-        "results_contact_submit",
-        "life_general_form_start",
-        "life_general_submit",
-        "life_term_form_start",
-        "life_term_submit",
-        "life_whole_form_start",
-        "life_whole_submit",
-        "life_finalexpense_form_start",
-        "life_finalexpense_submit",
-        "life_mp_form_start",
-        "life_mp_submit",
-        "life_iul_form_start",
-        "life_iul_submit",
-        "rage_click",
-        "dead_click",
-        "file_download",
-        "section_view",
-        "page_visibility_hidden",
-        "page_visibility_return",
-        // Server-side canonical lead submission events (written by backend, not client JS)
-        "website_lead_submitted"
-    };
 
     public sealed class AnalyticsEventRequest
     {
@@ -203,8 +120,17 @@ public class AnalyticsIngestController : ControllerBase
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        if (!AllowedEventTypes.Contains(req.EventType))
+        if (!AnalyticsEventCatalog.TryGet(req.EventType, out var eventDefinition))
+        {
+            LogRejectedEvent(req, "unknown_event_type");
             return BadRequest(new { error = "invalid_event_type" });
+        }
+
+        if (!eventDefinition.AllowBrowser)
+        {
+            LogRejectedEvent(req, "browser_not_allowed");
+            return BadRequest(new { error = "invalid_event_type" });
+        }
 
         var resolved = await _resolver.ResolveAsync(req.AgentSlug, req.AgentTrackingProfileId, HttpContext.RequestAborted);
         if (!resolved.Found)
@@ -300,6 +226,19 @@ public class AnalyticsIngestController : ControllerBase
         }
 
         return Ok(new { status = "ok", eventId = ev.EventId });
+    }
+
+    private void LogRejectedEvent(AnalyticsEventRequest req, string reason)
+    {
+        _logger.LogWarning(
+            "AnalyticsIngest rejected event={EventName} reason={Reason} route={Route} pageKey={PageKey} quoteType={QuoteType} source={Source} sessionId={SessionId}",
+            req.EventType,
+            reason,
+            HttpContext?.Request?.Path.Value ?? string.Empty,
+            req.PageKey ?? string.Empty,
+            req.QuoteType ?? string.Empty,
+            "browser",
+            req.SessionId ?? string.Empty);
     }
 
     private static string? TrimOrNull(string? input) =>

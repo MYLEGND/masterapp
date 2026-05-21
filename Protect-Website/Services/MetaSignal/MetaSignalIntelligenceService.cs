@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProtectWebsite.Services.Meta;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.MetaSignal;
 
@@ -19,45 +20,7 @@ public interface IMetaSignalIntelligenceService
 
 public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceService
 {
-    private static readonly HashSet<string> AllowedEvents = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ViewContent",
-        "RapidBounce",
-        "SessionEngaged5s",
-        "SessionEngaged15s",
-        "MeaningfulScroll",
-        "LeadFormStart",
-        "DiscoveryComplete",
-        "FunnelStepComplete",
-        "RecommendationViewed",
-        "ContactStepReached",
-        "ContactInputStarted",
-        "PhoneFieldCompleted",
-        "RequiredContactFieldsCompleted",
-        "FieldError",
-        "SubmitAttempt",
-        "HighIntentLeadSignal",
-        "LeadReadySignal",
-        "Backtrack",
-        "DeadClick",
-        "RageClick",
-        "AbandonedHighIntentLead",
-        "Lead",
-        "QualifiedLead"
-    };
-
-    private static readonly HashSet<string> MetaForwardedEvents = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ViewContent",
-        "LeadFormStart",
-        "DiscoveryComplete",
-        "RecommendationViewed",
-        "ContactStepReached",
-        "HighIntentLeadSignal",
-        "LeadReadySignal",
-        "AbandonedHighIntentLead",
-        "QualifiedLead"
-    };
+    private static readonly TimeSpan SemanticDeduplicationWindow = TimeSpan.FromHours(2);
 
     private readonly MasterAppDbContext _db;
     private readonly IMetaConversionsApiService _metaConversionsApi;
@@ -94,7 +57,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             };
         }
 
-        if (!AllowedEvents.Contains(normalized.EventName))
+        if (!MetaSignalEventCatalog.TryGet(normalized.EventName, out var metaEventDefinition))
         {
             _logger.LogWarning("MetaSignal rejected unsupported event {EventName}", normalized.EventName);
             return new MetaSignalProcessResult
@@ -139,6 +102,16 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             ? normalized.EventCategory!
             : ResolveEventCategory(normalized.EventName);
         var deduplicationKey = BuildDeduplicationKey(normalized, score.ScoreTier);
+
+        var semanticDuplicate = await _db.MetaSignalEvents.AsNoTracking()
+            .Where(x => x.MetaDeduplicationKey == deduplicationKey)
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (semanticDuplicate != null &&
+            (DateTime.UtcNow - semanticDuplicate.CreatedUtc) <= SemanticDeduplicationWindow)
+        {
+            return ToProcessResult(semanticDuplicate, duplicate: true, metaServerStatus: semanticDuplicate.MetaServerSent ? "sent" : "semantic_duplicate");
+        }
 
         _logger.LogInformation(
             "MetaSignal received event={EventName} quoteType={QuoteType} session={SessionId} scoreTier={ScoreTier} totalScore={TotalScore} dedupKey={DedupKey}",
@@ -193,7 +166,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         };
 
         MetaConversionsApiResult? metaServerResult = null;
-        if (_options.SendServerEvents && MetaForwardedEvents.Contains(normalized.EventName))
+        if (_options.SendServerEvents && metaEventDefinition.AllowServerForward)
         {
             var pixelContext = await ResolvePixelContextAsync(normalized.AgentTrackingProfileId, normalized.AgentSlug, cancellationToken);
             metaServerResult = await _metaConversionsApi.SendEventAsync(
@@ -347,7 +320,13 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 ScoreTier = "SubmittedLead",
                 MetaBrowserSent = false,
                 MetaServerSent = request.LeadMetaServerSent,
-                MetaDeduplicationKey = BuildLeadDeduplicationKey(quoteType, Normalize(request.SessionId), Normalize(request.VisitorId), "Lead"),
+                MetaDeduplicationKey = BuildLeadDeduplicationKey(
+                    quoteType,
+                    Normalize(request.SessionId),
+                    Normalize(request.VisitorId),
+                    "Lead",
+                    request.Phone,
+                    request.Email),
                 UtmSource = attribution.UtmSource,
                 UtmMedium = attribution.UtmMedium,
                 UtmCampaign = attribution.UtmCampaign,
@@ -366,11 +345,20 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 MetadataJson = BuildLeadMetadataJson(request, attribution, score, "Lead", request.LeadMetaServerStatus ?? (request.LeadMetaServerSent ? "sent" : "not_attempted"), request.LeadMetaServerNote)
             };
 
-            if (_options.PersistEvents)
+            var duplicateLeadRow = await _db.MetaSignalEvents.AsNoTracking()
+                .Where(x => x.MetaDeduplicationKey == leadRow.MetaDeduplicationKey && x.EventName == "Lead")
+                .OrderByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (duplicateLeadRow == null ||
+                (DateTime.UtcNow - duplicateLeadRow.CreatedUtc) > SemanticDeduplicationWindow)
             {
-                _db.MetaSignalEvents.Add(leadRow);
-                await _db.SaveChangesAsync(cancellationToken);
+                if (_options.PersistEvents)
+                {
+                    _db.MetaSignalEvents.Add(leadRow);
+                    await _db.SaveChangesAsync(cancellationToken);
+                }
             }
+
         }
 
         var isQualifiedLead = IsQualifiedLead(request, score, priorEvents);
@@ -492,7 +480,13 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             ScoreTier = "SubmittedLead",
             MetaBrowserSent = false,
             MetaServerSent = capiResult.Sent,
-            MetaDeduplicationKey = BuildLeadDeduplicationKey(quoteType, Normalize(request.SessionId), Normalize(request.VisitorId), "QualifiedLead"),
+            MetaDeduplicationKey = BuildLeadDeduplicationKey(
+                quoteType,
+                Normalize(request.SessionId),
+                Normalize(request.VisitorId),
+                "QualifiedLead",
+                request.Phone,
+                request.Email),
             UtmSource = attribution.UtmSource,
             UtmMedium = attribution.UtmMedium,
             UtmCampaign = attribution.UtmCampaign,
@@ -510,6 +504,16 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             Host = httpContext?.Request.Host.ToString(),
             MetadataJson = BuildLeadMetadataJson(request, attribution, score, "QualifiedLead", capiResult.Status, capiResult.Note)
         };
+
+        var duplicateQualifiedRow = await _db.MetaSignalEvents.AsNoTracking()
+            .Where(x => x.MetaDeduplicationKey == qualifiedRow.MetaDeduplicationKey && x.EventName == "QualifiedLead")
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (duplicateQualifiedRow != null &&
+            (DateTime.UtcNow - duplicateQualifiedRow.CreatedUtc) <= SemanticDeduplicationWindow)
+        {
+            return ToProcessResult(duplicateQualifiedRow, duplicate: true, metaServerStatus: duplicateQualifiedRow.MetaServerSent ? "sent" : "semantic_duplicate");
+        }
 
         if (_options.PersistEvents)
         {
@@ -1007,21 +1011,35 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         return $"{request.QuoteType}:{sessionKey}:{request.EventName}:{stepKey}";
     }
 
-    private static string BuildLeadDeduplicationKey(string quoteType, string? sessionId, string? visitorId, string eventName)
+    private static string BuildLeadDeduplicationKey(
+        string quoteType,
+        string? sessionId,
+        string? visitorId,
+        string eventName,
+        string? phone,
+        string? email)
     {
         var sessionKey = sessionId ?? visitorId ?? "anonymous";
-        return $"{quoteType}:{sessionKey}:{eventName}";
+        var contactToken = SafeHash($"{Normalize(phone)}|{Normalize(email)}");
+        return $"{quoteType}:{sessionKey}:{eventName}:{contactToken}";
     }
 
     private static bool IsQualifiedLead(MetaSignalConfirmedLeadRequest request, MetaSignalScoreResult score, IReadOnlyCollection<MetaSignalEvent> priorEvents)
     {
-        var hasValidEmail = !string.IsNullOrWhiteSpace(request.Email) && request.Email.Contains('@', StringComparison.Ordinal);
-        var hasValidPhone = !string.IsNullOrWhiteSpace(request.Phone) && request.Phone.Count(char.IsDigit) >= 10;
-        var hasLeadReadySignal = priorEvents.Any(x => string.Equals(x.EventName, "LeadReadySignal", StringComparison.OrdinalIgnoreCase));
-        return hasValidEmail &&
-               hasValidPhone &&
-               (score.TotalSignalScore >= 80 || score.EngagementScore >= 60) &&
-               hasLeadReadySignal;
+        var evaluation = WebsiteLeadSignalClassifier.Evaluate(
+            new WebsiteLeadSignalInput(
+                FunnelStartObserved: true,
+                ContactStepReached: true,
+                ContactInputStarted: true,
+                RequiredContactFieldsCompleted: true,
+                SubmitAttempted: true,
+                ConfirmedWebsiteLead: true,
+                Phone: request.Phone,
+                Email: request.Email,
+                TotalSignalScore: score.TotalSignalScore),
+            WebsiteLeadSignalRules.Default);
+
+        return evaluation.QualifiedLead;
     }
 
     private static int ResolveProtectingWhoScore(string? protectingWho, MetaSignalScoreWeights weights) => Normalize(protectingWho) switch

@@ -114,4 +114,37 @@ public class AnalyticsIngestControllerTests
         Assert.Equal("creative_a", ev.UtmContent);
         Assert.Equal("fbclid_test_123", ev.Fbclid);
     }
+
+    [Fact]
+    public async Task Ingest_Accepts_LifeCoverageSelect_And_Rejects_ServerOnlyEvents()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+
+        var accepted = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            EventType = "life_step1_coverage_select",
+            Host = "test",
+            Path = "/quote/life",
+            PageKey = "quote_term_life_landing",
+            QuoteType = "term",
+            EventUtc = DateTime.UtcNow
+        });
+
+        var rejected = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            EventType = "website_lead_submitted",
+            Host = "test",
+            Path = "/quote/life",
+            PageKey = "quote_term_life_landing",
+            QuoteType = "term",
+            EventUtc = DateTime.UtcNow
+        });
+
+        var acceptedOk = Assert.IsType<OkObjectResult>(accepted);
+        Assert.Equal("ok", ReadStatus(acceptedOk.Value));
+        Assert.IsType<BadRequestObjectResult>(rejected);
+    }
 }

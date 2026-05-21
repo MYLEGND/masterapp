@@ -10,6 +10,9 @@ namespace AgentPortal.Services.Analytics
         Organic,
         Direct,
         Referral,
+        Internal,
+        Test,
+        BotSuspicious,
         Unknown
     }
 
@@ -51,6 +54,46 @@ namespace AgentPortal.Services.Analytics
         {
             "facebook", "fb", "meta", "instagram", "facebook_ads", "instagram_ads", "meta_ads"
         };
+        private static readonly string[] InternalDomains =
+        {
+            "mylegnd.com",
+            "localhost",
+            "127.0.0.1"
+        };
+        private static readonly string[] NonProductionHostHints =
+        {
+            "localhost",
+            "127.0.0.1",
+            ".local",
+            "dev",
+            "staging",
+            "preview",
+            "sandbox",
+            "ngrok",
+            "azurewebsites.net"
+        };
+        private static readonly string[] TestTokens =
+        {
+            "test",
+            "qa",
+            "preview",
+            "staging",
+            "sandbox",
+            "debug",
+            "internal"
+        };
+        private static readonly string[] BotTokens =
+        {
+            "bot",
+            "crawler",
+            "spider",
+            "headless",
+            "lighthouse",
+            "monitor",
+            "uptime",
+            "synthetic",
+            "healthcheck"
+        };
 
         private static string? Normalize(string? value) =>
             string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -65,6 +108,68 @@ namespace AgentPortal.Services.Analytics
             return host;
         }
 
+        private static bool ContainsAnyToken(IEnumerable<string?> values, IEnumerable<string> tokens)
+        {
+            foreach (var raw in values)
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                var normalized = raw.Trim().ToLowerInvariant();
+                if (tokens.Any(token => normalized.Contains(token, StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsInternalReferrer(string? referrerHost)
+        {
+            var normalized = NormalizeHost(referrerHost);
+            if (string.IsNullOrWhiteSpace(normalized)) return false;
+
+            return InternalDomains.Any(domain =>
+                normalized.Equals(domain, StringComparison.OrdinalIgnoreCase) ||
+                normalized.EndsWith("." + domain, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsNonProductionEnvironment(string? environment, string? host)
+        {
+            var normalizedEnvironment = Normalize(environment);
+            if (!string.IsNullOrWhiteSpace(normalizedEnvironment) &&
+                !string.Equals(normalizedEnvironment, "production", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(normalizedEnvironment, "prod", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var normalizedHost = NormalizeHost(host);
+            if (string.IsNullOrWhiteSpace(normalizedHost)) return false;
+
+            return NonProductionHostHints.Any(hint =>
+                normalizedHost.Contains(hint, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static TrafficType? ClassifySpecialTraffic(
+            bool isInternal,
+            string? environment,
+            string? host,
+            string? referrerHost,
+            params string?[] values)
+        {
+            if (isInternal)
+                return TrafficType.Internal;
+
+            if (IsNonProductionEnvironment(environment, host) || ContainsAnyToken(values, TestTokens))
+                return TrafficType.Test;
+
+            if (ContainsAnyToken(values, BotTokens))
+                return TrafficType.BotSuspicious;
+
+            if (IsInternalReferrer(referrerHost))
+                return TrafficType.Internal;
+
+            return null;
+        }
+
         public static TrafficType Classify(
             string? utmSource,
             string? utmMedium,
@@ -73,7 +178,10 @@ namespace AgentPortal.Services.Analytics
             string? referrerHost = null,
             string? metaCampaignId = null,
             string? metaAdSetId = null,
-            string? metaAdId = null)
+            string? metaAdId = null,
+            bool isInternal = false,
+            string? environment = null,
+            string? host = null)
         {
             utmSource = Normalize(utmSource);
             utmMedium = Normalize(utmMedium);
@@ -83,6 +191,24 @@ namespace AgentPortal.Services.Analytics
             metaCampaignId = Normalize(metaCampaignId);
             metaAdSetId = Normalize(metaAdSetId);
             metaAdId = Normalize(metaAdId);
+            environment = Normalize(environment);
+            host = NormalizeHost(host);
+
+            var specialTraffic = ClassifySpecialTraffic(
+                isInternal,
+                environment,
+                host,
+                referrerHost,
+                utmSource,
+                utmMedium,
+                utmCampaign,
+                fbclid,
+                metaCampaignId,
+                metaAdSetId,
+                metaAdId);
+
+            if (specialTraffic.HasValue)
+                return specialTraffic.Value;
 
             if (!string.IsNullOrWhiteSpace(fbclid) ||
                 !string.IsNullOrWhiteSpace(metaCampaignId) ||
@@ -113,13 +239,6 @@ namespace AgentPortal.Services.Analytics
                 return TrafficType.Referral;
             }
 
-            if (string.IsNullOrWhiteSpace(utmSource) &&
-                string.IsNullOrWhiteSpace(utmMedium) &&
-                string.IsNullOrWhiteSpace(utmCampaign))
-            {
-                return TrafficType.Direct;
-            }
-
             return TrafficType.Unknown;
         }
 
@@ -130,15 +249,39 @@ namespace AgentPortal.Services.Analytics
             string? fbclid,
             string? metaCampaignId = null,
             string? metaAdSetId = null,
-            string? metaAdId = null)
+            string? metaAdId = null,
+            bool isInternal = false,
+            string? environment = null,
+            string? host = null,
+            string? referrerHost = null)
         {
             var source = Normalize(utmSource);
             var medium = Normalize(utmMedium);
+            fbclid = Normalize(fbclid);
+            metaCampaignId = Normalize(metaCampaignId);
+            metaAdSetId = Normalize(metaAdSetId);
+            metaAdId = Normalize(metaAdId);
 
-            if (!string.IsNullOrWhiteSpace(Normalize(fbclid)) ||
-                !string.IsNullOrWhiteSpace(Normalize(metaCampaignId)) ||
-                !string.IsNullOrWhiteSpace(Normalize(metaAdSetId)) ||
-                !string.IsNullOrWhiteSpace(Normalize(metaAdId)))
+            if (ClassifySpecialTraffic(
+                    isInternal,
+                    environment,
+                    host,
+                    referrerHost,
+                    source,
+                    medium,
+                    utmCampaign,
+                    fbclid,
+                    metaCampaignId,
+                    metaAdSetId,
+                    metaAdId).HasValue)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(fbclid) ||
+                !string.IsNullOrWhiteSpace(metaCampaignId) ||
+                !string.IsNullOrWhiteSpace(metaAdSetId) ||
+                !string.IsNullOrWhiteSpace(metaAdId))
             {
                 return true;
             }
@@ -159,11 +302,12 @@ namespace AgentPortal.Services.Analytics
             if (filter == TrafficType.PaidAds) return rowType == TrafficType.PaidAds;
             if (filter == TrafficType.NonPaid)
             {
-                // NonPaid = Organic + Direct + Referral + Unknown/Unattributed.
+                // NonPaid = Organic + Direct + Referral.
+                // Unknown/Internal/Test/Bot are intentionally excluded so we do not
+                // quietly blend ambiguous or diagnostic traffic into growth reporting.
                 return rowType == TrafficType.Organic
                     || rowType == TrafficType.Direct
-                    || rowType == TrafficType.Referral
-                    || rowType == TrafficType.Unknown;
+                    || rowType == TrafficType.Referral;
             }
             return rowType == filter;
         }
@@ -171,12 +315,15 @@ namespace AgentPortal.Services.Analytics
         /// <summary>Human-readable label for a traffic filter, used in snapshot headers and diagnostics.</summary>
         public static string BucketLabel(TrafficType t) => t switch
         {
-            TrafficType.All      => "All Traffic (Paid + Non-Paid + Unknown)",
+            TrafficType.All      => "All Traffic (Paid + Non-Paid + Unknown + Internal/Test/Bot)",
             TrafficType.PaidAds  => "Paid Ads Only",
-            TrafficType.NonPaid  => "Non-Ads Only (Organic + Referral + Direct + Unknown)",
+            TrafficType.NonPaid  => "Non-Ads Only (Organic + Referral + Direct)",
             TrafficType.Organic  => "Organic Only",
             TrafficType.Direct   => "Direct Only",
             TrafficType.Referral => "Referral Only",
+            TrafficType.Internal => "Internal Navigation / Preview",
+            TrafficType.Test => "Test / QA Traffic",
+            TrafficType.BotSuspicious => "Bot / Suspicious Traffic",
             TrafficType.Unknown  => "Unknown/Unattributed Only",
             _                    => t.ToString()
         };

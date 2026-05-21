@@ -1,4 +1,6 @@
-﻿@using Microsoft.AspNetCore.Http
+﻿@using System.Text.Json
+@using Microsoft.AspNetCore.Http
+@using Shared.Analytics
 @inject IHttpContextAccessor HttpContextAccessor
 @inject Microsoft.Extensions.Configuration.IConfiguration Config
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment Env
@@ -32,6 +34,12 @@
     var metaPixelId = (ViewData["ResolvedMetaPixelId"]?.ToString() ?? string.Empty).Trim();
     var metaPixelOwnerType = (ViewData["MetaPixelOwnerType"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
     var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
+    var analyticsBrowserConfigJson = JsonSerializer.Serialize(new
+    {
+        allowedBrowserEvents = AnalyticsEventCatalog.BrowserAllowedEventNames,
+        criticalBrowserEvents = AnalyticsEventCatalog.CriticalBrowserEventNames,
+        clientTrackingErrorEvent = AnalyticsEventCatalog.ClientTrackingErrorEventName
+    });
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -766,6 +774,7 @@ footer.footer {
         document.body.dataset.pageMode = "@ViewData["PageMode"]";
         document.body.dataset.pageCategory = "@ViewData["PageCategory"]";
         document.body.dataset.quoteType = "@ViewData["QuoteTypeForTracking"]";
+        window.LEGEND_ANALYTICS_CONFIG = @Html.Raw(analyticsBrowserConfigJson);
     </script>
     <script src="~/js/tracking.js" asp-append-version="true"></script>
     <script src="~/js/lead-modal.js" asp-append-version="true"></script>

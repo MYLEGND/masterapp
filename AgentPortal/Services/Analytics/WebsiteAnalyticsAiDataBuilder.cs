@@ -67,6 +67,8 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                                  () => new SourcePerformanceDto { RangeLabel = range.Label }, warnings);
         var abandonTask     = SafeLoadAsync("Abandon",     () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
                                  () => new FormAbandonmentDto { RangeLabel = range.Label }, warnings);
+        var marketingHealthTask = SafeLoadAsync("MarketingHealth", () => _analytics.GetMarketingHealthAsync(range, scope, trafficType),
+                                 () => new MarketingHealthDto { RangeLabel = range.Label, TrafficType = trafficType }, warnings);
 
         // Meta Ads — active campaigns. SafeLoadAsync catches "not connected" / API errors gracefully.
         var metaAdsTask = SafeLoadAsync("MetaAds", () => _metaAds.GetCampaignsAsync(range, scope, ct),
@@ -76,7 +78,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
 
         await Task.WhenAll(
             summaryTask, pagePerfTask, quoteFunnelTask,
-            engagementTask, exitTask, sourceTask, abandonTask, metaAdsTask, metaSignalTask);
+            engagementTask, exitTask, sourceTask, abandonTask, marketingHealthTask, metaAdsTask, metaSignalTask);
 
         var summary    = await summaryTask;
         var pagePerf   = await pagePerfTask;
@@ -85,12 +87,19 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var exit       = await exitTask;
         var source     = await sourceTask;
         var abandon    = await abandonTask;
+        var marketingHealth = await marketingHealthTask;
         var metaCampaigns = await metaAdsTask;
         var metaSignal = await metaSignalTask;
 
         if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
         {
             warnings.Add(metaSignal.LearningScopeNote);
+        }
+
+        foreach (var healthWarning in marketingHealth.Warnings ?? new List<string>())
+        {
+            if (!string.IsNullOrWhiteSpace(healthWarning))
+                warnings.Add(healthWarning);
         }
 
         _logger.LogInformation(
@@ -231,6 +240,24 @@ public sealed class WebsiteAnalyticsAiDataBuilder
                         Visitors = x.Visitors,
                         ProgressionRate = x.ProgressionRate
                     }).ToList()
+            },
+
+            MarketingHealth = new MarketingHealthAiPayload
+            {
+                ClientTrackingErrors = marketingHealth.ClientTrackingErrors,
+                ClientTrackingErrorSessions = marketingHealth.ClientTrackingErrorSessions,
+                InferredFormStarts = marketingHealth.InferredFormStarts,
+                MissingStartEventSessions = marketingHealth.MissingStartEventSessions,
+                LeadPersistedEvents = marketingHealth.LeadPersistedEvents,
+                WorkstationCaptureAttempts = marketingHealth.WorkstationCaptureAttempts,
+                WorkstationCaptureSuccesses = marketingHealth.WorkstationCaptureSuccesses,
+                WorkstationCaptureFailures = marketingHealth.WorkstationCaptureFailures,
+                WorkstationNoOwnerFailures = marketingHealth.WorkstationNoOwnerFailures,
+                UnknownAttributedLeads = marketingHealth.UnknownAttributedLeads,
+                InternalTrafficSessions = marketingHealth.InternalTrafficSessions,
+                TestTrafficSessions = marketingHealth.TestTrafficSessions,
+                BotSuspiciousSessions = marketingHealth.BotSuspiciousSessions,
+                Warnings = (marketingHealth.Warnings ?? new List<string>()).ToList()
             }
 
             // Intentionally omitted (non-conversion breakdowns):

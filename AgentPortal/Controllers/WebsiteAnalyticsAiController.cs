@@ -134,7 +134,11 @@ public sealed class WebsiteAnalyticsAiController : Controller
             {
                 IsError = true,
                 ErrorMessage = "AI review failed unexpectedly. Please try again.",
-                Summary = "An unexpected error occurred."
+                Summary = "An unexpected error occurred.",
+                ScaleReadinessVerdict = "DoNotScale",
+                DataTrustWarning = "AI review failed unexpectedly.",
+                DoNotScaleBecause = new List<string> { "AI review failed unexpectedly." },
+                NextThreeActions = new List<string>()
             });
         }
     }
@@ -322,7 +326,11 @@ public sealed class WebsiteAnalyticsAiController : Controller
     {
         IsError = true,
         ErrorMessage = message,
-        Summary = message
+        Summary = message,
+        ScaleReadinessVerdict = "DoNotScale",
+        DataTrustWarning = message,
+        DoNotScaleBecause = new List<string> { message },
+        NextThreeActions = new List<string>()
     };
 
     private static void AppendPayloadWarnings(AiInsightsResultDto? result, IReadOnlyCollection<string>? warnings)

@@ -215,6 +215,54 @@
       container.appendChild(sumDiv);
     }
 
+    if (result.scaleReadinessVerdict || result.growthOperatorScore != null || result.dataTrustWarning) {
+      var readinessDiv = document.createElement('div');
+      readinessDiv.className = 'ai-section';
+      var readinessHtml = '<div class="ai-section-title">Scale Readiness</div>';
+      readinessHtml += '<div class="ai-section-body">';
+      if (result.scaleReadinessVerdict) {
+        readinessHtml += '<div><strong>Verdict:</strong> ' + esc(result.scaleReadinessVerdict) + '</div>';
+      }
+      if (result.growthOperatorScore != null) {
+        readinessHtml += '<div><strong>Growth Operator Score:</strong> ' + esc(result.growthOperatorScore) + '/100</div>';
+      }
+      if (result.dataTrustWarning) {
+        readinessHtml += '<div class="ai-confidence-note"><strong>Data Trust:</strong> ' + esc(result.dataTrustWarning) + '</div>';
+      }
+      readinessHtml += '</div>';
+      readinessDiv.innerHTML = readinessHtml;
+      container.appendChild(readinessDiv);
+    }
+
+    if (result.doNotScaleBecause && result.doNotScaleBecause.length > 0) {
+      var blockDiv = document.createElement('div');
+      blockDiv.className = 'ai-section';
+      var blockHtml = '<div class="ai-section-title">Do Not Scale Because</div><ul class="ai-bp-evidence">';
+      result.doNotScaleBecause.forEach(function (reason) {
+        blockHtml += '<li>' + esc(reason) + '</li>';
+      });
+      blockHtml += '</ul>';
+      blockDiv.innerHTML = blockHtml;
+      container.appendChild(blockDiv);
+    }
+
+    if (result.nextThreeActions && result.nextThreeActions.length > 0) {
+      var nextDiv = document.createElement('div');
+      nextDiv.className = 'ai-section';
+      var nextHtml = '<div class="ai-section-title">Next 3 Actions</div>';
+      result.nextThreeActions.forEach(function (action, index) {
+        nextHtml +=
+          '<div class="ai-action-row">' +
+            '<div class="ai-action-priority">#' + (index + 1) + '</div>' +
+            '<div class="ai-action-body">' +
+              '<div class="ai-action-text">' + esc(action) + '</div>' +
+            '</div>' +
+          '</div>';
+      });
+      nextDiv.innerHTML = nextHtml;
+      container.appendChild(nextDiv);
+    }
+
     // Primary breakpoints
     if (result.primaryBreakpoints && result.primaryBreakpoints.length > 0) {
       var bpDiv = document.createElement('div');

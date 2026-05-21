@@ -47,7 +47,7 @@
     ContactStepAbandon: -8
   });
 
-  const META_BROWSER_EVENTS = new Set([
+  const DEFAULT_META_BROWSER_EVENTS = [
     'ViewContent',
     'LeadFormStart',
     'DiscoveryComplete',
@@ -56,7 +56,7 @@
     'HighIntentLeadSignal',
     'LeadReadySignal',
     'AbandonedHighIntentLead'
-  ]);
+  ];
 
   function uuidNoDash() {
     if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -336,6 +336,14 @@
       requiredContactFields: Array.isArray(rawConfig?.requiredContactFields) ? rawConfig.requiredContactFields : ['FirstName', 'LastName', 'Phone', 'Email'],
       highIntentThreshold: Number(rawConfig?.highIntentThreshold || 70),
       leadReadyThreshold: Number(rawConfig?.leadReadyThreshold || 90),
+      browserEventNames: new Set(Array.isArray(rawConfig?.browserEventNames) ? rawConfig.browserEventNames : DEFAULT_META_BROWSER_EVENTS),
+      leadSignalRules: Object.assign({
+        leadReadyRequiresContactStep: true,
+        leadReadyRequiresValidPhone: true,
+        leadReadyRequiresValidEmail: false,
+        qualifiedLeadRequiresLeadReady: true,
+        qualifiedLeadMinimumTotalScore: 80
+      }, rawConfig?.leadSignalRules || {}),
       weights: Object.assign({}, DEFAULT_WEIGHTS, rawConfig?.weights || {})
     };
 
@@ -709,7 +717,7 @@
     }
 
     function fireBrowserPixel(eventName, eventId, stepNumber, stepName, score) {
-      if (!config.sendBrowserEvents || !META_BROWSER_EVENTS.has(eventName) || typeof window.fbq !== 'function') {
+      if (!config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
         return false;
       }
 
@@ -847,18 +855,15 @@
 
       const leadReadySatisfied =
         !state.submitted &&
-        state.contactStepReached &&
-        (
-          state.requiredContactFieldsCompleted ||
-          state.submitAttempted
-        );
+        (!config.leadSignalRules.leadReadyRequiresContactStep || state.contactStepReached) &&
+        hasLeadReadyContactData();
 
       if (leadReadySatisfied && !state.fired['threshold-lead-ready']) {
         void emitSignal('LeadReadySignal', {
           onceKey: 'threshold-lead-ready',
           metadata: {
-            threshold: config.leadReadyThreshold,
-            requiredContactFieldsComplete: state.requiredContactFieldsCompleted
+            requiredContactFieldsComplete: state.requiredContactFieldsCompleted,
+            leadReadyRules: config.leadSignalRules
           },
           skipThresholds: true
         });
@@ -932,6 +937,38 @@
         if (fieldName === 'Phone') {
           const digits = value.replace(/\D/g, '');
           if (digits.length < 10) return false;
+        }
+      }
+
+      return true;
+    }
+
+    function getFormFieldValue(fieldName) {
+      if (!(form instanceof HTMLFormElement)) return '';
+      const el = form.querySelector(`[name="${fieldName}"]`);
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) {
+        return '';
+      }
+
+      return asTrimmed(el.value);
+    }
+
+    function hasLeadReadyContactData() {
+      if (!allRequiredContactFieldsComplete()) {
+        return false;
+      }
+
+      if (config.leadSignalRules.leadReadyRequiresValidPhone) {
+        const phoneDigits = getFormFieldValue('Phone').replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+          return false;
+        }
+      }
+
+      if (config.leadSignalRules.leadReadyRequiresValidEmail) {
+        const email = getFormFieldValue('Email');
+        if (!email || !email.includes('@')) {
+          return false;
         }
       }
 

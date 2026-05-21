@@ -67,6 +67,8 @@ public class WebsiteAnalyticsScopeTests
             Mock.Of<IMetaAdsOAuthService>(),
             Mock.Of<IMetaAdsConnectionStore>(),
             tracking.Object,
+            Mock.Of<IMetaSignalAnalyticsService>(),
+            Mock.Of<ILandingRouteDiscoveryService>(),
             NullLogger<WebsiteAnalyticsController>.Instance,
             db,
             config,

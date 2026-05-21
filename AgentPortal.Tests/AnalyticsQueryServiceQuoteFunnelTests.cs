@@ -106,6 +106,32 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
+    public async Task GetQuoteFunnelAsync_LifeContactFirstEvents_CountAsFunnelStart_And_ContactStep()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("quote_landing_view", now.AddMinutes(-20), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("life_contact_first_view", now.AddMinutes(-19), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("life_contact_first_start", now.AddMinutes(-18), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("estimate_results_viewed", now.AddMinutes(-17), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("estimate_contact_continue", now.AddMinutes(-16), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing"),
+            E("life_step2_submit_attempt", now.AddMinutes(-15), "life-cf-1", quoteType: "term", formKey: "quote_term_life_landing")
+        );
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(1, dto.QuoteStarts);
+        Assert.Equal(1, dto.QuoteFormStarts);
+        Assert.Equal(1, dto.QuoteSubmitAttempts);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
+    }
+
+    [Fact]
     public async Task GetQuoteFunnelAsync_TrafficFilters_NonPaidExcludesUnknown()
     {
         using var db = ControllerTestHelpers.BuildDb();

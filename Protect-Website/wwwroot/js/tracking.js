@@ -12,6 +12,7 @@
   const PAGE_QUOTE_TYPE = document.body.dataset.quoteType || '';
   const AGENT_ID = window.AGENT_TRACKING_PROFILE_ID || null;
   const AGENT_SLUG = window.AGENT_TRACKING_SLUG || null;
+  const ANALYTICS_CONFIG = window.LEGEND_ANALYTICS_CONFIG || {};
   const DEBUG_TRACKING =
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
@@ -22,8 +23,20 @@
   const STORAGE_SESSION_TS = 'legend_session_ts';
   const STORAGE_ATTR_SESSION = 'legend_attr_session';
   const STORAGE_ATTR_FIRST_TOUCH = 'legend_attr_first_touch';
+  const STORAGE_EVENT_QUEUE = 'legend_tracking_event_queue_v1';
   const SESSION_TIMEOUT_MIN = 30;
   const DEBOUNCE_MS = 2000;
+  const TRACKING_MAX_RETRIES = 3;
+  const TRACKING_BACKOFF_MS = 800;
+  const TRACKING_QUEUE_LIMIT = 80;
+  const CLIENT_TRACKING_ERROR_EVENT =
+    typeof ANALYTICS_CONFIG.clientTrackingErrorEvent === 'string' &&
+    ANALYTICS_CONFIG.clientTrackingErrorEvent.trim()
+      ? ANALYTICS_CONFIG.clientTrackingErrorEvent.trim()
+      : 'client_tracking_error';
+  const nativeFetch = typeof window.fetch === 'function'
+    ? window.fetch.bind(window)
+    : null;
   const _formTrackStateByKey = new Map();
 
   function debug(message, details) {
@@ -35,39 +48,77 @@
     }
   }
 
-  const allowedEvents = new Set([
-    'page_view','cta_click','quote_click','risk_assessment_click',
-    'form_start','form_submit','outbound_click',
-    'lead_modal_open','lead_modal_close','lead_form_start','lead_form_submit_success','lead_form_submit_failed',
-    // Behavior Intelligence
-    'page_exit',
-    'page_engaged_10s','page_engaged_30s','page_engaged_60s',
-    'scroll_depth_25','scroll_depth_50','scroll_depth_75','scroll_depth_90','scroll_depth_100',
-    'page_visibility_hidden','page_visibility_return',
-    // Form Abandonment Intelligence
-    'form_field_focus','form_field_complete','form_field_error',
-    'form_submit_attempt','form_abandon',
-    // Life quote funnel micro-step + bridge events
-    'life_step1_intro_view',
-    'life_step1_protecting_view','life_step1_protecting_select',
-    'life_step1_goal_view','life_step1_goal_select',
-    'life_step1_tobacco_view','life_step1_tobacco_select',
-    'life_step1_age_view','life_step1_age_continue',
-    'step1_age_entered',
-    'life_processing_bridge_view','life_processing_bridge_complete',
-    'life_value_bridge_view','life_value_bridge_continue',
-    'life_step2_view','life_step2_back',
-    'life_step2_submit_attempt','life_step2_submit_success',
-    'mini_results_view',
-    'recommendation_generated',
-    'results_contact_submit',
-    'life_general_form_start','life_general_submit',
-    'life_term_form_start','life_term_submit',
-    'life_whole_form_start','life_whole_submit',
-    'life_finalexpense_form_start','life_finalexpense_submit',
-    'life_mp_form_start','life_mp_submit',
-    'life_iul_form_start','life_iul_submit'
-  ]);
+  const allowedEvents = new Set(Array.isArray(ANALYTICS_CONFIG.allowedBrowserEvents)
+    ? ANALYTICS_CONFIG.allowedBrowserEvents
+    : []);
+  const criticalEvents = new Set(Array.isArray(ANALYTICS_CONFIG.criticalBrowserEvents)
+    ? ANALYTICS_CONFIG.criticalBrowserEvents
+    : []);
+
+  function safeStorageGet(storage, key) {
+    try {
+      return storage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+
+  function safeStorageSet(storage, key, value) {
+    try {
+      storage.setItem(key, value);
+    } catch {
+      // ignore storage failures
+    }
+  }
+
+  function safeStorageRemove(storage, key) {
+    try {
+      storage.removeItem(key);
+    } catch {
+      // ignore storage failures
+    }
+  }
+
+  function safeJsonParse(raw, fallback) {
+    if (!raw) return fallback;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  }
+
+  function sleep(ms) {
+    return new Promise((resolve) => window.setTimeout(resolve, ms));
+  }
+
+  function asTrimmed(value) {
+    return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function clampErrorText(value) {
+    const text = asTrimmed(value);
+    return text.length > 280 ? text.slice(0, 280) : text;
+  }
+
+  function readQueuedEvents() {
+    return safeJsonParse(safeStorageGet(window.localStorage, STORAGE_EVENT_QUEUE), []);
+  }
+
+  function writeQueuedEvents(queue) {
+    if (!Array.isArray(queue) || queue.length === 0) {
+      safeStorageRemove(window.localStorage, STORAGE_EVENT_QUEUE);
+      return;
+    }
+
+    safeStorageSet(window.localStorage, STORAGE_EVENT_QUEUE, JSON.stringify(queue.slice(-TRACKING_QUEUE_LIMIT)));
+  }
+
+  function normalizeFetchUrl(input) {
+    if (typeof input === 'string') return input;
+    if (input && typeof input.url === 'string') return input.url;
+    return '';
+  }
 
   function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
@@ -198,26 +249,29 @@
   }
 
   function getVisitorId() {
-    let v = localStorage.getItem(STORAGE_VISITOR);
-    if (!v) { v = uuid(); localStorage.setItem(STORAGE_VISITOR, v); }
+    let v = safeStorageGet(window.localStorage, STORAGE_VISITOR);
+    if (!v) {
+      v = uuid();
+      safeStorageSet(window.localStorage, STORAGE_VISITOR, v);
+    }
     return v;
   }
 
   function getSessionId() {
     const now = Date.now();
-    const lastTs = parseInt(localStorage.getItem(STORAGE_SESSION_TS) || '0', 10);
-    let sid = localStorage.getItem(STORAGE_SESSION);
+    const lastTs = parseInt(safeStorageGet(window.localStorage, STORAGE_SESSION_TS) || '0', 10);
+    let sid = safeStorageGet(window.localStorage, STORAGE_SESSION);
     const sessionExpired = !sid || isNaN(lastTs) || (now - lastTs) > SESSION_TIMEOUT_MIN * 60 * 1000;
     if (sessionExpired) {
       sid = uuid();
       // Prevent stale attribution from a prior session leaking into a new session.
       try {
-        sessionStorage.removeItem(STORAGE_ATTR_SESSION);
-        localStorage.removeItem(STORAGE_ATTR_SESSION);
+        window.sessionStorage.removeItem(STORAGE_ATTR_SESSION);
+        window.localStorage.removeItem(STORAGE_ATTR_SESSION);
       } catch { /* ignore */ }
     }
-    localStorage.setItem(STORAGE_SESSION, sid);
-    localStorage.setItem(STORAGE_SESSION_TS, String(now));
+    safeStorageSet(window.localStorage, STORAGE_SESSION, sid);
+    safeStorageSet(window.localStorage, STORAGE_SESSION_TS, String(now));
     return sid;
   }
 
@@ -420,12 +474,129 @@
     };
   }
 
+  async function readResponseError(response) {
+    try {
+      return clampErrorText(await response.text());
+    } catch {
+      return '';
+    }
+  }
+
+  async function postBody(body) {
+    if (!nativeFetch) {
+      return {
+        ok: false,
+        statusCode: null,
+        errorMessage: 'fetch_unavailable'
+      };
+    }
+
+    try {
+      const response = await nativeFetch(INGEST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        keepalive: true,
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          statusCode: response.status,
+          errorMessage: await readResponseError(response)
+        };
+      }
+
+      return {
+        ok: true,
+        statusCode: response.status,
+        errorMessage: ''
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        statusCode: null,
+        errorMessage: clampErrorText(error && error.message ? error.message : String(error || 'network_error'))
+      };
+    }
+  }
+
+  function queueCriticalEvent(body, failure, retryCount, queueReason) {
+    if (!body || !criticalEvents.has(body.EventType)) {
+      return;
+    }
+
+    const queue = readQueuedEvents();
+    const existingIndex = queue.findIndex(item =>
+      item &&
+      item.body &&
+      item.body.EventType === body.EventType &&
+      item.body.SessionId === body.SessionId &&
+      item.body.ClientEventId === body.ClientEventId);
+
+    const queuedEvent = {
+      queuedUtc: new Date().toISOString(),
+      retryCount,
+      queueReason: queueReason || 'send_failed',
+      lastStatusCode: failure?.statusCode ?? null,
+      lastErrorMessage: clampErrorText(failure?.errorMessage || 'tracking_send_failed'),
+      body
+    };
+
+    if (existingIndex >= 0) {
+      queue.splice(existingIndex, 1, queuedEvent);
+    } else {
+      queue.push(queuedEvent);
+    }
+
+    writeQueuedEvents(queue);
+  }
+
+  async function reportClientTrackingError(details) {
+    if (!allowedEvents.has(CLIENT_TRACKING_ERROR_EVENT) || !nativeFetch) {
+      return false;
+    }
+
+    const errorBody = buildBody({
+      EventType: CLIENT_TRACKING_ERROR_EVENT,
+      PageKey: details?.pageKey || PAGE_KEY,
+      QuoteType: details?.quoteType || PAGE_QUOTE_TYPE,
+      MetadataJson: JSON.stringify({
+        attemptedEventName: details?.attemptedEventName || '',
+        statusCode: details?.statusCode ?? null,
+        errorMessage: clampErrorText(details?.errorMessage || ''),
+        retryCount: details?.retryCount ?? 0,
+        queueReason: details?.queueReason || '',
+        route: details?.route || window.location.pathname || '',
+        fetchUrl: details?.fetchUrl || '',
+        method: details?.method || '',
+        timestamp: new Date().toISOString(),
+        sessionId: details?.sessionId || getSessionId(),
+        visitorId: details?.visitorId || getVisitorId(),
+        trigger: details?.trigger || 'tracking'
+      })
+    });
+
+    const result = await postBody(errorBody);
+    return result.ok;
+  }
+
   // ── Async fetch (normal mid-session events) ───────────────────────────────
   async function sendEvent(payload) {
     try {
       const body = buildBody(payload);
-      if (!allowedEvents.has(body.EventType)) return;
-      updateTrackedFormStateFromEvent(body);
+      if (!allowedEvents.has(body.EventType)) {
+        debug('blocked uncataloged event', {
+          eventType: body.EventType,
+          pageKey: body.PageKey
+        });
+        return false;
+      }
+
+      const isDiagnosticEvent = body.EventType === CLIENT_TRACKING_ERROR_EVENT;
+      if (!isDiagnosticEvent) {
+        updateTrackedFormStateFromEvent(body);
+      }
       if (body.EventType === 'form_start' || body.EventType === 'form_submit') {
         body.FormKey = body.FormKey || payload.FormKey;
       }
@@ -446,13 +617,75 @@
         quoteType: body.QuoteType,
         submitOutcome: body.SubmitOutcome
       });
-      await fetch(INGEST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        keepalive: true,
-        body: JSON.stringify(body)
+
+      const maxAttempts = criticalEvents.has(body.EventType) ? TRACKING_MAX_RETRIES : 1;
+      let attempt = 0;
+      let lastFailure = null;
+
+      while (attempt < maxAttempts) {
+        attempt += 1;
+        const result = await postBody(body);
+        if (result.ok) {
+          if (
+            body.EventType === 'thank_you_view' ||
+            body.EventType === 'life_step2_submit_success' ||
+            body.EventType === 'life_contact_first_submit_success' ||
+            body.EventType === 'lead_form_submit_success' ||
+            (body.EventType === 'form_submit' && String(body.SubmitOutcome || '').toLowerCase() === 'success')
+          ) {
+            void flushQueuedEvents('successful_event');
+          }
+
+          return true;
+        }
+
+        lastFailure = result;
+        debug('sendEvent failed', {
+          eventType: body.EventType,
+          attempt,
+          statusCode: result.statusCode,
+          errorMessage: result.errorMessage
+        });
+
+        if (attempt < maxAttempts) {
+          await sleep(TRACKING_BACKOFF_MS * attempt);
+        }
+      }
+
+      if (criticalEvents.has(body.EventType)) {
+        queueCriticalEvent(body, lastFailure, attempt, 'send_failed');
+      }
+
+      if (!isDiagnosticEvent) {
+        void reportClientTrackingError({
+          attemptedEventName: body.EventType,
+          pageKey: body.PageKey,
+          quoteType: body.QuoteType,
+          statusCode: lastFailure?.statusCode ?? null,
+          errorMessage: lastFailure?.errorMessage || 'tracking_send_failed',
+          retryCount: attempt,
+          queueReason: criticalEvents.has(body.EventType) ? 'queued_critical_event' : 'send_failed',
+          route: body.Path,
+          sessionId: body.SessionId,
+          visitorId: body.VisitorId,
+          trigger: 'send_event'
+        });
+      }
+
+      return false;
+    } catch (error) {
+      const errorMessage = clampErrorText(error && error.message ? error.message : String(error || 'tracking_exception'));
+      void reportClientTrackingError({
+        attemptedEventName: payload?.EventType || '',
+        pageKey: payload?.PageKey || PAGE_KEY,
+        quoteType: payload?.QuoteType || PAGE_QUOTE_TYPE,
+        errorMessage,
+        retryCount: 0,
+        route: window.location.pathname,
+        trigger: 'send_event_exception'
       });
-    } catch { /* swallow */ }
+      return false;
+    }
   }
 
   // ── Beacon send (page-exit and form-abandon — survives navigation/close) ──
@@ -465,14 +698,65 @@
     });
     const json = JSON.stringify(body);
     const blob = new Blob([json], { type: 'application/json' });
-    if (navigator.sendBeacon && navigator.sendBeacon(INGEST_URL, blob)) return;
+    if (navigator.sendBeacon && navigator.sendBeacon(INGEST_URL, blob)) return true;
     // Sync XHR fallback for Meta in-app / older WebViews
     try {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', INGEST_URL, false);
       xhr.setRequestHeader('Content-Type', 'application/json');
       xhr.send(json);
-    } catch { /* swallow */ }
+      return xhr.status >= 200 && xhr.status < 400;
+    } catch {
+      return false;
+    }
+  }
+
+  async function flushQueuedEvents(reason, options = {}) {
+    const queue = readQueuedEvents();
+    if (!Array.isArray(queue) || queue.length === 0) {
+      return false;
+    }
+
+    const keep = [];
+    const maxItems = Number.isFinite(options.maxItems) ? options.maxItems : queue.length;
+
+    for (let index = 0; index < queue.length; index += 1) {
+      const queued = queue[index];
+      if (!queued || !queued.body) {
+        continue;
+      }
+
+      if (index >= maxItems) {
+        keep.push(queued);
+        continue;
+      }
+
+      if (options.useBeacon) {
+        const sent = beaconSend(queued.body);
+        if (!sent) {
+          keep.push({
+            ...queued,
+            retryCount: Number(queued.retryCount || 0) + 1,
+            queueReason: reason
+          });
+        }
+        continue;
+      }
+
+      const result = await postBody(queued.body);
+      if (!result.ok) {
+        keep.push({
+          ...queued,
+          retryCount: Number(queued.retryCount || 0) + 1,
+          lastStatusCode: result.statusCode ?? null,
+          lastErrorMessage: result.errorMessage || queued.lastErrorMessage || '',
+          queueReason: reason
+        });
+      }
+    }
+
+    writeQueuedEvents(keep);
+    return keep.length !== queue.length;
   }
 
   const debounceMap = new Map();
@@ -589,7 +873,7 @@
   }, { passive: true });
 
   // Engagement checkpoints
-  [10000, 30000, 60000].forEach(function (ms) {
+  [5000, 10000, 15000, 30000, 60000].forEach(function (ms) {
     setTimeout(function () {
       if (document.visibilityState === 'visible') {
         sendEvent({
@@ -961,6 +1245,93 @@
     });
   }
 
+  function shouldSkipFetchDiagnostics(url) {
+    if (!url) return true;
+    return url.includes(INGEST_URL) || url.includes('/ThankYou/meta-browser-ack');
+  }
+
+  function installGlobalDiagnostics() {
+    window.addEventListener('error', function (event) {
+      const target = event && event.target;
+      const sourceUrl =
+        target && typeof target.src === 'string' && target.src
+          ? target.src
+          : target && typeof target.href === 'string' && target.href
+            ? target.href
+            : '';
+
+      void reportClientTrackingError({
+        attemptedEventName: 'window_error',
+        pageKey: PAGE_KEY,
+        quoteType: PAGE_QUOTE_TYPE,
+        errorMessage: clampErrorText(event?.message || sourceUrl || 'window_error'),
+        route: window.location.pathname,
+        fetchUrl: sourceUrl,
+        trigger: 'window.onerror'
+      });
+    }, true);
+
+    window.addEventListener('unhandledrejection', function (event) {
+      const reason = event && event.reason;
+      const message =
+        reason && reason.message
+          ? reason.message
+          : typeof reason === 'string'
+            ? reason
+            : 'unhandled_promise_rejection';
+
+      void reportClientTrackingError({
+        attemptedEventName: 'unhandled_rejection',
+        pageKey: PAGE_KEY,
+        quoteType: PAGE_QUOTE_TYPE,
+        errorMessage: clampErrorText(message),
+        route: window.location.pathname,
+        trigger: 'window.onunhandledrejection'
+      });
+    });
+
+    if (!nativeFetch) {
+      return;
+    }
+
+    window.fetch = async function trackedFetch(input, init) {
+      const url = normalizeFetchUrl(input);
+      try {
+        const response = await nativeFetch(input, init);
+        if (!response.ok && !shouldSkipFetchDiagnostics(url)) {
+          void reportClientTrackingError({
+            attemptedEventName: 'fetch_non_ok',
+            pageKey: PAGE_KEY,
+            quoteType: PAGE_QUOTE_TYPE,
+            statusCode: response.status,
+            errorMessage: clampErrorText(response.statusText || 'fetch_non_ok'),
+            route: window.location.pathname,
+            fetchUrl: url,
+            method: asTrimmed(init?.method || 'GET'),
+            trigger: 'fetch_response'
+          });
+        }
+
+        return response;
+      } catch (error) {
+        if (!shouldSkipFetchDiagnostics(url)) {
+          void reportClientTrackingError({
+            attemptedEventName: 'fetch_failed',
+            pageKey: PAGE_KEY,
+            quoteType: PAGE_QUOTE_TYPE,
+            errorMessage: clampErrorText(error && error.message ? error.message : String(error || 'fetch_failed')),
+            route: window.location.pathname,
+            fetchUrl: url,
+            method: asTrimmed(init?.method || 'GET'),
+            trigger: 'fetch_exception'
+          });
+        }
+
+        throw error;
+      }
+    };
+  }
+
   // ── Visibility/page lifecycle ──────────────────────────────────────────────
   document.addEventListener('visibilitychange', function () {
     if (document.visibilityState === 'hidden') {
@@ -978,6 +1349,7 @@
         pageKey: PAGE_KEY,
         activeMs: _activeMs
       });
+      void flushQueuedEvents('visibility_hidden');
     } else {
       if (_activeStart === null) {
         _activeStart = Date.now();
@@ -991,9 +1363,13 @@
         pageKey: PAGE_KEY,
         activeMs: _activeMs
       });
+      void flushQueuedEvents('visibility_visible');
     }
   });
-  window.addEventListener('pagehide', (event) => fireExitSignals('pagehide', event));
+  window.addEventListener('pagehide', (event) => {
+    fireExitSignals('pagehide', event);
+    void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 5 });
+  });
 
   // ── Standard tracking ─────────────────────────────────────────────────────
 
@@ -1002,6 +1378,21 @@
       EventType: 'page_view',
       MetadataJson: buildPageContextMetadata()
     });
+
+    if (PAGE_CATEGORY === 'quote') {
+      sendEvent({
+        EventType: 'quote_landing_view',
+        MetadataJson: buildPageContextMetadata()
+      });
+    }
+
+    if (PAGE_KEY && PAGE_KEY.toLowerCase().includes('thank_you')) {
+      sendEvent({
+        EventType: 'thank_you_view',
+        MetadataJson: buildPageContextMetadata()
+      });
+      void flushQueuedEvents('thank_you_load');
+    }
   }
 
   function wireClick(selector, elementKey, eventType) {
@@ -1014,6 +1405,14 @@
           ElementKey: elementKey,
           ButtonLabel: el.textContent?.trim() || null
         });
+
+        if (PAGE_CATEGORY === 'quote' && allowedEvents.has('quote_cta_click')) {
+          sendEvent({
+            EventType: 'quote_cta_click',
+            ElementKey: elementKey,
+            ButtonLabel: el.textContent?.trim() || null
+          });
+        }
       });
     });
   }
@@ -1023,11 +1422,11 @@
     if (!form) return;
     const sessionFlag = `form_started_${getSessionId()}_${window.location.pathname}_${formKey}`;
     const currentSessionId = getSessionId();
-    let fired = sessionStorage.getItem(sessionFlag) === currentSessionId;
+    let fired = safeStorageGet(window.sessionStorage, sessionFlag) === currentSessionId;
     const handler = () => {
       if (fired) return;
       fired = true;
-      sessionStorage.setItem(sessionFlag, currentSessionId);
+      safeStorageSet(window.sessionStorage, sessionFlag, currentSessionId);
       debug('form_start fired', {
         formKey,
         pageKey: PAGE_KEY
@@ -1038,6 +1437,8 @@
     form.addEventListener('change', handler, { once: true });
   }
 
+  installGlobalDiagnostics();
+  void flushQueuedEvents('page_load');
   trackPageView();
 
   wireClick('[data-cta="hero_start_assessment"]',    'hero_start_assessment',    'cta_click');

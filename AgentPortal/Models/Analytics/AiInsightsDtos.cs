@@ -85,6 +85,11 @@ public sealed class TestToRunDto
 public sealed class AiInsightsResultDto
 {
     public string Summary { get; set; } = "";
+    public int? GrowthOperatorScore { get; set; }
+    public string? ScaleReadinessVerdict { get; set; }
+    public string? DataTrustWarning { get; set; }
+    public List<string> DoNotScaleBecause { get; set; } = new();
+    public List<string> NextThreeActions { get; set; } = new();
     public List<BreakpointDto> PrimaryBreakpoints { get; set; } = new();
     public List<RecommendedActionDto> RecommendedActions { get; set; } = new();
     public List<TestToRunDto> TestsToRun { get; set; } = new();
@@ -158,6 +163,9 @@ public sealed class AiSafeAnalyticsPayload
 
     // Meta Signal Intelligence
     public MetaSignalAiPayload? MetaSignal { get; set; }
+
+    // Tracking + pipeline health
+    public MarketingHealthAiPayload? MarketingHealth { get; set; }
 }
 
 // ── Nested safe row types ─────────────────────────────────────────────────────
@@ -250,6 +258,24 @@ public sealed class MetaSignalAiPayload
     public List<MetaSignalAverageAiRow> AverageScoreByCampaign { get; set; } = new();
     public List<MetaSignalAverageAiRow> AverageScoreByPageVariant { get; set; } = new();
     public List<MetaSignalLadderAiRow> EventLadder { get; set; } = new();
+}
+
+public sealed class MarketingHealthAiPayload
+{
+    public int ClientTrackingErrors { get; set; }
+    public int ClientTrackingErrorSessions { get; set; }
+    public int InferredFormStarts { get; set; }
+    public int MissingStartEventSessions { get; set; }
+    public int LeadPersistedEvents { get; set; }
+    public int WorkstationCaptureAttempts { get; set; }
+    public int WorkstationCaptureSuccesses { get; set; }
+    public int WorkstationCaptureFailures { get; set; }
+    public int WorkstationNoOwnerFailures { get; set; }
+    public int UnknownAttributedLeads { get; set; }
+    public int InternalTrafficSessions { get; set; }
+    public int TestTrafficSessions { get; set; }
+    public int BotSuspiciousSessions { get; set; }
+    public List<string> Warnings { get; set; } = new();
 }
 
 public sealed class MetaSignalTierAiRow

@@ -7,6 +7,7 @@ using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Shared.Meta;
 using System.Globalization;
+using System.Text.Json;
 
 namespace Protect_Website.Controllers
 {
@@ -62,6 +63,21 @@ namespace Protect_Website.Controllers
                 BookingLink = _defaultBookingLink,
                 AgentTrustProfile = await BuildAgentTrustProfileAsync(lead, ct)
             };
+
+            var trackingContext = BuildTrackingContext(quoteKey, lead);
+            ViewData["PageKey"] = trackingContext.PageKey;
+            ViewData["PageVariant"] = trackingContext.PageVariant;
+            ViewData["PageMode"] = trackingContext.PageMode;
+            ViewData["PageCategory"] = "quote";
+            ViewData["QuoteTypeForTracking"] = trackingContext.QuoteTypeForTracking;
+            ViewData["IsLandingPage"] = string.Equals(trackingContext.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
+            ViewData["LeadId"] = lead?.LeadId.ToString("D") ?? string.Empty;
+            ViewData["MetaLeadEventId"] = TempData.Peek("MetaLeadEventId")?.ToString()?.Trim() ?? string.Empty;
+            ViewData["MetaLeadLeadId"] = leadIdRaw ?? string.Empty;
+            ViewData["Source"] = lead?.UtmSource ?? string.Empty;
+            ViewData["Campaign"] = lead?.UtmCampaign ?? lead?.MetaCampaignId ?? string.Empty;
+            ViewData["Fbclid"] = lead?.Fbclid ?? string.Empty;
+            ViewData["SessionId"] = lead?.SessionId ?? string.Empty;
 
             // Loads Views/Quote/ThankYou.cshtml
             return View("~/Views/Quote/ThankYou.cshtml", model);
@@ -258,6 +274,86 @@ namespace Protect_Website.Controllers
 
             return trackingProfile.Slug;
         }
+
+        private static ThankYouTrackingContext BuildTrackingContext(string quoteKey, WebsiteLead? lead)
+        {
+            var sourcePageKey = (lead?.SourcePageKey ?? string.Empty).Trim();
+            var fallbackPageKey = quoteKey.Trim().ToLowerInvariant() switch
+            {
+                "auto" => "quote_auto",
+                "home" => "quote_home",
+                "health" => "quote_health",
+                "disability" => "quote_disability",
+                "commercial" => "quote_commercial",
+                "life" or "life insurance" => "quote_life",
+                "term life" => "quote_term_life",
+                "whole life" => "quote_whole_life",
+                "final expense" => "quote_final_expense",
+                "mortgage protection" => "quote_mortgage_protection",
+                "indexed universal life" => "quote_iul",
+                _ => "quote_thank_you"
+            };
+
+            var basePageKey = string.IsNullOrWhiteSpace(sourcePageKey) ? fallbackPageKey : sourcePageKey;
+            var pageKey = basePageKey.EndsWith("_thank_you", StringComparison.OrdinalIgnoreCase)
+                ? basePageKey
+                : $"{basePageKey}_thank_you";
+            var pageVariant = ReadTrackingMetadataValue(lead?.MetadataJson, "pageVariant")
+                ?? (basePageKey.Contains("_landing", StringComparison.OrdinalIgnoreCase) ? "landing" : "website");
+            var pageMode = ReadTrackingMetadataValue(lead?.MetadataJson, "pageMode")
+                ?? (basePageKey.Contains("_landing", StringComparison.OrdinalIgnoreCase) ? "paid_landing" : "site_mode");
+
+            return new ThankYouTrackingContext(
+                PageKey: pageKey,
+                PageVariant: pageVariant,
+                PageMode: pageMode,
+                QuoteTypeForTracking: ResolveQuoteTypeForTracking(quoteKey));
+        }
+
+        private static string ResolveQuoteTypeForTracking(string quoteKey)
+        {
+            return quoteKey.Trim().ToLowerInvariant() switch
+            {
+                "life insurance" => "life",
+                "term life" => "term",
+                "whole life" => "wholelife",
+                "final expense" => "finalexpense",
+                "mortgage protection" => "mortgage",
+                "indexed universal life" => "iul",
+                _ => quoteKey
+            };
+        }
+
+        private static string? ReadTrackingMetadataValue(string? metadataJson, string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return null;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(metadataJson);
+                if (!doc.RootElement.TryGetProperty(propertyName, out var property) ||
+                    property.ValueKind != JsonValueKind.String)
+                {
+                    return null;
+                }
+
+                var value = property.GetString()?.Trim();
+                return string.IsNullOrWhiteSpace(value) ? null : value;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private sealed record ThankYouTrackingContext(
+            string PageKey,
+            string PageVariant,
+            string PageMode,
+            string QuoteTypeForTracking);
 
         private static string ResolveAgentFirstName(string displayName)
         {

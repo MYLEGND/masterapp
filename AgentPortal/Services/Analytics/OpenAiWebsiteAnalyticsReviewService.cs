@@ -39,13 +39,17 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
 
         "STEP 2 — META SIGNAL INTELLIGENCE: analyze high-intent visitors, lead-ready visitors, submit attempts without confirmed lead, signal-to-lead conversion, contact-step abandons, and the recommended optimization event.\n\n" +
 
-        "STEP 3 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
+        "STEP 3 — TRACKING / PIPELINE HEALTH: analyze client_tracking_error volume, inferred form starts, unknown attribution, workstation capture failures, and no-owner failures.\n" +
+        "  • If health warnings exist or inferred starts / tracking errors are non-trivial, you MUST state that data trust is reduced.\n" +
+        "  • If data trust is reduced, you MUST avoid aggressive scale recommendations.\n\n" +
 
-        "STEP 4 — QUOTE FUNNEL: drop-off from starts → form starts → submits.\n\n" +
+        "STEP 4 — LANDING PAGE PERFORMANCE: conversion rate, exit rate, top pages.\n\n" +
 
-        "STEP 5 — BEHAVIOR: session duration, quick-exit rate, engaged session rate.\n\n" +
+        "STEP 5 — QUOTE FUNNEL: drop-off from starts → form starts → submits.\n\n" +
 
-        "STEP 6 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
+        "STEP 6 — BEHAVIOR: session duration, quick-exit rate, engaged session rate.\n\n" +
+
+        "STEP 7 — LEADS / FOLLOW-UP: verified leads, form abandonment.\n\n" +
 
         "STRICT RULES:\n" +
         "  • NEVER skip ads analysis, even if the data shows zero spend or zero clicks.\n" +
@@ -56,8 +60,10 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "  • If submitted Lead volume is low but lead-ready or high-intent volume is healthy, recommend the best Meta optimization event from the payload instead of defaulting to Lead.\n" +
         "  • If campaign data shows clicks but zero website leads, output: " +
         "'Ad traffic is present but not converting — primary issue is landing page or funnel, not traffic generation.'\n" +
+        "  • If marketingHealth or warnings indicate tracking instability, your scaleReadinessVerdict MUST be either DoNotScale or StabilizeFirst.\n" +
+        "  • dataTrustWarning should be a short blunt statement when data quality is questionable; otherwise return an empty string.\n" +
         "  • Be blunt. No padding. Return ONLY: " +
-        "one summary sentence (must mention ads), up to 3 breakpoints, up to 3 actions, up to 2 tests, up to 3 confidence notes.";
+        "one summary sentence (must mention ads), a growth operator score, a scale readiness verdict, a data trust warning, up to 3 reasons not to scale, up to 3 next actions, up to 3 breakpoints, up to 3 actions, up to 2 tests, up to 3 confidence notes.";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -314,6 +320,23 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
             properties = new Dictionary<string, object>
             {
                 ["summary"] = new { type = "string", description = "One concise sentence summarizing performance." },
+                ["growthOperatorScore"] = new { type = "integer", minimum = 0, maximum = 100 },
+                ["scaleReadinessVerdict"] = new
+                {
+                    type = "string",
+                    @enum = new[] { "DoNotScale", "StabilizeFirst", "CautiousScale", "ReadyToScale" }
+                },
+                ["dataTrustWarning"] = new { type = "string" },
+                ["doNotScaleBecause"] = new
+                {
+                    type = "array",
+                    items = new { type = "string" }
+                },
+                ["nextThreeActions"] = new
+                {
+                    type = "array",
+                    items = new { type = "string" }
+                },
                 ["primaryBreakpoints"] = new
                 {
                     type = "array",
@@ -371,7 +394,7 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
                     items = new { type = "string" }
                 }
             },
-            required = new[] { "summary", "primaryBreakpoints", "recommendedActions", "testsToRun", "confidenceNotes" },
+            required = new[] { "summary", "growthOperatorScore", "scaleReadinessVerdict", "dataTrustWarning", "doNotScaleBecause", "nextThreeActions", "primaryBreakpoints", "recommendedActions", "testsToRun", "confidenceNotes" },
             additionalProperties = false
         };
     }
@@ -452,6 +475,11 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         IsError = true,
         ErrorMessage = message,
         Summary = message,
+        GrowthOperatorScore = null,
+        ScaleReadinessVerdict = "DoNotScale",
+        DataTrustWarning = message,
+        DoNotScaleBecause = new List<string> { message },
+        NextThreeActions = new List<string>(),
         PrimaryBreakpoints = new List<BreakpointDto>(),
         RecommendedActions = new List<RecommendedActionDto>(),
         TestsToRun = new List<TestToRunDto>(),

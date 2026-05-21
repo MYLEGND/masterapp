@@ -81,6 +81,26 @@ public sealed class QuoteStageMetricRow
     public int Count { get; set; }
 }
 
+public sealed class MarketingHealthDto
+{
+    public int ClientTrackingErrors { get; set; }
+    public int ClientTrackingErrorSessions { get; set; }
+    public int InferredFormStarts { get; set; }
+    public int MissingStartEventSessions { get; set; }
+    public int LeadPersistedEvents { get; set; }
+    public int WorkstationCaptureAttempts { get; set; }
+    public int WorkstationCaptureSuccesses { get; set; }
+    public int WorkstationCaptureFailures { get; set; }
+    public int WorkstationNoOwnerFailures { get; set; }
+    public int UnknownAttributedLeads { get; set; }
+    public int InternalTrafficSessions { get; set; }
+    public int TestTrafficSessions { get; set; }
+    public int BotSuspiciousSessions { get; set; }
+    public List<string> Warnings { get; set; } = new();
+    public string RangeLabel { get; set; } = "";
+    public TrafficType TrafficType { get; set; }
+}
+
 public sealed class ConversionRow
 {
     public string EventType { get; set; } = "";

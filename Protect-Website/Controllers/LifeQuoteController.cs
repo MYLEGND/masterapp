@@ -293,6 +293,21 @@ namespace Protect_Website.Controllers
 
             try
             {
+                await TryWriteLeadPipelineEventAsync(
+                    lead,
+                    cfg.ProductType,
+                    pageMode,
+                    correlationId,
+                    "workstation_capture_attempt",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        OfferKey = model.OfferKey,
+                        PageVariant = pageMode.PageVariant,
+                        PageMode = pageMode.PageMode,
+                        CaptureStage = "attempt"
+                    });
+
                 var captureResult = await _websiteLifeLeadCapture.UpsertAsync(
                     new WebsiteLifeLeadCaptureRequest
                     {
@@ -325,9 +340,44 @@ namespace Protect_Website.Controllers
                         captureResult.Created ? "created" : "updated",
                         captureResult.Bucket,
                         captureResult.AgentUserId);
+
+                    await TryWriteLeadPipelineEventAsync(
+                        lead,
+                        cfg.ProductType,
+                        pageMode,
+                        correlationId,
+                        "workstation_capture_success",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            OfferKey = model.OfferKey,
+                            PageVariant = pageMode.PageVariant,
+                            PageMode = pageMode.PageMode,
+                            WorkstationLeadId = captureResult.WorkstationLeadId,
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId,
+                            CaptureMode = captureResult.Created ? "created" : "updated"
+                        });
                 }
                 else
                 {
+                    await TryWriteLeadPipelineEventAsync(
+                        lead,
+                        cfg.ProductType,
+                        pageMode,
+                        correlationId,
+                        "workstation_capture_failure",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            OfferKey = model.OfferKey,
+                            PageVariant = pageMode.PageVariant,
+                            PageMode = pageMode.PageMode,
+                            Reason = captureResult.Reason ?? "unknown",
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId
+                        });
+
                     _logger.LogWarning(
                         "LifeQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
                         correlationId,
@@ -348,6 +398,22 @@ namespace Protect_Website.Controllers
                     "LifeQuote [{CorrelationId}]: workstation lead capture failed for WebsiteLead {LeadId}. Continuing with saved website lead.",
                     correlationId,
                     lead.LeadId);
+
+                await TryWriteLeadPipelineEventAsync(
+                    lead,
+                    cfg.ProductType,
+                    pageMode,
+                    correlationId,
+                    "workstation_capture_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        OfferKey = model.OfferKey,
+                        PageVariant = pageMode.PageVariant,
+                        PageMode = pageMode.PageMode,
+                        Reason = "capture_exception",
+                        ErrorMessage = captureEx.Message
+                    });
             }
 
             var metaLeadEventId = Guid.NewGuid().ToString("N");
@@ -501,7 +567,21 @@ namespace Protect_Website.Controllers
             // ── 3. Write analytics event ─────────────────────────────────────────
             try
             {
-                var evt = new AnalyticsEvent
+                var eventMetadata = new
+                {
+                    LeadId        = lead.LeadId,
+                    CorrelationId = correlationId,
+                    OfferKey      = model.OfferKey,
+                    PageVariant   = pageMode.PageVariant,
+                    PageMode      = pageMode.PageMode,
+                    PagePath      = Request?.Path.Value,
+                    RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
+                    RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
+                    RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
+                    RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
+                };
+
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
                 {
                     EventId    = Guid.NewGuid(),
                     EventType  = "website_lead_submitted",
@@ -524,25 +604,37 @@ namespace Protect_Website.Controllers
                     Host       = lead.Host,
                     EventUtc   = lead.CreatedUtc,
                     ReceivedUtc= DateTime.UtcNow,
-                    MetadataJson = JsonSerializer.Serialize(new
-                    {
-                        LeadId        = lead.LeadId,
-                        CorrelationId = correlationId,
-                        OfferKey      = model.OfferKey,
-                        PageVariant   = pageMode.PageVariant,
-                        PageMode      = pageMode.PageMode,
-                        PagePath      = Request?.Path.Value,
-                        RecommendationPrimaryKey       = model.RecommendationPrimaryKey,
-                        RecommendationPrimaryTitle     = model.RecommendationPrimaryTitle,
-                        RecommendationSecondaryKey     = model.RecommendationSecondaryKey,
-                        RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
-                    })
-                };
-                _db.AnalyticsEvents.Add(evt);
+                    MetadataJson = JsonSerializer.Serialize(eventMetadata)
+                });
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventId    = Guid.NewGuid(),
+                    EventType  = "lead_persisted",
+                    PageKey    = pageMode.EffectivePageKey,
+                    FormKey    = pageMode.EffectivePageKey + "_form",
+                    QuoteType  = cfg.ProductType,
+                    SessionId  = lead.SessionId,
+                    VisitorId  = lead.VisitorId,
+                    UtmSource  = lead.UtmSource,
+                    UtmMedium  = lead.UtmMedium,
+                    UtmCampaign= lead.UtmCampaign,
+                    UtmId      = lead.UtmId,
+                    Fbclid     = lead.Fbclid,
+                    MetaCampaignId = lead.MetaCampaignId,
+                    MetaAdSetId = lead.MetaAdSetId,
+                    MetaAdId = lead.MetaAdId,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug  = lead.AgentSlug,
+                    Environment= lead.Environment,
+                    Host       = lead.Host,
+                    EventUtc   = lead.CreatedUtc,
+                    ReceivedUtc= DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(eventMetadata)
+                });
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
-                    "LifeQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId} offer={Offer}",
-                    correlationId, evt.EventId, lead.LeadId, model.OfferKey);
+                    "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",
+                    correlationId, lead.LeadId, model.OfferKey);
             }
             catch (Exception analyticsEx)
             {
@@ -617,6 +709,7 @@ namespace Protect_Website.Controllers
 
             // Set the quote type so the Thank You page can display the correct name
             TempData["QuoteType"] = offerContent.DisplayName;
+            TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
 
             // AJAX: return 200 OK so JS can navigate client-side (preserves TempData for subsequent GET)
@@ -1385,6 +1478,55 @@ namespace Protect_Website.Controllers
                 LifeOfferKeys.Iul => "/Quote/IUL/landing",
                 _ => "/Quote/Life/landing"
             };
+        }
+
+        private async Task TryWriteLeadPipelineEventAsync(
+            WebsiteLead lead,
+            string quoteType,
+            WizardPageMode pageMode,
+            Guid correlationId,
+            string eventType,
+            object metadata)
+        {
+            try
+            {
+                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                {
+                    EventId = Guid.NewGuid(),
+                    EventType = eventType,
+                    PageKey = pageMode.EffectivePageKey,
+                    FormKey = pageMode.EffectivePageKey + "_form",
+                    QuoteType = quoteType,
+                    SessionId = lead.SessionId,
+                    VisitorId = lead.VisitorId,
+                    UtmSource = lead.UtmSource,
+                    UtmMedium = lead.UtmMedium,
+                    UtmCampaign = lead.UtmCampaign,
+                    UtmId = lead.UtmId,
+                    Fbclid = lead.Fbclid,
+                    MetaCampaignId = lead.MetaCampaignId,
+                    MetaAdSetId = lead.MetaAdSetId,
+                    MetaAdId = lead.MetaAdId,
+                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                    AgentSlug = lead.AgentSlug,
+                    Environment = lead.Environment,
+                    Host = lead.Host,
+                    EventUtc = DateTime.UtcNow,
+                    ReceivedUtc = DateTime.UtcNow,
+                    MetadataJson = JsonSerializer.Serialize(metadata)
+                });
+
+                await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+            }
+            catch (Exception analyticsEx)
+            {
+                _logger.LogWarning(
+                    analyticsEx,
+                    "LifeQuote [{CorrelationId}]: failed to write lead pipeline event {EventType} for lead {LeadId}",
+                    correlationId,
+                    eventType,
+                    lead.LeadId);
+            }
         }
 
         private async Task<LifeWizardViewModel> BuildWizardViewModelAsync(LifeWizardConfig cfg, LifeQuoteFormModel model, WizardPageMode pageMode)

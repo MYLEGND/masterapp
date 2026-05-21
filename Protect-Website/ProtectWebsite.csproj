@@ -16,6 +16,7 @@
   <ItemGroup>
     <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
     <ProjectReference Include="..\\Domain\\Domain.csproj" />
+    <ProjectReference Include="..\\SHARED\\Shared.csproj" />
 
     <!-- MailKit for SMTP (patched MimeKit) -->
     <PackageReference Include="Azure.Extensions.AspNetCore.DataProtection.Blobs" Version="1.5.1" />

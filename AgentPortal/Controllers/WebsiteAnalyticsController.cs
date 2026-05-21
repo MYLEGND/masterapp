@@ -1716,7 +1716,18 @@ namespace AgentPortal.Controllers;
                 var med  = e.UtmMedium?.Trim();
                 var camp = e.UtmCampaign?.Trim();
                 var fb   = e.Fbclid?.Trim();
-                var t    = TrafficAttribution.Classify(src, med, camp, fb, metaCampaignId: e.MetaCampaignId, metaAdSetId: e.MetaAdSetId, metaAdId: e.MetaAdId);
+                var t    = TrafficAttribution.Classify(
+                    src,
+                    med,
+                    camp,
+                    fb,
+                    referrerHost: e.ReferrerHost,
+                    metaCampaignId: e.MetaCampaignId,
+                    metaAdSetId: e.MetaAdSetId,
+                    metaAdId: e.MetaAdId,
+                    isInternal: e.IsInternal,
+                    environment: e.Environment,
+                    host: e.Host);
                 return new { e.EventType, e.SessionId, t };
             })
             .ToList();
@@ -1733,7 +1744,17 @@ namespace AgentPortal.Controllers;
             .ToList();
 
         var leadBuckets = allLeads
-            .GroupBy(l => TrafficAttribution.Classify(l.UtmSource, l.UtmMedium, l.UtmCampaign, l.Fbclid, metaCampaignId: l.MetaCampaignId, metaAdSetId: l.MetaAdSetId, metaAdId: l.MetaAdId))
+            .GroupBy(l => TrafficAttribution.Classify(
+                l.UtmSource,
+                l.UtmMedium,
+                l.UtmCampaign,
+                l.Fbclid,
+                metaCampaignId: l.MetaCampaignId,
+                metaAdSetId: l.MetaAdSetId,
+                metaAdId: l.MetaAdId,
+                isInternal: l.IsInternal,
+                environment: l.Environment,
+                host: l.Host))
             .OrderByDescending(g => g.Count())
             .Select(g => new
             {
