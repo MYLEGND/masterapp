@@ -1282,6 +1282,91 @@ function resolveQuickViewLeadType(row, detail, stageOverride){
     || normalizeOriginalLeadTypeValue(row?.dataset?.sPipeline);
 }
 
+function resolveWorkLeadDestination(row, detail){
+  const leadType = resolveQuickViewLeadType(row, detail, detail?.pipelineStage || row?.dataset?.crmPipeline || row?.dataset?.sPipeline);
+
+  if (leadType === "FinalExpense"){
+    return {
+      queueKey: "FinalExpense",
+      route: "/Workstation/FinalExpenseRebuttals",
+      label: "Work Final Expense Lead",
+      note: "Loads this lead into the Final Expense workstation queue."
+    };
+  }
+
+  if (leadType === "MortgageProtection"){
+    return {
+      queueKey: "MortgageProtection",
+      route: "/Workstation/Rebuttals",
+      label: "Work Mortgage Lead",
+      note: "Loads this lead into the Mortgage Protection workstation queue."
+    };
+  }
+
+  if (["LifeInsurance", "TermLife", "WholeLife", "IUL"].includes(leadType)){
+    return {
+      queueKey: "LifeInsurance",
+      route: "/Workstation/LifeInsuranceRebuttals",
+      label: "Work Life Lead",
+      note: "Loads this lead into the Life Insurance workstation queue."
+    };
+  }
+
+  return {
+    queueKey: leadType || "",
+    route: "/Workstation",
+    label: "Open Workstation Hub",
+    note: "Opens the Workstation hub for this lead."
+  };
+}
+
+async function workLeadInWorkstation(row, detail){
+  const clientId = row?.dataset?.clientId || detail?.clientUserId || activeClientId || "";
+  if (!clientId){
+    toast("Lead not found.");
+    return;
+  }
+
+  const destination = resolveWorkLeadDestination(row, detail);
+  const workstationWin = window.open("", "_blank");
+
+  try{
+    if (destination.queueKey){
+      const token = getAntiForgeryToken();
+      const body = new URLSearchParams({
+        LeadId: clientId,
+        QueueKey: destination.queueKey
+      });
+
+      const res = await fetch("/LeadBridge/Select", withDialHeaders({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "RequestVerificationToken": token
+        },
+        credentials: "include",
+        body: body.toString()
+      }));
+
+      if (!res.ok){
+        const raw = await res.text().catch(() => "");
+        throw new Error(raw || "Could not load this lead into Workstation.");
+      }
+    }
+
+    if (workstationWin){
+      workstationWin.location = destination.route;
+    }else{
+      window.location.assign(destination.route);
+    }
+    toast(destination.note);
+  }catch(err){
+    try { workstationWin?.close(); } catch {}
+    console.error(err);
+    toast(err?.message || "Could not load this lead into Workstation.", { error: true });
+  }
+}
+
 function isDerivedPipelineFilterStage(stage){
   return derivedPipelineFilterStages.has(stage);
 }
@@ -2784,6 +2869,7 @@ if (liveSync){
     if (payload.crmNextText !== undefined) row.dataset.sNexttext = payload.crmNextText || "";
     if (payload.crmStatus) row.dataset.sStatus = payload.crmStatus;
     if (payload.crmPriority) row.dataset.sPriority = payload.crmPriority;
+    if (payload.contactStatus !== undefined) row.dataset.sContactstatus = normalizeContactStatusValue(payload.contactStatus || row.dataset.sContactstatus || "NotSet");
     if (payload.attemptsToday !== undefined) row.dataset.sAttemptstoday = String(payload.attemptsToday ?? 0);
     if (payload.attemptsThisWeek !== undefined) row.dataset.sAttemptsweek = String(payload.attemptsThisWeek ?? 0);
     if (payload.attemptsThisMonth !== undefined) row.dataset.sAttemptsmonth = String(payload.attemptsThisMonth ?? 0);
@@ -2868,6 +2954,16 @@ document.addEventListener("click", (e) => {
 
   if (e.target === drawerBackdrop) closeDrawer();
   if (e.target === modalBackdrop) closeModal();
+
+  const workLeadId = e.target.closest("[data-work-lead]")?.getAttribute("data-work-lead");
+  if (workLeadId){
+    e.preventDefault();
+    e.stopPropagation();
+    const row = rows.find(r => r.dataset.clientId === workLeadId);
+    const detail = activeClientId === workLeadId ? activeClientDetail : null;
+    workLeadInWorkstation(row, detail);
+    return;
+  }
 
   const openDrawerEl = e.target.closest(".open-drawer");
   if (openDrawerEl){
@@ -3587,6 +3683,8 @@ async function openDrawerById(clientId){
         loanAmount: lead.loanAmount || "",
         crmStatus: lead.crmStatus || "Lead",
         crmPriority: "Normal",
+        crmContactStatus: lead.contactStatus || "NotSet",
+        sContactstatus: lead.contactStatus || "NotSet",
         crmLastTouch: lead.crmLastTouch || lead.updatedUtc || "",
         crmNextDate: "",
         crmNextText: lead.crmNotes || "",
@@ -3655,6 +3753,7 @@ async function openDrawerForRow(row){
   dStatus.value = row.dataset.crmStatus || "Active";
   dPipelineStage.value = normalizePipelineStageValue(row.dataset.crmPipeline, "MortgageProtection");
   applyQuickViewContactProfileLabels(row, null);
+  if (dContactStatus) dContactStatus.value = normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
   dLastTouch.value = row.dataset.crmLastTouch || "";
   dTags.value = row.dataset.crmTags || "";
   dNotes.value = row.dataset.crmNotes || "";
@@ -3710,9 +3809,14 @@ async function openDrawerForRow(row){
 
     activeClientDetail = detail;
     noteSyncLeadField();
+    const resolvedContactStatus = normalizeContactStatusValue(detail.contactStatus || row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
+    row.dataset.sContactstatus = resolvedContactStatus;
+    row.dataset.crmContactStatus = resolvedContactStatus;
+    hydrateRow(row);
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
     dPipelineStage.value = normalizePipelineStageValue(detail.pipelineStage || row.dataset.crmPipeline, "MortgageProtection");
     applyQuickViewContactProfileLabels(row, detail, dPipelineStage.value);
+    if (dContactStatus) dContactStatus.value = resolvedContactStatus;
     dLastTouch.value = detail.crmLastTouch || row.dataset.crmLastTouch || "";
     dTags.value = detail.crmTags || row.dataset.crmTags || "";
     dNotes.value = detail.agentNotes || row.dataset.crmNotes || "";
@@ -4446,7 +4550,16 @@ function renderPortalActions(row, detail){
 
   // Leads CRM should not create client portal users
   if (LEADS_ONLY){
-    dPortalWrap.innerHTML = `<span class="pill">Portal actions disabled for leads</span>`;
+    const destination = resolveWorkLeadDestination(row, detail);
+    dPortalWrap.innerHTML = `
+      <div class="lead-workstation-actions">
+        <button type="button" class="btn btn-gold" data-work-lead="${safeHtml(row.dataset.clientId || detail?.clientUserId || "")}">
+          ${safeHtml(destination.label)}
+        </button>
+        <span class="pill">Lead-only CRM</span>
+      </div>
+      <div class="tiny lead-workstation-note">${safeHtml(destination.note)}</div>
+    `;
     return;
   }
   const isGuid = (row.dataset.isguid === "true");
@@ -5122,11 +5235,21 @@ function renderLaneCards(rowsForStage){
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
+    const leadType = rowOriginalLeadType(r) || stage;
+    const workLeadLabel = resolveWorkLeadDestination(r, null).label;
     const phoneDisplay = formatPhone(phone);
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
     const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
     const callCount = norm(r.dataset.sAttemptslife || r.dataset.crmAttemptsLife || "0");
+    const originLabel = norm(r.dataset.intakeOrigin) || "Manual Lead";
+    const originTone = norm(r.dataset.intakeOriginTone) || "manual";
+    const productInterest = norm(r.dataset.intakeProductInterest) || pipelineLabel(leadType);
+    const quoteType = norm(r.dataset.intakeQuoteType);
+    const attribution = [r.dataset.intakeSource, r.dataset.intakeMedium, r.dataset.intakeCampaign].map(norm).filter(Boolean).join(" / ");
+    const latestSubmission = formatIntakeSnapshotDate(norm(r.dataset.intakeSubmitted));
+    const recommendation = norm(r.dataset.intakeRecommendation);
+    const warning = leadWarningSummary(r);
     const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
     const issuedAmount = Number(r.dataset.prodIssued || 0);
     const submittedAmount = Number(r.dataset.prodSubmitted || 0);
@@ -5147,11 +5270,28 @@ function renderLaneCards(rowsForStage){
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
               <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" style=\"color:#c48d02;font-weight:700;\" href=\"tel:${safeHtml(phone)}\" data-call-link=\"${safeHtml(r.dataset.clientId)}\" data-call-phone=\"${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
               <div class="cc-sub">${renderEmailLinkHtml(email, "color:#7a7a7a;opacity:0.78;")}</div>
+              <div class="pipeline-card-context">
+                <div class="pipeline-card-chips">
+                  <span class="meta-chip lead-origin-chip lead-origin-${safeHtml(originTone)}">${safeHtml(originLabel)}</span>
+                  <span class="meta-chip">${safeHtml(productInterest)}</span>
+                  ${quoteType ? `<span class="meta-chip">Quote: ${safeHtml(quoteType)}</span>` : ""}
+                </div>
+                ${attribution ? `<div class="cc-sub">${safeHtml(attribution)}</div>` : ""}
+                ${latestSubmission !== "—" ? `<div class="cc-sub">Latest intake: ${safeHtml(latestSubmission)}</div>` : ""}
+                ${recommendation ? `<div class="cc-sub">${safeHtml(recommendation)}</div>` : ""}
+                <div class="pipeline-card-warning${warning ? " is-active" : ""}">${safeHtml(warning || "No stale warning right now")}</div>
+              </div>
           </div>
           <div class="client-card-actions actions" style="gap:6px; flex-wrap:wrap; align-items:center;">
             <span class="pill" style="border:1px solid #dc2626;color:#b91c1c;font-weight:700;padding:3px 7px;font-size:12px;">Called: ${safeHtml(callCount)}</span>
             ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-call-lead="${safeHtml(r.dataset.clientId)}" data-call-phone="${safeHtml(phone)}">Call</button>` : ""}
             ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-text-menu="${safeHtml(r.dataset.clientId)}">Text ▾</button>` : ""}
+            <button type="button"
+                    class="btn btn-ghost lead-work-btn"
+                    data-work-lead="${safeHtml(r.dataset.clientId)}"
+                    style="padding:5px 8px;font-size:12px;">
+              ${safeHtml(workLeadLabel)}
+            </button>
             <button type="button"
                     class="btn btn-gold openCard"
                     data-open-card="${safeHtml(r.dataset.clientId)}"
@@ -5244,6 +5384,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     loanAmount: dLoanAmount?.value || "",
     crmStatus: (overrides?.crmStatus ?? norm(row.dataset.crmStatus)) || "Lead",
     crmPriority: (overrides?.crmPriority ?? norm(row.dataset.crmPriority)) || "Normal",
+    contactStatus: overrides?.contactStatus ?? normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || dContactStatus?.value || "NotSet"),
     crmLastTouch: (overrides?.crmLastTouch ?? norm(row.dataset.crmLastTouch)) || null,
     crmNextDate: (overrides?.crmNextDate ?? norm(row.dataset.crmNextDate)) || null,
     crmNextText: overrides?.crmNextText ?? norm(row.dataset.crmNextText),
@@ -5276,8 +5417,10 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   if ((data.crmNotes ?? null) !== null && data.crmNextText === data.crmNotes && payloadNextText && payloadNextText !== data.crmNotes){
     resolvedNextText = payloadNextText;
   }
+  const resolvedContactStatus = normalizeContactStatusValue(data.contactStatus || payload.contactStatus || row.dataset.sContactstatus || "NotSet");
   row.dataset.sStatus = data.crmStatus || "Lead";
   row.dataset.sPriority = data.crmPriority || "Normal";
+  row.dataset.sContactstatus = resolvedContactStatus;
   row.dataset.sLasttouch = data.crmLastTouch || "";
   row.dataset.sNextdate = resolvedNextDate || "";
   row.dataset.sNexttext = resolvedNextText || "";
@@ -5328,6 +5471,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
       crmNextText: row.dataset.sNexttext,
       crmStatus: row.dataset.sStatus,
       crmPriority: row.dataset.sPriority,
+      contactStatus: row.dataset.sContactstatus,
       attemptsLifetime: row.dataset.sAttemptslife,
       firstName: row.dataset.first,
       lastName: row.dataset.last,
@@ -5349,6 +5493,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     activeClientDetail = {
       ...(activeClientDetail || {}),
       ...data,
+      contactStatus: resolvedContactStatus,
       crmNextDate: resolvedNextDate || null,
       crmNextText: resolvedNextText,
       crmTags: resolvedTags,
@@ -5356,6 +5501,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     };
     dStatus.value = data.crmStatus || dStatus.value;
     dPriority.value = data.crmPriority || dPriority.value;
+    if (dContactStatus) dContactStatus.value = resolvedContactStatus;
     dLastTouch.value = data.crmLastTouch || dLastTouch.value;
     setDrawerNextActionDate(resolvedNextDate || dNextDate.value);
     dNextText.value = resolvedNextText || dNextText.value;

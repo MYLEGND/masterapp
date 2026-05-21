@@ -212,13 +212,95 @@ public class LeadsControllerTests
         var root = doc.RootElement;
         var intake = root.GetProperty("intakeSnapshot");
 
+        Assert.Equal(2, intake.GetProperty("historyCount").GetInt32());
+        Assert.Equal("Paid Landing", intake.GetProperty("originLabel").GetString());
         Assert.Equal("quote_term_life_landing", intake.GetProperty("sourcePageKey").GetString());
         Assert.Equal("low_friction_options", intake.GetProperty("pageVariant").GetString());
         Assert.Equal("facebook", intake.GetProperty("utmSource").GetString());
         Assert.Equal("term_retarget", intake.GetProperty("utmCampaign").GetString());
         Assert.Equal("Term Life", intake.GetProperty("interestLabel").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("quoteTypeLabel").GetString());
         Assert.Equal("Best fit: Term Life · Coverage target: $250,000", intake.GetProperty("estimateSummary").GetString());
+        Assert.Equal(
+            "Best fit: Term Life · Coverage target: $250,000 • Primary: Term Life • Secondary: Whole Life",
+            intake.GetProperty("recommendationSummary").GetString());
+        Assert.Contains("\"OfferKey\": \"term\"", intake.GetProperty("rawMetadataJson").GetString());
         Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task SaveQuickView_Persists_ContactStatus()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-CONTACT-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            OriginalLeadType = "MortgageProtection",
+            FirstName = "Taylor",
+            LastName = "Lead",
+            Email = "taylor@example.com",
+            Phone = "6025550134",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.SaveQuickView(new LeadsController.LeadQuickViewRequest(
+            clientUserId: "L-CONTACT-1",
+            firstName: "Taylor",
+            lastName: "Lead",
+            email: "taylor@example.com",
+            phone: "6025550134",
+            phone2: null,
+            dob: null,
+            gender: null,
+            addressLine: null,
+            city: null,
+            state: null,
+            county: null,
+            zipCode: null,
+            age: null,
+            mortgageLender: null,
+            loanAmount: null,
+            crmStatus: "Lead",
+            crmPriority: "Normal",
+            contactStatus: "AttemptingContact",
+            crmLastTouch: null,
+            crmNextDate: null,
+            crmNextText: null,
+            crmTags: null,
+            agentNotes: null,
+            pipelineStage: "MortgageProtection",
+            meetingLocation: null,
+            zoomJoinUrl: null,
+            usePersonalZoomLink: false,
+            meetingTime: null,
+            meetingDurationMinutes: 30,
+            waitingOn: null,
+            pinnedBrief: null,
+            docIdReceived: false,
+            docAppSent: false,
+            docAppSigned: false,
+            docPolicyDelivered: false,
+            docReviewBooked: false,
+            watchers: null,
+            mentionNote: null,
+            btc: null));
+
+        Assert.IsType<JsonResult>(result);
+
+        var lead = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-CONTACT-1");
+        var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+
+        Assert.Equal("AttemptingContact", meta.ContactStatus);
     }
 
     [Fact]

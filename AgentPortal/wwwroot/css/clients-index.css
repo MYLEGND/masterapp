@@ -4134,6 +4134,128 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         font-weight:900;
     }
 
+    .lead-command-stack{
+        display:grid;
+        gap:6px;
+        margin-top:8px;
+    }
+
+    .lead-command-chips{
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+    }
+
+    .lead-meta-line{
+        color:#64748b;
+        line-height:1.35;
+    }
+
+    .lead-origin-chip{
+        border-color:rgba(15,23,42,.08);
+    }
+
+    .lead-origin-paid{
+        background:rgba(37,99,235,.10);
+        border-color:rgba(37,99,235,.22);
+        color:#1d4ed8;
+    }
+
+    .lead-origin-site{
+        background:rgba(8,145,178,.10);
+        border-color:rgba(8,145,178,.20);
+        color:#0f766e;
+    }
+
+    .lead-origin-import{
+        background:rgba(124,58,237,.10);
+        border-color:rgba(124,58,237,.20);
+        color:#6d28d9;
+    }
+
+    .lead-origin-manual{
+        background:rgba(71,85,105,.10);
+        border-color:rgba(71,85,105,.20);
+        color:#334155;
+    }
+
+    .lead-warning-text{
+        color:#94a3b8;
+        font-weight:800;
+        line-height:1.35;
+    }
+
+    .lead-warning-text.is-active{
+        color:#b91c1c;
+    }
+
+    .lead-work-btn{
+        white-space:nowrap;
+    }
+
+    .lead-workstation-actions{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+    }
+
+    .lead-workstation-note{
+        margin-top:6px;
+        color:rgba(226,232,240,.76);
+        line-height:1.4;
+    }
+
+    .lead-command-overview-grid{
+        margin-bottom:12px;
+    }
+
+    .lead-overview-card,
+    .lead-overview-wide{
+        display:grid;
+        gap:4px;
+        padding:12px 13px;
+        border-radius:14px;
+        border:1px solid rgba(96,165,250,.18);
+        background:linear-gradient(180deg, rgba(255,255,255,.96), rgba(248,250,252,.98));
+        box-shadow:0 10px 22px rgba(15,23,42,.08);
+    }
+
+    .lead-overview-card label,
+    .lead-overview-wide label{
+        margin:0;
+        color:#475569;
+        font-size:.72rem;
+        font-weight:900;
+        letter-spacing:.06em;
+        text-transform:uppercase;
+    }
+
+    .lead-overview-card div,
+    .lead-overview-wide div{
+        color:#0f172a;
+        font-size:.96rem;
+        font-weight:900;
+        line-height:1.4;
+    }
+
+    .lead-overview-wide + .lead-overview-wide{
+        margin-top:10px;
+    }
+
+    .lead-intake-raw{
+        margin:0;
+        padding:12px 14px;
+        border-radius:14px;
+        border:1px solid rgba(15,23,42,.08);
+        background:#f8fafc;
+        color:#0f172a;
+        font-size:.79rem;
+        line-height:1.5;
+        white-space:pre-wrap;
+        word-break:break-word;
+    }
+
     /* ===== MODALS ===== */
     #modalBackdrop.modal-backdrop{
         position: fixed;
@@ -4896,6 +5018,59 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 .pipeline-board .client-card .cc-sub{
     color:#16202d !important;
     opacity:.98;
+}
+
+.pipeline-card-context{
+    display:grid;
+    gap:6px;
+    margin-top:8px;
+}
+
+.pipeline-card-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+}
+
+.pipeline-board .pipeline-card-context .meta-chip{
+    background:rgba(255,255,255,.82);
+    border-color:rgba(15,23,42,.08);
+    color:#0f172a;
+}
+
+.pipeline-board .pipeline-card-context .lead-origin-paid{
+    background:rgba(37,99,235,.10);
+    border-color:rgba(37,99,235,.22);
+    color:#1d4ed8;
+}
+
+.pipeline-board .pipeline-card-context .lead-origin-site{
+    background:rgba(8,145,178,.10);
+    border-color:rgba(8,145,178,.20);
+    color:#0f766e;
+}
+
+.pipeline-board .pipeline-card-context .lead-origin-import{
+    background:rgba(124,58,237,.10);
+    border-color:rgba(124,58,237,.20);
+    color:#6d28d9;
+}
+
+.pipeline-board .pipeline-card-context .lead-origin-manual{
+    background:rgba(71,85,105,.10);
+    border-color:rgba(71,85,105,.20);
+    color:#334155;
+}
+
+.pipeline-card-warning{
+    color:#475569;
+    font-size:.78rem;
+    font-weight:800;
+    line-height:1.35;
+}
+
+.pipeline-card-warning.is-active{
+    color:#991b1b;
 }
 
 .pipeline-board .client-card .cc-sub-primary{
