@@ -150,6 +150,15 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
+            model.FirstName = model.FirstName?.Trim() ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(model.FirstName))
+            {
+                model.FirstName = string.Empty;
+                ModelState.Remove(nameof(LifeQuoteFormModel.FirstName));
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.FirstName), "First name is required.");
+            }
+
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
                 model.LastName = null;

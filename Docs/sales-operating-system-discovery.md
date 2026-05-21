@@ -618,44 +618,68 @@ Future implementation should add tests in four layers.
 
 ## 13. Recommended phased implementation order
 
-### Phase A: data continuity first
+### Phase 0: JS + Funnel Integrity
 
-- add durable intake-to-lead linkage
-- carry forward public qualification and attribution into CRM context
-- keep public UX stable
+This is the hard gate. No Sales OS expansion work should begin until the public funnel is technically trustworthy end to end.
 
-### Phase B: Leads command center enrichment
+- fix Life wizard JS syntax, brace hygiene, and duplicate validation drift
+- validate `FirstName` required
+- validate either `Phone` or `Email` required
+- keep `Email` optional but valid if entered
+- keep `Phone` optional but valid if entered
+- require consent
+- ensure submit button and form submit use the same validation path
+- ensure `form_start` fires on primary CTA click or first question interaction
+- ensure analytics and Meta Signal failures never block funnel progression
+- verify lead submit persists `WebsiteLead`
+- verify workstation / CRM handoff still runs
+- verify abandon tracking does not misclassify successful submits
+- run `Protect-Website` and `AgentPortal` builds before moving on
 
-- source-aware lead cards
-- intake summary
-- urgency / fit / readiness scoring
-- `Work Lead` handoff
+### Phase A: Intake Continuity
 
-### Phase C: Workstation context enrichment
+- add durable `WebsiteLead` to `WorkstationLeadProfile` linkage
+- preserve repeated submissions as intake history
+- carry source, campaign, page, product, discovery answers, estimate, recommendation, and timestamps into internal lead context
+- surface the latest intake snapshot in Leads quick view and Workstation
 
-- script overlays from funnel/source/stage
-- richer outcome logging
-- sync outcomes back into Leads and sales history
+### Phase B: Leads Command Center
 
-### Phase D: appointment model
+- enrich Leads cards and quick view with attribution, product interest, estimate result, contact status, appointment intent, next action, and stale lead warnings
 
-- first-class appointment record
-- calendar linkage
-- booked / confirmed / completed / no-show reporting
+### Phase C: Workstation Close Engine
 
-### Phase E: sales analytics
+- feed Workstation full lead context
+- add script overlays based on product, source, stage, estimate result, and appointment status
+- ensure outcomes write back to CRM and durable outcome history
 
-- booked-call funnel
-- campaign-to-appointment
-- source-to-close foundation
-- operator trust warnings for broken joins
+### Phase D: Appointment Funnel
 
-### Phase F: AI Sales Operator
+- add a post-submit booking option
+- add a first-class `LeadAppointment` model
+- track `Requested`, `Booked`, `Confirmed`, `Completed`, `NoShow`, `Cancelled`, and `Rescheduled`
+- link calendar events to lead records
+- track appointment events in analytics
 
-- queue prioritization
-- stale lead warnings
-- next-best-action
-- source-quality versus close-quality diagnosis
+### Phase E: Nurture System
+
+- add SMS / email follow-up structure for submitted-but-not-booked, booked reminders, no-show recovery, and stale lead reactivation
+- keep messaging compliance-safe and consent-aware
+
+### Phase F: Sales Analytics
+
+- add campaign-to-booked-call reporting
+- add booked-to-show reporting
+- add show-to-application and placed-policy reporting
+- add owner / agent conversion metrics
+- add trust warnings when lead-to-sales links are missing
+
+### Phase G: AI Sales Operator
+
+- add queue prioritization
+- add next-best-action
+- add stale-lead warnings
+- add source-quality versus close-quality diagnosis
 
 ## Recommendation
 

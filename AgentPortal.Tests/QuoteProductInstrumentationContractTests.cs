@@ -78,6 +78,28 @@ public class QuoteProductInstrumentationContractTests
     }
 
     [Fact]
+    public void LifeQuote_UsesAjaxManagedValidationAndNonBlockingTrackingGuards()
+    {
+        var repoRoot = GetRepoRoot();
+        var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
+        var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
+        var tracking = Read(repoRoot, "Protect-Website", "wwwroot", "js", "tracking.js");
+
+        Assert.Contains("data-ajax-submit=\"true\" novalidate", view, StringComparison.Ordinal);
+        Assert.Contains("window.legendFormTracking?.trackStart?.(form.dataset.formKey || pageKey)", view, StringComparison.Ordinal);
+        Assert.Contains("const metaSignalApi = metaSignal && typeof metaSignal === 'object'", view, StringComparison.Ordinal);
+        Assert.Contains("function safeTrackingCall(label, factory)", view, StringComparison.Ordinal);
+
+        Assert.Contains("const isAjaxManagedSubmit = formEl.dataset.ajaxSubmit === 'true';", tracking, StringComparison.Ordinal);
+        Assert.Contains("if (isAjaxManagedSubmit) return;", tracking, StringComparison.Ordinal);
+        Assert.Contains("trackStart: fireTrackedFormStartOnce", tracking, StringComparison.Ordinal);
+
+        Assert.Contains("model.FirstName = model.FirstName?.Trim() ?? string.Empty;", controller, StringComparison.Ordinal);
+        Assert.Contains("string.IsNullOrWhiteSpace(model.FirstName)", controller, StringComparison.Ordinal);
+        Assert.Contains("ModelState.AddModelError(nameof(LifeQuoteFormModel.FirstName), \"First name is required.\")", controller, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void GeneralLifeLowFrictionVariant_ExposesConversionFocusedHeroAndExplicitFunnelEvents()
     {
         var repoRoot = GetRepoRoot();

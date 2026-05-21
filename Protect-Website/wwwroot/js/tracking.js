@@ -1131,9 +1131,13 @@
       transitionFormState(state, 'submitted', 'ajax_submit_success');
     };
 
+    const isAjaxManagedSubmit = formEl.dataset.ajaxSubmit === 'true';
+
     // Native submits (non-AJAX forms) should never be counted as abandon.
-    // We treat a valid submit dispatch as terminal for abandonment purposes.
+    // AJAX-managed forms must wait for explicit success so failed custom validation
+    // does not look like a completed submit.
     formEl.addEventListener('submit', () => {
+      if (isAjaxManagedSubmit) return;
       if (typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) return;
       state.submitAttempted = true;
       state.submitted = true;
@@ -1431,24 +1435,41 @@
   function wireFormStart(selector, formKey) {
     const form = document.querySelector(selector);
     if (!form) return;
-    const sessionFlag = `form_started_${getSessionId()}_${window.location.pathname}_${formKey}`;
-    const currentSessionId = getSessionId();
-    let fired = safeStorageGet(window.sessionStorage, sessionFlag) === currentSessionId;
     const handler = () => {
-      if (fired) return;
-      fired = true;
-      safeStorageSet(window.sessionStorage, sessionFlag, currentSessionId);
-      debug('form_start fired', {
-        formKey,
-        pageKey: PAGE_KEY
-      });
-      sendEvent({ EventType: 'form_start', FormKey: formKey });
-      if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
-        sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
-      }
+      fireTrackedFormStartOnce(formKey);
     };
-    form.addEventListener('focusin', handler, { once: true });
-    form.addEventListener('change', handler, { once: true });
+    form.addEventListener('focusin', handler);
+    form.addEventListener('change', handler);
+  }
+
+  const _trackedFormStartFlags = new Set();
+
+  function fireTrackedFormStartOnce(formKey) {
+    if (!formKey) return false;
+    const currentSessionId = getSessionId();
+    const sessionFlag = `form_started_${currentSessionId}_${window.location.pathname}_${formKey}`;
+
+    if (_trackedFormStartFlags.has(sessionFlag)) {
+      return false;
+    }
+
+    if (safeStorageGet(window.sessionStorage, sessionFlag) === currentSessionId) {
+      _trackedFormStartFlags.add(sessionFlag);
+      return false;
+    }
+
+    _trackedFormStartFlags.add(sessionFlag);
+    safeStorageSet(window.sessionStorage, sessionFlag, currentSessionId);
+    debug('form_start fired', {
+      formKey,
+      pageKey: PAGE_KEY
+    });
+    sendEvent({ EventType: 'form_start', FormKey: formKey });
+    if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
+      sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
+    }
+
+    return true;
   }
 
   installGlobalDiagnostics();
@@ -1483,6 +1504,7 @@
   window.legendFormTracking = {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,
+    trackStart: fireTrackedFormStartOnce,
   };
   function getAttribution() {
     const attribution = resolveCurrentSessionAttribution({}, getSessionId());

@@ -5339,7 +5339,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         </div>
     }
 
-    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey">
+    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
         @Html.AntiForgeryToken()
         @if (!string.IsNullOrWhiteSpace(agentSlug))
         {
@@ -5751,7 +5751,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                             <div class="lq-field">
                                                 <label for="Phone">Phone (optional)</label>
                                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
                                         <div class="full lq-field-help">@contactMethodHelperText</div>
@@ -6207,7 +6207,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <div class="lq-field-row two full">
                             <div class="lq-field">
                                 <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
-                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" />
+                                <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" required />
                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                             </div>
                             <div class="lq-field">
@@ -6225,7 +6225,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <div class="lq-field">
                                 <label for="Phone">Phone (optional)</label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                             </div>
                         </div>
                         <div class="full lq-field-help">@contactMethodHelperText</div>
@@ -6404,6 +6404,23 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
   const firstQuestionElement = document.getElementById(firstDiscoveryQuestionId);
   const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
+  const metaSignalApi = metaSignal && typeof metaSignal === 'object'
+    ? new Proxy(metaSignal, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, receiver);
+          if (typeof value !== 'function') {
+            return value;
+          }
+
+          return (...args) => Promise.resolve()
+            .then(() => value.apply(target, args))
+            .catch((error) => {
+              console.warn(`[LifeQuote] meta signal ${String(prop)} failed`, error);
+              return null;
+            });
+        }
+      })
+    : null;
   const AGE_RANGE_TO_NUMERIC = Object.freeze(@Html.Raw(ageRangeToNumericJson));
   const AGE_MIN = @minSelectableAge;
   const AGE_MAX = @maxSelectableAge;
@@ -6445,6 +6462,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let firstQuestionViewTracked = false;
   let firstQuestionAnsweredTracked = false;
   let contactStepViewTracked = false;
+
+  function safeTrackingCall(label, factory) {
+    try {
+      return Promise.resolve(factory()).catch((error) => {
+        console.warn(`[LifeQuote] ${label} failed`, error);
+        return null;
+      });
+    } catch (error) {
+      console.warn(`[LifeQuote] ${label} failed`, error);
+      return Promise.resolve(null);
+    }
+  }
 
   if (stateSelect?.dataset.selected) {
     stateSelect.value = stateSelect.dataset.selected;
@@ -6845,7 +6874,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let quoteStartTracked = false;
 
   function trackQuoteStart(metadata = {}) {
-    return window.legendTrack?.({
+    return safeTrackingCall(`track:${startEvent}`, () => window.legendTrack?.({
       EventType: startEvent,
       FormKey: pageKey,
       PageKey: pageKey,
@@ -6859,7 +6888,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
       })
-    }) ?? Promise.resolve();
+    }) ?? null);
   }
 
   function ensureQuoteStartTracked(metadata = {}) {
@@ -6868,21 +6897,23 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     quoteStartTracked = true;
-    if (!tracksContactFirstFlow) {
-      return trackQuoteStart(metadata);
-    }
+    const startTasks = [
+      safeTrackingCall('form_start', () => window.legendFormTracking?.trackStart?.(form.dataset.formKey || pageKey) ?? null),
+      trackQuoteStart(metadata)
+    ];
 
-    return Promise.allSettled([
-      trackQuoteStart(metadata),
-      trackEvent('life_contact_first_start', {
+    if (tracksContactFirstFlow) {
+      startTasks.push(trackEvent('life_contact_first_start', {
         variantFlow: pageVariant,
         ...metadata
-      })
-    ]).then(() => undefined);
+      }));
+    }
+
+    return Promise.allSettled(startTasks).then(() => undefined);
   }
 
   function trackEvent(eventType, metadata = {}) {
-    return window.legendTrack?.({
+    return safeTrackingCall(`track:${eventType}`, () => window.legendTrack?.({
       EventType: eventType,
       PageKey: pageKey,
       Offer: '@cfg.OfferKey',
@@ -6895,7 +6926,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
       })
-    }) ?? Promise.resolve();
+    }) ?? null);
   }
 
   function trackPrimaryCtaSeenOnce(placement) {
@@ -6945,7 +6976,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
-    return window.legendTrack?.({
+    return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.legendTrack?.({
       EventType: 'form_submit',
       FormKey: pageKey,
       PageKey: pageKey,
@@ -6960,7 +6991,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
       })
-    }) ?? Promise.resolve();
+    }) ?? null);
   }
 
   function trackQuoteStepComplete(stepName, metadata = {}) {
@@ -7154,11 +7185,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   async function ensureMetaLeadFormStart(extra = {}) {
-    if (!metaSignal?.trackLeadFormStart) {
+    if (!metaSignalApi?.trackLeadFormStart) {
       return null;
     }
 
-    return metaSignal.trackLeadFormStart(buildMetaProgressMetadata(extra));
+    return metaSignalApi.trackLeadFormStart(buildMetaProgressMetadata(extra));
   }
 
   function canRenderEstimateSummary(preview) {
@@ -7321,10 +7352,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
   function trackQuoteFieldError(name, errorType, fieldContext) {
     const trackedFieldName = resolveTrackedFieldName(name);
-    window.legendFormTracking?.trackFieldError(formTrackingKey, trackedFieldName, errorType, '@cfg.OfferKey');
+    if (window.legendFormTracking?.trackFieldError) {
+      void safeTrackingCall(`field_error:${trackedFieldName}`, () => window.legendFormTracking.trackFieldError(formTrackingKey, trackedFieldName, errorType, '@cfg.OfferKey'));
+    }
 
     if (!window.legendFormTracking && typeof window.legendTrack === 'function') {
-      window.legendTrack({
+      void safeTrackingCall(`field_error:${trackedFieldName}`, () => window.legendTrack({
         EventType: 'form_field_error',
         FormKey: formTrackingKey,
         FieldName: trackedFieldName,
@@ -7334,13 +7367,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
           pageVariant,
           pageMode,
         }),
-      });
+      }));
     }
   }
 
   function clearQuoteFieldError(name) {
     const trackedFieldName = resolveTrackedFieldName(name);
-    window.legendFormTracking?.clearFieldError(formTrackingKey, trackedFieldName);
+    try {
+      window.legendFormTracking?.clearFieldError(formTrackingKey, trackedFieldName);
+    } catch (error) {
+      console.warn(`[LifeQuote] clear field error failed for ${trackedFieldName}`, error);
+    }
   }
 
   function showChoiceError(errorId, show) {
@@ -7440,7 +7477,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       if (error) {
         setFieldError(name, error);
         trackQuoteFieldError(name, resolveContactErrorType(name, error), 'contact');
-        metaSignal?.trackFieldError(name, { fieldContext: 'contact' });
+        metaSignalApi?.trackFieldError(name, { fieldContext: 'contact' });
         if (name === 'ContactMethod') {
           firstInvalid ??= form.querySelector('[name="Email"]') || form.querySelector('[name="Phone"]');
         } else {
@@ -7455,7 +7492,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (optionalEmailError) {
       setFieldError('Email', optionalEmailError);
       trackQuoteFieldError('Email', resolveContactErrorType('Email', optionalEmailError), 'contact');
-      metaSignal?.trackFieldError('Email', { fieldContext: 'contact' });
+      metaSignalApi?.trackFieldError('Email', { fieldContext: 'contact' });
       firstInvalid ??= form.querySelector('[name="Email"]');
     } else {
       clearFieldError('Email');
@@ -7465,7 +7502,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (consentError) {
       setFieldError('MarketingEmailConsent', consentError);
       trackQuoteFieldError('MarketingEmailConsent', resolveContactErrorType('MarketingEmailConsent', consentError), 'contact');
-      metaSignal?.trackFieldError('MarketingEmailConsent', { fieldContext: 'contact' });
+      metaSignalApi?.trackFieldError('MarketingEmailConsent', { fieldContext: 'contact' });
       firstInvalid ??= consentCheckbox;
     } else {
       clearFieldError('MarketingEmailConsent');
@@ -7993,11 +8030,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       placement: 'contact_step'
     });
     await ensureMetaLeadFormStart();
-    metaSignal?.trackRecommendationViewed(buildMetaProgressMetadata({
+    metaSignalApi?.trackRecommendationViewed(buildMetaProgressMetadata({
       recommendationPrimaryKey: trackingPayload.recommendationPrimaryKey,
       recommendationSecondaryKey: trackingPayload.recommendationSecondaryKey
     }));
-    metaSignal?.trackStepComplete(2, 'recommendation_complete', {
+    metaSignalApi?.trackStepComplete(2, 'recommendation_complete', {
       ...buildMetaProgressMetadata(),
       recommendationPrimaryKey: trackingPayload.recommendationPrimaryKey,
       recommendationSecondaryKey: trackingPayload.recommendationSecondaryKey
@@ -8062,7 +8099,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       });
       trackEvent('life_step2_view', { handoffType: hasAgentTrustProfile ? 'agent' : 'generic' });
       await ensureMetaLeadFormStart();
-      metaSignal?.trackContactStepReached(buildMetaProgressMetadata({
+      metaSignalApi?.trackContactStepReached(buildMetaProgressMetadata({
         handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
       }));
     }
@@ -8105,7 +8142,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       const trackedFieldName = fieldName === 'Age' ? 'AgeBracket' : fieldName;
       const stepIndex = discoveryStepIndexes[fieldName] ?? 0;
       trackQuoteFieldError(trackedFieldName, 'required_missing', 'discovery');
-      metaSignal?.trackFieldError(trackedFieldName, { fieldContext: 'discovery' });
+      metaSignalApi?.trackFieldError(trackedFieldName, { fieldContext: 'discovery' });
       showStep1(stepIndex, true);
       getDiscoveryFieldFocusTarget(fieldName)?.focus();
       return false;
@@ -8211,7 +8248,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
   });
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
-    metaSignal?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[Math.max(0, ageStepIndex - 1)] || 'previous' });
+    metaSignalApi?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[Math.max(0, ageStepIndex - 1)] || 'previous' });
     showStep1(Math.max(0, ageStepIndex - 1), true);
   });
   ageStepContinueBtn?.addEventListener('click', () => {
@@ -8219,7 +8256,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     syncStepOneAnswersFromUI();
     if (!validateAgeOnly()) {
       trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
-      metaSignal?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
+      metaSignalApi?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
       form.querySelector('[data-age-slider]')?.focus();
       return;
     }
@@ -8239,7 +8276,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     showMicroStep(tobaccoStepIndex, true);
   });
   tobaccoStepBackBtn?.addEventListener('click', () => {
-    metaSignal?.trackBacktrack({ fromStep: 'tobacco', toStep: 'age' });
+    metaSignalApi?.trackBacktrack({ fromStep: 'tobacco', toStep: 'age' });
     showStep1(Math.max(0, tobaccoStepIndex - 1), true);
   });
 
@@ -8309,7 +8346,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      metaSignal?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${btn.getAttribute('data-step1-back') || '0'}` });
+      metaSignalApi?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${btn.getAttribute('data-step1-back') || '0'}` });
       const target = Number.parseInt(btn.getAttribute('data-step1-back') || '0', 10);
       showMicroStep(Number.isFinite(target) ? target : 0, true);
     });
@@ -8337,17 +8374,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
-    if (metaSignal?.trackDiscoveryComplete) {
-      metaSignal.trackDiscoveryComplete(buildMetaProgressMetadata());
+    if (metaSignalApi?.trackDiscoveryComplete) {
+      metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
     } else {
-      metaSignal?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
+      metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
     }
     showProcessingBridge(true);
   });
 
   step2BackBtn?.addEventListener('click', () => {
     trackEvent('life_step2_back');
-    metaSignal?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
+    metaSignalApi?.trackBacktrack({ fromStep: 'contact', toStep: 'discovery' });
     showStep1(Math.max(0, discoveryStepSequence.length - 1), true);
   });
 
@@ -8439,7 +8476,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       recommendationPrimaryKey: estimatePreview?.primary?.policyKey || recPrimaryKeyEl?.value || '',
       recommendationSecondaryKey: estimatePreview?.secondary?.policyKey || recSecondaryKeyEl?.value || ''
     });
-    metaSignal?.trackSubmitAttempt(buildMetaProgressMetadata({
+    metaSignalApi?.trackSubmitAttempt(buildMetaProgressMetadata({
       requiredContactFieldsComplete: true,
       contactStepReached: true
     }));
@@ -8450,7 +8487,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       const responseBody = await res.json().catch(() => ({}));
       const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
-      metaSignal?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
+      metaSignalApi?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
       form._trackSubmitSuccess?.();
       if (tracksContactFirstFlow) {
         await flushContactFirstSuccessTracking(leadId, metaLeadEventId);
