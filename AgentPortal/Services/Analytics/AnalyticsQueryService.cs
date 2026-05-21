@@ -321,6 +321,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         IsQuoteSuccessEvent(e) &&
         (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
 
+    private static bool IsCtaMetricEvent(AnalyticsEvent e) =>
+        AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "cta_click");
+
+    private static bool IsQuoteCtaIntentEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return IsCtaMetricEvent(e) ||
+               string.Equals(e.EventType, "quote_click", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsQuoteSubmitAttempt(AnalyticsEvent e)
     {
         var inQuoteScope =
@@ -378,14 +390,22 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") ||
                (AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete") &&
                 (e.EventType == "life_step1_protecting_select" ||
+                 e.EventType == "protecting_who_completed" ||
+                 e.EventType == "goal_completed" ||
                  e.EventType == "life_step1_coverage_select" ||
                  e.EventType == "life_step1_tobacco_select" ||
+                 e.EventType == "tobacco_completed" ||
+                 e.EventType == "tobaccouse_completed" ||
+                 e.EventType == "age_completed" ||
                  e.EventType == "step1_age_entered"));
     }
 
     private static bool IsQuoteDiscoveryCompleteEvent(AnalyticsEvent e)
     {
-        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "discovery_complete");
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "discovery_complete") ||
+               e.EventType == "age_completed" ||
+               e.EventType == "tobacco_completed" ||
+               e.EventType == "tobaccouse_completed";
     }
 
     private static bool IsQuoteRecommendationViewedEvent(AnalyticsEvent e)
@@ -404,45 +424,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        return e.EventType == "lead_form_start" ||
-               e.EventType == "life_general_form_start" ||
-               e.EventType == "life_term_form_start" ||
-               e.EventType == "life_whole_form_start" ||
-               e.EventType == "life_finalexpense_form_start" ||
-               e.EventType == "life_mp_form_start" ||
-               e.EventType == "life_iul_form_start" ||
-               e.EventType == "life_contact_first_view" ||
-               e.EventType == "life_contact_first_start" ||
-               e.EventType == "disability_quote_step1_view" ||
-               e.EventType == "quote_landing_view" ||
-               (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)) ||
-               IsQuoteEarlyDiscoveryInteractionEvent(e) ||
-               IsQuoteDiscoveryCompleteEvent(e) ||
-               IsQuoteRecommendationViewedEvent(e) ||
-               IsQuoteContactStepReachedEvent(e) ||
-               IsQuoteSubmitAttempt(e) ||
-               IsQuoteSuccessEvent(e);
+        // Funnel starts must come from intentional entry signals only. Later-stage progress,
+        // recommendation/contact views, submit attempts, and success aliases are counted in
+        // their own stages so they cannot backfill the funnel-start denominator.
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start");
     }
 
     private static bool IsQuoteExplicitStartSignalEvent(AnalyticsEvent e)
     {
-        if (!IsQuoteScopeEvent(e))
-            return false;
-
-        return e.EventType == "lead_form_start" ||
-               e.EventType == "life_general_form_start" ||
-               e.EventType == "life_term_form_start" ||
-               e.EventType == "life_whole_form_start" ||
-               e.EventType == "life_finalexpense_form_start" ||
-               e.EventType == "life_mp_form_start" ||
-               e.EventType == "life_iul_form_start" ||
-               e.EventType == "life_contact_first_view" ||
-               e.EventType == "life_contact_first_start" ||
-               e.EventType == "disability_quote_step1_view" ||
-               e.EventType == "quote_landing_view" ||
-               (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)) ||
-               IsQuoteEarlyDiscoveryInteractionEvent(e) ||
-               IsQuoteDiscoveryCompleteEvent(e);
+        return IsQuoteFunnelStartSignalEvent(e);
     }
 
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
@@ -550,6 +540,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         "website_lead_submitted" => 3,
         "lead_form_submit_success" => 2,
+        "form_submit_success" => 2,
         "form_submit" => 1,
         _ => 0
     };
@@ -569,8 +560,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static int CountQuoteIntentStarts(IEnumerable<AnalyticsEvent> events)
     {
         return CountDistinctUnits(events, e =>
-            e.EventType == "quote_click" ||
-            e.EventType == "quote_cta_click" ||
+            IsQuoteCtaIntentEvent(e) ||
             IsQuoteFunnelStartSignalEvent(e));
     }
 
@@ -595,6 +585,30 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         EventAttributionSnapshot Attribution,
         TrafficType TrafficType,
         string ResolutionSource);
+
+    private static int CountByReportingBucket(
+        IReadOnlyDictionary<TrafficType, int> counts,
+        TrafficType bucket) =>
+        counts.TryGetValue(bucket, out var count) ? count : 0;
+
+    private static IReadOnlyDictionary<TrafficType, int> CountDistinctUnitsByReportingBucket(
+        IEnumerable<AttributedEventRow> rows,
+        Func<AnalyticsEvent, bool> predicate)
+    {
+        return rows
+            .Where(r => predicate(r.Event))
+            .GroupBy(r => BuildInteractionUnitKey(r.Event), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderBy(r => r.Event.EventUtc).First())
+            .GroupBy(r => TrafficAttribution.ToReportingBucket(r.TrafficType))
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
+
+    private static IReadOnlyDictionary<TrafficType, int> CountSessionsByReportingBucket(IEnumerable<AttributedEventRow> sessionRows)
+    {
+        return sessionRows
+            .GroupBy(r => TrafficAttribution.ToReportingBucket(r.TrafficType))
+            .ToDictionary(g => g.Key, g => g.Count());
+    }
 
     private static string? NormalizeAttributionToken(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -854,9 +868,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType.Direct => "Direct",
             TrafficType.Organic => "Organic",
             TrafficType.Referral => "Referral",
-            TrafficType.Internal => "Internal",
-            TrafficType.Test => "Test / QA",
-            TrafficType.BotSuspicious => "Bot / Suspicious",
+            TrafficType.Internal => "Unknown",
+            TrafficType.Test => "Unknown",
+            TrafficType.BotSuspicious => "Unknown",
             TrafficType.PaidAds => "Paid (Unattributed)",
             _ => "Unknown"
         };
@@ -1260,7 +1274,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     .FirstOrDefault()
                 ?? g.Where(r => HasAttributionSignal(r.Attribution))
                     .OrderBy(r => r.Event.EventUtc)
-                    .FirstOrDefault())
+                    .FirstOrDefault()
+                ?? g.Where(r => r.Event.EventType == "page_view")
+                    .OrderBy(r => r.Event.EventUtc)
+                    .FirstOrDefault()
+                ?? g.OrderBy(r => r.Event.EventUtc).FirstOrDefault())
             .Where(r => r != null)
             .Select(r => r!)
             .ToList();
@@ -1329,7 +1347,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(g => g.Key)
             .FirstOrDefault();
 
-        var topCta = events.Where(e => e.EventType == "cta_click")
+        var topCta = events.Where(IsCtaMetricEvent)
             .GroupBy(e => e.ElementKey ?? "unknown")
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
@@ -1398,10 +1416,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
-        var attributedRows = BuildAttributedEventRows(allEvents);
-        attributedRows = FilterAttributedRowsByTraffic(attributedRows, trafficType);
+        var allAttributedRows = BuildAttributedEventRows(allEvents);
+        var attributedRows = FilterAttributedRowsByTraffic(allAttributedRows, trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
         var sessionAttributionRows = BuildSessionAttributionRows(attributedRows);
+        var allSessionAttributionRows = BuildSessionAttributionRows(allAttributedRows);
+        var sessionBucketCounts = CountSessionsByReportingBucket(allSessionAttributionRows);
         var topAttributionRows = sessionAttributionRows.Count > 0 ? sessionAttributionRows : attributedRows;
 
         var traffic = new TrafficOverviewDto
@@ -1415,7 +1435,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .Take(10)
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
                 .ToList(),
-            TopCtas = events.Where(e => e.EventType == "cta_click")
+            TopCtas = events.Where(IsCtaMetricEvent)
                 .GroupBy(e => e.ElementKey ?? "unknown")
                 .OrderByDescending(g => g.Count())
                 .Take(10)
@@ -1434,7 +1454,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .OrderByDescending(g => g.Count())
                 .Take(10)
                 .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() })
-                .ToList()
+                .ToList(),
+            PaidSessionCount = CountByReportingBucket(sessionBucketCounts, TrafficType.PaidAds),
+            NonPaidSessionCount = CountByReportingBucket(sessionBucketCounts, TrafficType.NonPaid),
+            UnknownSessionCount = CountByReportingBucket(sessionBucketCounts, TrafficType.Unknown)
         };
 
         // Entry pages: first page_view per session within range
@@ -1496,7 +1519,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .GroupBy(e => e.PageKey ?? "unknown")
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var ctas = events.Where(e => e.EventType == "cta_click")
+        var ctas = events.Where(IsCtaMetricEvent)
             .GroupBy(e => e.PageKey ?? "unknown")
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -1533,7 +1556,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var events = attributedRows
-            .Where(r => r.Event.EventType == "cta_click")
+            .Where(r => IsCtaMetricEvent(r.Event))
             .Select(r => r.Event)
             .ToList();
         var leads = trafficType == TrafficType.All
@@ -1573,12 +1596,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
-        var attributedRows = BuildAttributedEventRows(allEvents);
-        attributedRows = FilterAttributedRowsByTraffic(attributedRows, trafficType);
+        var allAttributedRows = BuildAttributedEventRows(allEvents);
+        var attributedRows = FilterAttributedRowsByTraffic(allAttributedRows, trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
         var leads = trafficType == TrafficType.All
             ? allLeads
             : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+        var startBucketCounts = CountDistinctUnitsByReportingBucket(
+            allAttributedRows,
+            e => IsQuoteCtaIntentEvent(e) || IsQuoteFunnelStartSignalEvent(e));
 
         int starts = CountQuoteIntentStarts(events);
         int formStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
@@ -1587,7 +1613,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var byType = events
             .Where(e =>
-                e.EventType == "quote_click" ||
+                IsQuoteCtaIntentEvent(e) ||
                 IsQuoteFunnelStartSignalEvent(e))
             .Select(e => new
             {
@@ -1608,14 +1634,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         {
             new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "primary_cta_seen", Label = "Primary CTA Seen", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "primary_cta_seen") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, e => IsQuoteScopeEvent(e) && (e.EventType == "quote_click" || e.EventType == "quote_cta_click" || e.EventType == "cta_click")) },
+            new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, IsQuoteCtaIntentEvent) },
             new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
             new() { StageKey = "first_question_viewed", Label = "First Question Viewed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_view") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "first_question_answered", Label = "First Question Answered", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select") },
-            new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select") },
-            new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue") },
-            new() { StageKey = "processing_viewed", Label = "Processing Bridge Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_processing_bridge_view") },
+            new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select" || e.EventType == "protecting_who_completed") },
+            new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select" || e.EventType == "goal_completed") },
+            new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue" || e.EventType == "age_completed") },
+            new() { StageKey = "processing_viewed", Label = "Processing Bridge Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_processing_bridge_view" || e.EventType == "processing_bridge_viewed") },
             new() { StageKey = "recommendation_viewed", Label = "Recommendation Generated / Viewed", Count = CountDistinctUnits(events, IsQuoteRecommendationViewedEvent) },
             new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = CountDistinctUnits(events, IsQuoteContactStepReachedEvent) },
             new() { StageKey = "submit_attempted", Label = "Submit Attempted", Count = submitAttempts },
@@ -1632,6 +1658,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             StageMetrics = stageMetrics,
             RangeLabel = range.Label,
             TrafficType = trafficType,
+            PaidStartCount = CountByReportingBucket(startBucketCounts, TrafficType.PaidAds),
+            NonPaidStartCount = CountByReportingBucket(startBucketCounts, TrafficType.NonPaid),
+            UnknownStartCount = CountByReportingBucket(startBucketCounts, TrafficType.Unknown),
             DropOffStartsToFormStarts = starts > 0
                 ? Math.Round(ClampPercent((decimal)(starts - formStarts) / starts * 100), 2)
                 : null,
@@ -1988,8 +2017,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToDictionary(
                 g => g.Key,
                 g => CountDistinctUnits(g.Select(x => x.Event), e =>
-                    e.EventType == "quote_click" ||
-                    (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey))),
+                    IsQuoteCtaIntentEvent(e) ||
+                    IsQuoteFunnelStartSignalEvent(e)),
                 StringComparer.OrdinalIgnoreCase);
 
         var leadsByAgent = leads
@@ -2191,7 +2220,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var pvList = events.Where(e => e.EventType == "page_view").ToList();
         var pageKeys = pvList.Select(e => e.PageKey ?? "unknown").Distinct().ToList();
 
-        var ctaByPage = events.Where(e => e.EventType == "cta_click")
+        var ctaByPage = events.Where(IsCtaMetricEvent)
             .GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         var fsByPage = events.Where(e => e.EventType == "form_start")
             .GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());

@@ -138,7 +138,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
-    public async Task GetQuoteFunnelAsync_TrafficFilters_NonPaidExcludesUnknown()
+    public async Task GetQuoteFunnelAsync_TrafficFilters_ExposeUnknownSeparately_AndRemainExhaustive()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -175,6 +175,70 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal((3, 3, 2), (all.QuoteStarts, all.QuoteFormStarts, all.QuoteFormSubmits));
         Assert.Equal((1, 1, 1), (paid.QuoteStarts, paid.QuoteFormStarts, paid.QuoteFormSubmits));
         Assert.Equal((1, 1, 0), (nonPaid.QuoteStarts, nonPaid.QuoteFormStarts, nonPaid.QuoteFormSubmits));
+        Assert.Equal(1, all.PaidStartCount);
+        Assert.Equal(1, all.NonPaidStartCount);
+        Assert.Equal(1, all.UnknownStartCount);
+        Assert.Equal(all.QuoteStarts, all.PaidStartCount + all.NonPaidStartCount + all.UnknownStartCount);
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_FunnelStarted_OnlyCountsIntentionalEntrySignals()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("quote_click", now.AddMinutes(-30), "cta-only", quoteType: "life"),
+            E("first_question_view", now.AddMinutes(-29), "real-start", formKey: "quote_life_form", quoteType: "life"),
+            E("estimate_results_viewed", now.AddMinutes(-28), "late-stage-1", formKey: "quote_life_form", quoteType: "life"),
+            E("contact_step_view", now.AddMinutes(-27), "late-stage-2", formKey: "quote_life_form", quoteType: "life"),
+            E("lead_form_submit_success", now.AddMinutes(-26), "late-stage-3", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(2, dto.QuoteStarts);
+        Assert.Equal(1, dto.QuoteFormStarts);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "server_confirmed_leads" && metric.Count == 1);
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_AliasEvents_MapIntoCanonicalStages()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("cta_clicked", now.AddMinutes(-20), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("funnel_started", now.AddMinutes(-19), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("first_question_view", now.AddMinutes(-18), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("first_question_answered", now.AddMinutes(-17), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("protecting_who_completed", now.AddMinutes(-16), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("goal_completed", now.AddMinutes(-15), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("age_completed", now.AddMinutes(-14), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("processing_bridge_viewed", now.AddMinutes(-13), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("recommendation_viewed", now.AddMinutes(-12), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("contact_step_viewed", now.AddMinutes(-11), "alias-1", formKey: "quote_life_form", quoteType: "life"),
+            E("form_submit_success", now.AddMinutes(-10), "alias-1", formKey: "quote_life_form", quoteType: "life"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal((1, 1, 1), (dto.QuoteStarts, dto.QuoteFormStarts, dto.QuoteFormSubmits));
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "cta_clicked" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "protecting_who_completed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "goal_completed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "age_completed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "processing_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "server_confirmed_leads" && metric.Count == 1);
     }
 
     [Fact]
@@ -237,6 +301,27 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var topCampaign = Assert.Single(traffic.TopCampaigns.Take(1));
         Assert.Equal(activeCampaignId, topCampaign.Key);
         Assert.Equal(2, topCampaign.Count);
+    }
+
+    [Fact]
+    public async Task GetTrafficAsync_ReportsUnknownSessionsSeparately()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("page_view", now.AddMinutes(-10), "paid-1", quoteType: "life", utmMedium: "cpc", utmSource: "facebook"),
+            E("page_view", now.AddMinutes(-9), "organic-1", quoteType: "life", utmMedium: "organic", utmSource: "google"),
+            E("page_view", now.AddMinutes(-8), "unknown-1", quoteType: "life"),
+            E("page_view", now.AddMinutes(-7), "test-1", quoteType: "life", utmCampaign: "internal-preview"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var traffic = await service.GetTrafficAsync(BuildRange(now), ScopeContext.Global, TrafficType.All);
+
+        Assert.Equal(1, traffic.PaidSessionCount);
+        Assert.Equal(1, traffic.NonPaidSessionCount);
+        Assert.Equal(2, traffic.UnknownSessionCount);
     }
 
     [Fact]

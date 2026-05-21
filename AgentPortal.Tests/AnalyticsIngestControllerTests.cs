@@ -152,6 +152,22 @@ public class AnalyticsIngestControllerTests
     [Theory]
     [InlineData("first_question_view")]
     [InlineData("primary_cta_seen")]
+    [InlineData("cta_clicked")]
+    [InlineData("funnel_started")]
+    [InlineData("first_question_answered")]
+    [InlineData("protecting_who_completed")]
+    [InlineData("goal_completed")]
+    [InlineData("tobacco_completed")]
+    [InlineData("tobaccouse_completed")]
+    [InlineData("age_completed")]
+    [InlineData("processing_bridge_viewed")]
+    [InlineData("recommendation_generated")]
+    [InlineData("recommendation_viewed")]
+    [InlineData("contact_step_viewed")]
+    [InlineData("form_submit_attempt")]
+    [InlineData("form_submit_success")]
+    [InlineData("lead_form_submit_success")]
+    [InlineData("form_abandon")]
     public async Task Ingest_Accepts_CatalogedQuoteBrowserEvents(string eventType)
     {
         using var db = ControllerTestHelpers.BuildDb();

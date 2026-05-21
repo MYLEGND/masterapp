@@ -15,6 +15,9 @@ public sealed class TrafficOverviewDto
     public List<ActivityItemDto> RecentActivity { get; set; } = new();
     public List<KeyCountDto> TopSources { get; set; } = new();
     public List<KeyCountDto> TopCampaigns { get; set; } = new();
+    public int PaidSessionCount { get; set; }
+    public int NonPaidSessionCount { get; set; }
+    public int UnknownSessionCount { get; set; }
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; }
 }
@@ -66,6 +69,9 @@ public sealed class QuoteFunnelDto
     public int QuoteFormStarts { get; set; }
     public int QuoteSubmitAttempts { get; set; }
     public int QuoteFormSubmits { get; set; }
+    public int PaidStartCount { get; set; }
+    public int NonPaidStartCount { get; set; }
+    public int UnknownStartCount { get; set; }
     public List<KeyCountDto> ByQuoteType { get; set; } = new();
     public List<QuoteStageMetricRow> StageMetrics { get; set; } = new();
     public decimal? DropOffStartsToFormStarts { get; set; }

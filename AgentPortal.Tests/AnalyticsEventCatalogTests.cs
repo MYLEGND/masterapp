@@ -13,11 +13,13 @@ public class AnalyticsEventCatalogTests
 {
     private static readonly HashSet<string> NonAnalyticsEventLiterals = new(StringComparer.OrdinalIgnoreCase)
     {
-        "form_submit_success",
         "life_estimate_engine_unavailable",
         "life_funnel_start",
         "life_see_estimate",
+        "contact_viewed",
+        "funnel_start",
         "page_load",
+        "processing_viewed",
         "meta_tracking_initialized",
         "meta_capi_result",
         "successful_event",
@@ -73,6 +75,31 @@ public class AnalyticsEventCatalogTests
         {
             Assert.True(AnalyticsEventCatalog.TryGet(eventName, out var definition), $"Catalog missing required event '{eventName}'.");
             Assert.True(definition.AllowBrowser, $"Required event '{eventName}' must be browser-allowed.");
+        }
+    }
+
+    [Fact]
+    public void AnalyticsEventCatalog_QuoteFunnelAliasEvents_AreBrowserAllowed()
+    {
+        var aliasEvents = new[]
+        {
+            "cta_clicked",
+            "funnel_started",
+            "protecting_who_completed",
+            "goal_completed",
+            "tobacco_completed",
+            "tobaccouse_completed",
+            "age_completed",
+            "processing_bridge_viewed",
+            "recommendation_viewed",
+            "contact_step_viewed",
+            "form_submit_success"
+        };
+
+        foreach (var eventName in aliasEvents)
+        {
+            Assert.True(AnalyticsEventCatalog.TryGet(eventName, out var definition), $"Catalog missing alias event '{eventName}'.");
+            Assert.True(definition.AllowBrowser, $"Alias event '{eventName}' must remain browser-allowed.");
         }
     }
 
@@ -222,9 +249,15 @@ public class AnalyticsEventCatalogTests
             return false;
         }
 
-        if (value is "cta_click" or "quote_click" or "outbound_click" or "risk_assessment_click" or "page_view" or "thank_you_view")
+        if (value is "cta_click" or "cta_clicked" or "quote_click" or "outbound_click" or "risk_assessment_click" or "page_view" or "thank_you_view")
         {
             return true;
+        }
+
+        if (value.StartsWith("funnel_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_start", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_started", StringComparison.OrdinalIgnoreCase);
         }
 
         if (value.StartsWith("primary_", StringComparison.OrdinalIgnoreCase))
@@ -241,7 +274,8 @@ public class AnalyticsEventCatalogTests
 
         if (value.StartsWith("contact_", StringComparison.OrdinalIgnoreCase))
         {
-            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase);
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_viewed", StringComparison.OrdinalIgnoreCase);
         }
 
         if (value.StartsWith("quote_", StringComparison.OrdinalIgnoreCase))
@@ -273,6 +307,8 @@ public class AnalyticsEventCatalogTests
         }
 
         return
+               value.EndsWith("_completed", StringComparison.OrdinalIgnoreCase) ||
+               value.EndsWith("_viewed", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("estimate_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("form_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("lead_", StringComparison.OrdinalIgnoreCase) ||

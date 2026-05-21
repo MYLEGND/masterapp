@@ -298,33 +298,47 @@ namespace AgentPortal.Services.Analytics
 
         public static bool MatchesFilter(TrafficType rowType, TrafficType filter)
         {
+            var reportingBucket = ToReportingBucket(rowType);
+
             if (filter == TrafficType.All) return true;
-            if (filter == TrafficType.PaidAds) return rowType == TrafficType.PaidAds;
+            if (filter == TrafficType.PaidAds) return reportingBucket == TrafficType.PaidAds;
             if (filter == TrafficType.NonPaid)
             {
-                // NonPaid = Organic + Direct + Referral.
-                // Unknown/Internal/Test/Bot are intentionally excluded so we do not
-                // quietly blend ambiguous or diagnostic traffic into growth reporting.
-                return rowType == TrafficType.Organic
-                    || rowType == TrafficType.Direct
-                    || rowType == TrafficType.Referral;
+                return reportingBucket == TrafficType.NonPaid;
             }
+            if (filter == TrafficType.Unknown) return reportingBucket == TrafficType.Unknown;
             return rowType == filter;
         }
+
+        /// <summary>
+        /// Public dashboard reporting must be mutually exhaustive: every session resolves to
+        /// PaidAds, NonPaid, or Unknown. Internal/test/bot classes remain available as raw
+        /// diagnostics, but they roll into Unknown for operator-facing growth reporting so the
+        /// All Traffic bucket always equals PaidAds + NonPaid + Unknown.
+        /// </summary>
+        public static TrafficType ToReportingBucket(TrafficType rawType) => rawType switch
+        {
+            TrafficType.PaidAds => TrafficType.PaidAds,
+            TrafficType.NonPaid => TrafficType.NonPaid,
+            TrafficType.Organic => TrafficType.NonPaid,
+            TrafficType.Direct => TrafficType.NonPaid,
+            TrafficType.Referral => TrafficType.NonPaid,
+            _ => TrafficType.Unknown
+        };
 
         /// <summary>Human-readable label for a traffic filter, used in snapshot headers and diagnostics.</summary>
         public static string BucketLabel(TrafficType t) => t switch
         {
-            TrafficType.All      => "All Traffic (Paid + Non-Paid + Unknown + Internal/Test/Bot)",
+            TrafficType.All      => "All Traffic (Paid Ads + Non-Ads + Unknown)",
             TrafficType.PaidAds  => "Paid Ads Only",
-            TrafficType.NonPaid  => "Non-Ads Only (Organic + Referral + Direct)",
+            TrafficType.NonPaid  => "Non-Ads Only",
             TrafficType.Organic  => "Organic Only",
             TrafficType.Direct   => "Direct Only",
             TrafficType.Referral => "Referral Only",
             TrafficType.Internal => "Internal Navigation / Preview",
             TrafficType.Test => "Test / QA Traffic",
             TrafficType.BotSuspicious => "Bot / Suspicious Traffic",
-            TrafficType.Unknown  => "Unknown/Unattributed Only",
+            TrafficType.Unknown  => "Unknown / Unclassified Only",
             _                    => t.ToString()
         };
     }

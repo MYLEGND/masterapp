@@ -800,6 +800,11 @@
 
   // Drilldown renders
   function renderTraffic(data) {
+    const breakdown = formatAttributionBreakdown(
+      data?.paidSessionCount,
+      data?.nonPaidSessionCount,
+      data?.unknownSessionCount,
+      'session');
     renderTable('traffic-top-pages-body', data.topPages || [], [
       { key: 'key' },
       { key: 'count', align: 'text-end' }
@@ -814,7 +819,13 @@
       { key: 'pageKey' },
       { key: 'elementKey' }
     ]);
-    setText('traffic-range-label', data.rangeLabel || '');
+    setText('traffic-range-label', breakdown
+      ? `${data.rangeLabel || ''} · ${breakdown.replace('Attribution split: ', '')}`
+      : (data.rangeLabel || ''));
+    const trafficMeta = document.getElementById('mod-traffic-meta');
+    if (trafficMeta) {
+      trafficMeta.textContent = breakdown || 'Views, sessions, visitors · click to drill in';
+    }
     renderTable('traffic-top-sources-body', data.topSources || [], [
       { key: 'key' },
       { key: 'count', align: 'text-end' }
@@ -874,9 +885,37 @@
     setText('quote-form-submits', data.quoteFormSubmits);
     const drop = data.dropOffFormStartsToSubmits ?? (data.quoteFormStarts > 0 ? Math.round((1 - (data.quoteFormSubmits / data.quoteFormStarts)) * 100) : null);
     const meta = document.getElementById('mod-quote-meta');
-    if (meta && drop !== null) meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads`;
+    if (meta) {
+      const breakdown = formatAttributionBreakdown(
+        data?.paidStartCount,
+        data?.nonPaidStartCount,
+        data?.unknownStartCount,
+        'start');
+      if (drop !== null && breakdown) {
+        meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads · ${breakdown}`;
+      } else if (drop !== null) {
+        meta.textContent = `Drop-off: ${drop}% between form starts → confirmed leads`;
+      } else if (breakdown) {
+        meta.textContent = breakdown;
+      } else {
+        meta.textContent = 'Starts → form starts → submits';
+      }
+    }
     const meta2 = document.getElementById('quote-dropoff-starts');
-    if (meta2 && data.dropOffStartsToFormStarts != null) meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}%`;
+    if (meta2) {
+      const breakdown = formatAttributionBreakdown(
+        data?.paidStartCount,
+        data?.nonPaidStartCount,
+        data?.unknownStartCount,
+        'start');
+      if (data.dropOffStartsToFormStarts != null && breakdown) {
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${breakdown}`;
+      } else if (data.dropOffStartsToFormStarts != null) {
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}%`;
+      } else {
+        meta2.textContent = breakdown || '';
+      }
+    }
     renderTable('quote-stage-body', data.stageMetrics || [], [
       { key: 'label' },
       { key: 'count', align: 'text-end' }
@@ -1511,6 +1550,18 @@
     if (type === 'paid') return 'Ads Only';
     if (type === 'non_paid') return 'Non-Ads Only';
     return 'All Traffic';
+  }
+
+  function formatAttributionBreakdown(paidCount, nonPaidCount, unknownCount, noun) {
+    const paid = Number(paidCount ?? 0);
+    const nonPaid = Number(nonPaidCount ?? 0);
+    const unknown = Number(unknownCount ?? 0);
+    if (paid <= 0 && nonPaid <= 0 && unknown <= 0) {
+      return '';
+    }
+
+    const plural = (value) => Number(value) === 1 ? noun : `${noun}s`;
+    return `Attribution split: Paid ${paid} · Non-Ads ${nonPaid} · Unknown ${unknown} ${plural(unknown)}`;
   }
 
   function replaceElementWithTextBlock(element, text) {

@@ -78,4 +78,22 @@ public class TrafficAttributionTests
         Assert.True(TrafficAttribution.MatchesFilter(TrafficType.Direct, TrafficType.NonPaid));
         Assert.True(TrafficAttribution.MatchesFilter(TrafficType.Referral, TrafficType.NonPaid));
     }
+
+    [Fact]
+    public void ToReportingBucket_DiagnosticTrafficCollapsesIntoUnknown()
+    {
+        Assert.Equal(TrafficType.Unknown, TrafficAttribution.ToReportingBucket(TrafficType.Unknown));
+        Assert.Equal(TrafficType.Unknown, TrafficAttribution.ToReportingBucket(TrafficType.Internal));
+        Assert.Equal(TrafficType.Unknown, TrafficAttribution.ToReportingBucket(TrafficType.Test));
+        Assert.Equal(TrafficType.Unknown, TrafficAttribution.ToReportingBucket(TrafficType.BotSuspicious));
+    }
+
+    [Fact]
+    public void MatchesFilter_Unknown_IncludesDiagnosticTraffic()
+    {
+        Assert.True(TrafficAttribution.MatchesFilter(TrafficType.Unknown, TrafficType.Unknown));
+        Assert.True(TrafficAttribution.MatchesFilter(TrafficType.Internal, TrafficType.Unknown));
+        Assert.True(TrafficAttribution.MatchesFilter(TrafficType.Test, TrafficType.Unknown));
+        Assert.True(TrafficAttribution.MatchesFilter(TrafficType.BotSuspicious, TrafficType.Unknown));
+    }
 }
