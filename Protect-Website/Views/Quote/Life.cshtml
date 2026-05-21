@@ -503,18 +503,21 @@
         "iul" => "long-term protection goals, flexibility, and budget",
         _ => "coverage needs, family, and budget"
     };
-    var stepTwoContactTitleText = "Want help understanding your estimate?";
-    var stepTwoContactCopyText = $"Share your info and {agentDirectContactName} will walk through what may fit your {stepTwoContactFitDescriptor}. No obligation.";
-    var finalStepHeading = isContactFirstEducationVariant ? "Get your personal walkthrough" : "Want a personalized review?";
-    var finalStepHelper = isContactFirstEducationVariant
-        ? $"{agentDirectContactName} will walk through what may fit and answer your questions. No obligation."
-        : string.Empty;
+    var stepTwoContactKickerText = "Keep this estimate";
+    var contactMethodHelperText = "Email is best for a written copy. Add a phone only if you want text or call help too.";
+    var contactMethodErrorText = "Add an email or phone so we can keep your estimate connected to you.";
+    var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this estimate and the options tied to this request.";
+    var consentErrorText = "Please check the box so we can send your estimate and options.";
+    var stepTwoContactTitleText = "Where should we send your estimate?";
+    var stepTwoContactCopyText = contactMethodHelperText;
+    var finalStepHeading = "Your estimate is ready";
+    var finalStepHelper = "Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = isContactFirstEducationVariant
-        ? "I’ll walk through what may fit and answer your questions. No obligation."
-        : "I’ll review what you shared and explain what may fit.";
+        ? "I’ll help you make sense of the estimate and options without pressure."
+        : "I’ll help you make sense of the estimate and options without pressure.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
@@ -527,16 +530,14 @@
         "iul" => "See My IUL Estimate",
         _ => "See My Protection Estimate"
     };
-    var finalSubmitButtonText = isContactFirstEducationVariant
-        ? "Get My Personal Review"
-        : "Get My Personalized Review";
+    var finalSubmitButtonText = "Send My Estimate";
     var heroHeadline = isContactFirstEducationVariant
         ? "See what may help protect the people who depend on you most."
         : "See what protection options may fit your family’s needs.";
     var heroSubheadline = isContactFirstEducationVariant
-        ? "Life insurance can feel confusing. I’ll personally help you understand what may fit your situation. No pressure. No obligation."
-        : (isLandingView ? "Answer a few quick questions to review personalized options. No pressure. No obligation." : string.Empty);
-    var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Personalized" : "Quick • Private • No obligation";
+        ? "Life insurance can feel confusing. Answer a few quick questions and see what may fit before deciding whether you want help."
+        : (isLandingView ? "Answer a few quick questions to see what may fit and what the monthly range may look like. No pressure." : string.Empty);
+    var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Estimate first" : "Quick • Private • Estimate first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
         : "Zac Owen";
@@ -572,16 +573,16 @@
         contactFirstTrustInitials = "AG";
     }
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
-    var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a personalized life insurance review.";
+    var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Personal guidance";
-    var contactFirstProofText = "Answer 5 quick questions to see what may fit. See your estimate first.";
+    var contactFirstProofText = "Answer 5 quick questions to see what may fit. Keep the estimate and stay in control.";
     IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "You stay in control" };
-    var contactFirstProcessingHeading = "Preparing your estimated options...";
-    var contactFirstProcessingHelper = "You’ll see what may fit first.";
-    var contactFirstProcessingNote = "Building your estimate...";
+    var contactFirstProcessingHeading = "Getting your estimate...";
+    var contactFirstProcessingHelper = "A quick match is running now.";
+    var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
     var lowFrictionHeroHeadline = "See what kind of life coverage may fit your family.";
-    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll get a practical starting point before deciding whether you want a personal follow-up.";
+    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll see a practical starting point and monthly range without a sales detour.";
     var lowFrictionHeroCtaText = "See My Options";
     var lowFrictionHeroCtaNote = "Estimate first • No pressure • No obligation";
     IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate first", "No obligation" };
@@ -590,7 +591,7 @@
     var showCarrierReviewBeforeContact = false;
     var showPreContactEducationSummary = false;
     var productFocusTitle = "What this estimate is built around";
-    var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
+    var productFocusCopy = "This estimate stays centered on the type of coverage you came here to compare, so the next steps stay focused and relevant.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
     {
         ("Focused guidance", "See an estimate centered on the coverage conversation you actually came here for."),
@@ -605,13 +606,12 @@
         contactFirstProofKicker = "Whole life guidance";
         contactFirstProofText = "Answer 5 quick questions to explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "You stay in control" };
-        contactFirstProcessingHeading = "Preparing your whole life estimate...";
+        contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
-        contactFirstProcessingNote = "Building your whole life estimate...";
-        finalStepHeading = "Get your whole life walkthrough";
-        finalStepHelper = $"{agentDirectContactName} will walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
-        agentTrustBio = "I’ll walk through whole life fit, lifelong coverage, and cash value options. No obligation.";
-        finalSubmitButtonText = "Get My Whole Life Review";
+        contactFirstProcessingNote = "Sizing your whole life range...";
+        finalStepHelper = "Add the best contact method to keep this whole life estimate and the clearest next options. Help stays optional.";
+        agentTrustBio = "I’ll help you compare whole life options without pressure.";
+        finalSubmitButtonText = "Send My Whole Life Estimate";
         productFocusTitle = "Why people explore whole life";
         productFocusCopy = "Whole life is usually explored for lasting protection, steady guarantees, and long-term value growth that stays aligned with the same product path.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -628,13 +628,12 @@
         contactFirstProofKicker = "Term life guidance";
         contactFirstProofText = "Answer 5 quick questions to explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
         contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "You stay in control" };
-        contactFirstProcessingHeading = "Preparing your term life estimate...";
+        contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
-        contactFirstProcessingNote = "Building your term life estimate...";
-        finalStepHeading = "Get your term life walkthrough";
-        finalStepHelper = $"{agentDirectContactName} will walk through term life fit, affordability, and coverage term options. No obligation.";
-        agentTrustBio = "I’ll walk through term life fit, affordability, and coverage term options. No obligation.";
-        finalSubmitButtonText = "Get My Term Life Review";
+        contactFirstProcessingNote = "Sizing your term life range...";
+        finalStepHelper = "Add the best contact method to keep this term life estimate and the clearest next options. Help stays optional.";
+        agentTrustBio = "I’ll help you compare term life options without pressure.";
+        finalSubmitButtonText = "Send My Term Life Estimate";
         productFocusTitle = "Why people explore term life";
         productFocusCopy = "Term life is usually explored for affordable protection during the years income, bills, and family responsibilities matter most.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -651,13 +650,12 @@
         contactFirstProofKicker = "Final expense guidance";
         contactFirstProofText = "Answer 5 quick questions to explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
         contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "You stay in control" };
-        contactFirstProcessingHeading = "Preparing your final expense estimate...";
+        contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
-        contactFirstProcessingNote = "Building your final expense estimate...";
-        finalStepHeading = "Get your final expense walkthrough";
-        finalStepHelper = $"{agentDirectContactName} will walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
-        agentTrustBio = "I’ll walk through final expense fit, simple coverage options, and peace-of-mind planning. No obligation.";
-        finalSubmitButtonText = "Get My Final Expense Review";
+        contactFirstProcessingNote = "Sizing your final expense range...";
+        finalStepHelper = "Add the best contact method to keep this final expense estimate and the clearest next options. Help stays optional.";
+        agentTrustBio = "I’ll help you compare final expense options without pressure.";
+        finalSubmitButtonText = "Send My Final Expense Estimate";
         productFocusTitle = "Why people explore final expense";
         productFocusCopy = "Final expense coverage is usually explored to help with burial costs, honor personal wishes, and keep final bills from falling on loved ones.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -674,13 +672,12 @@
         contactFirstProofKicker = "Mortgage protection guidance";
         contactFirstProofText = "Answer 5 quick questions to explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
         contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "You stay in control" };
-        contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
+        contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
-        contactFirstProcessingNote = "Building your mortgage protection estimate...";
-        finalStepHeading = "Get your mortgage protection walkthrough";
-        finalStepHelper = $"{agentDirectContactName} will walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
-        agentTrustBio = "I’ll walk through mortgage protection fit, home coverage, and mortgage-balance options. No obligation.";
-        finalSubmitButtonText = "Get My Mortgage Review";
+        contactFirstProcessingNote = "Sizing your mortgage protection range...";
+        finalStepHelper = "Add the best contact method to keep this mortgage protection estimate and the clearest next options. Help stays optional.";
+        agentTrustBio = "I’ll help you compare mortgage protection options without pressure.";
+        finalSubmitButtonText = "Send My Mortgage Estimate";
         productFocusTitle = "Why people explore mortgage protection";
         productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -697,13 +694,12 @@
         contactFirstProofKicker = "IUL guidance";
         contactFirstProofText = "Answer 5 quick questions to explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "You stay in control" };
-        contactFirstProcessingHeading = "Preparing your IUL estimate...";
+        contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
-        contactFirstProcessingNote = "Building your IUL estimate...";
-        finalStepHeading = "Get your IUL walkthrough";
-        finalStepHelper = $"{agentDirectContactName} will walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
-        agentTrustBio = "I’ll walk through indexed universal life fit, cash value flexibility, and long-term legacy options. No obligation.";
-        finalSubmitButtonText = "Get My IUL Review";
+        contactFirstProcessingNote = "Sizing your IUL range...";
+        finalStepHelper = "Add the best contact method to keep this IUL estimate and the clearest next options. Help stays optional.";
+        agentTrustBio = "I’ll help you compare IUL options without pressure.";
+        finalSubmitButtonText = "Send My IUL Estimate";
         productFocusTitle = "Why people explore indexed universal life";
         productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with flexible cash value growth potential and legacy planning in the same conversation.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -716,19 +712,19 @@
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         stepOneContinueButtonText = "See What May Fit";
-        finalSubmitButtonText = "Send My Personalized Review";
-        finalStepHeading = "Where should I follow up with your personalized review?";
-        finalStepHelper = "No pressure. You decide what happens next.";
-        stepTwoContactTitleText = "Where should I follow up with your options?";
-        stepTwoContactCopyText = $"Share the best number and {agentDirectContactName} can walk through what may fit. Email is optional if you'd like a written copy too.";
+        finalSubmitButtonText = "Send My Estimate";
+        finalStepHeading = "Your estimate is ready";
+        finalStepHelper = "Add the best contact method to keep this estimate and the clearest next options. Help stays optional.";
+        stepTwoContactTitleText = "Where should we send your estimate?";
+        stepTwoContactCopyText = contactMethodHelperText;
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "Estimate first • No pressure • No obligation";
         contactFirstProofKicker = "Quick options review";
-        contactFirstProofText = "You’ll see a practical starting point before deciding whether you want personal help comparing options.";
+        contactFirstProofText = "You’ll see a practical starting point and monthly range before deciding whether you want anything else.";
         contactFirstProofChips = new List<string> { "5 quick questions", "Estimate first", "You stay in control" };
-        contactFirstProcessingHeading = "Putting together your starting options...";
-        contactFirstProcessingHelper = "You’ll see a practical place to start first.";
+        contactFirstProcessingHeading = "Getting your estimate...";
+        contactFirstProcessingHelper = "A practical starting point is loading now.";
         contactFirstProcessingNote = "Sizing your likely fit...";
         productFocusTitle = "What your result may compare first";
         productFocusCopy = "Most people exploring general life insurance are really comparing which starting point may fit best before they talk with someone.";
@@ -736,14 +732,9 @@
         {
             ("A likely starting point", "See which coverage path may fit best based on what matters most to you right now."),
             ("A realistic range", "Review a practical starting monthly estimate without pretending it is a final underwriting offer."),
-            ("Low-pressure next step", "Only share contact info if you want help interpreting what may fit.")
+            ("Low-pressure next step", "Keep the result first, then decide later if you want help comparing options.")
         };
     }
-    stepTwoContactTitleText = "Want help reviewing whether this actually fits?";
-    stepTwoContactCopyText = "We’ll walk through what influenced the estimate and what may be worth comparing next.";
-    finalStepHeading = "Your estimate is ready";
-    finalStepHelper = "You already have an estimated monthly range and a practical starting coverage range.";
-    finalSubmitButtonText = "Get My Personal Review";
 
     var contactFirstBridgeText = normalizedOfferKey switch
     {
@@ -767,9 +758,23 @@
         step1IntroTitle = "Start with 5 quick questions";
         step1IntroHelper = "Answer 5 quick questions to see what may fit and your starting estimate.";
     }
-    var requiredContactFieldNames = isContactFirstEducationVariant
-        ? new[] { "FirstName", "LastName", "Phone" }
-        : new[] { "FirstName", "Phone" };
+    IReadOnlyList<(string Label, int Value, string RangeLabel)> ageQuickSelectOptions = isFinalExpenseOffer
+        ? new List<(string Label, int Value, string RangeLabel)>
+        {
+            ("45-54", 50, "45-54"),
+            ("55-64", 60, "55-64"),
+            ("65-74", 70, "65-74"),
+            ("75+", 78, "75+")
+        }
+        : new List<(string Label, int Value, string RangeLabel)>
+        {
+            ("18-24", 22, "18-24"),
+            ("25-34", 30, "25-34"),
+            ("35-44", 40, "35-44"),
+            ("45-54", 50, "45-54"),
+            ("55+", 60, "55+")
+        };
+    var requiredContactFieldNames = new[] { "FirstName", "ContactMethod" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
     {
