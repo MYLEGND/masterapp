@@ -218,20 +218,45 @@ public class AnalyticsEventCatalogTests
             return true;
         }
 
-        return value.StartsWith("quote_", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("life_", StringComparison.OrdinalIgnoreCase) ||
+        if (value.StartsWith("quote_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_click", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_complete", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("life_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_start", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_submit", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_select", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_continue", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_complete", StringComparison.OrdinalIgnoreCase) ||
+                   value.EndsWith("_back", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("meta_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.StartsWith("meta_browser_event_", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("disability_", StringComparison.OrdinalIgnoreCase))
+        {
+            return value.EndsWith("_view", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return
                value.StartsWith("estimate_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("form_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("lead_", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("meta_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("capi_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("workstation_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("page_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("scroll_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("results_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("client_", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("carrier_", StringComparison.OrdinalIgnoreCase) ||
-               value.StartsWith("disability_", StringComparison.OrdinalIgnoreCase);
+               value.StartsWith("carrier_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")
