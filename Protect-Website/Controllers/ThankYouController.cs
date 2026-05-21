@@ -3,6 +3,7 @@ using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Protect_Website.Models;
+using ProtectWebsite.Services;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Shared.Meta;
@@ -123,6 +124,32 @@ namespace Protect_Website.Controllers
 
             try
             {
+                var analyticsMetadata = new
+                {
+                    LeadId = lead.LeadId,
+                    EventId = request.EventId.Trim(),
+                    Status = normalizedStatus,
+                    Note = normalizedNote,
+                    Route = "/ThankYou/meta-browser-ack"
+                };
+
+                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                    lead,
+                    "meta_browser_event_attempt",
+                    string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_thank_you" : lead.SourcePageKey!,
+                    string.IsNullOrWhiteSpace(lead.InterestType) ? "unknown" : lead.InterestType!,
+                    analyticsMetadata));
+
+                if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
+                {
+                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        "meta_browser_event_success",
+                        string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_thank_you" : lead.SourcePageKey!,
+                        string.IsNullOrWhiteSpace(lead.InterestType) ? "unknown" : lead.InterestType!,
+                        analyticsMetadata));
+                }
+
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 _logger.LogInformation(
                     "ThankYou browser pixel ack lead={LeadId} status={Status} eventId={EventId}",

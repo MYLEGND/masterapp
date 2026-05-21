@@ -39,6 +39,23 @@ public class WebsiteAnalyticsAiContractTests
         Assert.Contains("result.nextThreeActions", uiFile, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void WebsiteAnalyticsDashboard_SourceFilesExposeMarketingHealthCenter()
+    {
+        var repoRoot = GetRepoRoot();
+        var controllerFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Controllers", "WebsiteAnalyticsController.cs"));
+        var uiFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "wwwroot", "js", "website-analytics.js"));
+        var viewFile = File.ReadAllText(Path.Combine(repoRoot, "AgentPortal", "Views", "WebsiteAnalytics", "Index.cshtml"));
+
+        Assert.Contains("[HttpGet(\"marketing-health\")]", controllerFile, StringComparison.Ordinal);
+        Assert.Contains("endpoints.marketingHealth", uiFile, StringComparison.Ordinal);
+        Assert.Contains("function renderMarketingHealth(data)", uiFile, StringComparison.Ordinal);
+        Assert.Contains("loadMarketingHealth()", uiFile, StringComparison.Ordinal);
+        Assert.Contains("Marketing Health Center", viewFile, StringComparison.Ordinal);
+        Assert.Contains("id=\"mh-warning-list\"", viewFile, StringComparison.Ordinal);
+        Assert.Contains("id=\"mh-score\"", viewFile, StringComparison.Ordinal);
+    }
+
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")
     {
         var directory = Path.GetDirectoryName(currentFile)

@@ -169,6 +169,11 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.Age), "Age must be between 18 and 85.");
             }
 
+            if (!model.MarketingEmailConsent)
+            {
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent), "Please authorize us to contact you about this request.");
+            }
+
             if (!ModelState.IsValid)
             {
                 if (IsAjax())
@@ -765,6 +770,32 @@ namespace Protect_Website.Controllers
 
             try
             {
+                var analyticsMetadata = new
+                {
+                    LeadId = lead.LeadId,
+                    EventId = request.EventId.Trim(),
+                    Status = normalizedStatus,
+                    Note = normalizedNote,
+                    Route = "/Quote/Life/meta-browser-ack"
+                };
+
+                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                    lead,
+                    "meta_browser_event_attempt",
+                    string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_life" : lead.SourcePageKey!,
+                    string.IsNullOrWhiteSpace(lead.InterestType) ? "life" : lead.InterestType!,
+                    analyticsMetadata));
+
+                if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
+                {
+                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        "meta_browser_event_success",
+                        string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_life" : lead.SourcePageKey!,
+                        string.IsNullOrWhiteSpace(lead.InterestType) ? "life" : lead.InterestType!,
+                        analyticsMetadata));
+                }
+
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 _logger.LogInformation(
                     "LifeQuote browser pixel ack lead={LeadId} status={Status} eventId={EventId}",

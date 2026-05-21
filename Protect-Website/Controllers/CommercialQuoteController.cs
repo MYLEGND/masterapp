@@ -157,6 +157,107 @@ namespace Protect_Website.Controllers
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
 
+            async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
+            {
+                try
+                {
+                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        eventType,
+                        "quote_commercial",
+                        "commercial_insurance",
+                        metadata,
+                        eventUtc));
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception analyticsEx)
+                {
+                    _logger.LogWarning(
+                        analyticsEx,
+                        "CommercialQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        correlationId,
+                        eventType,
+                        lead.LeadId);
+                }
+            }
+
+            await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "commercial_insurance" },
+                lead.CreatedUtc);
+
+            try
+            {
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_attempt",
+                    new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "commercial", OfferKey = "commercial" });
+
+                var captureResult = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "commercial",
+                        OfferKey = "commercial",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.State,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (captureResult.Captured)
+                {
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_success",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            WorkstationLeadId = captureResult.WorkstationLeadId,
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId,
+                            CaptureMode = captureResult.Created ? "created" : "updated"
+                        });
+                }
+                else
+                {
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_failure",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            Reason = captureResult.Reason ?? "unknown",
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId
+                        });
+                }
+            }
+            catch (Exception captureEx)
+            {
+                _logger.LogError(
+                    captureEx,
+                    "CommercialQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    correlationId,
+                    lead.LeadId);
+
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        Reason = "capture_exception",
+                        ErrorMessage = captureEx.Message
+                    });
+            }
+
             var metaLeadEventId = Guid.NewGuid().ToString("N");
             await MetaLeadTrackingWorkflow.TryPersistAsync(
                 lead,
@@ -176,6 +277,17 @@ namespace Protect_Website.Controllers
                     state.ServerCapiStatus = "pending";
                     state.ServerCapiUpdatedUtc = DateTime.UtcNow;
                     state.ServerCapiNote = null;
+                });
+
+            await TryWriteLeadEventAsync(
+                "capi_event_attempt",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
                 });
 
             var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
@@ -219,6 +331,19 @@ namespace Protect_Website.Controllers
                     state.ServerCapiStatus = metaCapiResult.Status;
                     state.ServerCapiUpdatedUtc = DateTime.UtcNow;
                     state.ServerCapiNote = metaCapiResult.Note;
+                });
+
+            await TryWriteLeadEventAsync(
+                metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    Status = metaCapiResult.Status,
+                    Note = metaCapiResult.Note,
+                    PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
+                    PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
 
             // ── 2. Send email ─────────────────────────────────────────────────────
@@ -378,45 +503,10 @@ namespace Protect_Website.Controllers
             }
 
             // ── 3. Write analytics event ─────────────────────────────────────────
-            try
-            {
-                var evt = new AnalyticsEvent
-                {
-                    EventId    = Guid.NewGuid(),
-                    EventType  = "website_lead_submitted",
-                    PageKey    = "quote_commercial",
-                    FormKey    = "quote_commercial_form",
-                    QuoteType  = "commercial_insurance",
-                    SessionId  = lead.SessionId,
-                    VisitorId  = lead.VisitorId,
-                    UtmSource  = lead.UtmSource,
-                    UtmMedium  = lead.UtmMedium,
-                    UtmCampaign= lead.UtmCampaign,
-                    UtmId      = lead.UtmId,
-                    Fbclid     = lead.Fbclid,
-                    MetaCampaignId = lead.MetaCampaignId,
-                    MetaAdSetId = lead.MetaAdSetId,
-                    MetaAdId = lead.MetaAdId,
-                    AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                    AgentSlug  = lead.AgentSlug,
-                    Environment= lead.Environment,
-                    Host       = lead.Host,
-                    EventUtc   = lead.CreatedUtc,
-                    ReceivedUtc= DateTime.UtcNow,
-                    MetadataJson = JsonSerializer.Serialize(new { LeadId = lead.LeadId, CorrelationId = correlationId })
-                };
-                _db.AnalyticsEvents.Add(evt);
-                await _db.SaveChangesAsync();
-                _logger.LogInformation(
-                    "CommercialQuote [{CorrelationId}]: analytics event {EventId} written for lead {LeadId}",
-                    correlationId, evt.EventId, lead.LeadId);
-            }
-            catch (Exception analyticsEx)
-            {
-                _logger.LogError(analyticsEx,
-                    "CommercialQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} — lead is saved, continuing",
-                    correlationId, lead.LeadId);
-            }
+            await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
 
             TempData["QuoteType"] = "Commercial";
             TempData["MetaLeadEventId"] = metaLeadEventId;

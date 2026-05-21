@@ -18,6 +18,8 @@ public class AnalyticsEventCatalogTests
         "life_funnel_start",
         "life_see_estimate",
         "page_load",
+        "meta_tracking_initialized",
+        "meta_capi_result",
         "successful_event",
         "visibility_hidden",
         "visibility_visible",
@@ -102,7 +104,19 @@ public class AnalyticsEventCatalogTests
         var files = new[]
         {
             Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Life.cshtml"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Auto.cshtml"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Home.cshtml"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Commercial.cshtml"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Disability.cshtml"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Views", "Quote", "Health.cshtml"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "tracking.js"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "AutoQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "HomeQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "HealthQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "DisabilityQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "CommercialQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "LifeQuoteController.cs"),
+            Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "ThankYouController.cs"),
             Path.Combine(GetRepoRoot(), "AgentPortal", "Services", "Analytics", "AnalyticsQueryService.cs")
         };
 
@@ -209,6 +223,9 @@ public class AnalyticsEventCatalogTests
                value.StartsWith("estimate_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("form_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("lead_", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("meta_", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("capi_", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("workstation_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("page_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("scroll_", StringComparison.OrdinalIgnoreCase) ||
                value.StartsWith("results_", StringComparison.OrdinalIgnoreCase) ||

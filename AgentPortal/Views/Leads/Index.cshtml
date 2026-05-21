@@ -15,6 +15,10 @@
     var iulCount = CountStage("IUL");
     var feCount = CountStage("FinalExpense");
     var diCount = CountStage("DisabilityInsurance");
+    var autoCount = CountStage("AutoInsurance");
+    var homeCount = CountStage("HomeInsurance");
+    var healthCount = CountStage("HealthInsurance");
+    var commercialCount = CountStage("CommercialInsurance");
     var calledTodayCount = Model?.Count(x => x.AttemptsToday > 0) ?? 0;
     var callBackCount = CountStage("CallBack");
     var contactedCount = CountStage("Contacted");
@@ -277,6 +281,10 @@
                             <option value="IUL" data-count="@iulCount" data-note="IUL requests ready for cash-value and strategy conversations.">IUL LEADS</option>
                             <option value="FinalExpense" data-count="@feCount" data-note="Final Expense leads queued for contact.">FINAL EXPENSE LEADS</option>
                             <option value="DisabilityInsurance" data-count="@diCount" data-note="Disability Insurance leads to qualify fast.">DISABILITY INSURANCE LEADS</option>
+                            <option value="AutoInsurance" data-count="@autoCount" data-note="Auto insurance leads ready for rating and driver review.">AUTO INSURANCE LEADS</option>
+                            <option value="HomeInsurance" data-count="@homeCount" data-note="Home insurance leads ready for property review.">HOME INSURANCE LEADS</option>
+                            <option value="HealthInsurance" data-count="@healthCount" data-note="Health insurance leads ready for eligibility review.">HEALTH INSURANCE LEADS</option>
+                            <option value="CommercialInsurance" data-count="@commercialCount" data-note="Commercial insurance leads ready for business coverage review.">COMMERCIAL INSURANCE LEADS</option>
                             <option value="CalledToday" data-count="@calledTodayCount" data-note="Touched today and ready for same-day follow-through.">CALLED TODAY</option>
                             <option value="CallBack" data-count="@callBackCount" data-note="Asked for a callback or needs a scheduled return touch.">CALL BACK</option>
                             <option value="Contacted" data-count="@contactedCount" data-note="First touch happened. Keep momentum alive.">Contacted</option>

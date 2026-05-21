@@ -121,4 +121,50 @@ public class WebsiteLifeLeadCaptureServiceTests
         Assert.Equal("45", lead.Age);
         Assert.Equal("200,000", lead.LoanAmount);
     }
+
+    [Fact]
+    public async Task UpsertAsync_Creates_AutoInsurance_Workstation_Lead_From_Website_Submission()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var trackingProfileId = Guid.NewGuid();
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = trackingProfileId,
+            AgentUserId = "agent-auto",
+            AgentUpn = "auto@example.com",
+            Slug = "auto-agent"
+        });
+        await db.SaveChangesAsync();
+
+        var service = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
+        var websiteLeadId = Guid.NewGuid();
+
+        var result = await service.UpsertAsync(new WebsiteLifeLeadCaptureRequest
+        {
+            WebsiteLeadId = websiteLeadId,
+            SubmittedUtc = new DateTime(2026, 5, 20, 15, 0, 0, DateTimeKind.Utc),
+            ProductType = "auto",
+            OfferKey = "auto",
+            FirstName = "Avery",
+            LastName = "Driver",
+            Email = "avery@example.com",
+            Phone = "(480) 555-0101",
+            State = "az",
+            AgentTrackingProfileId = trackingProfileId,
+            AgentSlug = "auto-agent",
+            RecipientEmail = "auto@example.com"
+        });
+        await db.SaveChangesAsync();
+
+        Assert.True(result.Captured);
+        Assert.True(result.Created);
+        Assert.Equal(WorkstationLeadBuckets.AutoInsurance, result.Bucket);
+        Assert.Equal("agent-auto", result.AgentUserId);
+
+        var lead = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == websiteLeadId.ToString("N"));
+        Assert.Equal(WorkstationLeadBuckets.AutoInsurance, lead.Bucket);
+        Assert.Equal(WorkstationLeadBuckets.AutoInsurance, lead.OriginalLeadType);
+        Assert.Equal("AZ", lead.State);
+        Assert.Equal("4805550101", lead.Phone);
+    }
 }

@@ -31,6 +31,10 @@ public class ThankYouMetaFallbackContractTests
         Assert.Contains("ViewData[\"Campaign\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"Fbclid\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"SessionId\"]", thankYouController, StringComparison.Ordinal);
+        Assert.Contains("\"meta_browser_event_attempt\"", thankYouController, StringComparison.Ordinal);
+        Assert.Contains("\"meta_browser_event_success\"", thankYouController, StringComparison.Ordinal);
+        Assert.Contains("\"meta_browser_event_attempt\"", lifeQuoteController, StringComparison.Ordinal);
+        Assert.Contains("\"meta_browser_event_success\"", lifeQuoteController, StringComparison.Ordinal);
 
         Assert.Contains("const browserAckUrl = '/ThankYou/meta-browser-ack';", thankYouView, StringComparison.Ordinal);
         Assert.Contains("const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';", lifeView, StringComparison.Ordinal);
