@@ -159,54 +159,72 @@
             }
         };
 
-        viewSteps = normalizedOfferKey == "mortgage"
-            ? new List<Protect_Website.Models.LifeWizardStep>
+        var fallbackGoalQuestion = normalizedOfferKey switch
+        {
+            "term" => "What would you want term life to help protect first?",
+            "wholelife" => "What would you want whole life to help with most?",
+            "finalexpense" => "What would you want final expense coverage to help with first?",
+            "mortgage" => "What would you want protected if something happened to you?",
+            "iul" => "What would you want this IUL coverage to help with most?",
+            _ => "What would you want this coverage to help with first?"
+        };
+
+        var fallbackProtectQuestion = normalizedOfferKey switch
+        {
+            "wholelife" => "Who would you want that protection to support?",
+            "finalexpense" => "Who could be left carrying those costs?",
+            "mortgage" => "Who depends on the home?",
+            "iul" => "Who would you want that protection to support?",
+            _ => "Who depends on you most?"
+        };
+
+        var fallbackCoverageQuestion = normalizedOfferKey switch
+        {
+            "term" => "About how much term coverage would you like to explore?",
+            "wholelife" => "About how much whole life coverage would you like to explore?",
+            "finalexpense" => "About how much final expense coverage would you like to explore?",
+            "mortgage" => "Approximate mortgage balance",
+            "iul" => "About how much IUL coverage would you like to explore?",
+            _ => "About how much coverage would you like to explore?"
+        };
+
+        viewSteps = new List<Protect_Website.Models.LifeWizardStep>
+        {
+            new(fallbackGoalQuestion, fallbackGoalOptions, "CoverageGoal"),
+            new(fallbackProtectQuestion, fallbackProtectOptions, "ProtectingWho"),
+            new(fallbackCoverageQuestion, fallbackCoverageOptions, "CoverageAmountOption"),
+            new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
+            new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("What would you want protected if something happened to you?", fallbackGoalOptions, "CoverageGoal"),
-                new("Who depends on the home?", fallbackProtectOptions, "ProtectingWho"),
-                new("Approximate mortgage balance", fallbackCoverageOptions, "CoverageAmountOption"),
-                new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
-                new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
-                {
-                    new("non_smoker","Non-smoker"),
-                    new("smoker","Smoker"),
-                }, "TobaccoUse"),
-            }
-            : new List<Protect_Website.Models.LifeWizardStep>
-            {
-                new("Who are you looking to protect?", fallbackProtectOptions, "ProtectingWho"),
-                new("What would you like this coverage to help with most?", fallbackGoalOptions, "CoverageGoal"),
-                new("About how much coverage would you like to explore?", fallbackCoverageOptions, "CoverageAmountOption"),
-                new("Tobacco use", new List<Protect_Website.Models.LifeWizardOption>
-                {
-                    new("non_smoker","Non-smoker"),
-                    new("smoker","Smoker"),
-                }, "TobaccoUse"),
-                new("Your age", new List<Protect_Website.Models.LifeWizardOption>(), "Age"),
-            };
+                new("non_smoker","Non-smoker"),
+                new("smoker","Smoker"),
+            }, "TobaccoUse"),
+        };
     }
     var isMortgageOffer = string.Equals(normalizedOfferKey, "mortgage", StringComparison.OrdinalIgnoreCase);
+    var usesGoalFirstDiscovery = true;
+    var usesAgeBeforeTobaccoFlow = true;
     Protect_Website.Models.LifeWizardStep ResolveStep(string fieldAlias, int fallbackIndex)
     {
         return viewSteps.FirstOrDefault(step => string.Equals(step.FieldAlias, fieldAlias, StringComparison.OrdinalIgnoreCase))
             ?? viewSteps.ElementAtOrDefault(fallbackIndex)
             ?? new Protect_Website.Models.LifeWizardStep(string.Empty, new List<Protect_Website.Models.LifeWizardOption>(), fieldAlias);
     }
-    var protectStep = ResolveStep("ProtectingWho", 0);
-    var goalStep = ResolveStep("CoverageGoal", 1);
+    var protectStep = ResolveStep("ProtectingWho", 1);
+    var goalStep = ResolveStep("CoverageGoal", 0);
     var coverageAmountStep = ResolveStep("CoverageAmountOption", 2);
-    var tobaccoStep = ResolveStep("TobaccoUse", 3);
-    var firstDiscoveryStep = isMortgageOffer ? goalStep : protectStep;
-    var secondDiscoveryStep = isMortgageOffer ? protectStep : goalStep;
-    var firstDiscoveryFieldName = isMortgageOffer ? "CoverageGoal" : "ProtectingWho";
-    var secondDiscoveryFieldName = isMortgageOffer ? "ProtectingWho" : "CoverageGoal";
-    var firstDiscoveryQuestionId = isMortgageOffer ? "lbl-step1-goal" : "lbl-step1-protect";
-    var secondDiscoveryQuestionId = isMortgageOffer ? "lbl-step1-protect" : "lbl-step1-goal";
-    var coverageAmountQuestionText = isMortgageOffer ? "Approximate mortgage balance" : coverageAmountStep.Question;
+    var tobaccoStep = ResolveStep("TobaccoUse", 4);
+    var firstDiscoveryStep = usesGoalFirstDiscovery ? goalStep : protectStep;
+    var secondDiscoveryStep = usesGoalFirstDiscovery ? protectStep : goalStep;
+    var firstDiscoveryFieldName = usesGoalFirstDiscovery ? "CoverageGoal" : "ProtectingWho";
+    var secondDiscoveryFieldName = usesGoalFirstDiscovery ? "ProtectingWho" : "CoverageGoal";
+    var firstDiscoveryQuestionId = usesGoalFirstDiscovery ? "lbl-step1-goal" : "lbl-step1-protect";
+    var secondDiscoveryQuestionId = usesGoalFirstDiscovery ? "lbl-step1-protect" : "lbl-step1-goal";
+    var coverageAmountQuestionText = coverageAmountStep.Question;
     var protectingWhoErrorText = isMortgageOffer ? "Please choose who depends on the home." : "Please choose who you want to protect.";
     var coverageGoalErrorText = isMortgageOffer ? "Please choose what you'd want protected." : "Please select what matters most right now.";
     var coverageAmountErrorText = isMortgageOffer ? "Please choose an approximate mortgage balance." : "Please choose a coverage amount to explore.";
-    var showMortgageCarrierDisclosure = isMortgageOffer;
+    var showCarrierDisclosure = isLandingView;
     var ageStepOptions = string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
         ? new List<(string Value, string Label, int ApproxAge, bool IsWide)>
         {
@@ -471,12 +489,17 @@
         : (!string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
             ? agentTrustProfile!.DisplayName!.Trim()
             : "Your Agent");
-    var stepTwoContactTitleText = isMortgageOffer
-        ? "Want help understanding your estimate?"
-        : "Want the walkthrough behind this estimate?";
-    var stepTwoContactCopyText = isMortgageOffer
-        ? $"Share your info and {agentDirectContactName} will walk through what may fit your mortgage, family, and budget. No obligation."
-        : "Share your info and we’ll explain how this estimate was sized, what the monthly range reflects, and the next options to review.";
+    var stepTwoContactFitDescriptor = normalizedOfferKey switch
+    {
+        "term" => "term life needs, family, and budget",
+        "wholelife" => "whole life goals, family, and budget",
+        "finalexpense" => "final expense needs and budget",
+        "mortgage" => "mortgage, family, and budget",
+        "iul" => "long-term protection goals, flexibility, and budget",
+        _ => "coverage needs, family, and budget"
+    };
+    var stepTwoContactTitleText = "Want help understanding your estimate?";
+    var stepTwoContactCopyText = $"Share your info and {agentDirectContactName} will walk through what may fit your {stepTwoContactFitDescriptor}. No obligation.";
     var finalStepHeading = isContactFirstEducationVariant ? "Get your personal walkthrough" : "Want a personalized review?";
     var finalStepHelper = isContactFirstEducationVariant
         ? $"{agentDirectContactName} will walk through what may fit and answer your questions. No obligation."
@@ -490,7 +513,15 @@
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
-    var stepOneContinueButtonText = isMortgageOffer ? "See My Home Protection Estimate" : "Show My Estimate";
+    var stepOneContinueButtonText = normalizedOfferKey switch
+    {
+        "term" => "See My Term Life Estimate",
+        "wholelife" => "See My Whole Life Estimate",
+        "finalexpense" => "See My Final Expense Estimate",
+        "mortgage" => "See My Home Protection Estimate",
+        "iul" => "See My IUL Estimate",
+        _ => "See My Protection Estimate"
+    };
     var finalSubmitButtonText = isContactFirstEducationVariant
         ? "Get My Personal Review"
         : "Get My Personalized Review";
@@ -558,7 +589,7 @@
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about building lifelong protection and cash value that grows with you.";
         contactFirstProofKicker = "Whole life guidance";
-        contactFirstProofText = "Explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
+        contactFirstProofText = "Answer 5 quick questions to explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
@@ -581,7 +612,7 @@
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
-        contactFirstProofText = "Explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
+        contactFirstProofText = "Answer 5 quick questions to explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
         contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your term life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
@@ -604,7 +635,7 @@
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
-        contactFirstProofText = "Explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
+        contactFirstProofText = "Answer 5 quick questions to explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
         contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
@@ -627,7 +658,7 @@
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
-        contactFirstProofText = "Explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
+        contactFirstProofText = "Answer 5 quick questions to explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
         contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
@@ -650,7 +681,7 @@
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about growing your wealth, protecting your future, and leaving a legacy.";
         contactFirstProofKicker = "IUL guidance";
-        contactFirstProofText = "Explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
+        contactFirstProofText = "Answer 5 quick questions to explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
         contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "You stay in control" };
         contactFirstProcessingHeading = "Preparing your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
@@ -670,17 +701,17 @@
     }
     var contactFirstBridgeText = normalizedOfferKey switch
     {
-        "wholelife" => "Answer below to see your whole life estimate",
-        "term" => "Answer below to see your term life estimate",
-        "finalexpense" => "Answer below to see your final expense estimate",
-        "mortgage" => "Answer below to see your mortgage protection estimate",
-        "iul" => "Answer below to see your IUL estimate",
-        _ => "Answer below to compare what may fit"
+        "wholelife" => "Start my whole life estimate",
+        "term" => "Start my term life estimate",
+        "finalexpense" => "Start my final expense estimate",
+        "mortgage" => "Start my home protection estimate",
+        "iul" => "Start my IUL estimate",
+        _ => "Start my protection estimate"
     };
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
-    var step1IntroTitle = string.Empty;
-    var step1IntroHelper = string.Empty;
+    var step1IntroTitle = "Start here";
+    var step1IntroHelper = "Pick the closest fit. You’ll see your estimate before sharing contact info.";
     var requiredContactFieldNames = isContactFirstEducationVariant
         ? new[] { "FirstName", "LastName", "Phone" }
         : new[] { "FirstName", "Phone" };
@@ -4785,7 +4816,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     @if (usesContactFirstShell)
     {
         <div class="lq-funnel-bridge-wrap">
-            <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" aria-label="@contactFirstBridgeText">
+            <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" data-cta="life_funnel_start" aria-label="@contactFirstBridgeText">
                 <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
                 <span class="lq-funnel-bridge-core">
                     <span class="lq-funnel-bridge-arrow" aria-hidden="true">
@@ -4980,7 +5011,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="3" hidden>
-                                        @if (isMortgageOffer)
+                                        @if (usesAgeBeforeTobaccoFlow)
                                         {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
@@ -5045,7 +5076,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
-                                        @if (isMortgageOffer)
+                                        @if (usesAgeBeforeTobaccoFlow)
                                         {
                                             <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
@@ -5076,7 +5107,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                             </div>
                                             <div class="lq-step-actions dual">
                                                 <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate">@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                         else
@@ -5145,7 +5176,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                                         </div>
                                         <div class="full">
-                                            @if (showMortgageCarrierDisclosure)
+                                            @if (showCarrierDisclosure)
                                             {
                                                 <details class="lq-carrier-disclosure">
                                                     <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
@@ -5419,7 +5450,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="3" hidden>
-                    @if (isMortgageOffer)
+                    @if (usesAgeBeforeTobaccoFlow)
                     {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
@@ -5484,7 +5515,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="4" hidden>
-                    @if (isMortgageOffer)
+                    @if (usesAgeBeforeTobaccoFlow)
                     {
                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="lbl-step1-tobacco">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-tobacco">@tobaccoStep.Question</div>
@@ -5515,7 +5546,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         </div>
                         <div class="lq-step-actions dual">
                             <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate">@stepOneContinueButtonText</button>
                         </div>
                     }
                     else
@@ -5584,7 +5615,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                         </div>
                         <div class="full">
-                            @if (showMortgageCarrierDisclosure)
+                            @if (showCarrierDisclosure)
                             {
                                 <details class="lq-carrier-disclosure">
                                     <summary class="lq-carrier-disclosure-summary">Carriers we may review</summary>
@@ -5798,20 +5829,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
-  const isMortgageOfferFlow = quoteType === 'mortgage';
+  const isAgeBeforeTobaccoFlow = '@(usesAgeBeforeTobaccoFlow ? "true" : "false")' === 'true';
   const discoveryStepSequence = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
-    isMortgageOffer
-      ? new[] { "CoverageGoal", "ProtectingWho", "CoverageAmountOption", "Age", "TobaccoUse" }
-      : new[] { "ProtectingWho", "CoverageGoal", "CoverageAmountOption", "TobaccoUse", "Age" })));
+    new[] { "CoverageGoal", "ProtectingWho", "CoverageAmountOption", "Age", "TobaccoUse" })));
   const discoveryStepIndexes = Object.freeze(discoveryStepSequence.reduce((accumulator, fieldName, index) => {
     accumulator[fieldName] = index;
     return accumulator;
   }, {}));
   const microStepViewEvents = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
-    isMortgageOffer
-      ? new[] { "life_step1_goal_view", "life_step1_protecting_view", "life_step1_coverage_view", "life_step1_age_view", "life_step1_tobacco_view" }
-      : new[] { "life_step1_protecting_view", "life_step1_goal_view", "life_step1_coverage_view", "life_step1_tobacco_view", "life_step1_age_view" })));
-  const finalDiscoveryContinueEvent = isMortgageOfferFlow ? 'life_step1_tobacco_continue' : 'life_step1_age_continue';
+    new[] { "life_step1_goal_view", "life_step1_protecting_view", "life_step1_coverage_view", "life_step1_age_view", "life_step1_tobacco_view" })));
+  const finalDiscoveryContinueEvent = isAgeBeforeTobaccoFlow ? 'life_step1_tobacco_continue' : 'life_step1_age_continue';
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
   let processingTimer = null;
@@ -6170,6 +6197,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       return;
     }
 
+    el.addEventListener('focus', () => {
+      void ensureQuoteStartTracked({ startSource: 'contact_field_focus', fieldName: name });
+      void ensureMetaLeadFormStart({ startSource: 'contact_field_focus', fieldName: name });
+    }, { once: true });
+
     const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
     el.addEventListener(eventName, () => {
       clearFieldError(name);
@@ -6180,6 +6212,35 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       persistFunnelState();
     });
   });
+
+  let quoteStartTracked = false;
+
+  function trackQuoteStart(metadata = {}) {
+    return window.legendTrack?.({
+      EventType: startEvent,
+      FormKey: pageKey,
+      PageKey: pageKey,
+      Offer: '@cfg.OfferKey',
+      MetadataJson: JSON.stringify({
+        pageVariant,
+        pageMode,
+        pagePath: window.location.pathname,
+        hasAgentTrustProfile,
+        ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
+        ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
+        ...metadata
+      })
+    }) ?? Promise.resolve();
+  }
+
+  function ensureQuoteStartTracked(metadata = {}) {
+    if (quoteStartTracked) {
+      return Promise.resolve();
+    }
+
+    quoteStartTracked = true;
+    return trackQuoteStart(metadata);
+  }
 
   function trackEvent(eventType, metadata = {}) {
     return window.legendTrack?.({
@@ -6431,6 +6492,23 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
   }
 
+  function resolveStep2FitDescriptor(topicLabel) {
+    switch (String(topicLabel || '').trim().toLowerCase()) {
+      case 'term life':
+        return 'term life needs, family, and budget';
+      case 'whole life':
+        return 'whole life goals, family, and budget';
+      case 'final expense':
+        return 'final expense needs and budget';
+      case 'mortgage protection':
+        return 'mortgage, family, and budget';
+      case 'indexed universal life':
+        return 'long-term protection goals, flexibility, and budget';
+      default:
+        return 'coverage needs, family, and budget';
+    }
+  }
+
   function syncStep2PanelMessaging(preview) {
     if (!canRenderEstimateSummary(preview)) {
       if (step2Progress) step2Progress.textContent = defaultStep2ProgressText;
@@ -6450,7 +6528,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     const topicLabel = resolveStep2TopicLabel(preview);
     const isSingleOffer = isSingleOfferEstimate(preview);
-    const isMortgageTopic = topicLabel === 'mortgage protection';
 
     if (step2Heading) {
       step2Heading.textContent = isSingleOffer
@@ -6465,27 +6542,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         : 'You already have an estimated monthly range and a practical starting coverage range. If you want help interpreting it, you can get the walkthrough below.';
     }
 
+    const fitDescriptor = resolveStep2FitDescriptor(topicLabel);
+
     if (step2ContactTitle) {
-      if (isMortgageTopic) {
-        step2ContactTitle.textContent = defaultStep2ContactTitleText;
-      } else
-      if (isSingleOffer) {
-        step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
-          ? `Want ${agentDirectContactName} to walk you through this ${topicLabel} estimate?`
-          : `Want a walkthrough of this ${topicLabel} estimate?`;
-      } else {
-        step2ContactTitle.textContent = hasAgentTrustProfile && agentDirectContactName
-          ? `Want ${agentDirectContactName} to walk you through it?`
-          : 'Want a walkthrough of this estimate?';
-      }
+      step2ContactTitle.textContent = defaultStep2ContactTitleText;
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = isMortgageTopic
-        ? defaultStep2ContactCopyText
-        : isSingleOffer
-          ? `Share your info and we’ll explain how this ${topicLabel} estimate was sized, what can move the monthly range, and where it usually makes sense to size up or down from here.`
-          : 'Share your info and we’ll explain what pushed this option to the top, what the monthly range reflects, and which coverage range is most worth reviewing next.';
+      step2ContactCopy.textContent = hasAgentTrustProfile && agentDirectContactName
+        ? `Share your info and ${agentDirectContactName} will walk through what may fit your ${fitDescriptor}. No obligation.`
+        : `Share your info and we’ll walk through what may fit your ${fitDescriptor}. No obligation.`;
     }
   }
 
@@ -6551,8 +6617,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
   const formTrackingKey = form.dataset.formKey || pageKey;
   const TRACKED_FIELD_NAME_MAP = Object.freeze({
-    ProtectingWho: 'step_1_choice',
-    CoverageGoal: 'step_2_choice',
+    ProtectingWho: 'step_2_choice',
+    CoverageGoal: 'step_1_choice',
     CoverageAmountOption: 'coverage_amount',
     TobaccoUse: 'tobacco_use',
     AgeBracket: 'age_range',
@@ -6909,6 +6975,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   funnelBridgeBtn?.addEventListener('click', () => {
+    void ensureQuoteStartTracked({ startSource: 'bridge_click' });
+    void ensureMetaLeadFormStart({ startSource: 'bridge_click' });
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
     focusFunnelPanel(activeTarget, {
       behavior: 'smooth'
@@ -7279,6 +7347,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         syncStepOneAnswersFromUI();
         persistFunnelState();
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
+        void ensureQuoteStartTracked({ startSource: `${groupName}_change`, fieldName: groupName, choiceCode: radio.value });
         void ensureMetaLeadFormStart();
         queueMicroAdvance(expectedStep, nextStep);
       });
@@ -7306,6 +7375,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       syncStepOneAnswersFromUI();
       persistFunnelState();
       trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
+      void ensureQuoteStartTracked({ startSource: 'CoverageGoal_change', fieldName: 'CoverageGoal', choiceCode: radio.value });
       void ensureMetaLeadFormStart();
       if (!step1Panel.hidden && currentMicroStep === goalStepIndex) {
         clearAutoAdvanceTimer();
@@ -7333,6 +7403,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       age: answer4Hidden?.value || '',
       ageRange: ageHidden?.value || ''
     });
+    void ensureQuoteStartTracked({ startSource: 'age_continue', fieldName: 'AgeBracket' });
     void ensureMetaLeadFormStart();
     showMicroStep(tobaccoStepIndex, true);
   });
@@ -7342,7 +7413,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   });
 
   wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', coverageAmountStepIndex, coverageAmountStepIndex + 1);
-  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, isMortgageOfferFlow ? Number.NaN : tobaccoStepIndex + 1);
+  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, isAgeBeforeTobaccoFlow ? Number.NaN : tobaccoStepIndex + 1);
 
   ageSliders.forEach((slider) => {
     if (!(slider instanceof HTMLInputElement)) {
@@ -7368,6 +7439,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
       });
+      void ensureQuoteStartTracked({ startSource: 'age_change', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
       void ensureMetaLeadFormStart();
     });
   });
@@ -7384,6 +7456,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     syncStepOneAnswersFromUI();
     if (!validateStepOneComplete()) return;
     syncStepOneAnswersFromUI();
+    void ensureQuoteStartTracked({ startSource: 'step1_continue' });
     trackEvent(finalDiscoveryContinueEvent, {
       protectingWho: answer1Hidden?.value || '',
       coverageGoal: answer2Hidden?.value || '',
@@ -7518,21 +7591,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         submitBtn.textContent = submitLabel;
       }
     }
-  });
-
-  // fire start event once
-  window.legendTrack?.({
-    EventType: startEvent,
-    PageKey: pageKey,
-    Offer: '@cfg.OfferKey',
-    MetadataJson: JSON.stringify({
-      pageVariant,
-      pageMode,
-      pagePath: window.location.pathname,
-      hasAgentTrustProfile,
-      ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
-      ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {})
-    })
   });
 
   const restoredFunnelState = await restorePersistedFunnelState();

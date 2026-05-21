@@ -1665,32 +1665,47 @@ namespace Protect_Website.Controllers
                 }
             };
 
+            var goalQuestion = normalizedOfferKey switch
+            {
+                LifeOfferKeys.Term => "What would you want term life to help protect first?",
+                LifeOfferKeys.WholeLife => "What would you want whole life to help with most?",
+                LifeOfferKeys.FinalExpense => "What would you want final expense coverage to help with first?",
+                LifeOfferKeys.Mortgage => "What would you want protected if something happened to you?",
+                LifeOfferKeys.Iul => "What would you want this IUL coverage to help with most?",
+                _ => "What would you want this coverage to help with first?"
+            };
+
+            var protectQuestion = normalizedOfferKey switch
+            {
+                LifeOfferKeys.WholeLife => "Who would you want that protection to support?",
+                LifeOfferKeys.FinalExpense => "Who could be left carrying those costs?",
+                LifeOfferKeys.Mortgage => "Who depends on the home?",
+                LifeOfferKeys.Iul => "Who would you want that protection to support?",
+                _ => "Who depends on you most?"
+            };
+
+            var coverageQuestion = normalizedOfferKey switch
+            {
+                LifeOfferKeys.Term => "About how much term coverage would you like to explore?",
+                LifeOfferKeys.WholeLife => "About how much whole life coverage would you like to explore?",
+                LifeOfferKeys.FinalExpense => "About how much final expense coverage would you like to explore?",
+                LifeOfferKeys.Mortgage => "Approximate mortgage balance",
+                LifeOfferKeys.Iul => "About how much IUL coverage would you like to explore?",
+                _ => "About how much coverage would you like to explore?"
+            };
+
             return
             new()
             {
-                normalizedOfferKey == LifeOfferKeys.Mortgage
-                    ? new("What would you want protected if something happened to you?", goalOptions, "CoverageGoal")
-                    : new("Who are you looking to protect?", protectOptions, "ProtectingWho"),
-                normalizedOfferKey == LifeOfferKeys.Mortgage
-                    ? new("Who depends on the home?", protectOptions, "ProtectingWho")
-                    : new("What would you like this coverage to help with most?", goalOptions, "CoverageGoal"),
-                normalizedOfferKey == LifeOfferKeys.Mortgage
-                    ? new("Approximate mortgage balance", coverageOptions, "CoverageAmountOption")
-                    : new("About how much coverage would you like to explore?", coverageOptions, "CoverageAmountOption"),
-                normalizedOfferKey == LifeOfferKeys.Mortgage
-                    ? new("Your age", new List<LifeWizardOption>(), "Age")
-                    : new("Tobacco use", new List<LifeWizardOption>
-                    {
-                        new("non_smoker","Non-smoker"),
-                        new("smoker","Smoker"),
-                    }, "TobaccoUse"),
-                normalizedOfferKey == LifeOfferKeys.Mortgage
-                    ? new("Tobacco use", new List<LifeWizardOption>
-                    {
-                        new("non_smoker","Non-smoker"),
-                        new("smoker","Smoker"),
-                    }, "TobaccoUse")
-                    : new("Your age", new List<LifeWizardOption>(), "Age"),
+                new(goalQuestion, goalOptions, "CoverageGoal"),
+                new(protectQuestion, protectOptions, "ProtectingWho"),
+                new(coverageQuestion, coverageOptions, "CoverageAmountOption"),
+                new("Your age", new List<LifeWizardOption>(), "Age"),
+                new("Tobacco use", new List<LifeWizardOption>
+                {
+                    new("non_smoker","Non-smoker"),
+                    new("smoker","Smoker"),
+                }, "TobaccoUse"),
             };
         }
     }

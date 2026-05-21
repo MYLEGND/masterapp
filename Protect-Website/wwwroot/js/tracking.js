@@ -1043,6 +1043,8 @@
   wireClick('[data-cta="hero_start_assessment"]',    'hero_start_assessment',    'cta_click');
   wireClick('[data-cta="hero_book_call"]',           'hero_book_call',           'cta_click');
   wireClick('[data-cta="hero_start_quote"]',         'hero_start_quote',         'quote_click');
+  wireClick('[data-cta="life_funnel_start"]',        'life_funnel_start',        'cta_click');
+  wireClick('[data-cta="life_see_estimate"]',        'life_see_estimate',        'cta_click');
   wireClick('[data-cta="footer_book_call"]',         'footer_book_call',         'cta_click');
   wireClick('[data-cta="nav_home"]',                 'nav_home',                 'cta_click');
   wireClick('[data-cta="nav_risk_assessment"]',      'nav_risk_assessment',      'risk_assessment_click');
