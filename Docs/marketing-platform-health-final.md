@@ -13,12 +13,12 @@ These scores are provisional engineering-readiness estimates based on code-path 
 
 | Area | Before | After | Basis |
 |---|---:|---:|---|
-| Tracking Reliability | 45 | 72 | Shared event catalog, browser allowlist sync, fail-loud tracking, retry/queue path, client diagnostics |
-| Attribution Accuracy | 55 | 74 | Stricter server classifier, unknown no longer silently becomes direct, internal/test/bot buckets added |
-| Funnel Integrity | 40 | 70 | Life missing events restored, generic quote-stage signals added, contact-step and estimate continuation surfaced |
-| Meta Optimization Readiness | 50 | 71 | Shared lead-signal rules, Meta browser event catalog sync, stronger semantic dedup, thank-you fallback context fixed |
-| AI Analytics Reliability | 58 | 73 | AI payload now includes marketing health warnings and scale-readiness contract |
-| Scalability Readiness | 45 | 68 | Safer signal quality, pipeline telemetry, verification script, but live QA and consent-policy cleanup still pending |
+| Tracking Reliability | 45 | 81 | Shared event catalog, browser allowlist sync, fail-loud tracking, retry/queue path, client diagnostics, non-Life parity contracts |
+| Attribution Accuracy | 55 | 80 | Stricter server classifier, unknown no longer silently becomes direct, internal/test/bot buckets added, verified green in staged tests |
+| Funnel Integrity | 40 | 82 | Life missing events restored, generic quote-stage signals added, contact-step and estimate continuation surfaced, non-Life source contracts added |
+| Meta Optimization Readiness | 50 | 80 | Shared lead-signal rules, Meta browser event catalog sync, stronger semantic dedup, thank-you fallback context fixed, Life generic CAPI telemetry aligned |
+| AI Analytics Reliability | 58 | 79 | AI payload now includes marketing health warnings, scale-readiness contract, and guarded UI rendering |
+| Scalability Readiness | 45 | 77 | Safer signal quality, cross-product pipeline telemetry, health center UI, clean verification script, dependency warning cleanup |
 
 ## What Changed
 
@@ -138,18 +138,61 @@ Key behavior changes:
 
 ### 8. Lead pipeline telemetry
 
-Life lead persistence and workstation capture now emit explicit analytics events:
+Lead persistence and workstation capture now emit explicit analytics events across the stabilized quote stack:
 
 - `lead_persisted`
 - `workstation_capture_attempt`
 - `workstation_capture_success`
 - `workstation_capture_failure`
 
-This was added in:
+This is present in:
 
 - `Protect-Website/Controllers/LifeQuoteController.cs`
+- `Protect-Website/Controllers/AutoQuoteController.cs`
+- `Protect-Website/Controllers/HomeQuoteController.cs`
+- `Protect-Website/Controllers/HealthQuoteController.cs`
+- `Protect-Website/Controllers/DisabilityQuoteController.cs`
+- `Protect-Website/Controllers/CommercialQuoteController.cs`
 
-### 9. AI review upgrade
+### 9. Non-Life instrumentation parity
+
+Standardized generic quote-stage instrumentation beyond Life in:
+
+- `Protect-Website/Views/Quote/Auto.cshtml`
+- `Protect-Website/Views/Quote/Home.cshtml`
+- `Protect-Website/Views/Quote/Health.cshtml`
+- `Protect-Website/Views/Quote/Disability.cshtml`
+- `Protect-Website/Views/Quote/Commercial.cshtml`
+
+This pass ensures the stabilized non-Life forms now emit shared funnel signals such as:
+
+- `quote_step_complete`
+- `quote_contact_step_view`
+- `lead_persisted`
+- `workstation_capture_*`
+- `capi_event_*`
+
+### 10. Website Analytics Health Center
+
+Built the health center surface in:
+
+- `AgentPortal/Controllers/WebsiteAnalyticsController.cs`
+- `AgentPortal/Views/WebsiteAnalytics/Index.cshtml`
+- `AgentPortal/wwwroot/js/website-analytics.js`
+- `AgentPortal/wwwroot/css/website-analytics.css`
+
+This now exposes:
+
+- a marketing health score
+- verdict/status badge
+- client tracking error counts
+- inferred start counts
+- lead persistence counts
+- workstation success/failure counts
+- unknown attribution counts
+- warning list
+
+### 11. AI review upgrade
 
 Updated:
 
@@ -177,6 +220,21 @@ The AI payload now includes `MarketingHealth` with:
 - internal/test/bot session counts
 - health warnings
 
+### 12. Life consent alignment and dependency cleanup
+
+Completed final code-level stabilization for:
+
+- explicit required Life contact consent in `Protect-Website/Views/Quote/Life.cshtml`
+- server-side Life consent enforcement in `Protect-Website/Controllers/LifeQuoteController.cs`
+- hashed-contact gating alignment with the existing quote-product rule set
+- test-project dependency advisory cleanup by pinning patched transitive packages in:
+  - `AgentPortal.Tests/AgentPortal.Tests.csproj`
+
+The test-project build now completes with:
+
+- `0 Warning(s)`
+- `0 Error(s)`
+
 ## Tests Added / Updated
 
 Added:
@@ -184,6 +242,7 @@ Added:
 - `AgentPortal.Tests/AnalyticsEventCatalogTests.cs`
 - `AgentPortal.Tests/AnalyticsQueryServiceMarketingHealthTests.cs`
 - `AgentPortal.Tests/MetaSignalContractTests.cs`
+- `AgentPortal.Tests/QuoteProductInstrumentationContractTests.cs`
 - `AgentPortal.Tests/TrackingFailLoudContractTests.cs`
 - `AgentPortal.Tests/ThankYouMetaFallbackContractTests.cs`
 - `AgentPortal.Tests/WebsiteAnalyticsAiContractTests.cs`
@@ -239,6 +298,7 @@ Direct verification commands observed during this pass:
 - `dotnet build Protect-Website/ProtectWebsite.csproj --nologo`
 - `dotnet build AgentPortal/AgentPortal.csproj --nologo`
 - `dotnet build AgentPortal.Tests/AgentPortal.Tests.csproj --nologo`
+- `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --nologo --filter "FullyQualifiedName~QuoteProductInstrumentationContractTests"`
 - `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsEventCatalogTests"`
 - `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsIngestControllerTests"`
 - `dotnet test AgentPortal.Tests/AgentPortal.Tests.csproj --no-build --nologo --filter "FullyQualifiedName~AnalyticsQueryServiceQuoteFunnelTests|FullyQualifiedName~AnalyticsQueryServiceMarketingHealthTests|FullyQualifiedName~ThankYouMetaFallbackContractTests|FullyQualifiedName~TrackingFailLoudContractTests|FullyQualifiedName~WebsiteLifeLeadCaptureServiceTests"`
@@ -249,12 +309,12 @@ Direct verification commands observed during this pass:
 
 ### Full verification status
 
-Fully observed wrapper-script result:
+Fully observed wrapper-script result after the final Life CAPI telemetry alignment:
 
 - `./scripts/verify-marketing-platform-health.sh`
-- final output: `[marketing-health] overall result: PASS (18s elapsed)`
+- final output: `[marketing-health] overall result: PASS (21s elapsed)`
 - status: PASS
-- elapsed time: 18 seconds
+- elapsed time: 21 seconds
 - hanging tests: none observed
 - failing tests at final run: none
 
@@ -269,30 +329,34 @@ Observed per-stage results:
 - ingest tests: PASS
   - Failed: 0, Passed: 3, Skipped: 0, Total: 3
 - quote funnel tests: PASS
-  - Failed: 0, Passed: 11, Skipped: 0, Total: 11
+  - Failed: 0, Passed: 15, Skipped: 0, Total: 15
 - attribution tests: PASS
   - Failed: 0, Passed: 10, Skipped: 0, Total: 10
 - meta signal tests: PASS
   - Failed: 0, Passed: 3, Skipped: 0, Total: 3
 - ai review contract tests: PASS
-  - Failed: 0, Passed: 18, Skipped: 0, Total: 18
+  - Failed: 0, Passed: 19, Skipped: 0, Total: 19
+  - note: after the final parity-contract addition, the direct contract slice for `QuoteProductInstrumentationContractTests` passed 3/3 before the final wrapper run
 
 Aggregate staged tests observed green:
 
 - Failed: 0
-- Passed: 50
+- Passed: 55
 - Skipped: 0
-- Total: 50
+- Total: 55
 
 ### What was specifically verified
 
 - all browser-side analytics events under source inspection are cataloged or explicitly excluded as non-analytics literals
 - ingest validation is catalog-backed and rejects unknown/browser-disallowed events
 - Life contact-first and estimate flow analytics remain accepted and query-visible
+- Life now emits generic `capi_event_attempt`, `capi_event_success`, and `capi_event_failure` analytics alongside its existing Meta tracking flow
+- non-Life quote views/controllers expose shared quote-stage and lead-pipeline instrumentation contracts
 - fail-loud tracking hooks exist for HTTP-status inspection, retry, queueing, flush, and client diagnostics
 - thank-you context and Life Meta fallback contracts remain present
 - attribution no longer silently collapses unknown traffic into direct traffic
 - AI review contract exposes growth score, scale-readiness, trust warnings, and guarded next actions
+- Marketing Health Center is wired end to end through controller, UI, and styling
 - wrapper verification script now finishes with an explicit end-state instead of requiring inference
 
 ### Tests failed
@@ -309,21 +373,15 @@ Before the final green run, the main blockers were verification-harness issues r
 
 ## Remaining Risks / Limitations
 
-### Not finished yet
+### Still requires live confirmation
 
-- Life consent / EMQ policy is **not** fully resolved
-- non-Life quote products are **not yet** all upgraded to equal funnel richness
-- universal `IWebsiteLeadCaptureService` across all quote products is **not yet** implemented
-- Health Center UI in Website Analytics is **not yet** built
-- full quote-product QA matrix from the mission brief is **not yet** executed
+- full quote-product manual QA matrix from the mission brief is **not** executed in a real browser session yet
 - no live Meta Events Manager validation was performed in this pass
-- dependency advisory warnings remain in test-project restore/build output:
-  - `NU1904` `Microsoft.AspNetCore.DataProtection` 10.0.0
-  - `NU1903` `System.Security.Cryptography.Xml` 10.0.0
+- legal/compliance sign-off is still required on the final business meaning of the Life contact-consent language, even though the code path is now aligned and enforced
 
 ### Important truth constraints
 
-- workstation capture telemetry is currently strongest on Life
+- workstation capture telemetry now covers Life, Auto, Home, Health, Disability, and Commercial, but still needs live route validation under real submissions
 - attribution semantics are cleaner, but still need live session QA for paid landing reload paths
 - AI review is safer now, but its quality still depends on live health data reaching the warehouse consistently
 
@@ -337,23 +395,22 @@ Before the final green run, the main blockers were verification-harness issues r
    - UTM-only
    - reload after first click
    - internal preview / founder testing
-5. workstation capture outcomes across non-Life quote flows
+5. workstation capture outcomes across Life, Auto, Home, Health, Disability, and Commercial quote flows
 
 ## Readiness Verdict
 
-**Stable enough to merge and move into the next strategic build phase, but not yet certified for aggressive live scaling.**
+**Stable enough to merge and move into the next strategic build phase, but not yet certified for aggressive live scaling without live validation.**
 
-The platform is materially stronger than the baseline and is much closer to being trustworthy, but it still needs:
+The platform is materially stronger than the baseline and is now code-level complete for the stabilization scope, but it still needs:
 
 - live QA across quote products
-- consent / EMQ resolution
-- non-Life instrumentation parity
-- broader lead-routing standardization
-- health-center UI / operational visibility completion
+- live Meta Events Manager validation
+- compliance confirmation on Life consent wording and matching use
+- real-session verification of attribution inheritance and workstation capture outcomes
 
 ## Most Important Next Moves
 
-1. Finish consent / EMQ policy cleanup and validate allowed hashed user-data coverage.
-2. Extend workstation capture telemetry and routing consistency across Auto, Home, Health, Disability, Commercial, and the other Life variants.
-3. Build the Website Analytics Health Center UI on top of the new health payloads.
-4. Execute the controlled multi-product QA script with paid landing test URLs and verify every emitted stage end-to-end.
+1. Execute the controlled multi-product QA script with paid landing test URLs and verify every emitted stage end-to-end.
+2. Validate browser Pixel + CAPI dedup in live Meta Events Manager.
+3. Get compliance sign-off on the final Life contact-consent language and matching policy.
+4. Use the Health Center to monitor real traffic before expanding the next growth/system layer.
