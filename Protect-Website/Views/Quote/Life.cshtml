@@ -589,6 +589,7 @@
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var isGeneralLifeOffer = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = !isGeneralLifeOffer;
+    var showPreContactEducationSummary = !isGeneralLifeOffer;
     var productFocusTitle = "What this estimate is built around";
     var productFocusCopy = "This estimate stays centered on the type of coverage you came here to review, so the next steps stay focused and relevant.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
