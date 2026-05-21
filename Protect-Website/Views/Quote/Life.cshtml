@@ -5716,92 +5716,95 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                     </section>
                 </div>
 
-                @if (showGenericCoverageOverview)
+                @if (showPreContactEducationSummary)
                 {
-                    <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
-                        <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
-                        <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
-                        <div class="lq-options-summary-list">
-                            <article class="lq-option-summary-card is-term">
-                                <div class="lq-option-summary-top">
-                                    <span class="lq-option-chip">Common first look</span>
-                                    <div class="lq-option-visual" aria-hidden="true">
-                                        <svg viewBox="0 0 96 96" fill="none">
-                                            <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
-                                            <circle cx="18" cy="60" r="7" fill="#F5D68E" />
-                                            <circle cx="62" cy="60" r="7" fill="#F5D68E" />
-                                            <circle cx="72" cy="28" r="15" stroke="#FFF1C9" stroke-width="4" />
-                                            <path d="M72 20V29L78 33" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
-                                        </svg>
+                    @if (showGenericCoverageOverview)
+                    {
+                        <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
+                            <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
+                            <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
+                            <div class="lq-options-summary-list">
+                                <article class="lq-option-summary-card is-term">
+                                    <div class="lq-option-summary-top">
+                                        <span class="lq-option-chip">Common first look</span>
+                                        <div class="lq-option-visual" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
+                                                <circle cx="18" cy="60" r="7" fill="#F5D68E" />
+                                                <circle cx="62" cy="60" r="7" fill="#F5D68E" />
+                                                <circle cx="72" cy="28" r="15" stroke="#FFF1C9" stroke-width="4" />
+                                                <path d="M72 20V29L78 33" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+                                            </svg>
+                                        </div>
                                     </div>
-                                </div>
-                                <div class="lq-option-title">Term Life Insurance</div>
-                                <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
-                                <ul class="lq-option-bullets">
-                                    <li>Usually the most straightforward coverage conversation.</li>
-                                    <li>Often reviewed when affordability matters most.</li>
-                                </ul>
-                            </article>
-
-                            <article class="lq-option-summary-card is-whole">
-                                <div class="lq-option-summary-top">
-                                    <span class="lq-option-chip">Permanent coverage</span>
-                                    <div class="lq-option-visual" aria-hidden="true">
-                                        <svg viewBox="0 0 96 96" fill="none">
-                                            <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
-                                            <circle cx="48" cy="48" r="29" stroke="#D3A448" stroke-width="4" stroke-opacity=".88" />
-                                            <circle cx="48" cy="48" r="41" stroke="#7B90B7" stroke-width="2.5" stroke-opacity=".45" />
-                                            <path d="M31 52C37 61 57 61 65 38" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" />
-                                        </svg>
-                                    </div>
-                                </div>
-                                <div class="lq-option-title">Whole Life Insurance</div>
-                                <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
-                                <ul class="lq-option-bullets">
-                                    <li>Often reviewed when guarantees and consistency matter.</li>
-                                    <li>A simpler permanent path for people who want long-term protection.</li>
-                                </ul>
-                            </article>
-
-                            <article class="lq-option-summary-card is-universal">
-                                <div class="lq-option-summary-top">
-                                    <span class="lq-option-chip">Flexible / IUL options</span>
-                                    <div class="lq-option-visual" aria-hidden="true">
-                                        <svg viewBox="0 0 96 96" fill="none">
-                                            <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
-                                            <path d="M46 52C54 58 60 64 71 74" stroke="#9FC4FF" stroke-width="3.5" stroke-linecap="round" />
-                                            <path d="M20 76H78" stroke="#597299" stroke-width="4" stroke-linecap="round" stroke-opacity=".72" />
-                                            <circle cx="18" cy="66" r="6" fill="#F2CF82" />
-                                            <circle cx="44" cy="40" r="6" fill="#F2CF82" />
-                                            <circle cx="78" cy="30" r="7" fill="#9FC4FF" />
-                                        </svg>
-                                    </div>
-                                </div>
-                                <div class="lq-option-title">Universal Life Insurance</div>
-                                <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
-                                <ul class="lq-option-bullets">
-                                    <li>Often reviewed when long-term flexibility matters.</li>
-                                    <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
-                                </ul>
-                            </article>
-                        </div>
-                    </section>
-                }
-                else
-                {
-                    <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
-                        <div class="lq-step-title" id="lifeEducationOptionsTitle">@productFocusTitle</div>
-                        <p class="lq-options-summary-copy">@productFocusCopy</p>
-                        <div class="lq-education-card-grid three-up">
-                            @foreach (var card in productFocusCards)
-                            {
-                                <article class="lq-education-card">
-                                    <div class="lq-education-card-title">@card.Title</div>
-                                    <p class="lq-education-card-copy">@card.Copy</p>
+                                    <div class="lq-option-title">Term Life Insurance</div>
+                                    <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
+                                    <ul class="lq-option-bullets">
+                                        <li>Usually the most straightforward coverage conversation.</li>
+                                        <li>Often reviewed when affordability matters most.</li>
+                                    </ul>
                                 </article>
-                            }
-                        </div>
-                    </section>
+
+                                <article class="lq-option-summary-card is-whole">
+                                    <div class="lq-option-summary-top">
+                                        <span class="lq-option-chip">Permanent coverage</span>
+                                        <div class="lq-option-visual" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
+                                                <circle cx="48" cy="48" r="29" stroke="#D3A448" stroke-width="4" stroke-opacity=".88" />
+                                                <circle cx="48" cy="48" r="41" stroke="#7B90B7" stroke-width="2.5" stroke-opacity=".45" />
+                                                <path d="M31 52C37 61 57 61 65 38" stroke="#FFF1C9" stroke-width="4" stroke-linecap="round" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div class="lq-option-title">Whole Life Insurance</div>
+                                    <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
+                                    <ul class="lq-option-bullets">
+                                        <li>Often reviewed when guarantees and consistency matter.</li>
+                                        <li>A simpler permanent path for people who want long-term protection.</li>
+                                    </ul>
+                                </article>
+
+                                <article class="lq-option-summary-card is-universal">
+                                    <div class="lq-option-summary-top">
+                                        <span class="lq-option-chip">Flexible / IUL options</span>
+                                        <div class="lq-option-visual" aria-hidden="true">
+                                            <svg viewBox="0 0 96 96" fill="none">
+                                                <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
+                                                <path d="M46 52C54 58 60 64 71 74" stroke="#9FC4FF" stroke-width="3.5" stroke-linecap="round" />
+                                                <path d="M20 76H78" stroke="#597299" stroke-width="4" stroke-linecap="round" stroke-opacity=".72" />
+                                                <circle cx="18" cy="66" r="6" fill="#F2CF82" />
+                                                <circle cx="44" cy="40" r="6" fill="#F2CF82" />
+                                                <circle cx="78" cy="30" r="7" fill="#9FC4FF" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <div class="lq-option-title">Universal Life Insurance</div>
+                                    <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
+                                    <ul class="lq-option-bullets">
+                                        <li>Often reviewed when long-term flexibility matters.</li>
+                                        <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
+                                    </ul>
+                                </article>
+                            </div>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
+                            <div class="lq-step-title" id="lifeEducationOptionsTitle">@productFocusTitle</div>
+                            <p class="lq-options-summary-copy">@productFocusCopy</p>
+                            <div class="lq-education-card-grid three-up">
+                                @foreach (var card in productFocusCards)
+                                {
+                                    <article class="lq-education-card">
+                                        <div class="lq-education-card-title">@card.Title</div>
+                                        <p class="lq-education-card-copy">@card.Copy</p>
+                                    </article>
+                                }
+                            </div>
+                        </section>
+                    }
                 }
             </div>
         }
