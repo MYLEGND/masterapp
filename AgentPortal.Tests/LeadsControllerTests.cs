@@ -242,21 +242,50 @@ public class LeadsControllerTests
         await using var db = new MasterAppDbContext(options);
         await db.Database.EnsureCreatedAsync();
 
-        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
-        {
-            LeadId = "L-SAFE-INDEX-1",
-            AgentUserId = "agent-1",
-            Bucket = "MortgageProtection",
-            OriginalLeadType = "MortgageProtection",
-            FirstName = "Jamie",
-            LastName = "Safe",
-            Email = "jamie@example.com",
-            Phone = "6025550144",
-            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
-            UpdatedUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc),
-            RowVersion = new byte[] { 1 }
-        });
-        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WorkstationLeadProfiles" (
+                "LeadId",
+                "AgentUserId",
+                "Bucket",
+                "OriginalLeadType",
+                "FirstName",
+                "LastName",
+                "Email",
+                "Phone",
+                "CrmStatus",
+                "CrmStage",
+                "CrmOrder",
+                "CallCount",
+                "CallsToday",
+                "CallsWeek",
+                "CallsMonth",
+                "CallsYear",
+                "CreatedUtc",
+                "UpdatedUtc",
+                "RowVersion"
+            )
+            VALUES (
+                {"L-SAFE-INDEX-1"},
+                {"agent-1"},
+                {"MortgageProtection"},
+                {"MortgageProtection"},
+                {"Jamie"},
+                {"Safe"},
+                {"jamie@example.com"},
+                {"6025550144"},
+                {"Lead"},
+                {"New"},
+                {0L},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0},
+                {new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)},
+                {new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc)},
+                {new byte[] { 1 }}
+            );
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
 
@@ -291,21 +320,50 @@ public class LeadsControllerTests
         await using var db = new MasterAppDbContext(options);
         await db.Database.EnsureCreatedAsync();
 
-        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
-        {
-            LeadId = "L-SAFE-LEAD-1",
-            AgentUserId = "agent-1",
-            Bucket = "TermLife",
-            OriginalLeadType = "TermLife",
-            FirstName = "Casey",
-            LastName = "Fallback",
-            Email = "casey@example.com",
-            Phone = "6025550155",
-            CreatedUtc = new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc),
-            UpdatedUtc = new DateTime(2026, 5, 21, 7, 30, 0, DateTimeKind.Utc),
-            RowVersion = new byte[] { 1 }
-        });
-        await db.SaveChangesAsync();
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WorkstationLeadProfiles" (
+                "LeadId",
+                "AgentUserId",
+                "Bucket",
+                "OriginalLeadType",
+                "FirstName",
+                "LastName",
+                "Email",
+                "Phone",
+                "CrmStatus",
+                "CrmStage",
+                "CrmOrder",
+                "CallCount",
+                "CallsToday",
+                "CallsWeek",
+                "CallsMonth",
+                "CallsYear",
+                "CreatedUtc",
+                "UpdatedUtc",
+                "RowVersion"
+            )
+            VALUES (
+                {"L-SAFE-LEAD-1"},
+                {"agent-1"},
+                {"TermLife"},
+                {"TermLife"},
+                {"Casey"},
+                {"Fallback"},
+                {"casey@example.com"},
+                {"6025550155"},
+                {"Lead"},
+                {"New"},
+                {0L},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0},
+                {new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc)},
+                {new DateTime(2026, 5, 21, 7, 30, 0, DateTimeKind.Utc)},
+                {new byte[] { 1 }}
+            );
+            """);
 
         await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
 

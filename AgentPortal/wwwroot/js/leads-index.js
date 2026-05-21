@@ -2022,6 +2022,11 @@ const leadContactStatusPreview = $("#leadContactStatusPreview");
 const leadLastTouchPreview = $("#leadLastTouchPreview");
 const leadNextActionDatePreview = $("#leadNextActionDatePreview");
 const leadNextActionPreview = $("#leadNextActionPreview");
+const leadProductPreview = $("#leadProductPreview");
+const leadSourcePreview = $("#leadSourcePreview");
+const leadLatestIntakePreview = $("#leadLatestIntakePreview");
+const leadRecommendationPreview = $("#leadRecommendationPreview");
+const leadDiscoveryPreview = $("#leadDiscoveryPreview");
 const leadNotePreview = $("#leadNotePreview");
 
 const cmdInput = $("#cmdInput");
@@ -2069,6 +2074,8 @@ function leadWarningSummary(row){
 }
 
 function refreshLeadOverviewSummary(){
+  const row = activeLeadRow();
+  const snapshot = activeClientDetail?.intakeSnapshot || null;
   if (leadContactStatusPreview){
     leadContactStatusPreview.textContent = contactStatusLabel(dContactStatus?.value);
   }
@@ -2083,6 +2090,21 @@ function refreshLeadOverviewSummary(){
   if (leadNextActionPreview){
     const nextText = norm(dNextText?.value);
     leadNextActionPreview.textContent = nextText || "Not tracked for this lead yet.";
+  }
+  if (leadProductPreview){
+    leadProductPreview.textContent = summarizeLeadPath(snapshot, row);
+  }
+  if (leadSourcePreview){
+    leadSourcePreview.textContent = summarizeLeadSource(snapshot, row);
+  }
+  if (leadLatestIntakePreview){
+    leadLatestIntakePreview.textContent = summarizeLeadLatestIntake(snapshot, row);
+  }
+  if (leadRecommendationPreview){
+    leadRecommendationPreview.textContent = summarizeLeadRecommendation(snapshot, row);
+  }
+  if (leadDiscoveryPreview){
+    leadDiscoveryPreview.textContent = summarizeLeadDiscovery(snapshot);
   }
   if (leadNotePreview){
     const note = norm(dNotes?.value);
@@ -2100,6 +2122,84 @@ function formatIntakeSnapshotDate(value){
 
 function joinIntakeParts(parts){
   return parts.map(part => norm(part)).filter(Boolean).join(" • ") || "—";
+}
+
+function activeLeadRow(){
+  return activeClientId
+    ? (rows.find(row => row.dataset.clientId === activeClientId) || null)
+    : null;
+}
+
+function summarizeLeadPath(snapshot, row){
+  if (snapshot){
+    return joinIntakeParts([
+      snapshot.interestLabel,
+      snapshot.quoteTypeLabel ? `Quote: ${snapshot.quoteTypeLabel}` : "",
+      snapshot.productType ? `Type: ${snapshot.productType}` : ""
+    ]);
+  }
+
+  const product = norm(row?.dataset.intakeProductInterest) || pipelineLabel(rowOriginalLeadType(row) || row?.dataset.crmPipeline);
+  const quoteType = norm(row?.dataset.intakeQuoteType);
+  return joinIntakeParts([
+    product,
+    quoteType && !product.toLowerCase().includes(quoteType.toLowerCase()) ? `Quote: ${quoteType}` : ""
+  ]);
+}
+
+function summarizeLeadSource(snapshot, row){
+  if (snapshot){
+    return joinIntakeParts([
+      snapshot.originLabel,
+      snapshot.utmSource,
+      snapshot.utmMedium,
+      snapshot.utmCampaign
+    ]);
+  }
+
+  return joinIntakeParts([
+    row?.dataset.intakeOrigin,
+    row?.dataset.intakeSource,
+    row?.dataset.intakeMedium,
+    row?.dataset.intakeCampaign
+  ]);
+}
+
+function summarizeLeadLatestIntake(snapshot, row){
+  if (snapshot){
+    const historyCount = Number(snapshot.historyCount || 1);
+    return joinIntakeParts([
+      formatIntakeSnapshotDate(snapshot.submittedUtc),
+      Number.isFinite(historyCount) && historyCount > 0
+        ? `${historyCount} submission${historyCount === 1 ? "" : "s"}`
+        : ""
+    ]);
+  }
+
+  const submitted = formatIntakeSnapshotDate(norm(row?.dataset.intakeSubmitted));
+  return submitted !== "—" ? submitted : "No public intake captured";
+}
+
+function summarizeLeadRecommendation(snapshot, row){
+  if (snapshot){
+    return snapshot.recommendationSummary || joinIntakeParts([
+      snapshot.estimateSummary,
+      snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : "",
+      snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ""
+    ]);
+  }
+
+  return norm(row?.dataset.intakeRecommendation) || "No recommendation or estimate loaded yet.";
+}
+
+function summarizeLeadDiscovery(snapshot){
+  if (!Array.isArray(snapshot?.discoveryItems) || snapshot.discoveryItems.length === 0){
+    return "No public-funnel answers loaded yet.";
+  }
+
+  return snapshot.discoveryItems
+    .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
+    .join(" • ");
 }
 
 function renderIntakeSnapshot(snapshot){
@@ -2635,6 +2735,23 @@ function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
   `;
 }
 
+function renderPipelineProdCompactBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
+  const states = [
+    { label: "Paid", amount: Number(paid || 0), className: "prod-line-paid" },
+    { label: "Issued", amount: Number(issued || 0), className: "prod-line-issued" },
+    { label: "Submitted", amount: Number(submitted || 0), className: "prod-line-submitted" }
+  ];
+  const activeState = states.find(state => state.amount > 0);
+  if (!activeState) return "";
+
+  return `
+    <div class="prod-line ${activeState.className}">
+      <span class="prod-lbl">${activeState.label}</span>
+      <span class="prod-val">${formatCurrency(activeState.amount)}</span>
+    </div>
+  `;
+}
+
 function updatePipelineCardProduction(leadId){
   if (!leadId || !pipelineBoard) return;
   const card = pipelineBoard.querySelector(`[data-cardid="${CSS.escape(leadId)}"]`);
@@ -2646,7 +2763,7 @@ function updatePipelineCardProduction(leadId){
   const paid = Number(row.dataset.prodPaid || row.dataset.paid || 0);
   const issued = Number(row.dataset.prodIssued || 0);
   const submitted = Number(row.dataset.prodSubmitted || 0);
-  const html = renderPipelineProdBadge({ paid, issued, submitted });
+  const html = renderPipelineProdCompactBadge({ paid, issued, submitted });
   if (html){
     badge.innerHTML = html;
     badge.classList.remove("hidden");
@@ -5260,7 +5377,6 @@ function renderLaneCards(rowsForStage){
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
     const leadType = rowOriginalLeadType(r) || stage;
-    const workLeadLabel = resolveWorkLeadDestination(r, null).label;
     const phoneDisplay = formatPhone(phone);
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
@@ -5269,15 +5385,15 @@ function renderLaneCards(rowsForStage){
     const originLabel = norm(r.dataset.intakeOrigin) || "Manual Lead";
     const originTone = norm(r.dataset.intakeOriginTone) || "manual";
     const productInterest = norm(r.dataset.intakeProductInterest) || pipelineLabel(leadType);
-    const quoteType = norm(r.dataset.intakeQuoteType);
-    const attribution = [r.dataset.intakeSource, r.dataset.intakeMedium, r.dataset.intakeCampaign].map(norm).filter(Boolean).join(" / ");
-    const latestSubmission = formatIntakeSnapshotDate(norm(r.dataset.intakeSubmitted));
-    const recommendation = norm(r.dataset.intakeRecommendation);
     const warning = leadWarningSummary(r);
+    const nextActionDate = norm(r.dataset.crmNextDate);
+    const operationalSummary = warning
+      || (nextActionDate ? `Next action ${nextActionDate}` : "")
+      || contactStatusLabel(r.dataset.crmContactStatus || r.dataset.sContactstatus || "NotSet");
     const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
     const issuedAmount = Number(r.dataset.prodIssued || 0);
     const submittedAmount = Number(r.dataset.prodSubmitted || 0);
-    const prodBadgeHtml = renderPipelineProdBadge({
+    const prodBadgeHtml = renderPipelineProdCompactBadge({
       paid: paidAmount,
       issued: issuedAmount,
       submitted: submittedAmount
@@ -5286,45 +5402,33 @@ function renderLaneCards(rowsForStage){
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
-               style="overflow:visible;"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}">
-        <div class="client-card-head" style="position:relative;">
+        <div class="client-card-head pipeline-card-head-compact">
           <div class="client-card-main">
-            <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
-              <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" style=\"color:#c48d02;font-weight:700;\" href=\"tel:${safeHtml(phone)}\" data-call-link=\"${safeHtml(r.dataset.clientId)}\" data-call-phone=\"${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
-              <div class="cc-sub">${renderEmailLinkHtml(email, "color:#7a7a7a;opacity:0.78;")}</div>
-              <div class="pipeline-card-context">
-                <div class="pipeline-card-chips">
-                  <span class="meta-chip lead-origin-chip lead-origin-${safeHtml(originTone)}">${safeHtml(originLabel)}</span>
-                  <span class="meta-chip">${safeHtml(productInterest)}</span>
-                  ${quoteType ? `<span class="meta-chip">Quote: ${safeHtml(quoteType)}</span>` : ""}
-                </div>
-                ${attribution ? `<div class="cc-sub">${safeHtml(attribution)}</div>` : ""}
-                ${latestSubmission !== "—" ? `<div class="cc-sub">Latest intake: ${safeHtml(latestSubmission)}</div>` : ""}
-                ${recommendation ? `<div class="cc-sub">${safeHtml(recommendation)}</div>` : ""}
-                <div class="pipeline-card-warning${warning ? " is-active" : ""}">${safeHtml(warning || "No stale warning right now")}</div>
-              </div>
+            <div class="pipeline-card-title-row">
+              <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
+              ${prodBadge}
+            </div>
+            <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" style=\"color:#c48d02;font-weight:700;\" href=\"tel:${safeHtml(phone)}\" data-call-link=\"${safeHtml(r.dataset.clientId)}\" data-call-phone=\"${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
+            <div class="cc-sub pipeline-card-email">${renderEmailLinkHtml(email, "color:#7a7a7a;opacity:0.78;")}</div>
+            <div class="pipeline-card-summary">
+              <span class="meta-chip lead-origin-chip lead-origin-${safeHtml(originTone)}">${safeHtml(originLabel)}</span>
+              <span class="meta-chip">${safeHtml(productInterest)}</span>
+            </div>
+            <div class="pipeline-card-plan${warning ? " is-active" : ""}">${safeHtml(operationalSummary)}</div>
           </div>
-          <div class="client-card-actions actions" style="gap:6px; flex-wrap:wrap; align-items:center;">
-            <span class="pill" style="border:1px solid #dc2626;color:#b91c1c;font-weight:700;padding:3px 7px;font-size:12px;">Called: ${safeHtml(callCount)}</span>
-            ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-call-lead="${safeHtml(r.dataset.clientId)}" data-call-phone="${safeHtml(phone)}">Call</button>` : ""}
-            ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-text-menu="${safeHtml(r.dataset.clientId)}">Text ▾</button>` : ""}
-            <button type="button"
-                    class="btn btn-ghost lead-work-btn"
-                    data-work-lead="${safeHtml(r.dataset.clientId)}"
-                    style="padding:5px 8px;font-size:12px;">
-              ${safeHtml(workLeadLabel)}
-            </button>
-            <button type="button"
-                    class="btn btn-gold openCard"
-                    data-open-card="${safeHtml(r.dataset.clientId)}"
-                    title="Open Quick View"
-                    style="min-width:90px; padding:5px 8px;font-size:12px;">
-              Quick View
-            </button>
-          </div>
-          ${prodBadge}
+        </div>
+        <div class="client-card-actions actions pipeline-card-actions-compact">
+          <span class="pill pipeline-card-attempts">${safeHtml(callCount)} calls</span>
+          ${phone ? `<button type="button" class="btn btn-ghost" data-call-lead="${safeHtml(r.dataset.clientId)}" data-call-phone="${safeHtml(phone)}">Call</button>` : ""}
+          ${phone ? `<button type="button" class="btn btn-ghost" data-text-menu="${safeHtml(r.dataset.clientId)}">Text</button>` : ""}
+          <button type="button"
+                  class="btn btn-gold openCard"
+                  data-open-card="${safeHtml(r.dataset.clientId)}"
+                  title="Open Quick View">
+            Open
+          </button>
         </div>
       </article>
     `;

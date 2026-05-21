@@ -7272,3 +7272,165 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         max-height:none;
     }
 }
+
+/* ===== Leads bucket card densification ===== */
+.leads-crm .pipeline-board .client-card{
+    display:grid;
+    gap:8px;
+    padding:10px 11px !important;
+    border-radius:14px !important;
+}
+
+.leads-crm .pipeline-board .client-card .client-card-head.pipeline-card-head-compact{
+    display:block;
+}
+
+.leads-crm .pipeline-board .client-card .client-card-main{
+    display:grid;
+    gap:5px;
+    min-width:0;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-title-row{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:8px;
+    min-width:0;
+}
+
+.leads-crm .pipeline-board .client-card .cc-name{
+    max-width:none !important;
+    min-width:0;
+    font-size:1rem !important;
+    line-height:1.15;
+    white-space:normal;
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.leads-crm .pipeline-board .client-card .cc-sub{
+    max-width:none !important;
+    min-width:0;
+}
+
+.leads-crm .pipeline-board .client-card .cc-sub.cc-sub-primary{
+    font-size:.9rem;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-email,
+.leads-crm .pipeline-board .client-card .pipeline-card-email a,
+.leads-crm .pipeline-board .client-card .pipeline-card-plan{
+    font-size:.78rem !important;
+    line-height:1.3;
+    white-space:normal;
+    overflow-wrap:anywhere;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-summary{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    min-width:0;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-summary .meta-chip{
+    min-height:0;
+    padding:4px 8px;
+    font-size:.71rem;
+    line-height:1.15;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-plan{
+    color:#475569;
+    font-weight:850;
+}
+
+.leads-crm .pipeline-board .client-card .pipeline-card-plan.is-active{
+    color:#991b1b;
+}
+
+.leads-crm .pipeline-board .client-card .lead-prod-badge{
+    position:static;
+    right:auto;
+    top:auto;
+    min-width:0;
+    max-width:132px;
+    padding:4px 6px;
+    border-radius:999px;
+    background:rgba(255,255,255,.72);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.85);
+    display:inline-flex;
+    align-items:center;
+    justify-content:flex-end;
+}
+
+.leads-crm .pipeline-board .client-card .lead-prod-badge .prod-line{
+    gap:5px;
+    font-size:.68rem;
+    line-height:1.1;
+}
+
+.leads-crm .pipeline-board .client-card .lead-prod-badge.hidden{
+    display:none !important;
+}
+
+.leads-crm .pipeline-board .pipeline-card-actions-compact{
+    display:flex;
+    align-items:center;
+    justify-content:flex-start;
+    gap:6px;
+    flex-wrap:wrap;
+    min-width:0;
+}
+
+.leads-crm .pipeline-board .pipeline-card-actions-compact .pill{
+    min-height:30px;
+    padding:4px 7px !important;
+    font-size:.72rem !important;
+}
+
+.leads-crm .pipeline-board .pipeline-card-actions-compact .btn{
+    min-height:30px !important;
+    padding:5px 8px !important;
+    font-size:.75rem !important;
+    border-radius:10px !important;
+}
+
+.leads-crm .pipeline-board .pipeline-card-actions-compact .openCard{
+    margin-left:auto;
+}
+
+/* ===== Leads quick-view top summary ===== */
+.lead-command-overview .qv-section-body{
+    gap:10px;
+}
+
+.lead-command-overview .lead-overview-card,
+.lead-command-overview .lead-overview-wide{
+    min-width:0;
+    padding:11px 12px;
+}
+
+.lead-command-overview .lead-overview-card div,
+.lead-command-overview .lead-overview-wide div{
+    overflow-wrap:anywhere;
+}
+
+.lead-command-overview-secondary{
+    margin-bottom:0;
+}
+
+.lead-command-overview-secondary .lead-overview-wide{
+    min-height:94px;
+    align-content:start;
+}
+
+@media (max-width: 720px){
+    .leads-crm .pipeline-board .pipeline-card-actions-compact .openCard{
+        margin-left:0;
+    }
+}
