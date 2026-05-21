@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -25,14 +26,10 @@ public class TrackingFailLoudContractTests
         Assert.Contains("void flushQueuedEvents('thank_you_load');", content, StringComparison.Ordinal);
     }
 
-    private static string GetRepoRoot()
+    private static string GetRepoRoot([CallerFilePath] string currentFile = "")
     {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current != null && !File.Exists(Path.Combine(current.FullName, "MASTERAPP.sln")))
-        {
-            current = current.Parent;
-        }
-
-        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate repository root.");
+        var directory = Path.GetDirectoryName(currentFile)
+            ?? throw new DirectoryNotFoundException("Could not resolve test file path.");
+        return Path.GetFullPath(Path.Combine(directory, ".."));
     }
 }

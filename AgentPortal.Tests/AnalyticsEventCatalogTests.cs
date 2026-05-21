@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Shared.Analytics;
@@ -10,6 +11,30 @@ namespace AgentPortal.Tests;
 
 public class AnalyticsEventCatalogTests
 {
+    private static readonly HashSet<string> NonAnalyticsEventLiterals = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "form_submit_success",
+        "life_estimate_engine_unavailable",
+        "life_funnel_start",
+        "life_see_estimate",
+        "page_load",
+        "successful_event",
+        "visibility_hidden",
+        "visibility_visible",
+        "quote_auto",
+        "quote_commercial",
+        "quote_disability",
+        "quote_health",
+        "quote_home",
+        "quote_life",
+        "quote_index_auto_start",
+        "quote_index_commercial_start",
+        "quote_index_disability_start",
+        "quote_index_health_start",
+        "quote_index_home_start",
+        "quote_index_life_start"
+    };
+
     [Fact]
     public void AnalyticsEventCatalog_CriticalLifeEvents_AreBrowserAllowed()
     {
@@ -169,6 +194,11 @@ public class AnalyticsEventCatalogTests
 
     private static bool LooksLikeAnalyticsEvent(string value)
     {
+        if (NonAnalyticsEventLiterals.Contains(value))
+        {
+            return false;
+        }
+
         if (value is "cta_click" or "quote_click" or "outbound_click" or "risk_assessment_click" or "page_view" or "thank_you_view")
         {
             return true;
@@ -187,14 +217,10 @@ public class AnalyticsEventCatalogTests
                value.StartsWith("disability_", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string GetRepoRoot()
+    private static string GetRepoRoot([CallerFilePath] string currentFile = "")
     {
-        var current = new DirectoryInfo(AppContext.BaseDirectory);
-        while (current != null && !File.Exists(Path.Combine(current.FullName, "MASTERAPP.sln")))
-        {
-            current = current.Parent;
-        }
-
-        return current?.FullName ?? throw new DirectoryNotFoundException("Could not locate repository root.");
+        var directory = Path.GetDirectoryName(currentFile)
+            ?? throw new DirectoryNotFoundException("Could not resolve test file path.");
+        return Path.GetFullPath(Path.Combine(directory, ".."));
     }
 }

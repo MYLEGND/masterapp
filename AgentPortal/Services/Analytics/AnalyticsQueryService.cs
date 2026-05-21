@@ -304,8 +304,20 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
     }
 
+    private static bool IsQuoteFallbackSubmitSuccessEvent(AnalyticsEvent e)
+    {
+        if (!string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase) &&
+               (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
+    }
+
+    private static bool IsQuoteSuccessEvent(AnalyticsEvent e) =>
+        IsOfficialLeadSuccessEvent(e) || IsQuoteFallbackSubmitSuccessEvent(e);
+
     private static bool IsQuoteSubmitSuccess(AnalyticsEvent e) =>
-        IsOfficialLeadSuccessEvent(e) &&
+        IsQuoteSuccessEvent(e) &&
         (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
 
     private static bool IsQuoteSubmitAttempt(AnalyticsEvent e)
@@ -347,7 +359,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                e.EventType == "form_field_error" ||
                e.EventType == "form_abandon" ||
                IsQuoteSubmitAttempt(e) ||
-               IsOfficialLeadSuccessEvent(e);
+               IsQuoteSuccessEvent(e);
     }
 
     private static bool IsQuoteResumeAfterAbandonEvent(AnalyticsEvent e)
@@ -408,7 +420,28 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                IsQuoteRecommendationViewedEvent(e) ||
                IsQuoteContactStepReachedEvent(e) ||
                IsQuoteSubmitAttempt(e) ||
-               IsOfficialLeadSuccessEvent(e);
+               IsQuoteSuccessEvent(e);
+    }
+
+    private static bool IsQuoteExplicitStartSignalEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return e.EventType == "lead_form_start" ||
+               e.EventType == "life_general_form_start" ||
+               e.EventType == "life_term_form_start" ||
+               e.EventType == "life_whole_form_start" ||
+               e.EventType == "life_finalexpense_form_start" ||
+               e.EventType == "life_mp_form_start" ||
+               e.EventType == "life_iul_form_start" ||
+               e.EventType == "life_contact_first_view" ||
+               e.EventType == "life_contact_first_start" ||
+               e.EventType == "disability_quote_step1_view" ||
+               e.EventType == "quote_landing_view" ||
+               (e.EventType == "form_start" && IsQuoteFormKey(e.FormKey)) ||
+               IsQuoteEarlyDiscoveryInteractionEvent(e) ||
+               IsQuoteDiscoveryCompleteEvent(e);
     }
 
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
@@ -523,7 +556,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static List<AnalyticsEvent> SelectCanonicalSuccessEvents(IEnumerable<AnalyticsEvent> events)
     {
         return events
-            .Where(IsOfficialLeadSuccessEvent)
+            .Where(IsQuoteSuccessEvent)
             .GroupBy(BuildSuccessUnitKey, StringComparer.OrdinalIgnoreCase)
             .Select(g => g
                 .OrderByDescending(SuccessEventPriority)
@@ -1010,7 +1043,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
         int quoteFormStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
-        int quoteFormSubmits = verifiedLeads;
+        int quoteFormSubmits = SelectCanonicalSuccessEvents(events).Count;
         int quoteStarts = CountQuoteIntentStarts(events);
         int convertedSessions = CountConvertedSessions(leads);
 
@@ -1279,7 +1312,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int starts = CountQuoteIntentStarts(events);
         int formStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
         int submitAttempts = CountDistinctUnits(events, IsQuoteSubmitAttempt);
-        int formSubmits = leads.Count;
+        int formSubmits = SelectCanonicalSuccessEvents(events).Count;
 
         var byType = events
             .Where(e =>
@@ -1350,7 +1383,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
 
         var startUnits = events
-            .Where(IsQuoteFunnelStartSignalEvent)
+            .Where(IsQuoteExplicitStartSignalEvent)
             .Select(BuildInteractionUnitKey)
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -1360,7 +1393,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 IsQuoteRecommendationViewedEvent(e) ||
                 IsQuoteContactStepReachedEvent(e) ||
                 IsQuoteSubmitAttempt(e) ||
-                IsOfficialLeadSuccessEvent(e))
+                IsQuoteSuccessEvent(e))
             .Select(BuildInteractionUnitKey)
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .Distinct(StringComparer.OrdinalIgnoreCase)

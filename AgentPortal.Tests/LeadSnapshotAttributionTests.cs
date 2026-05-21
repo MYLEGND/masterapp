@@ -88,7 +88,7 @@ public class LeadSnapshotAttributionTests
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
 
-        db.WebsiteLeads.Add(L(now, fbclid: "Cj0KCQ_test_fbclid_value"));
+        db.WebsiteLeads.Add(L(now, fbclid: "Cj0KCQ_paid_fbclid_value"));
         await db.SaveChangesAsync();
 
         var svc  = BuildService(db);
@@ -107,7 +107,7 @@ public class LeadSnapshotAttributionTests
         Assert.Equal(TrafficType.PaidAds, row.TrafficType);
 
         // Raw fields populated
-        Assert.Equal("Cj0KCQ_test_fbclid_value", row.Fbclid);
+        Assert.Equal("Cj0KCQ_paid_fbclid_value", row.Fbclid);
         Assert.Null(row.UtmSource);
         Assert.Null(row.UtmMedium);
         Assert.Null(row.UtmCampaign);
