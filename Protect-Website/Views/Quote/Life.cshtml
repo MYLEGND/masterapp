@@ -1485,6 +1485,36 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     font-size: .9rem;
     line-height: 1.42;
 }
+.lq-age-quick-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.lq-age-quick-btn {
+    min-height: 38px;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(244,210,124,0.28);
+    background: rgba(11,18,31,0.46);
+    color: rgba(248,250,252,0.9);
+    font-size: .82rem;
+    font-weight: 850;
+    letter-spacing: .02em;
+    transition: border-color .18s ease, background .18s ease, color .18s ease, transform .18s ease;
+}
+.lq-age-quick-btn:hover,
+.lq-age-quick-btn:focus-visible {
+    border-color: rgba(244,210,124,0.64);
+    background: rgba(36,51,78,0.78);
+    color: #fff7df;
+    transform: translateY(-1px);
+}
+.lq-age-quick-btn.is-active {
+    border-color: rgba(244,210,124,0.82);
+    background: linear-gradient(180deg, rgba(244,210,124,0.18) 0%, rgba(49,66,97,0.88) 100%);
+    color: #fff7df;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
 .lq-age-pill {
     min-width: 94px;
     padding: 10px 14px;
@@ -2092,6 +2122,12 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
         width: 100%;
         font-size: 1.08rem;
     }
+    .lq-age-quick-grid { gap: 7px; }
+    .lq-age-quick-btn {
+        flex: 1 1 calc(50% - 7px);
+        justify-content: center;
+        text-align: center;
+    }
     .lq-age-picker-note { font-size: .84rem; }
     .lq-age-scale { font-size: .68rem; }
     .lq-step-actions { margin-top: 10px; }
@@ -2210,6 +2246,15 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
     .lq-age-picker-note {
         font-size: .8rem !important;
         line-height: 1.35 !important;
+    }
+    .lq-age-quick-grid {
+        gap: 6px !important;
+    }
+    .lq-age-quick-btn {
+        flex: 1 1 calc(50% - 6px);
+        min-height: 36px;
+        padding: 8px 10px !important;
+        font-size: .78rem !important;
     }
     .lq-age-pill {
         width: 100%;
@@ -5230,7 +5275,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <h1 class="hero-title">@heroHeadline</h1>
                     </div>
                     <figure class="lq-contact-first-hero-media">
-                        <img class="lq-contact-first-hero-image" src="~/images/ads/life-insurance-review-ad.png" asp-append-version="true" alt="Legend Legacy Protection ad showing a family and inviting a personalized life insurance review." loading="eager" />
+                        <img class="lq-contact-first-hero-image" src="~/images/ads/life-insurance-review-ad.png" asp-append-version="true" alt="Legend Legacy Protection ad showing a family and inviting a quick life insurance estimate." loading="eager" />
                     </figure>
                 </div>
             }
@@ -5384,7 +5429,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         <div class="lq-step-helper">@step1IntroHelper</div>
                                     }
                                     <div class="lq-step-progress-wrap" aria-live="polite">
-                                        <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 5</div>
+                                        <div class="lq-step-progress" id="lifeStep1Progress">Question 1</div>
                                         <div class="lq-step-progress-track" aria-hidden="true">
                                             <span class="lq-step-progress-fill" id="lifeStep1ProgressFill"></span>
                                         </div>
@@ -5491,7 +5536,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                                 <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
                                                     <div class="lq-age-picker-top">
+                                                        <div class="lq-age-picker-copy">
+                                                            <div class="lq-age-picker-kicker">Quick pick</div>
+                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                        </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
+                                                        @foreach (var ageOption in ageQuickSelectOptions)
+                                                        {
+                                                            var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
+                                                            <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
+                                                        }
                                                     </div>
                                                     <input
                                                         type="range"
@@ -5590,7 +5646,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                                 <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
                                                     <div class="lq-age-picker-top">
+                                                        <div class="lq-age-picker-copy">
+                                                            <div class="lq-age-picker-kicker">Quick pick</div>
+                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                        </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
+                                                        @foreach (var ageOption in ageQuickSelectOptions)
+                                                        {
+                                                            var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
+                                                            <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
+                                                        }
                                                     </div>
                                                     <input
                                                         type="range"
@@ -5621,7 +5688,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
                             <div class="lq-step-panel lq-contact-first-wizard-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-step-progress">Preparing</div>
+                                    <div class="lq-step-progress">One moment</div>
                                     <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
                                     <div class="lq-step-helper">@contactFirstProcessingHelper</div>
                                     <div class="lq-processing-bridge" aria-hidden="true">
@@ -5635,17 +5702,13 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
                             <div class="lq-step-panel lq-contact-step lq-contact-first-wizard-panel" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-step-progress" id="lifeStep2Progress">Final step</div>
+                                    <div class="lq-step-progress" id="lifeStep2Progress">Estimate ready</div>
                                     <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                                     <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
-                                    @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                    {
-                                        <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                                    }
                                     <div class="lq-contact-grid">
                                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                                         <div class="full lq-contact-capture-head">
-                                            <div class="lq-contact-capture-kicker">Next step</div>
+                                            <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                                         </div>
@@ -5674,36 +5737,38 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name@(isContactFirstEducationVariant ? Html.Raw(" <span style=\"color:#f87171\">*</span>") : Html.Raw(" (optional)"))</label>
-                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" @(isContactFirstEducationVariant ? "required" : null) />
+                                                <label for="LastName">Last Name (optional)</label>
+                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
                                                 <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
                                             </div>
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
-                                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
-                                            </div>
-                                            <div class="lq-field">
-                                                <label for="Email">Email (optional)</label>
+                                                <label for="Email">Email for your estimate</label>
                                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
+                                            <div class="lq-field">
+                                                <label for="Phone">Phone (optional)</label>
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                                            </div>
                                         </div>
+                                        <div class="full lq-field-help">@contactMethodHelperText</div>
+                                        <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
                                         <div class="full">
                                             <label class="lq-consent" for="MarketingEmailConsent">
                                                 <input type="checkbox" id="MarketingEmailConsent" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : null) />
                                                 <span class="consent-text">
-                                                    <span class="consent-main">I authorize contact about this life insurance request and personalized review. <span style="color:#f87171">*</span></span>
+                                                    <span class="consent-main">@consentPromptText <span style="color:#f87171">*</span></span>
                                                 </span>
                                             </label>
-                                            <div class="lq-field-err" id="err-MarketingEmailConsent">Please authorize us to contact you about this request.</div>
+                                            <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                                         </div>
                                     </div>
                                     <div class="lq-step-actions">
                                         <div class="lq-submit-row">
-                                            <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
+                                            <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
                                             <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                         </div>
                                         <div class="lq-error" id="lifeError"></div>
@@ -5821,7 +5886,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                     <div class="lq-step-helper">@step1IntroHelper</div>
                 }
                 <div class="lq-step-progress-wrap" aria-live="polite">
-                    <div class="lq-step-progress" id="lifeStep1Progress">Step 1 of 5</div>
+                    <div class="lq-step-progress" id="lifeStep1Progress">Question 1</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
                         <span class="lq-step-progress-fill" id="lifeStep1ProgressFill"></span>
                     </div>
@@ -5945,7 +6010,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                             <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
                                 <div class="lq-age-picker-top">
+                                    <div class="lq-age-picker-copy">
+                                        <div class="lq-age-picker-kicker">Quick pick</div>
+                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                    </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
+                                    @foreach (var ageOption in ageQuickSelectOptions)
+                                    {
+                                        var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
+                                        <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
+                                    }
                                 </div>
                                 <input
                                     type="range"
@@ -6044,7 +6120,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                             <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
                                 <div class="lq-age-picker-top">
+                                    <div class="lq-age-picker-copy">
+                                        <div class="lq-age-picker-kicker">Quick pick</div>
+                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                    </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
+                                    @foreach (var ageOption in ageQuickSelectOptions)
+                                    {
+                                        var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
+                                        <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
+                                    }
                                 </div>
                                 <input
                                     type="range"
@@ -6075,31 +6162,27 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-progress">Preparing</div>
-                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">Preparing your personalized options...</div>
-                <div class="lq-step-helper">We’re identifying what actually fits your situation — not guessing.</div>
+                <div class="lq-step-progress">One moment</div>
+                <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
+                <div class="lq-step-helper">@contactFirstProcessingHelper</div>
                 <div class="lq-processing-bridge" aria-hidden="true">
                     <div class="lq-processing-track">
                         <div class="lq-processing-fill" id="lifeProcessingFill"></div>
                     </div>
-                    <div class="lq-processing-note">Reviewing options that may fit your situation...</div>
+                    <div class="lq-processing-note">@contactFirstProcessingNote</div>
                 </div>
             </div>
         </div>
 
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-progress" id="lifeStep2Progress">Final step</div>
+                <div class="lq-step-progress" id="lifeStep2Progress">Estimate ready</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                 <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
-                @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                {
-                    <div class="lq-contact-license-note">Licensed Insurance Professional • License Number: @agentTrustNpn</div>
-                }
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                         <div class="full lq-contact-capture-head">
-                            <div class="lq-contact-capture-kicker">Next step</div>
+                            <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                         </div>
@@ -6135,16 +6218,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="Phone">Phone <span style="color:#f87171">*</span></label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
-                            </div>
-                            <div class="lq-field">
-                                <label for="Email">Email (optional)</label>
+                                <label for="Email">Email for your estimate</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
+                            <div class="lq-field">
+                                <label for="Phone">Phone (optional)</label>
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                <div class="lq-field-err" id="err-Phone">Please enter your phone.</div>
+                            </div>
                         </div>
+                        <div class="full lq-field-help">@contactMethodHelperText</div>
+                        <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
                         @if (!usesLeanContactFields)
                         {
                             <div class="lq-field-row full">
@@ -6212,15 +6297,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                             <label class="lq-consent" for="MarketingEmailConsent">
                                 <input type="checkbox" id="MarketingEmailConsent" name="MarketingEmailConsent" value="true" @(form.MarketingEmailConsent ? "checked" : null) />
                                 <span class="consent-text">
-                                    <span class="consent-main">I authorize contact about this life insurance request and personalized review. <span style="color:#f87171">*</span></span>
+                                    <span class="consent-main">@consentPromptText <span style="color:#f87171">*</span></span>
                                 </span>
                             </label>
-                            <div class="lq-field-err" id="err-MarketingEmailConsent">Please authorize us to contact you about this request.</div>
+                            <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                         </div>
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">Clear, personal guidance. No obligation.</div>
+                            <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
                             <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -6312,9 +6397,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const agePickers = Array.from(form.querySelectorAll('[data-age-picker]'));
   const ageSliders = Array.from(form.querySelectorAll('[data-age-slider]'));
   const ageDisplays = Array.from(form.querySelectorAll('[data-age-display]'));
-  const requiredContactFields = isContactFirstEducationVariant
-    ? ['FirstName', 'LastName', 'Phone']
-    : ['FirstName', 'Phone'];
+  const ageQuickButtons = Array.from(form.querySelectorAll('[data-age-quick-select]'));
+  const requiredContactFields = ['FirstName', 'ContactMethod'];
   const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
     : ['FirstName', 'LastName', 'Phone', 'Email', 'State'];
@@ -6325,7 +6409,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const AGE_MAX = @maxSelectableAge;
   const AGE_DEFAULT = @selectedAgeValue;
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
-  const PROCESSING_BRIDGE_MS = 1500;
+  const PROCESSING_BRIDGE_MS = 450;
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
   const defaultProcessingNoteText = processingNote?.textContent?.trim() || '';
@@ -6335,6 +6419,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const defaultStep2HelperHidden = step2Helper?.hidden ?? true;
   const defaultStep2ContactTitleText = step2ContactTitle?.textContent?.trim() || '';
   const defaultStep2ContactCopyText = step2ContactCopy?.textContent?.trim() || '';
+  const contactMethodErrorText = @Html.Raw(JsonSerializer.Serialize(contactMethodErrorText));
+  const consentErrorText = @Html.Raw(JsonSerializer.Serialize(consentErrorText));
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
   const FUNNEL_STATE_STORAGE_KEY = `life-funnel:${FUNNEL_STATE_SCOPE}`;
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
@@ -6451,6 +6537,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       ? ((numericAge - AGE_MIN) / (AGE_MAX - AGE_MIN)) * 100
       : 0;
     const pillText = isSelected ? resolvedAge : 'Select age';
+    const resolvedBand = resolveAgeBand(resolvedAge);
 
     agePickers.forEach((picker) => {
       picker.dataset.ageSelected = isSelected ? 'true' : 'false';
@@ -6465,6 +6552,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     ageDisplays.forEach((display) => {
       display.textContent = pillText;
+    });
+
+    ageQuickButtons.forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      button.classList.toggle(
+        'is-active',
+        isSelected && String(button.dataset.ageRange || '').trim() === resolvedBand
+      );
     });
   }
 
@@ -6722,6 +6820,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
     el.addEventListener(eventName, () => {
       clearFieldError(name);
+      if (name === 'Phone' || name === 'Email') {
+        clearFieldError('ContactMethod');
+      }
       const lifeError = document.getElementById('lifeError');
       if (lifeError) {
         lifeError.style.display = 'none';
@@ -7003,7 +7104,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     return [
       {
-        heading: 'Reviewing your protection priorities...',
+        heading: 'Checking your protection priorities...',
         helper: goalLabel && protectingLabel
           ? `Starting with ${goalLabel.toLowerCase()} for ${protectingLabel.toLowerCase()}.`
           : 'Starting with the people and priorities you shared.',
@@ -7126,15 +7227,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = 'You already have an estimated monthly range and a practical starting coverage range.';
+      step2Helper.textContent = 'Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.';
     }
 
     if (step2ContactTitle) {
-      step2ContactTitle.textContent = 'Want help reviewing whether this actually fits?';
+      step2ContactTitle.textContent = 'Where should we send your estimate?';
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = 'We’ll walk through what influenced the estimate and what may be worth comparing next.';
+      step2ContactCopy.textContent = 'Email is best for a written copy. Add a phone only if you want text or call help too.';
     }
   }
 
@@ -7207,6 +7308,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     AgeBracket: 'age_range',
     FirstName: 'first_name',
     LastName: 'last_name',
+    ContactMethod: 'contact_method',
     Phone: 'phone',
     Email: 'email',
     State: 'state',
@@ -7268,8 +7370,14 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function getContactFieldError(name) {
+    if (name === 'ContactMethod') {
+      const phoneValue = asTrimmed(form.querySelector('[name="Phone"]')?.value || '');
+      const emailValue = asTrimmed(form.querySelector('[name="Email"]')?.value || '');
+      return phoneValue || emailValue ? '' : contactMethodErrorText;
+    }
+
     if (name === 'MarketingEmailConsent') {
-      return consentCheckbox?.checked ? '' : 'Please authorize us to contact you about this request.';
+      return consentCheckbox?.checked ? '' : consentErrorText;
     }
 
     const el = form.querySelector(`[name="${name}"]`);
@@ -7314,6 +7422,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (name === 'Phone' && /valid phone/i.test(error || '')) {
       return 'invalid_phone';
     }
+    if (name === 'ContactMethod') {
+      return 'contact_method_required';
+    }
     if (name === 'MarketingEmailConsent') {
       return 'consent_required';
     }
@@ -7330,7 +7441,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         setFieldError(name, error);
         trackQuoteFieldError(name, resolveContactErrorType(name, error), 'contact');
         metaSignal?.trackFieldError(name, { fieldContext: 'contact' });
-        firstInvalid ??= form.querySelector(`[name="${name}"]`);
+        if (name === 'ContactMethod') {
+          firstInvalid ??= form.querySelector('[name="Email"]') || form.querySelector('[name="Phone"]');
+        } else {
+          firstInvalid ??= form.querySelector(`[name="${name}"]`);
+        }
       } else {
         clearFieldError(name);
       }
@@ -7802,7 +7917,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
 
     if (step1Progress) {
-      step1Progress.textContent = `Step ${bounded + 1} of ${microSteps.length}`;
+      step1Progress.textContent = `Question ${bounded + 1}`;
     }
     if (step1ProgressFill) {
       step1ProgressFill.style.width = `${((bounded + 1) / microSteps.length) * 100}%`;
@@ -8163,6 +8278,35 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       void ensureMetaLeadFormStart();
     });
   });
+  ageQuickButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    button.addEventListener('click', () => {
+      const nextValue = String(button.dataset.ageValue || '').trim();
+      if (!nextValue) {
+        return;
+      }
+
+      syncAgePickerUi(nextValue, true);
+      showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('AgeBracket');
+      clearEstimatePreviewCache();
+      syncStepOneAnswersFromUI();
+      persistFunnelState();
+      trackEvent('step1_age_entered', {
+        ageRange: getSelectedAgeBand(),
+        age: getSelectedAgeValue()
+      });
+      trackQuoteStepComplete('step1_age_entered', {
+        ageRange: getSelectedAgeBand(),
+        age: getSelectedAgeValue()
+      });
+      void ensureQuoteStartTracked({ startSource: 'age_quick_select', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
+      void ensureMetaLeadFormStart();
+    });
+  });
   document.querySelectorAll('[data-step1-back]').forEach((btn) => {
     btn.addEventListener('click', () => {
       metaSignal?.trackBacktrack({ fromStep: `micro_${currentMicroStep + 1}`, toStep: `micro_${btn.getAttribute('data-step1-back') || '0'}` });
@@ -8242,7 +8386,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const lifeSuccess = document.getElementById('lifeSuccess');
     if (lifeError) lifeError.style.display = 'none';
     if (lifeSuccess) lifeSuccess.style.display = 'none';
-    ['FirstName','LastName','Phone','Email','State','MarketingEmailConsent'].forEach(clearFieldError);
+    ['FirstName','LastName','Phone','Email','State','ContactMethod','MarketingEmailConsent'].forEach(clearFieldError);
     await showStep2(false, {
       estimatePreview,
       trackView: false,
@@ -8252,7 +8396,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     // contact validation
     if (!validateContactFields(true)) {
       if (lifeError) {
-        lifeError.textContent = 'Please review the highlighted contact fields.';
+        lifeError.textContent = 'Please complete the highlighted contact fields.';
         lifeError.style.display = 'block';
       }
       await showStep2(false, {

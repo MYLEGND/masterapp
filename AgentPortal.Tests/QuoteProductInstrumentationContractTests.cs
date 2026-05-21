@@ -69,10 +69,12 @@ public class QuoteProductInstrumentationContractTests
 
         Assert.Contains("name=\"MarketingEmailConsent\" value=\"false\"", view, StringComparison.Ordinal);
         Assert.Contains("type=\"checkbox\" id=\"MarketingEmailConsent\" name=\"MarketingEmailConsent\" value=\"true\"", view, StringComparison.Ordinal);
-        Assert.Contains("Please authorize us to contact you about this request.", view, StringComparison.Ordinal);
+        Assert.Contains("Please check the box so we can send your estimate and options.", view, StringComparison.Ordinal);
         Assert.Contains("if (!model.MarketingEmailConsent)", controller, StringComparison.Ordinal);
         Assert.Contains("ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent)", controller, StringComparison.Ordinal);
         Assert.Contains("AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent", controller, StringComparison.Ordinal);
+        Assert.Contains("string.IsNullOrWhiteSpace(model.Email) && string.IsNullOrWhiteSpace(model.Phone)", controller, StringComparison.Ordinal);
+        Assert.Contains("id=\"err-ContactMethod\"", view, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -103,10 +105,10 @@ public class QuoteProductInstrumentationContractTests
 
         Assert.Contains("showCarrierReviewBeforeContact = false;", view, StringComparison.Ordinal);
         Assert.Contains("showPreContactEducationSummary = false;", view, StringComparison.Ordinal);
-        Assert.Contains("Want help reviewing whether this actually fits?", view, StringComparison.Ordinal);
-        Assert.Contains("We’ll walk through what influenced the estimate and what may be worth comparing next.", view, StringComparison.Ordinal);
-        Assert.Contains("You already have an estimated monthly range and a practical starting coverage range.", view, StringComparison.Ordinal);
-        Assert.Contains("Get My Personal Review", view, StringComparison.Ordinal);
+        Assert.Contains("Where should we send your estimate?", view, StringComparison.Ordinal);
+        Assert.Contains("Email is best for a written copy. Add a phone only if you want text or call help too.", view, StringComparison.Ordinal);
+        Assert.Contains("Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.", view, StringComparison.Ordinal);
+        Assert.Contains("Send My Estimate", view, StringComparison.Ordinal);
 
         Assert.Contains("buildGeneralLifeContactSummaryHtml", renderer, StringComparison.Ordinal);
         Assert.Contains("return buildGeneralLifeContactSummaryHtml(normalized);", renderer, StringComparison.Ordinal);

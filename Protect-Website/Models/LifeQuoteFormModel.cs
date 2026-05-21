@@ -13,9 +13,8 @@ namespace Protect_Website.Models
         [EmailAddress(ErrorMessage = "Invalid email address")]
         public string? Email { get; set; }
 
-        [Required(ErrorMessage = "Phone is required")]
         [Phone(ErrorMessage = "Invalid phone number")]
-        public string Phone { get; set; } = "";
+        public string? Phone { get; set; }
 
         public string? State { get; set; }
 

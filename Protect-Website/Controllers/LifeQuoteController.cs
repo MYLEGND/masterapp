@@ -140,24 +140,27 @@ namespace Protect_Website.Controllers
             var cfg = GetWizardConfig(offerKey);
             var pageMode = ResolvePageMode(cfg, isLandingPage: false, model, requestedLandingVariant: null);
             NormalizeDiscoveryAnswers(model);
-            var requiresLastName = string.Equals(pageMode.PageVariant, ContactFirstEducationLandingVariant, StringComparison.OrdinalIgnoreCase);
             if (string.IsNullOrWhiteSpace(model.LastName))
             {
                 model.LastName = null;
-                if (requiresLastName)
-                {
-                    ModelState.AddModelError(nameof(LifeQuoteFormModel.LastName), "Last Name is required.");
-                }
-                else
-                {
-                    ModelState.Remove(nameof(LifeQuoteFormModel.LastName));
-                }
+                ModelState.Remove(nameof(LifeQuoteFormModel.LastName));
             }
 
             if (string.IsNullOrWhiteSpace(model.Email))
             {
                 model.Email = null;
                 ModelState.Remove(nameof(LifeQuoteFormModel.Email));
+            }
+
+            if (string.IsNullOrWhiteSpace(model.Phone))
+            {
+                model.Phone = null;
+                ModelState.Remove(nameof(LifeQuoteFormModel.Phone));
+            }
+
+            if (string.IsNullOrWhiteSpace(model.Email) && string.IsNullOrWhiteSpace(model.Phone))
+            {
+                ModelState.AddModelError("ContactMethod", "Add an email or phone so we can keep your estimate connected to you.");
             }
 
             if (!model.CoverageAmount.HasValue || model.CoverageAmount.Value <= 0)
@@ -172,7 +175,7 @@ namespace Protect_Website.Controllers
 
             if (!model.MarketingEmailConsent)
             {
-                ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent), "Please authorize us to contact you about this request.");
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent), "Please check the box so we can send your estimate and options.");
             }
 
             if (!ModelState.IsValid)
@@ -1142,9 +1145,9 @@ namespace Protect_Website.Controllers
                 ? attachedAgentFirstName!.Trim()
                 : "One of our licensed representatives";
             rows.RowHtml("", @"<div style=""color:rgba(249,250,251,0.78);font-size:14px;line-height:1.6;"">
-  " + WebUtility.HtmlEncode(nextStepContactName) + @" will be in touch shortly to walk you through your options
-  and answer any questions you may have. There is no obligation — just a straightforward
-  conversation about what may fit your situation.
+  Keep this summary for reference. If you want help comparing options or pressure-testing the estimate,
+  " + WebUtility.HtmlEncode(nextStepContactName) + @" can help you talk through the next best fit.
+  There is no obligation.
 </div>");
 
             return LeadEmailTemplate.Wrap("Your Recommendation Summary", rows.ToString());
