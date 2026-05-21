@@ -95,20 +95,21 @@ public class QuoteProductInstrumentationContractTests
     }
 
     [Fact]
-    public void GeneralLifeFinalContactStep_UsesSimplifiedEstimateReviewPresentation()
+    public void LifeFinalContactStep_UsesSimplifiedEstimateReviewPresentationAcrossOffers()
     {
         var repoRoot = GetRepoRoot();
         var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
         var renderer = Read(repoRoot, "Protect-Website", "wwwroot", "js", "life-estimate-engine.js");
 
-        Assert.Contains("showCarrierReviewBeforeContact = !isGeneralLifeOffer;", view, StringComparison.Ordinal);
-        Assert.Contains("showPreContactEducationSummary = !isGeneralLifeOffer;", view, StringComparison.Ordinal);
+        Assert.Contains("showCarrierReviewBeforeContact = false;", view, StringComparison.Ordinal);
+        Assert.Contains("showPreContactEducationSummary = false;", view, StringComparison.Ordinal);
         Assert.Contains("Want help reviewing whether this actually fits?", view, StringComparison.Ordinal);
         Assert.Contains("We’ll walk through what influenced the estimate and what may be worth comparing next.", view, StringComparison.Ordinal);
         Assert.Contains("You already have an estimated monthly range and a practical starting coverage range.", view, StringComparison.Ordinal);
         Assert.Contains("Get My Personal Review", view, StringComparison.Ordinal);
 
         Assert.Contains("buildGeneralLifeContactSummaryHtml", renderer, StringComparison.Ordinal);
+        Assert.Contains("return buildGeneralLifeContactSummaryHtml(normalized);", renderer, StringComparison.Ordinal);
         Assert.Contains("is-general-life-lite", renderer, StringComparison.Ordinal);
         Assert.Contains("Estimated monthly range", renderer, StringComparison.Ordinal);
         Assert.Contains("Recommended coverage range", renderer, StringComparison.Ordinal);

@@ -739,6 +739,12 @@
             ("Low-pressure next step", "Only share contact info if you want help interpreting what may fit.")
         };
     }
+    stepTwoContactTitleText = "Want help reviewing whether this actually fits?";
+    stepTwoContactCopyText = "We’ll walk through what influenced the estimate and what may be worth comparing next.";
+    finalStepHeading = "Your estimate is ready";
+    finalStepHelper = "You already have an estimated monthly range and a practical starting coverage range.";
+    finalSubmitButtonText = "Get My Personal Review";
+
     var contactFirstBridgeText = normalizedOfferKey switch
     {
         "wholelife" => "Start my whole life estimate",
@@ -7110,40 +7116,22 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     const topicLabel = resolveStep2TopicLabel(preview);
-    const isSingleOffer = isSingleOfferEstimate(preview);
-    const isGeneralLifeEstimate = String(preview?.offerKey || quoteType || '').trim().toLowerCase() === 'life';
 
     if (step2Heading) {
-      step2Heading.textContent = isGeneralLifeEstimate
-        ? 'Your estimate is ready'
-        : isSingleOffer
-        ? `Your ${topicLabel} estimate is ready`
-        : 'Your estimate is ready';
+      step2Heading.textContent = 'Your estimate is ready';
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = isGeneralLifeEstimate
-        ? 'You already have an estimated monthly range and a practical starting coverage range.'
-        : isSingleOffer
-        ? `You already have an estimated monthly range and a practical starting coverage range for ${topicLabel}. If you want help interpreting it, you can get the walkthrough below.`
-        : 'You already have an estimated monthly range and a practical starting coverage range. If you want help interpreting it, you can get the walkthrough below.';
+      step2Helper.textContent = 'You already have an estimated monthly range and a practical starting coverage range.';
     }
 
-    const fitDescriptor = resolveStep2FitDescriptor(topicLabel);
-
     if (step2ContactTitle) {
-      step2ContactTitle.textContent = isGeneralLifeEstimate
-        ? 'Want help reviewing whether this actually fits?'
-        : defaultStep2ContactTitleText;
+      step2ContactTitle.textContent = 'Want help reviewing whether this actually fits?';
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = isGeneralLifeEstimate
-        ? 'We’ll walk through what influenced the estimate and what may be worth comparing next.'
-        : hasAgentTrustProfile && agentDirectContactName
-        ? `Share your info and ${agentDirectContactName} will walk through what may fit your ${fitDescriptor}. No obligation.`
-        : `Share your info and we’ll walk through what may fit your ${fitDescriptor}. No obligation.`;
+      step2ContactCopy.textContent = 'We’ll walk through what influenced the estimate and what may be worth comparing next.';
     }
   }
 

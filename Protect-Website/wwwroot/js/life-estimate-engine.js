@@ -524,64 +524,7 @@
 
   function buildContactSummaryHtml(preview) {
     const normalized = normalizePreview(preview);
-    if (isGeneralLifePreview(normalized)) {
-      return buildGeneralLifeContactSummaryHtml(normalized);
-    }
-
-    const secondary = normalized.secondary;
-    const hasSecondary = normalized.displayMode === 'comparison' && secondary && secondary.policyKey;
-    const disclaimer = normalized.disclaimer || normalized.primary.disclaimer || secondary?.disclaimer || '';
-    const profileSignalsHtml = buildProfileSignalsHtml(normalized);
-    const recommendedCoverageRange = buildRecommendedCoverageRange(normalized);
-    const secondaryNoteHtml = hasSecondary
-      ? `<div class="lq-contact-estimate-alt">Also worth reviewing next: <strong>${escapeHtml(secondary.policyType)}</strong> at ${escapeHtml(formatCurrencyRangeCompact(secondary.estimatedLowMonthly, secondary.estimatedHighMonthly))}</div>`
-      : '';
-
-    return `
-      <div class="lq-contact-estimate-wrap" id="lifeStep2EstimateSummary">
-        <div class="lq-contact-estimate-head">
-          <div class="lq-contact-estimate-kicker">Based on your answers</div>
-          <div class="lq-contact-estimate-title">${buildContactSummaryTitle(normalized)}</div>
-          <div class="lq-contact-estimate-copy">${buildContactSummaryCopy(normalized)}</div>
-        </div>
-        <div class="lq-contact-estimate-stats" aria-label="Estimate highlights">
-          <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Estimated monthly range</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(formatCurrencyRangeCompact(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
-          </div>
-          <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Recommended coverage range</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(recommendedCoverageRange || formatCoverageFigure(normalized.requestedCoverageAmount || normalized.primary.coverageAmount))}</div>
-          </div>
-          <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Likely monthly starting point</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(formatMonthlyStartingPoint(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
-          </div>
-          <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">${escapeHtml(buildThirdStatLabel(normalized))}</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(buildThirdStatValue(normalized))}</div>
-          </div>
-        </div>
-        <div class="lq-contact-estimate-personal">
-          <div class="lq-contact-estimate-personal-label">Common starting point</div>
-          <div class="lq-contact-estimate-personal-copy">${buildCommonStartingPointCopy(normalized)}</div>
-        </div>
-        <div class="lq-contact-estimate-personal">
-          <div class="lq-contact-estimate-personal-label">Personalized protection summary</div>
-          <div class="lq-contact-estimate-personal-copy">${buildPersonalizedProtectionSummary(normalized)}</div>
-        </div>
-        <div class="lq-contact-estimate-signal">
-          <div class="lq-contact-estimate-signal-badge">${isSingleProductPreview(normalized) ? 'What this estimate was based on' : 'Why this showed up first'}</div>
-          <div class="lq-contact-estimate-signal-copy">${buildSignalCopy(normalized)}</div>
-        </div>
-        ${profileSignalsHtml}
-        <div class="lq-contact-estimate-card-wrap">
-          ${buildEstimateCard(normalized.primary, buildPrimaryBadgeLabel(normalized), 'primary')}
-        </div>
-        ${secondaryNoteHtml}
-        <div class="lq-estimate-disclaimer">${escapeHtml(disclaimer)}</div>
-      </div>
-    `;
+    return buildGeneralLifeContactSummaryHtml(normalized);
   }
 
   async function fetchPreview(form, url) {
