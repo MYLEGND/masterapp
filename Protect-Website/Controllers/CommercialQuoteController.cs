@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
@@ -29,10 +30,11 @@ namespace Protect_Website.Controllers
         private readonly MasterAppDbContext _db;
         private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly ILogger<CommercialQuoteController> _logger;
 
         public CommercialQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, ILogger<CommercialQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, ILogger<CommercialQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -44,6 +46,7 @@ namespace Protect_Website.Controllers
             _db = db;
             _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
+            _websiteLeadCapture = websiteLeadCapture;
             _logger = logger;
         }
 
