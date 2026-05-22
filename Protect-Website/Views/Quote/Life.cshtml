@@ -434,33 +434,6 @@ input[name="Phone"]:focus {
 }
 
 
-/* FINAL REVIEW ICON CHIPS */
-.lq-final-review-unified-card .lq-answer-chip,
-.lq-final-review-unified-card .lq-profile-chip,
-.lq-final-review-unified-card .lq-estimate-chip,
-.lq-final-review-unified-card .lq-rec-chip,
-.lq-final-review-unified-card [class*="chip"],
-.lq-final-review-unified-card [class*="pill"] {
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-}
-
-.lq-final-chip-icon {
-    width: 24px !important;
-    height: 24px !important;
-    min-width: 24px !important;
-    display: inline-grid !important;
-    place-items: center !important;
-    color: #d8a92f !important;
-}
-
-.lq-final-chip-icon svg {
-    width: 22px !important;
-    height: 22px !important;
-    stroke: #d8a92f !important;
-}
-
 
 /* Move Zac intro into blue final card; remove its old brown holder */
 #lifeEducationContactPanel.lq-final-panel-no-chrome {
@@ -11316,68 +11289,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   }
 
 
-  // Final review chip icons: applies to every answer/profile chip after result render.
-  function getFinalReviewChipIcon(text) {
-    const value = (text || '').toLowerCase();
-
-    if (value.includes('age')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="3.2" stroke="currentColor" stroke-width="1.9"/><path d="M5.5 20c1.1-4 11.9-4 13 0" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
-    }
-
-    if (value.includes('tobacco') || value.includes('smoker') || value.includes('smoke')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><path d="M4 15h10v4H4z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M16 15h2.2M20.2 15H21" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M9 11c2-1.2-.8-2.5 1.1-4M14 11c2-1.2-.8-2.5 1.1-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
-    }
-
-    if (value.includes('child') || value.includes('children') || value.includes('family') || value.includes('spouse') || value.includes('partner') || value.includes('loved')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.8"/><circle cx="16" cy="8" r="2.4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 19c.7-3.3 6.3-3.3 7 0M12.5 19c.7-3.3 6.3-3.3 7 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
-    }
-
-    if (value.includes('mortgage') || value.includes('home') || value.includes('house') || value.includes('bill')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><path d="M4 11.5 12 5l8 6.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M6.5 10.5V20h11v-9.5" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/></svg>';
-    }
-
-    if (value.includes('$') || value.includes('coverage') || value.includes('around') || value.includes('250') || value.includes('500') || value.includes('million')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.9"/><path d="M12 7v10M15 9.2c-.7-1-2.9-1.4-4.1-.4-1.4 1.1-.5 2.8 1.3 3.2 2.1.5 3.5 1.3 2.5 3-1 1.7-4.1 1.3-5.1-.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
-    }
-
-    if (value.includes('term') || value.includes('whole') || value.includes('iul') || value.includes('expense') || value.includes('life')) {
-      return '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3.8 19 7v5.2c0 4.5-2.9 7.2-7 8.8-4.1-1.6-7-4.3-7-8.8V7l7-3.2Z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M9 12.2 11.2 14.4 15.5 9.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-    }
-
-    return '<svg viewBox="0 0 24 24" fill="none"><path d="M12 3.5 14.4 9l6 .6-4.5 3.9 1.3 5.9L12 16.3l-5.2 3.1 1.3-5.9-4.5-3.9 6-.6L12 3.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
-  }
-
-  function iconizeFinalReviewChips() {
-    const root = document.querySelector('.lq-final-review-unified-card');
-    if (!root) return;
-
-    const selectors = [
-      '.lq-answer-chip',
-      '.lq-profile-chip',
-      '.lq-estimate-chip',
-      '.lq-rec-chip',
-      '.lq-summary-chip',
-      '[class*="chip"]',
-      '[class*="pill"]'
-    ];
-
-    root.querySelectorAll(selectors.join(',')).forEach((chip) => {
-      if (!(chip instanceof HTMLElement)) return;
-      if (chip.dataset.iconized === 'true') return;
-      if (chip.querySelector('.lq-final-chip-icon')) return;
-
-      const text = chip.textContent || '';
-      const icon = document.createElement('span');
-      icon.className = 'lq-final-chip-icon';
-      icon.setAttribute('aria-hidden', 'true');
-      icon.innerHTML = getFinalReviewChipIcon(text);
-
-      chip.prepend(icon);
-      chip.dataset.iconized = 'true';
-    });
-  }
-
-
   function renderPostSubmitBookingState(payload) {
     if (!(postSubmitSlot instanceof HTMLElement)) return;
 
@@ -11452,7 +11363,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       </section>`;
 
     postSubmitSlot.hidden = false;
-    iconizeFinalReviewChips();
 
     const inlineFrameSlotAuto = document.getElementById('lifeBookingInlineFrameSlot');
     const inlineStatusAuto = document.getElementById('lifeBookingInlineStatus');
