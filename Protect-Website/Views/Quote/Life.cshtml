@@ -8662,6 +8662,44 @@ body.life-landing .lq-hero-shell,
     line-height: 1.34 !important;
 }
 
+#lifePostSubmitSlot .lq-final-review-next-step {
+    margin: 2px 0 14px !important;
+    padding: 15px 16px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(243,214,136,.13), transparent 34%),
+        linear-gradient(180deg, rgba(8,37,77,.92) 0%, rgba(5,22,48,.96) 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 14px 28px rgba(2,12,27,.14) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-next-kicker {
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    font-weight: 940 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 5px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-next-title {
+    color: #fff7df !important;
+    font-size: 1.02rem !important;
+    font-weight: 900 !important;
+    line-height: 1.22 !important;
+    margin: 0 0 5px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-next-copy {
+    color: rgba(248,250,252,.80) !important;
+    font-size: .9rem !important;
+    font-weight: 720 !important;
+    line-height: 1.38 !important;
+    margin: 0 !important;
+}
+
 #lifePostSubmitSlot .lq-final-review-booking-head {
     margin: 12px 0 10px !important;
     padding: 14px 0 0 !important;
@@ -8723,6 +8761,16 @@ body.life-landing .lq-hero-shell,
     #lifePostSubmitSlot .lq-metric-grid,
     #lifePostSubmitSlot .lq-final-review-impact-grid {
         grid-template-columns: 1fr !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-next-step {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-title {
+        font-size: 1.42rem !important;
+        line-height: 1.08 !important;
     }
 
     #lifePostSubmitSlot .lq-booking-iframe {
@@ -8909,49 +8957,54 @@ body.life-landing .lq-hero-shell,
 
   const finalHandoffCopyByQuoteType = Object.freeze({
     term: {
-      kicker: 'Protection gap found',
+      kicker: 'Protection path ready',
       title: 'Your term life review is ready.',
-      copy: 'Your answers point to a real protection window: the years your income, bills, mortgage, and family stability may matter most. The estimate is a starting range, not a final offer, so the smart move is to review it while your age and health details are still fresh.',
-      diagnosis: 'Your family may need income protection for a defined stretch of years.',
-      implication: 'Waiting can reduce flexibility because rates and eligibility are tied to age and health.',
-      bookingTitle: 'Lock in your review time',
-      bookingCopy: 'Choose the soonest time that works so Zac can compare the range, confirm fit, and help you decide whether this should move forward.'
+      copy: 'Your answers point to the years your family may feel the most pressure if your income suddenly stopped: the mortgage, monthly bills, children, and day-to-day stability. This is not a final underwriting offer yet. It is the clearest starting point to review before the details get pushed aside.',
+      diagnosis: 'Your family may need a defined protection window around income, bills, and major responsibilities.',
+      implication: 'Rates and approval options are tied to age, health, and underwriting. Reviewing sooner usually preserves more flexibility than waiting.',
+      nextStep: 'Confirm coverage amount, monthly fit, term length, and whether this is the right first direction.',
+      bookingTitle: 'Choose your term review time',
+      bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm fit, and help you decide whether this should move forward.'
     },
     wholelife: {
-      kicker: 'Lifetime fit ready',
+      kicker: 'Permanent fit ready',
       title: 'Your whole life review is ready.',
-      copy: 'Your answers point toward permanent protection, long-term stability, and family support that does not simply disappear after a term period. The next step is confirming whether the monthly fit and structure make sense before anything is assumed.',
-      diagnosis: 'You may be looking for protection designed to stay in place long term.',
-      implication: 'Permanent coverage is highly sensitive to age, health, and structure, so fit should be reviewed carefully.',
+      copy: 'Your answers point toward protection designed to stay in place long term, not something that simply expires later. The estimate is only the first filter. The important part is confirming whether the structure, monthly fit, and long-term purpose actually make sense.',
+      diagnosis: 'You may be looking for lifelong protection, stable structure, and lasting family support.',
+      implication: 'Permanent coverage is sensitive to age, health, design, and funding. The right structure matters more than just seeing a number.',
+      nextStep: 'Confirm whether whole life is truly the right fit before comparing alternatives.',
       bookingTitle: 'Review the long-term fit',
-      bookingCopy: 'Choose a time so Zac can walk through the range, structure, and whether whole life is truly the right direction.'
+      bookingCopy: 'Choose a time so {{agentName}} can walk through the range, structure, and whether whole life is the right direction.'
     },
     finalexpense: {
-      kicker: 'Family relief review ready',
+      kicker: 'Family relief ready',
       title: 'Your final expense review is ready.',
-      copy: 'Your answers point to a simple but serious goal: keeping loved ones from carrying funeral costs, final bills, and pressure during an already painful moment. The estimate gives a starting range; the review confirms what may actually fit.',
-      diagnosis: 'Your loved ones could be left handling final costs without a clear plan.',
-      implication: 'Final expense pricing and eligibility can tighten with age and health changes.',
+      copy: 'Your answers point to a simple but serious goal: keeping loved ones from carrying funeral costs, final bills, and added pressure during an already painful moment. The estimate gives a starting range. The review confirms what may actually fit.',
+      diagnosis: 'Loved ones could be left handling final costs without a clear plan in place.',
+      implication: 'Final expense pricing and eligibility can tighten as age and health change, so waiting rarely creates more options.',
+      nextStep: 'Confirm the benefit amount, monthly fit, and whether this gives your family enough breathing room.',
       bookingTitle: 'Confirm the family relief plan',
-      bookingCopy: 'Choose a time so Zac can confirm the amount, monthly fit, and next step while this is still clear.'
+      bookingCopy: 'Choose a time so {{agentName}} can confirm the amount, monthly fit, and next step while this is still clear.'
     },
     mortgage: {
-      kicker: 'Home protection gap found',
+      kicker: 'Home protection ready',
       title: 'Your mortgage protection review is ready.',
       copy: 'Your answers point to the home, the payment, and the people who depend on both. This starting range needs to be checked against the real mortgage pressure so the next step is clear instead of guessed.',
-      diagnosis: 'The home may need protection if income suddenly disappears.',
-      implication: 'The longer this sits, the easier it is for the same mortgage risk to stay uncovered.',
-      bookingTitle: 'Protect the home conversation',
-      bookingCopy: 'Choose the soonest time that works so Zac can compare the range, confirm the home-protection fit, and help you decide what makes sense.'
+      diagnosis: 'The home may need a protection layer if income suddenly disappears.',
+      implication: 'The mortgage does not pause because life changes. The longer this sits, the easier it is for the same home risk to stay uncovered.',
+      nextStep: 'Confirm the mortgage balance, monthly fit, household need, and best protection structure.',
+      bookingTitle: 'Choose your home protection review',
+      bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm the home-protection fit, and help you decide what makes sense.'
     },
     iul: {
       kicker: 'Long-term strategy ready',
       title: 'Your IUL review is ready.',
-      copy: 'Your answers point toward long-term protection, flexibility, and legacy planning. IUL needs a careful review because the structure matters just as much as the coverage amount.',
+      copy: 'Your answers point toward long-term protection, flexibility, and legacy planning. IUL should not be judged from a quick estimate alone because the structure matters just as much as the coverage amount.',
       diagnosis: 'You may be exploring protection with long-term flexibility and future planning room.',
-      implication: 'IUL should not be guessed from a quick estimate; age, health, funding, and structure all matter.',
+      implication: 'IUL depends on age, health, funding, policy design, and long-term expectations. Guessing here creates bad decisions.',
+      nextStep: 'Confirm whether IUL is appropriate, how it would be structured, and what alternatives should be compared.',
       bookingTitle: 'Review the long-term structure',
-      bookingCopy: 'Choose a time so Zac can walk through the range, structure, and whether IUL is the right fit.'
+      bookingCopy: 'Choose a time so {{agentName}} can walk through the range, structure, and whether IUL is the right fit.'
     },
     life: {
       kicker: 'Protection path ready',
@@ -8959,14 +9012,19 @@ body.life-landing .lq-hero-shell,
       copy: 'Your answers created a starting range and a likely protection path. Now the important part is confirming whether it actually fits your family, budget, and goals before the details get pushed aside.',
       diagnosis: 'There may be a real protection gap worth reviewing.',
       implication: 'Rates and eligibility are tied to age and health, so reviewing sooner usually gives more flexibility.',
+      nextStep: 'Confirm the coverage amount, monthly fit, carrier direction, and whether this should move forward.',
       bookingTitle: 'Choose your review time',
-      bookingCopy: 'Pick the soonest time that works so ${agentName} can compare the range, confirm fit, and help you decide the next step.'
+      bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm fit, and help you decide the next step.'
     }
   });
 
   function getFinalHandoffCopy(type) {
     const key = asTrimmed(type || '').toLowerCase();
     return finalHandoffCopyByQuoteType[key] || finalHandoffCopyByQuoteType.life;
+  }
+
+  function mergeAgentNameIntoCopy(value, agentName) {
+    return asTrimmed(value).replaceAll('{{agentName}}', asTrimmed(agentName) || 'your licensed agent');
   }
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
@@ -10319,17 +10377,17 @@ body.life-landing .lq-hero-shell,
 
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Choose a time below to review your term life estimate with Zac.';
+        return 'Choose a time below to review your term life estimate with {{agentName}}.';
       case 'wholelife':
-        return 'Choose a time below to review your whole life estimate with Zac.';
+        return 'Choose a time below to review your whole life estimate with {{agentName}}.';
       case 'finalexpense':
-        return 'Choose a time below to review your final expense estimate with Zac.';
+        return 'Choose a time below to review your final expense estimate with {{agentName}}.';
       case 'mortgage':
-        return 'Choose a time below to review your mortgage protection estimate with Zac.';
+        return 'Choose a time below to review your mortgage protection estimate with {{agentName}}.';
       case 'iul':
-        return 'Choose a time below to review your IUL estimate with Zac.';
+        return 'Choose a time below to review your IUL estimate with {{agentName}}.';
       default:
-        return 'Choose a time below to review your estimate with Zac.';
+        return 'Choose a time below to review your estimate with {{agentName}}.';
     }
   }
 
@@ -11693,7 +11751,9 @@ body.life-landing .lq-hero-shell,
     if (existingResult) existingResult.remove();
 
     const handoffCopy = getFinalHandoffCopy(quoteType);
-    const agentName = escapeHtml(agentDirectContactName || "your licensed agent");
+    const agentNameRaw = asTrimmed(agentDirectContactName || agentDisplayName || "your licensed agent");
+    const agentName = escapeHtml(agentNameRaw);
+    const bookingCopy = mergeAgentNameIntoCopy(handoffCopy.bookingCopy, agentNameRaw);
 
     postSubmitSlot.innerHTML = `
       <section class="lq-final-review-unified-card" aria-labelledby="lifePostSubmitBookingTitle">
@@ -11726,9 +11786,15 @@ body.life-landing .lq-hero-shell,
           </div>
         ` : ''}
 
+        <div class="lq-final-review-next-step" aria-label="What happens during the review">
+          <div class="lq-final-review-next-kicker">What happens next</div>
+          <div class="lq-final-review-next-title">${escapeHtml(agentNameRaw)} helps you turn the estimate into a clear decision.</div>
+          <div class="lq-final-review-next-copy">${escapeHtml(handoffCopy.nextStep)}</div>
+        </div>
+
         <div class="lq-final-review-booking-head">
           <div class="lq-final-review-booking-title">${escapeHtml(handoffCopy.bookingTitle)}</div>
-          <div class="lq-final-review-booking-copy">${escapeHtml(handoffCopy.bookingCopy)}</div>
+          <div class="lq-final-review-booking-copy">${escapeHtml(bookingCopy)}</div>
         </div>
 
         ${showInlineShell ? `
