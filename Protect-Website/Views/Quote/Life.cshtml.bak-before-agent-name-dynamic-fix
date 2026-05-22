@@ -10281,7 +10281,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Term length + coverage amount',
             actionTitle: 'Lock in a clear term review',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the term range, confirm what it protects, and show whether this amount is realistic for your family.'
+            actionCopy: 'Choose a time below so Zac can walk through the term range, confirm what it protects, and show whether this amount is realistic for your family.'
           };
         case 'wholelife':
           return {
@@ -10293,7 +10293,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Premium structure + long-term fit',
             actionTitle: 'Review the lifetime structure',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the whole life range, explain the structure, and confirm whether it fits your long-term goal.'
+            actionCopy: 'Choose a time below so Zac can walk through the whole life range, explain the structure, and confirm whether it fits your long-term goal.'
           };
         case 'finalexpense':
           return {
@@ -10305,7 +10305,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Benefit amount + monthly fit',
             actionTitle: 'Confirm the amount before guessing',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can help review whether this amount is enough to protect your loved ones from carrying the burden alone.'
+            actionCopy: 'Choose a time below so Zac can help review whether this amount is enough to protect your loved ones from carrying the burden alone.'
           };
         case 'mortgage':
           return {
@@ -10317,7 +10317,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Mortgage balance + monthly fit',
             actionTitle: 'Protect the home with clarity',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can review the mortgage protection range and confirm whether it lines up with the home you want protected.'
+            actionCopy: 'Choose a time below so Zac can review the mortgage protection range and confirm whether it lines up with the home you want protected.'
           };
         case 'iul':
           return {
@@ -10329,7 +10329,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Structure + funding fit',
             actionTitle: 'Review the structure before deciding',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can explain how the IUL range works and whether the structure fits your long-term plan.'
+            actionCopy: 'Choose a time below so Zac can explain how the IUL range works and whether the structure fits your long-term plan.'
           };
         default:
           return {
@@ -10341,7 +10341,7 @@ body.life-landing .lq-hero-shell,
             focusTwoLabel: 'What needs review',
             focusTwoValue: 'Coverage amount + monthly fit',
             actionTitle: 'Confirm the best next step',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the range and help confirm whether this is the right direction.'
+            actionCopy: 'Choose a time below so Zac can walk through the range and help confirm whether this is the right direction.'
           };
       }
     })();
@@ -11596,7 +11596,7 @@ body.life-landing .lq-hero-shell,
         <div class="lq-final-review-head">
           <div class="lq-final-review-kicker">Review ready</div>
           <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">Your personalized review is ready.</div>
-          <div class="lq-final-review-copy">Your range is ready, but the numbers still need to be checked against your real situation. Choose a time below before this gets pushed aside, so ${escapeHtml(agentDirectContactName || "your licensed agent")} can confirm the coverage amount, monthly fit, and next step while the details are fresh.</div>
+          <div class="lq-final-review-copy">Your range is ready, but the numbers still need to be checked against your real situation. Choose a time below before this gets pushed aside, so Zac can confirm the coverage amount, monthly fit, and next step while the details are fresh.</div>
         </div>
 
         ${resultHtml ? `
@@ -11607,7 +11607,7 @@ body.life-landing .lq-hero-shell,
 
         <div class="lq-final-review-booking-head">
           <div class="lq-final-review-booking-title">Choose Your Review Time</div>
-          <div class="lq-final-review-booking-copy">Pick the soonest time that works. This is where ${escapeHtml(agentDirectContactName || "your licensed agent")} helps turn the estimate into a clear yes, no, or better-fit direction.</div>
+          <div class="lq-final-review-booking-copy">Pick the soonest time that works. This is where the estimate gets turned into a clear yes, no, or better-fit direction.</div>
         </div>
 
         ${showInlineShell ? `

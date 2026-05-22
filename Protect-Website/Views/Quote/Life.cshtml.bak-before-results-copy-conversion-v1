@@ -10236,159 +10236,53 @@ body.life-landing .lq-hero-shell,
 
   function buildPostSubmitEstimateSummaryHtml(preview) {
     const normalized = normalizeStep2Preview(preview);
-    const offerKey = resolveDisplayedOfferKeyForStep2(normalized);
-    const isGeneral = isGeneralLifeQuoteForStep2(normalized);
-
-    const monthlyRange = formatCurrencyRangeCompactForStep2(
-      normalized.primary.estimatedLowMonthly,
-      normalized.primary.estimatedHighMonthly
-    );
-
+    const reasonsHtml = buildExpandedStep2Reasons(normalized)
+      .map((reason) => `<li>${escapeHtml(reason)}</li>`)
+      .join('');
     const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
       || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
       || 'To be confirmed';
-
-    const productName = normalized.primary.policyType || 'Life Insurance';
-    const priorityContext = buildPriorityContextForStep2(normalized);
-    const tobaccoLabel = humanizeTobaccoUseForStep2(normalized.tobaccoUse) || 'Health profile';
-    const ageLabel = normalized.age > 0
-      ? `Age ${Math.round(normalized.age)}`
-      : normalized.ageBand ? `Age ${normalized.ageBand}` : 'Age confirmed';
-
-    const productCopy = (() => {
-      if (isGeneral) {
-        return {
-          kicker: 'Personalized recommendation',
-          title: `${productName} is the strongest first path to review.`,
-          reason: `Your answers point toward ${priorityContext || 'a specific protection need'}, so this result gives you a clear place to start before comparing alternatives.`,
-          focusOneLabel: 'Best first review',
-          focusOneValue: productName,
-          focusTwoLabel: 'Compare only if needed',
-          focusTwoValue: normalized.secondary?.policyType || 'Other life options',
-          actionTitle: 'Confirm the fit before the window closes',
-          actionCopy: 'Use the calendar below to review the recommendation, verify the coverage range, and decide whether this is worth moving forward with.'
-        };
-      }
-
-      switch (offerKey) {
-        case 'term':
-          return {
-            kicker: 'Term life estimate',
-            title: 'Your term life range is ready.',
-            reason: `This term estimate is built around ${priorityContext || 'protecting the key years your family depends on you most'}. The next step is confirming the term length, coverage amount, and monthly fit before assuming this range is accurate.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: 'Income, mortgage, and key family years',
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Term length + coverage amount',
-            actionTitle: 'Lock in a clear term review',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the term range, confirm what it protects, and show whether this amount is realistic for your family.'
-          };
-        case 'wholelife':
-          return {
-            kicker: 'Whole life estimate',
-            title: 'Your whole life range is ready.',
-            reason: `This whole life estimate is built around ${priorityContext || 'permanent protection that can stay in place long term'}. The review should confirm premium fit, coverage amount, and whether lifelong protection makes sense for your situation.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: 'Lifetime coverage and stability',
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Premium structure + long-term fit',
-            actionTitle: 'Review the lifetime structure',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the whole life range, explain the structure, and confirm whether it fits your long-term goal.'
-          };
-        case 'finalexpense':
-          return {
-            kicker: 'Final expense estimate',
-            title: 'Your final expense range is ready.',
-            reason: `This final expense estimate is built around ${priorityContext || 'helping loved ones handle funeral costs, final bills, and immediate expenses'}. The next step is making sure the amount is enough without overpaying for coverage you do not need.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: 'Funeral costs, final bills, and family relief',
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Benefit amount + monthly fit',
-            actionTitle: 'Confirm the amount before guessing',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can help review whether this amount is enough to protect your loved ones from carrying the burden alone.'
-          };
-        case 'mortgage':
-          return {
-            kicker: 'Mortgage protection estimate',
-            title: 'Your mortgage protection range is ready.',
-            reason: `This mortgage protection estimate is built around ${priorityContext || 'protecting the home and keeping household stability intact'}. The next step is checking whether the benefit amount lines up with the mortgage, payment pressure, and people depending on the home.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: 'Home, mortgage payment, and household stability',
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Mortgage balance + monthly fit',
-            actionTitle: 'Protect the home with clarity',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can review the mortgage protection range and confirm whether it lines up with the home you want protected.'
-          };
-        case 'iul':
-          return {
-            kicker: 'IUL estimate',
-            title: 'Your IUL range is ready.',
-            reason: `This IUL estimate is built around ${priorityContext || 'long-term protection, flexibility, and future planning'}. The next step is reviewing the structure carefully so the protection, premium, and flexibility are not misunderstood.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: 'Long-term coverage and future flexibility',
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Structure + funding fit',
-            actionTitle: 'Review the structure before deciding',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can explain how the IUL range works and whether the structure fits your long-term plan.'
-          };
-        default:
-          return {
-            kicker: 'Personalized estimate',
-            title: 'Your protection range is ready.',
-            reason: `This estimate is built around ${priorityContext || 'the protection details you shared'}. The next step is confirming the amount, monthly fit, and what this would actually protect.`,
-            focusOneLabel: 'Protection focus',
-            focusOneValue: productName,
-            focusTwoLabel: 'What needs review',
-            focusTwoValue: 'Coverage amount + monthly fit',
-            actionTitle: 'Confirm the best next step',
-            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the range and help confirm whether this is the right direction.'
-          };
-      }
-    })();
-
-    const comparisonHtml = isGeneral && normalized.secondary?.policyType
-      ? `<div class="lq-contact-estimate-stat">
-          <div class="lq-contact-estimate-stat-label">${escapeHtml(productCopy.focusTwoLabel)}</div>
-          <div class="lq-contact-estimate-stat-value">${escapeHtml(productCopy.focusTwoValue)}</div>
-        </div>`
-      : '';
+    const secondaryValue = normalized.secondary?.policyType || humanizeTobaccoUseForStep2(normalized.tobaccoUse) || 'Personalized review';
+    const secondaryLabel = normalized.secondary?.policyType ? 'Also worth comparing' : 'Pricing profile';
+    const nextStepCopy = buildPostSubmitContinueCopy(normalized);
 
     return `
       <div class="lq-contact-estimate-wrap is-expanded-review" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
-          <div class="lq-contact-estimate-kicker">${escapeHtml(productCopy.kicker)}</div>
-          <div class="lq-contact-estimate-title">${escapeHtml(productCopy.title)}</div>
-          <div class="lq-contact-estimate-copy">${escapeHtml(productCopy.reason)}</div>
+          <div class="lq-contact-estimate-kicker">${escapeHtml(isGeneralLifeQuoteForStep2(normalized) ? "Personalized recommendation" : "Personalized estimate")}</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(buildPostSubmitEstimateTitle(normalized))}</div>
+          <div class="lq-contact-estimate-copy">${escapeHtml(buildExpandedStep2Reason(normalized))}</div>
         </div>
-
-        <div class="lq-contact-estimate-metrics">
-          <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Estimated monthly range</div>
-            <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
+        ${buildStep2EstimateCardHtml(normalized)}
+        <div class="lq-contact-review-grid">
+          <div class="lq-contact-estimate-personal">
+            <div class="lq-contact-estimate-personal-label">Why this surfaced</div>
+            <div class="lq-contact-estimate-personal-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
+            ${reasonsHtml ? `<ul class="lq-contact-review-list">${reasonsHtml}</ul>` : ''}
           </div>
-          <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Coverage range to review</div>
-            <div class="lq-contact-estimate-metric-value">${escapeHtml(coverageRange)}</div>
+          <div class="lq-contact-estimate-personal">
+            <div class="lq-contact-estimate-personal-label">What to review next</div>
+            <div class="lq-contact-estimate-personal-copy">${escapeHtml(buildExpandedStep2NextReviewCopy(normalized))}</div>
           </div>
         </div>
-
         <div class="lq-contact-estimate-stats">
           <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">${escapeHtml(productCopy.focusOneLabel)}</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(productCopy.focusOneValue)}</div>
+            <div class="lq-contact-estimate-stat-label">Review first</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(normalized.primary.policyType || 'Life Insurance')}</div>
           </div>
           <div class="lq-contact-estimate-stat">
-            <div class="lq-contact-estimate-stat-label">Profile used</div>
-            <div class="lq-contact-estimate-stat-value">${escapeHtml(`${ageLabel} • ${tobaccoLabel}`)}</div>
+            <div class="lq-contact-estimate-stat-label">Coverage to review</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(coverageRange)}</div>
           </div>
-          ${comparisonHtml}
+          <div class="lq-contact-estimate-stat">
+            <div class="lq-contact-estimate-stat-label">${escapeHtml(secondaryLabel)}</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(secondaryValue)}</div>
+          </div>
         </div>
-
         <div class="lq-contact-estimate-signal">
           <div class="lq-contact-estimate-signal-badge">Next step</div>
-          <div class="lq-contact-estimate-signal-copy">${escapeHtml(productCopy.actionCopy)}</div>
+          <div class="lq-contact-estimate-signal-copy">${escapeHtml(nextStepCopy)}</div>
         </div>
-
         ${buildStep2SignalChips(normalized, 5)}
         <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
       </div>`;
@@ -11596,7 +11490,7 @@ body.life-landing .lq-hero-shell,
         <div class="lq-final-review-head">
           <div class="lq-final-review-kicker">Review ready</div>
           <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">Your personalized review is ready.</div>
-          <div class="lq-final-review-copy">Your range is ready, but the numbers still need to be checked against your real situation. Choose a time below before this gets pushed aside, so ${escapeHtml(agentDirectContactName || "your licensed agent")} can confirm the coverage amount, monthly fit, and next step while the details are fresh.</div>
+          <div class="lq-final-review-copy">Review the recommendation below, then choose a time if you want help judging what level of protection may help your family stay financially steady.</div>
         </div>
 
         ${resultHtml ? `
@@ -11606,8 +11500,8 @@ body.life-landing .lq-hero-shell,
         ` : ''}
 
         <div class="lq-final-review-booking-head">
-          <div class="lq-final-review-booking-title">Choose Your Review Time</div>
-          <div class="lq-final-review-booking-copy">Pick the soonest time that works. This is where ${escapeHtml(agentDirectContactName || "your licensed agent")} helps turn the estimate into a clear yes, no, or better-fit direction.</div>
+          <div class="lq-final-review-booking-title">Continue Your Review</div>
+          <div class="lq-final-review-booking-copy">Choose a time below to review your protection path with Zac.</div>
         </div>
 
         ${showInlineShell ? `
