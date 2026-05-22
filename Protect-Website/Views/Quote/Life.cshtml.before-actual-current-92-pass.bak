@@ -552,17 +552,17 @@
         "iul" => "long-term protection, flexibility, and future planning",
         _ => "the protection, stability, and long-term fit that matter most"
     };
-    var stepTwoContactKickerText = "Estimate ready";
-    var contactMethodHelperText = "Best number to save and review your estimate details.";
-    var contactMethodErrorText = "Please enter your phone number so we can save your estimate.";
+    var stepTwoContactKickerText = "Review ready";
+    var contactMethodHelperText = "Best number to send your estimate details.";
+    var contactMethodErrorText = "Please enter your phone number to unlock your full estimate.";
     var consentPromptText = "I agree to receive a call or text to review my estimate and next steps.";
     var consentErrorText = "Please check the box so we can send your full estimate.";
-    var stepTwoContactTitleText = "Where should we save your estimate?";
-    var stepTwoContactCopyText = "Your answers created a starting point worth saving. Add your best number so the estimate, carrier review, and next step do not get lost.";
-    var stepTwoSubmitNoteText = "Save your estimate, compare options, and review the next best step.";
+    var stepTwoContactTitleText = "Where should we send your estimate?";
+    var stepTwoContactCopyText = "Your estimate preview is ready. Enter your best number to unlock the full details.";
+    var stepTwoSubmitNoteText = "Unlock the full estimate details.";
     var stepTwoProgressText = "Protection preview";
-    var finalStepHeading = "Your estimate is ready";
-    var finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+    var finalStepHeading = "Your estimate preview is ready";
+    var finalStepHelper = "Enter your best number to unlock the full estimate details.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -581,21 +581,21 @@
         "iul" => "Continue My IUL Review",
         _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Save My Estimate & Review Options";
+    var finalSubmitButtonText = "Unlock My Full Estimate";
     var heroHeadline = isContactFirstEducationVariant
         ? "See the protection path that best aligns with the people who depend on you most."
         : "See the protection path that best aligns with your family, budget, and goals.";
     var heroSubheadline = isContactFirstEducationVariant
         ? "Life insurance can feel confusing. Walk through a short protection review and see which path points toward your next best step."
         : (isLandingView ? "Walk through a few focused details to see your starting point, monthly range, and whether the result is worth reviewing." : string.Empty);
-    var heroTrustNote = isContactFirstEducationVariant ? "25+ carrier comparison • Licensed review • No obligation" : "25+ carrier comparison • Licensed review • No obligation";
+    var heroTrustNote = isContactFirstEducationVariant ? "Private • Focused • Review first" : "Private • Focused • Review first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
         : "Zac Owen";
     var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? "Licensed Insurance Professional"
         : "Personal insurance guidance";
-    var heroTrustPersonSupport = "Personalized guidance to compare options, protect fit, and review the next best step.";
+    var heroTrustPersonSupport = "Personalized guidance for your recommendation, options, and next step.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -625,19 +625,19 @@
     }
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
-    var contactFirstProofKicker = "25+ carrier comparison";
-    var contactFirstProofText = "Start with what your family would actually need protected. Then we’ll shape the estimate around fit, carrier options, and the next best step — no obligation.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "25+ carriers", "Licensed review", "No obligation" };
+    var contactFirstProofKicker = "Start with the real pressure";
+    var contactFirstProofText = "This is not a long quote form. Start with the pressure your family would actually feel, then we’ll size the protection path around that.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Protection preview", "Personalized review", "Next step" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
     var lowFrictionHeroHeadline = "See which protection path best aligns with your family.";
     var lowFrictionHeroSubheadline = "Start with a focused protection check. You’ll see a practical starting point, monthly range, and a clear next step.";
-    var lowFrictionHeroCtaText = "See What My Family Would Need Covered";
-    var lowFrictionHeroCtaNote = "25+ carrier comparison • Licensed review • No obligation";
-    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "25+ carriers", "Licensed review", "No obligation" };
-    IReadOnlyList<string> lowFrictionValueChips = new List<string> { "Carrier comparison", "Monthly range", "Clear next step" };
+    var lowFrictionHeroCtaText = "Start My Review";
+    var lowFrictionHeroCtaNote = "Protection preview • Full review • Scheduling available";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "Focused review", "Starting range", "Scheduling available" };
+    IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A guided starting point", "A realistic monthly range", "Clear next step" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = false;
     var showPreContactEducationSummary = false;
@@ -656,11 +656,11 @@
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
         contactFirstProofKicker = "Lifelong protection starts here";
         contactFirstProofText = "Start with who this needs to protect for life, then we’ll shape the whole life estimate around lasting stability instead of temporary coverage.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "Lifelong fit", "No obligation" };
+        contactFirstProofChips = new List<string> { "Lifelong protection", "Stable long-term fit", "You stay in control" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the whole life coverage amount, monthly range, and long-term structure that fits what you want protected.";
         finalSubmitButtonText = "Continue My Whole Life Review";
         productFocusTitle = "What this whole life review is built around";
@@ -678,11 +678,11 @@
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Protect the years that matter";
         contactFirstProofText = "Start with the income, mortgage, children, or bills that would feel the impact first, then we’ll size a term range around those key years.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "Protect key years", "No obligation" };
+        contactFirstProofChips = new List<string> { "Family stability", "Protect key years", "You stay in control" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the term coverage amount, monthly range, and next step that realistically fits your family.";
         finalSubmitButtonText = "Continue My Term Review";
         productFocusTitle = "What this term life review is built around";
@@ -700,11 +700,11 @@
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Ease the burden before it lands";
         contactFirstProofText = "Start with the costs you do not want your loved ones carrying alone, then we’ll size a final expense range around family relief.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "Family relief", "No obligation" };
+        contactFirstProofChips = new List<string> { "Ease the burden", "Protect loved ones", "You stay in control" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the final expense coverage amount and monthly range that can help spare your loved ones added financial pressure.";
         finalSubmitButtonText = "Continue My Final Expense Review";
         productFocusTitle = "What this final expense review is built around";
@@ -722,11 +722,11 @@
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Protect the home first";
         contactFirstProofText = "Start with the home, the payment, and the people who depend on both, then we’ll size a mortgage protection range around that pressure.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "Home-first review", "No obligation" };
+        contactFirstProofChips = new List<string> { "Protect the home", "Keep stability", "You stay in control" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the mortgage protection amount, monthly range, and structure that fits the home you want protected.";
         finalSubmitButtonText = "Continue My Home Protection Review";
         productFocusTitle = "What this mortgage protection review is built around";
@@ -744,11 +744,11 @@
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
         contactFirstProofKicker = "Build for protection and flexibility";
         contactFirstProofText = "Start with the long-term protection, flexibility, and legacy goal you want this built around, then we’ll shape the IUL range from there.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "Long-term fit", "No obligation" };
+        contactFirstProofChips = new List<string> { "Long-term flexibility", "Future planning", "You stay in control" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the IUL coverage amount, monthly range, and long-term structure that fits what you want to build.";
         finalSubmitButtonText = "Continue My IUL Review";
         productFocusTitle = "What this IUL review is built around";
@@ -763,16 +763,16 @@
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         stepOneContinueButtonText = "See My Starting Point";
-        finalSubmitButtonText = "Save My Estimate & Review Options";
-        finalStepHeading = "Your protection estimate is ready";
-        finalStepHelper = "Save the estimate before moving on. Your answers shaped this starting point, coverage range, and next step.";
-        stepTwoContactTitleText = "Where should we save your estimate?";
-        stepTwoContactCopyText = "Save your estimate so you can review the details, compare options, and avoid starting over later.";
+        finalSubmitButtonText = "Continue to My Review";
+        finalStepHeading = "Your protection preview is ready";
+        finalStepHelper = "Save your preview to continue into the full recommendation.";
+        stepTwoContactTitleText = "Where should we send it?";
+        stepTwoContactCopyText = "Save your preview and continue to the full review.";
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "Protection preview • Personalized review • Scheduling available";
-        contactFirstProofKicker = "25+ carrier comparison";
-        contactFirstProofText = "Start with the pressure your family would feel first. Then we’ll compare the protection path, carrier fit, and next step without forcing one product.";
+        contactFirstProofKicker = "Find the right protection path";
+        contactFirstProofText = "Start with the pressure your family would feel first. Then we’ll point you toward the protection path that fits the situation instead of forcing one product.";
         contactFirstProofChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
@@ -6886,65 +6886,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         border-radius: 22px !important;
     }
 }
-
-
-/* ELITE CONVERSION PROOF PASS */
-.lq-above-fold-proof {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 7px;
-    margin: -4px auto 13px;
-    max-width: 640px;
-}
-
-.lq-above-fold-proof span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 28px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(243,214,136,0.36);
-    background: rgba(8,20,39,0.72);
-    color: rgba(255,246,216,0.92);
-    font-size: .74rem;
-    font-weight: 880;
-    letter-spacing: .015em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
-}
-
-.lq-estimate-preserve-note {
-    margin-top: 12px;
-    padding-top: 11px;
-    border-top: 1px solid rgba(243,214,136,0.18);
-    color: rgba(248,250,252,0.82);
-    font-size: .84rem;
-    line-height: 1.35;
-}
-
-.lq-estimate-preserve-note strong {
-    color: #fff2bf;
-    font-weight: 950;
-}
-
-@@media (max-width: 720px) {
-    .lq-above-fold-proof {
-        gap: 6px;
-        margin: -3px auto 10px;
-    }
-
-    .lq-above-fold-proof span {
-        font-size: .69rem;
-        padding: 5px 8px;
-        min-height: 26px;
-    }
-
-    .lq-estimate-preserve-note {
-        font-size: .8rem;
-    }
-}
-
+</style>
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -7035,11 +6977,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                 <figure class="lq-hero-banner-wrap">
                     <img class="lq-hero-banner-image" src="@contactFirstBannerImageUrl" asp-append-version="true" alt="@contactFirstBannerAlt" loading="eager" />
                 </figure>
-                <div class="lq-above-fold-proof" aria-label="Review benefits">
-                    <span>25+ carrier comparison</span>
-                    <span>Licensed review</span>
-                    <span>No obligation</span>
-                </div>
             }
             else if (isLandingView)
             {
@@ -10102,9 +10039,6 @@ body.life-landing .lq-hero-shell,
               <div class="lq-contact-estimate-metric-value">${escapeHtml(recommendedCoverageRange)}</div>
             </div>
           </div>
-          <div class="lq-estimate-preserve-note">
-            <strong>Worth saving:</strong> your answers shaped this range. A licensed review can compare 25+ carriers and confirm whether this fit is worth moving forward with.
-          </div>
         </article>
       </div>`;
   }
@@ -10157,19 +10091,20 @@ body.life-landing .lq-hero-shell,
   function buildStep2UnlockCopy(preview) {
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Save this term life estimate so you can review the coverage range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the term life estimate details, coverage range, and next best step.';
       case 'wholelife':
-        return 'Save this whole life estimate so you can review the lifelong coverage range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the whole life estimate details, coverage range, and next best step.';
       case 'finalexpense':
-        return 'Save this final expense estimate so you can review the family-relief range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the final expense estimate details, coverage range, and next best step.';
       case 'mortgage':
-        return 'Save this mortgage protection estimate so you can review the home-first coverage range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the mortgage protection estimate details, coverage range, and next best step.';
       case 'iul':
-        return 'Save this IUL estimate so you can review the long-term coverage range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the IUL estimate details, coverage range, and next best step.';
       default:
-        return 'Save this estimate so you can review the coverage range, carrier fit, and next best step without starting over.';
+        return 'Enter your info to unlock the full estimate details, coverage range, and next best step.';
     }
   }
+
 
   function buildCompactStep2Reason(preview) {
     const normalized = normalizeStep2Preview(preview);
@@ -10392,7 +10327,7 @@ body.life-landing .lq-hero-shell,
         <div class="lq-contact-teaser-final-copy">
           <div class="lq-contact-estimate-kicker">Estimate preview</div>
           <h3 class="lq-contact-estimate-title">Your starting range is ready.</h3>
-          <p class="lq-contact-estimate-copy">Save this estimate so you can review the full range, carrier fit, and next step without starting over.</p>
+          <p class="lq-contact-estimate-copy">Enter your best number to unlock the full estimate, coverage range, and next step.</p>
         </div>
 
         <div class="lq-contact-teaser-final-metrics">
@@ -10573,7 +10508,7 @@ body.life-landing .lq-hero-shell,
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Save the estimate your answers created, then review the carrier fit, coverage range, and next step.';
+      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Enter your info to unlock the full estimate details.';
     }
 
     if (step2ContactTitle) {
