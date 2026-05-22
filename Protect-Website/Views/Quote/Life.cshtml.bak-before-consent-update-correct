@@ -524,7 +524,7 @@
     var stepTwoContactKickerText = "Review ready";
     var contactMethodHelperText = "Best number to send your estimate details.";
     var contactMethodErrorText = "Please enter your phone number to unlock your full estimate.";
-    var consentPromptText = "I agree to receive a call or text to review my estimate and next steps.";
+    var consentPromptText = $"I agree that {agentDirectContactName} or a licensed Legend agent may call or text me about my estimate and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your full estimate.";
     var stepTwoContactTitleText = "Where should we send your estimate?";
     var stepTwoContactCopyText = "Your estimate preview is ready. Enter your best number to unlock the full details.";
