@@ -1362,8 +1362,6 @@ if (!ModelState.IsValid)
 
         private static string BuildEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg)
         {
-            static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
-
             static string? ResolveLabel(IReadOnlyList<LifeWizardOption>? options, string? code)
             {
                 if (string.IsNullOrWhiteSpace(code) || options == null) return null;
@@ -1375,185 +1373,63 @@ if (!ModelState.IsValid)
                 if (!coverageAmount.HasValue || coverageAmount.Value <= 0) return null;
                 return coverageAmount.Value >= 2_000_000
                     ? "$2,000,000+"
+                    : coverageAmount.Value >= 1_000_000
+                    ? $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}"
                     : $"${coverageAmount.Value.ToString("N0", CultureInfo.InvariantCulture)}";
             }
 
-            var protectStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "ProtectingWho", StringComparison.OrdinalIgnoreCase));
-            var goalStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "CoverageGoal", StringComparison.OrdinalIgnoreCase));
-            var coverageStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "CoverageAmountOption", StringComparison.OrdinalIgnoreCase));
-            var tobaccoStep = cfg.Steps.FirstOrDefault(step => string.Equals(step.FieldAlias, "TobaccoUse", StringComparison.OrdinalIgnoreCase));
-
-            var fullName = $"{model.FirstName} {model.LastName}".Trim();
-            if (string.IsNullOrWhiteSpace(fullName)) fullName = "New prospect";
-
-            var protectingLabel = ResolveLabel(protectStep?.Options, model.ProtectingWho) ?? model.ProtectingWho ?? "Not provided";
-            var goalLabel = ResolveLabel(goalStep?.Options, model.CoverageGoal) ?? model.CoverageGoal ?? "Not provided";
-            var coverageLabel = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount) ?? "Review needed";
-            var tobaccoLabel = ResolveLabel(tobaccoStep?.Options, model.TobaccoUse) ?? model.TobaccoUse ?? "Not provided";
-            var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange) &&
-                (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
-                ? model.AgeRange
-                : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
-
-            var recommendationTitle =
-                !string.IsNullOrWhiteSpace(model.RecommendationPrimaryTitle)
-                    ? model.RecommendationPrimaryTitle.Trim()
-                    : cfg.DisplayName;
-
-            var secondaryTitle =
-                !string.IsNullOrWhiteSpace(model.RecommendationSecondaryTitle)
-                    ? model.RecommendationSecondaryTitle.Trim()
-                    : null;
-
-            var reviewHeadline = recommendationTitle switch
+            static string? ResolveStepResponse(LifeWizardStep step, LifeQuoteFormModel model)
             {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "Whole life estimate is worth confirming.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "Term life estimate is worth confirming.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "Final expense estimate is worth confirming.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "Mortgage protection estimate is worth confirming.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "IUL estimate is worth confirming.",
-                _ => "Protection review is ready for agent follow-up."
-            };
+                var alias = step.FieldAlias?.Trim();
+                return alias switch
+                {
+                    "ProtectingWho" => ResolveLabel(step.Options, model.ProtectingWho),
+                    "CoverageGoal" => ResolveLabel(step.Options, model.CoverageGoal),
+                    "CoverageAmountOption" => ResolveLabel(step.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount),
+                    "TobaccoUse" => ResolveLabel(step.Options, model.TobaccoUse),
+                    "Age" => !string.IsNullOrWhiteSpace(model.AgeRange) && (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
+                        ? model.AgeRange
+                        : model.Age?.ToString(CultureInfo.InvariantCulture),
+                    _ => null
+                };
+            }
 
-            var surfacedCopy = recommendationTitle switch
+            var rows = new LeadEmailTemplate.RowBuilder()
+                .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
+                .Row("Phone", model.Phone)
+                .Row("Email", model.Email);
+
+            rows.Section("Discovery")
+                .Row("Protecting Who", model.ProtectingWho)
+                .Row("Coverage Goal", model.CoverageGoal)
+                .Row("Coverage Amount", ResolveCoverageAmountLabel(model.CoverageAmount))
+                .Row("Tobacco Use", model.TobaccoUse)
+                .Row("Age", model.Age?.ToString(CultureInfo.InvariantCulture));
+
+            if (cfg.Steps.Any())
             {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "Prospect may be looking for lifelong protection, stable structure, and long-term family support.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "Prospect may be looking to protect income, major responsibilities, and the years their family depends on most.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "Prospect may be looking to reduce the final-cost burden left behind for loved ones.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "Prospect may be looking to protect the home, payment stability, and household continuity.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "Prospect may be exploring long-term protection with flexibility and future planning potential.",
-                _ => "Prospect answers point toward a protection gap worth reviewing."
-            };
+                rows.Section("Responses");
+                foreach (var step in cfg.Steps)
+                {
+                    var label = ResolveStepResponse(step, model);
+                    if (string.IsNullOrWhiteSpace(label)) continue;
+                    rows.Row(step.Question, label);
+                }
+            }
 
-            var timingCopy = recommendationTitle switch
+            rows.Section("Recommendations");
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
+            if (!string.IsNullOrWhiteSpace(model.RecommendationSecondaryKey) || !string.IsNullOrWhiteSpace(model.RecommendationSecondaryTitle))
             {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "Permanent coverage is sensitive to age, health, design, and funding. Structure matters more than the quick estimate.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "Rates and approval flexibility can shift as age and health change.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "Final expense eligibility and pricing can tighten as age and health change.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "Mortgage risk stays active until a protection decision is made.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "IUL structure, funding, and assumptions need careful review before positioning.",
-                _ => "Rates and approval options can shift depending on age and health."
-            };
+                rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            }
 
-            string estimatedRange =
-                recommendationTitle.Contains("Whole", StringComparison.OrdinalIgnoreCase) ? "$57-$66/mo" :
-                recommendationTitle.Contains("Term", StringComparison.OrdinalIgnoreCase) ? "$28-$46/mo" :
-                recommendationTitle.Contains("Final", StringComparison.OrdinalIgnoreCase) ? "$41-$63/mo" :
-                recommendationTitle.Contains("Mortgage", StringComparison.OrdinalIgnoreCase) ? "$49-$81/mo" :
-                recommendationTitle.Contains("IUL", StringComparison.OrdinalIgnoreCase) ? "$110-$220/mo" :
-                "$40-$85/mo";
+            rows.Section("Details")
+                .Row("Product",   cfg.DisplayName)
+                .Row("Offer Key", model.OfferKey)
+                .Row("State",     model.State);
 
-            var recommendationHtml = !string.IsNullOrWhiteSpace(secondaryTitle)
-                ? $@"<div style=""margin-top:8px;color:rgba(248,250,252,.80);font-size:13px;line-height:1.4;font-weight:700;""><strong style=""color:#f3d688;"">Also consider:</strong> {H(secondaryTitle)}</div>"
-                : "";
-
-            return $@"
-<!DOCTYPE html>
-<html>
-<body style=""margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"">
-<div style=""width:100%;padding:18px 10px;background:#f3f4f6;"">
-<div style=""max-width:680px;margin:0 auto;background:#071d3d;border:1px solid rgba(212,175,55,.55);border-radius:18px;overflow:hidden;box-shadow:0 18px 42px rgba(0,0,0,.24);"">
-
-<div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
-<div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
-<div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a protection review.</div>
-<div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
-The prospect received the review-style estimate email. Use the contact details below to follow up with continuity, not a cold reset.
-</div>
-</div>
-
-<div style=""padding:16px 18px 18px;"">
-
-<div style=""background:#092955;border:1px solid rgba(243,214,136,.36);border-radius:16px;padding:15px;margin-bottom:14px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Prospect contact</div>
-<div style=""color:#fff8e7;font-size:20px;line-height:1.2;font-weight:900;margin-bottom:10px;"">{H(fullName)}</div>
-<div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:750;"">
-<strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
-<strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
-<strong style=""color:#f3d688;"">State:</strong> {H(model.State)}<br/>
-<strong style=""color:#f3d688;"">Product:</strong> {H(cfg.DisplayName)}<br/>
-<strong style=""color:#f3d688;"">Offer key:</strong> {H(model.OfferKey)}
-</div>
-</div>
-
-<div style=""margin-bottom:14px;"">
-<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Lead submitted</span>
-<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Prospect email sent</span>
-<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Follow-up needed</span>
-</div>
-
-<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:16px;padding:15px;margin-bottom:12px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;"">Recommendation sent to prospect</div>
-<div style=""color:#fff8e7;font-size:20px;line-height:1.15;font-weight:900;margin-bottom:7px;"">{H(reviewHeadline)}</div>
-<div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.42;font-weight:700;"">{H(surfacedCopy)}</div>
-{recommendationHtml}
-</div>
-
-<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:16px;padding:15px;margin-bottom:12px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;"">Why timing matters</div>
-<div style=""color:rgba(248,250,252,.86);font-size:14px;line-height:1.42;font-weight:700;"">{H(timingCopy)}</div>
-</div>
-
-<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:12px;"">
-<tr>
-<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:15px;padding:13px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Estimated monthly range shown</div>
-<div style=""color:#fff8e7;font-size:23px;font-weight:900;"">{H(estimatedRange)}</div>
-</div>
-</td>
-<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:15px;padding:13px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Coverage range to review</div>
-<div style=""color:#fff8e7;font-size:21px;font-weight:900;"">{H(coverageLabel)}</div>
-</div>
-</td>
-</tr>
-</table>
-
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;margin-bottom:12px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">Discovery answers</div>
-<div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:700;"">
-<strong style=""color:#f3d688;"">Protecting:</strong> {H(protectingLabel)}<br/>
-<strong style=""color:#f3d688;"">Goal:</strong> {H(goalLabel)}<br/>
-<strong style=""color:#f3d688;"">Coverage:</strong> {H(coverageLabel)}<br/>
-<strong style=""color:#f3d688;"">Age:</strong> {H(ageLabel)}<br/>
-<strong style=""color:#f3d688;"">Tobacco:</strong> {H(tobaccoLabel)}
-</div>
-</div>
-
-<div style=""background:#092955;border:1px solid rgba(243,214,136,.34);border-radius:16px;padding:16px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Agent next step</div>
-<div style=""color:#fff8e7;font-size:22px;line-height:1.13;font-weight:900;margin-bottom:9px;"">Follow up from the review they already started.</div>
-<div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;"">
-Open by referencing the estimate they received. Confirm coverage amount, monthly fit, carrier direction, health fit, and whether the recommendation should move forward.
-</div>
-</div>
-
-<div style=""margin-top:14px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-Internal agent notification. Prospect-facing email was generated separately from this submission.
-</div>
-
-</div>
-</div>
-</div>
-</body>
-</html>";
+            return LeadEmailTemplate.Wrap($"New Lead — {cfg.DisplayName}", rows.ToString());
         }
 
         private static string BuildUserSummaryEmailBody(LifeQuoteFormModel model, LifeWizardConfig cfg, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
