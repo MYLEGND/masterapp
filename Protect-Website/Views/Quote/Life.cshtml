@@ -6896,7 +6896,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     min-height: 660px !important;
 }
 
-@media (max-width: 767.98px) {
+@@media (max-width: 767.98px) {
     .lq-booking-shell {
         padding: 12px !important;
         border-radius: 16px !important;
@@ -8074,7 +8074,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
             <div class="lq-booking-modal-backdrop" data-booking-modal-close></div>
             <div class="lq-booking-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="lifeBookingModalTitle">
                 <div class="lq-booking-modal-head">
-                    <div class="lq-booking-modal-title" id="lifeBookingModalTitle">Schedule Your Review</div>
+                    <div class="lq-booking-modal-title" id="lifeBookingModalTitle">Continue Your Review</div>
                     <button type="button" class="lq-booking-modal-close" data-booking-modal-close aria-label="Close scheduling">Close</button>
                 </div>
                 <div class="lq-booking-embed-shell is-modal" id="lifeBookingModalShell">
@@ -8205,14 +8205,14 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   const PROCESSING_BRIDGE_MS = 450;
   const postSubmitSuccessHeadingText = 'Your personalized review is ready.';
   const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule while this is fresh if you want help comparing the fit in more detail.';
-  const publicBookingHeadingText = 'Schedule Your Review';
-  const publicBookingKickerText = 'Schedule your review';
+  const publicBookingHeadingText = 'Continue Your Review';
+  const publicBookingKickerText = 'Continue your review';
   const publicBookingCopyText = 'Choose a time to continue your personalized review, compare what surfaced, and confirm what may realistically fit best.';
-  const publicBookingCtaText = 'Schedule Your Review';
+  const publicBookingCtaText = 'Continue Your Review';
   const publicBookingFallbackText = '';
   const publicBookingLoadingText = 'Preparing your scheduling options...';
   const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available in this view right now, but a licensed agent can still continue your personalized review.';
-  const publicBookingFallbackOnlyText = 'Schedule your review in scheduling. It opens in a new tab for now.';
+  const publicBookingFallbackOnlyText = 'Continue your review in scheduling. It opens in a new tab for now.';
   const publicBookingPendingText = 'We only mark appointments as booked after Microsoft confirms the scheduling request.';
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
@@ -9488,8 +9488,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
   function buildPostSubmitContinueCopy(preview) {
     const leadIn = hasAgentTrustProfile
-      ? `Schedule your review by choosing a time with ${agentDirectContactName}`
-      : 'Schedule your review by choosing a time below';
+      ? `Continue your review by choosing a time with ${agentDirectContactName}`
+      : 'Continue your review by choosing a time below';
 
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
@@ -10660,7 +10660,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     iframe.src = url;
     iframe.loading = 'lazy';
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-    iframe.title = 'Schedule your review';
+    iframe.title = 'Continue your review';
 
     let frameLoaded = false;
     const loadTimeout = window.setTimeout(() => {
@@ -11562,3 +11562,102 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   window.trustedCarrierStrip?.init(document);
 })();
 </script>
+
+
+<style>
+/* =========================================================
+   FINAL FUNNEL REFINEMENT PATCH
+   Goal: cleaner hierarchy, fewer containers, smoother calendar flow
+   ========================================================= */
+
+.lq-hero-shell {
+    background: linear-gradient(180deg, #0b1527 0%, #0d1930 100%) !important;
+    border: 1px solid rgba(199,153,49,.18) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,.22) !important;
+    max-width: 920px !important;
+}
+
+.lq-step-panel,
+.lq-step1-panel,
+.lq-step-panel-pad,
+.lq-contact-panel,
+.lq-final-panel,
+.lq-review-panel,
+.lq-result-panel,
+.lq-booking-panel,
+.calendar-section,
+.booking-section,
+#calendar-section {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.lq-choice-card {
+    background: rgba(12,20,36,.72) !important;
+    border: 1px solid rgba(199,153,49,.14) !important;
+    box-shadow: none !important;
+}
+
+.lq-choice-card:hover {
+    transform: translateY(-1px);
+    border-color: rgba(199,153,49,.30) !important;
+}
+
+.lq-choice-card.selected,
+.lq-choice-card.is-selected {
+    border-color: rgba(223,183,90,.55) !important;
+    box-shadow: 0 0 0 1px rgba(223,183,90,.14) !important;
+}
+
+.lq-human-strip,
+.lq-human-strip-soft {
+    box-shadow: none !important;
+    border-color: rgba(199,153,49,.14) !important;
+}
+
+.lq-step-question {
+    margin-bottom: 10px !important;
+}
+
+.lq-choice-grid {
+    gap: 10px !important;
+}
+
+.lq-step-progress-track {
+    opacity: .45 !important;
+}
+
+.btn-gold,
+.btn-progress {
+    box-shadow: 0 10px 20px rgba(0,0,0,.18) !important;
+}
+
+.calendly-inline-widget,
+iframe[src*="bookings"],
+iframe[src*="calendly"] {
+    border-radius: 14px !important;
+    overflow: hidden !important;
+    background: #0b1527 !important;
+}
+
+.lq-calendar-title,
+.calendar-title,
+.booking-title {
+    color: #fff6d8 !important;
+    font-size: 1.35rem !important;
+    font-weight: 900 !important;
+    letter-spacing: -.02em !important;
+    margin-bottom: 6px !important;
+}
+
+.lq-calendar-copy,
+.calendar-copy,
+.booking-copy {
+    color: rgba(248,250,252,.78) !important;
+    font-size: .95rem !important;
+    line-height: 1.45 !important;
+    margin-bottom: 12px !important;
+}
+
+</style>
