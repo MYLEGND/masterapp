@@ -178,6 +178,14 @@ input[name="Phone"]:focus {
         0 0 18px rgba(243,214,136,.12) !important;
 }
 
+
+/* required field asterisk */
+.lq-required-star {
+    color: #ff4d4d !important;
+    font-weight: 950 !important;
+    margin-left: 3px;
+}
+
 </style>
 
 @using System.Text.Json
@@ -7676,7 +7684,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                         }
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
+                                                <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
                                                 <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" required />
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
@@ -7693,8 +7701,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Phone">Phone</label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
+                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" / required inputmode="tel" autocomplete="tel">
                                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>

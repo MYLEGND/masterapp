@@ -101,7 +101,13 @@ namespace Protect_Website.Controllers
             if (model.Vehicles.Count == 0)
                 ModelState.AddModelError(nameof(model.Vehicles), "At least one vehicle is required.");
 
-            if (!ModelState.IsValid)
+            
+        if (string.IsNullOrWhiteSpace(model?.Form?.Phone))
+        {
+            ModelState.AddModelError("Form.Phone", "Please enter your phone number.");
+        }
+
+        if (!ModelState.IsValid)
             {
                 EnsureIndexZero(model);
                 ViewData["StartStep"] = GetFirstErrorStep(ModelState);
