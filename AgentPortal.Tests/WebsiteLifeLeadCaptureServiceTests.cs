@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Domain.Entities;
 using Infrastructure.Leads;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -12,6 +13,91 @@ namespace AgentPortal.Tests;
 
 public class WebsiteLifeLeadCaptureServiceTests
 {
+    [Fact]
+    public async Task UpsertAsync_Sqlite_Persists_Workstation_Lead_And_Intake_Link()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new Infrastructure.Data.MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var trackingProfileId = Guid.NewGuid();
+        var websiteLeadId = Guid.NewGuid();
+
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = trackingProfileId,
+            AgentUserId = "agent-sqlite",
+            AgentUpn = "sqlite@example.com",
+            Slug = "sqlite-agent",
+            CreatedUtc = new DateTime(2026, 5, 21, 18, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 18, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            LeadId = websiteLeadId,
+            FirstName = "Riley",
+            LastName = "Sqlite",
+            Email = "riley@example.com",
+            Phone = "(602) 555-0188",
+            InterestType = "life_general",
+            SourcePageKey = "quote_life",
+            AgentTrackingProfileId = trackingProfileId,
+            AgentSlug = "sqlite-agent",
+            CreatedUtc = new DateTime(2026, 5, 21, 18, 5, 0, DateTimeKind.Utc),
+            MetadataJson = JsonSerializer.Serialize(new
+            {
+                OfferKey = "life",
+                ProductType = "life_general",
+                CoverageGoal = "replace_income",
+                ProtectingWho = "family",
+                CoverageAmount = 250000,
+                RecommendationPrimaryTitle = "Term Life"
+            })
+        });
+        await db.SaveChangesAsync();
+
+        var service = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
+
+        var result = await service.UpsertAsync(new WebsiteLifeLeadCaptureRequest
+        {
+            WebsiteLeadId = websiteLeadId,
+            SubmittedUtc = new DateTime(2026, 5, 21, 18, 5, 0, DateTimeKind.Utc),
+            ProductType = "life_general",
+            OfferKey = "life",
+            FirstName = "Riley",
+            LastName = "Sqlite",
+            Email = "riley@example.com",
+            Phone = "(602) 555-0188",
+            State = "az",
+            Age = 36,
+            CoverageAmount = 250000,
+            AgentTrackingProfileId = trackingProfileId,
+            AgentSlug = "sqlite-agent",
+            RecipientEmail = "sqlite@example.com"
+        });
+        await db.SaveChangesAsync();
+
+        Assert.True(result.Captured);
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, result.Bucket);
+
+        var lead = await db.WorkstationLeadProfiles.SingleAsync();
+        Assert.Equal(websiteLeadId.ToString("N"), lead.LeadId);
+        Assert.Equal("agent-sqlite", lead.AgentUserId);
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, lead.Bucket);
+        Assert.Equal("6025550188", lead.Phone);
+
+        var intake = await db.WebsiteLeadIntakeLinks.SingleAsync();
+        Assert.Equal(lead.LeadId, intake.WorkstationLeadId);
+        Assert.Equal("agent-sqlite", intake.AgentUserId);
+        Assert.Equal(websiteLeadId, intake.WebsiteLeadPublicId);
+    }
+
     [Fact]
     public async Task UpsertAsync_Creates_TermLife_Workstation_Lead_From_Website_Submission()
     {
