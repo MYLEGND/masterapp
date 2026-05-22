@@ -1302,10 +1302,6 @@ input[name="Phone"] {
 }
 
 
-/* CONTACT STEP FLOW REFINEMENT — tighter, cleaner, seamless top-to-bottom */
-#lifeEducationContactPanel {
-    padding: 18px !important;
-}
 
 /* Keep the contact step from stretching vertically */
 #lifeStep2Panel,
@@ -1494,6 +1490,97 @@ input[name="Phone"] {
 #lifeWizardForm .lq-step-footer,
 #lifeWizardForm .lq-step-actions {
     margin-top: 8px !important;
+}
+
+
+/* CONTACT STEP BREATHING ROOM FIX — clean sides, compact height */
+#lifeEducationContactPanel {
+    padding: 22px 26px !important;
+}
+
+/* main contact content should not touch edges */
+#lifeStep2Panel,
+#lifeStep2Panel .lq-step-panel-pad,
+#lifeContactCaptureWrap,
+#lifeStep2EstimateSummary {
+    max-width: 92% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* keep vertical flow tight */
+#lifeStep2Heading {
+    font-size: 1.24rem !important;
+    line-height: 1.08 !important;
+    margin: 0 0 5px 0 !important;
+    text-align: left !important;
+}
+
+#lifeStep2Helper {
+    font-size: .86rem !important;
+    line-height: 1.3 !important;
+    margin: 0 0 12px 0 !important;
+    text-align: left !important;
+}
+
+/* preview card: breathing room inside, not oversized */
+#lifeStep2EstimateSummary {
+    padding: 14px 16px !important;
+    margin-bottom: 16px !important;
+    border-radius: 17px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-head {
+    text-align: left !important;
+    margin-bottom: 10px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-copy {
+    text-align: left !important;
+    max-width: 46ch !important;
+}
+
+/* form section: closer but not cramped */
+#lifeContactCaptureWrap {
+    padding-top: 14px !important;
+    margin-top: 10px !important;
+    border-top: 1px solid rgba(243,214,136,.16) !important;
+}
+
+#lifeContactCaptureWrap h2,
+#lifeContactCaptureWrap .lq-contact-title {
+    text-align: left !important;
+    font-size: 1.32rem !important;
+    line-height: 1.08 !important;
+    margin-bottom: 14px !important;
+}
+
+/* clean form grid spacing */
+#lifeContactCaptureWrap .lq-contact-fields,
+#lifeContactCaptureWrap .lq-form-grid,
+#lifeContactCaptureWrap .lq-contact-grid {
+    gap: 12px 14px !important;
+}
+
+#lifeContactCaptureWrap input,
+#lifeContactCaptureWrap select {
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 12px !important;
+}
+
+/* mobile: use full width but still breathe */
+@media (max-width: 720px) {
+    #lifeEducationContactPanel {
+        padding: 18px !important;
+    }
+
+    #lifeStep2Panel,
+    #lifeStep2Panel .lq-step-panel-pad,
+    #lifeContactCaptureWrap,
+    #lifeStep2EstimateSummary {
+        max-width: 100% !important;
+    }
 }
 
 </style>
