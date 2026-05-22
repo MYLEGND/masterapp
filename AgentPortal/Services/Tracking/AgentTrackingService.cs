@@ -23,6 +23,12 @@ public sealed class AgentTrackingService : IAgentTrackingService
         _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
     }
 
+    private static string? NormalizeUpn(string? agentUpn)
+    {
+        var value = agentUpn?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
     public async Task<AgentTrackingProfile?> GetByUserIdAsync(string agentUserId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(agentUserId)) return null;
@@ -54,9 +60,32 @@ public sealed class AgentTrackingService : IAgentTrackingService
         agentUpn ??= string.Empty;
 
         var agentUserIdLower = agentUserId.ToLowerInvariant();
+        var agentUpnNorm = NormalizeUpn(agentUpn);
         var existing = await _db.AgentTrackingProfiles
             .Include(x => x.Aliases)
             .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId || (x.AgentUserId != null && x.AgentUserId.ToLower() == agentUserIdLower), ct);
+        if (existing == null && agentUpnNorm != null)
+        {
+            var upnMatches = await _db.AgentTrackingProfiles
+                .Include(x => x.Aliases)
+                .Where(x => x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm)
+                .ToListAsync(ct);
+
+            if (upnMatches.Count > 0)
+            {
+                existing = upnMatches
+                    .OrderBy(x => Regex.IsMatch(x.Slug ?? string.Empty, "-\\d+$") ? 1 : 0)
+                    .ThenBy(x => x.CreatedUtc)
+                    .ThenBy(x => x.Id)
+                    .First();
+
+                _logger.LogWarning(
+                    "AgentTracking: reusing tracking profile {ProfileId} for oid {Oid} via agent UPN {AgentUpn} to avoid creating a duplicate tracking slug.",
+                    existing.Id,
+                    agentUserId,
+                    agentUpnNorm);
+            }
+        }
         if (existing != null)
         {
             // refresh UPN / display name if changed

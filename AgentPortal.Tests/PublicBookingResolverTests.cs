@@ -241,6 +241,61 @@ public class PublicBookingResolverTests
         Assert.NotEqual("https://bookings.example.com/beta/embed", resolution.EmbedUrl);
     }
 
+    [Fact]
+    public async Task ResolveAsync_PrefersConfiguredDuplicateAgentProfile_WhenMatchingTrackingProfileIsStale()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var founderTrackingProfileId = Guid.NewGuid();
+
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = founderTrackingProfileId,
+            AgentUserId = "founder-stale",
+            AgentUpn = "founder@example.com",
+            Slug = "founder"
+        });
+        db.AgentProfiles.AddRange(
+            new AgentProfile
+            {
+                AgentUserId = "founder-stale",
+                AgentUpn = "founder@example.com",
+                NormalizedEmail = "founder@example.com",
+                FullName = "Founder Stale"
+            },
+            new AgentProfile
+            {
+                AgentUserId = "founder-current",
+                AgentUpn = "founder@example.com",
+                NormalizedEmail = "founder@example.com",
+                FullName = "Founder Current",
+                BookingEnabled = true,
+                MicrosoftBookingsEmbedUrl = "https://bookings.example.com/founder/embed",
+                FallbackBookingUrl = "https://bookings.example.com/founder/fallback",
+                CalendarEmail = "calendar-founder@example.com"
+            });
+        await db.SaveChangesAsync();
+
+        var resolver = new PublicBookingResolver(db, BuildOptions(new PublicBookingOptions
+        {
+            Enabled = false,
+            MicrosoftBookingsEmbedUrl = "",
+            FallbackBookingUrl = ""
+        }));
+
+        var resolution = await resolver.ResolveAsync(
+            new PublicBookingResolveContext(
+                AgentTrackingProfileId: founderTrackingProfileId,
+                AgentUserId: "founder-stale",
+                AgentSlug: "founder"),
+            CancellationToken.None);
+
+        Assert.True(resolution.Enabled);
+        Assert.Equal(PublicBookingConfigurationSources.AgentProfile, resolution.ConfigurationSource);
+        Assert.Equal("https://bookings.example.com/founder/embed", resolution.EmbedUrl);
+        Assert.Equal("https://bookings.example.com/founder/fallback", resolution.FallbackUrl);
+        Assert.Equal("calendar-founder@example.com", resolution.CalendarEmail);
+    }
+
     private static IOptionsSnapshot<PublicBookingOptions> BuildOptions(PublicBookingOptions options)
     {
         var snapshot = new Mock<IOptionsSnapshot<PublicBookingOptions>>();

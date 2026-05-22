@@ -2497,18 +2497,45 @@ namespace AgentPortal.Controllers;
         var lastName = (model.LastName ?? "").Trim();
         var emailNorm = NormalizeEmail(model.Email);
         var phone = (model.Phone ?? "").Trim();
+        var agentUpnNorm = NormalizeEmail(agentUpn);
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
+        if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
+        {
+            agentProfile = _db.AgentProfiles.FirstOrDefault(x =>
+                x.NormalizedEmail == agentUpnNorm ||
+                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm));
+        }
         if (agentProfile == null)
         {
             agentProfile = new Domain.Entities.AgentProfile
             {
                 AgentUserId = agentOid,
                 AgentUpn = agentUpn,
+                NormalizedEmail = agentUpnNorm,
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
             };
             _db.AgentProfiles.Add(agentProfile);
             await _db.SaveChangesAsync();
+        }
+        else
+        {
+            var profileChanged = false;
+            if (!string.IsNullOrWhiteSpace(agentUpn) && !string.Equals(agentProfile.AgentUpn, agentUpn, StringComparison.OrdinalIgnoreCase))
+            {
+                agentProfile.AgentUpn = agentUpn;
+                profileChanged = true;
+            }
+            if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))
+            {
+                agentProfile.NormalizedEmail = agentUpnNorm;
+                profileChanged = true;
+            }
+            if (profileChanged)
+            {
+                agentProfile.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
         }
         var agentPhone = (agentProfile.Phone ?? "").Trim();
         var oneTimePassword = (model.OneTimePassword ?? "").Trim();
@@ -3044,18 +3071,46 @@ meta.Activities ??= new List<ClientCrmActivity>();
             }
         }
 
+        var agentUpn = GetAgentUpnForAudit();
+        var agentUpnNorm = NormalizeEmail(agentUpn);
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
+        if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
+        {
+            agentProfile = _db.AgentProfiles.FirstOrDefault(x =>
+                x.NormalizedEmail == agentUpnNorm ||
+                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm));
+        }
         if (agentProfile == null)
         {
             agentProfile = new Domain.Entities.AgentProfile
             {
                 AgentUserId = agentOid,
-                AgentUpn = GetAgentUpnForAudit(),
+                AgentUpn = agentUpn,
+                NormalizedEmail = agentUpnNorm,
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
             };
             _db.AgentProfiles.Add(agentProfile);
             await _db.SaveChangesAsync();
+        }
+        else
+        {
+            var profileChanged = false;
+            if (!string.IsNullOrWhiteSpace(agentUpn) && !string.Equals(agentProfile.AgentUpn, agentUpn, StringComparison.OrdinalIgnoreCase))
+            {
+                agentProfile.AgentUpn = agentUpn;
+                profileChanged = true;
+            }
+            if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))
+            {
+                agentProfile.NormalizedEmail = agentUpnNorm;
+                profileChanged = true;
+            }
+            if (profileChanged)
+            {
+                agentProfile.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
         }
 
         var agentNpn = agentProfile.Npn?.Trim();
@@ -3993,7 +4048,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             {
                 AgentUserId = targetAgentId,
                 AgentUpn = targetUpn,
-                NormalizedEmail = targetUpn,
+                NormalizedEmail = NormalizeEmail(targetUpn),
                 FullName = Norm(request.AgentName),
                 Phone = Norm(request.AgentPhone),
                 CreatedUtc = DateTime.UtcNow,
@@ -4003,7 +4058,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         else
         {
             if (string.IsNullOrWhiteSpace(profile.AgentUpn)) profile.AgentUpn = targetUpn;
-            if (string.IsNullOrWhiteSpace(profile.NormalizedEmail)) profile.NormalizedEmail = targetUpn;
+            if (string.IsNullOrWhiteSpace(profile.NormalizedEmail)) profile.NormalizedEmail = NormalizeEmail(targetUpn);
             if (string.IsNullOrWhiteSpace(profile.FullName) && !string.IsNullOrWhiteSpace(request.AgentName)) profile.FullName = Norm(request.AgentName);
             if (string.IsNullOrWhiteSpace(profile.Phone) && !string.IsNullOrWhiteSpace(request.AgentPhone)) profile.Phone = Norm(request.AgentPhone);
             profile.UpdatedUtc = DateTime.UtcNow;

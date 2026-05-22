@@ -155,15 +155,23 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         var normalizedUpn = NormalizeEmail(trackingProfile?.AgentUpn);
         if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) || !string.IsNullOrWhiteSpace(normalizedUpn))
         {
-            agentProfile = await _db.AgentProfiles
+            var candidateProfiles = await _db.AgentProfiles
                 .AsNoTracking()
                 .Where(x =>
                     (!string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId) ||
                     (!string.IsNullOrWhiteSpace(normalizedUpn) &&
                         (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)))
-                .OrderByDescending(x => !string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId)
+                .ToListAsync(cancellationToken);
+
+            agentProfile = candidateProfiles
+                // Prefer the profile row that actually carries booking config when
+                // duplicate agent records exist for the same email/UPN.
+                .OrderByDescending(HasBookingConfiguration)
+                .ThenByDescending(x =>
+                    !string.IsNullOrWhiteSpace(effectiveAgentUserId) &&
+                    string.Equals(x.AgentUserId, effectiveAgentUserId, StringComparison.OrdinalIgnoreCase))
                 .ThenByDescending(x => x.UpdatedUtc)
-                .FirstOrDefaultAsync(cancellationToken);
+                .FirstOrDefault();
         }
 
         return new ResolvedPublicBookingAgentContext(
@@ -184,14 +192,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
             return ResolutionBuildResult.NotHandled;
         }
 
-        var hasAgentConfig =
-            agentProfile.BookingEnabled.HasValue ||
-            agentProfile.PreferModalOnMobile.HasValue ||
-            !string.IsNullOrWhiteSpace(agentProfile.MicrosoftBookingsEmbedUrl) ||
-            !string.IsNullOrWhiteSpace(agentProfile.FallbackBookingUrl) ||
-            !string.IsNullOrWhiteSpace(agentProfile.CalendarUserId) ||
-            !string.IsNullOrWhiteSpace(agentProfile.CalendarEmail) ||
-            !string.IsNullOrWhiteSpace(agentProfile.BookingPageIdOrMailbox);
+        var hasAgentConfig = HasBookingConfiguration(agentProfile);
 
         if (!hasAgentConfig)
         {
@@ -221,6 +222,17 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
             CalendarUserId: Clean(agentProfile.CalendarUserId),
             CalendarEmail: NormalizeEmail(agentProfile.CalendarEmail),
             BookingPageIdOrMailbox: Clean(agentProfile.BookingPageIdOrMailbox)));
+    }
+
+    private static bool HasBookingConfiguration(AgentProfile agentProfile)
+    {
+        return agentProfile.BookingEnabled.HasValue ||
+            agentProfile.PreferModalOnMobile.HasValue ||
+            !string.IsNullOrWhiteSpace(agentProfile.MicrosoftBookingsEmbedUrl) ||
+            !string.IsNullOrWhiteSpace(agentProfile.FallbackBookingUrl) ||
+            !string.IsNullOrWhiteSpace(agentProfile.CalendarUserId) ||
+            !string.IsNullOrWhiteSpace(agentProfile.CalendarEmail) ||
+            !string.IsNullOrWhiteSpace(agentProfile.BookingPageIdOrMailbox);
     }
 
     private static PublicBookingResolution BuildSlugOrGlobalFallback(PublicBookingOptions options, string? normalizedSlug)
