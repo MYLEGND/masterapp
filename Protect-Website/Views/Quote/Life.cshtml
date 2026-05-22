@@ -8960,7 +8960,7 @@ body.life-landing .lq-hero-shell,
       diagnosis: 'There may be a real protection gap worth reviewing.',
       implication: 'Rates and eligibility are tied to age and health, so reviewing sooner usually gives more flexibility.',
       bookingTitle: 'Choose your review time',
-      bookingCopy: 'Pick the soonest time that works so Zac can compare the range, confirm fit, and help you decide the next step.'
+      bookingCopy: 'Pick the soonest time that works so ${agentName} can compare the range, confirm fit, and help you decide the next step.'
     }
   });
 
@@ -11693,6 +11693,7 @@ body.life-landing .lq-hero-shell,
     if (existingResult) existingResult.remove();
 
     const handoffCopy = getFinalHandoffCopy(quoteType);
+    const agentName = escapeHtml(agentDirectContactName || "your licensed agent");
 
     postSubmitSlot.innerHTML = `
       <section class="lq-final-review-unified-card" aria-labelledby="lifePostSubmitBookingTitle">
