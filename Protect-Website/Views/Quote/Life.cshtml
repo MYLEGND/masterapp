@@ -755,21 +755,7 @@
             ("A stronger next step", "Review the result first, then continue into a personalized review if the direction is worth exploring.")
         };
     }
-
-    var contactFirstBridgeText = normalizedOfferKey switch
-    {
-        "wholelife" => "Start my whole life review",
-        "term" => "Start my term life review",
-        "finalexpense" => "Start my final expense review",
-        "mortgage" => "Start my home protection review",
-        "iul" => "Start my IUL review",
-        _ => "Start my protection review"
-    };
-    if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
-    {
-        contactFirstBridgeText = lowFrictionHeroCtaText;
-    }
-    var heroTrustAriaLabel = "Licensed professional guidance";
+var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var productLanguageKey =
         normalizedOfferKey.Contains("term", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("term", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("term", StringComparison.OrdinalIgnoreCase) ? "term" :
