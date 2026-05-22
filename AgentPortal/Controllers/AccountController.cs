@@ -266,8 +266,13 @@ public class AccountController : Controller
         profile.CalendarEmail = vm.CalendarEmail;
         profile.PreferModalOnMobile = vm.BookingEnabled || hasBookingFieldValues ? vm.PreferModalOnMobile : null;
         // Email (UPN) remains authoritative from directory; do not allow editing here.
-        profile.AgentUpn = directoryUpn;
-        profile.NormalizedEmail = normalizedUpn;
+        // Only write it when Azure AD gives us a clean value.
+        if (!string.IsNullOrWhiteSpace(directoryUpn) && normalizedUpn != null)
+        {
+            profile.AgentUpn = directoryUpn;
+            profile.NormalizedEmail = normalizedUpn;
+        }
+
         profile.UpdatedUtc = DateTime.UtcNow;
 
         _db.SaveChanges();
