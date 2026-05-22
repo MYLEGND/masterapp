@@ -3071,8 +3071,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             }
         }
 
-        var agentUpn = GetAgentUpnForAudit();
-        var agentUpnNorm = NormalizeEmail(agentUpn);
+        var agentUpnForProfile = GetAgentUpnForAudit();
+        var agentUpnNorm = NormalizeEmail(agentUpnForProfile);
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
         if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
         {
@@ -3085,7 +3085,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             agentProfile = new Domain.Entities.AgentProfile
             {
                 AgentUserId = agentOid,
-                AgentUpn = agentUpn,
+                AgentUpn = agentUpnForProfile,
                 NormalizedEmail = agentUpnNorm,
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
@@ -3096,9 +3096,9 @@ meta.Activities ??= new List<ClientCrmActivity>();
         else
         {
             var profileChanged = false;
-            if (!string.IsNullOrWhiteSpace(agentUpn) && !string.Equals(agentProfile.AgentUpn, agentUpn, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(agentUpnForProfile) && !string.Equals(agentProfile.AgentUpn, agentUpnForProfile, StringComparison.OrdinalIgnoreCase))
             {
-                agentProfile.AgentUpn = agentUpn;
+                agentProfile.AgentUpn = agentUpnForProfile;
                 profileChanged = true;
             }
             if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))

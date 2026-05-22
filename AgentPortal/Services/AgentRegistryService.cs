@@ -171,7 +171,8 @@ public class AgentRegistryService
                     existing.NormalizedEmail = emailNorm;
                     changed = true;
                 }
-                if (!string.IsNullOrWhiteSpace(displayName) && !string.Equals(existing.FullName, displayName, StringComparison.Ordinal))
+                var hasSpecificDisplayName = !string.IsNullOrWhiteSpace(displayName) && !string.Equals(displayName, "Agent", StringComparison.Ordinal);
+                if (hasSpecificDisplayName && !string.Equals(existing.FullName, displayName, StringComparison.Ordinal))
                 {
                     existing.FullName = displayName;
                     changed = true;
