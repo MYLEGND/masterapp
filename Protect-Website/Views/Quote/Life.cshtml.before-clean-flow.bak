@@ -594,8 +594,8 @@
     }
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
-    var contactFirstProofKicker = "Start with the real pressure";
-    var contactFirstProofText = "This is not a long quote form. Start with the pressure your family would actually feel, then we’ll size the protection path around that.";
+    var contactFirstProofKicker = "Personal guidance";
+    var contactFirstProofText = "Walk through a focused protection review to see your starting point, monthly range, and next step.";
     IReadOnlyList<string> contactFirstProofChips = new List<string> { "Protection preview", "Personalized review", "Next step" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
@@ -623,8 +623,8 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
-        contactFirstProofKicker = "Lifelong protection starts here";
-        contactFirstProofText = "Start with who this needs to protect for life, then we’ll shape the whole life estimate around lasting stability instead of temporary coverage.";
+        contactFirstProofKicker = "Whole life guidance";
+        contactFirstProofText = "Answer a few focused questions so we can estimate whole life protection designed to stay in place long term.";
         contactFirstProofChips = new List<string> { "Lifelong protection", "Stable long-term fit", "You stay in control" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
@@ -645,8 +645,8 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
-        contactFirstProofKicker = "Protect the years that matter";
-        contactFirstProofText = "Start with the income, mortgage, children, or bills that would feel the impact first, then we’ll size a term range around those key years.";
+        contactFirstProofKicker = "Term life guidance";
+        contactFirstProofText = "Answer a few focused questions so we can estimate term life protection for the years your family depends on you most.";
         contactFirstProofChips = new List<string> { "Family stability", "Protect key years", "You stay in control" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
@@ -667,8 +667,8 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
-        contactFirstProofKicker = "Ease the burden before it lands";
-        contactFirstProofText = "Start with the costs you do not want your loved ones carrying alone, then we’ll size a final expense range around family relief.";
+        contactFirstProofKicker = "Final expense guidance";
+        contactFirstProofText = "Answer a few focused questions so we can estimate final expense coverage designed to ease the burden on your loved ones.";
         contactFirstProofChips = new List<string> { "Ease the burden", "Protect loved ones", "You stay in control" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
@@ -689,8 +689,8 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
-        contactFirstProofKicker = "Protect the home first";
-        contactFirstProofText = "Start with the home, the payment, and the people who depend on both, then we’ll size a mortgage protection range around that pressure.";
+        contactFirstProofKicker = "Mortgage protection guidance";
+        contactFirstProofText = "Answer a few focused questions so we can estimate mortgage protection built around your home and monthly stability.";
         contactFirstProofChips = new List<string> { "Protect the home", "Keep stability", "You stay in control" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
@@ -711,8 +711,8 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
-        contactFirstProofKicker = "Build for protection and flexibility";
-        contactFirstProofText = "Start with the long-term protection, flexibility, and legacy goal you want this built around, then we’ll shape the IUL range from there.";
+        contactFirstProofKicker = "IUL guidance";
+        contactFirstProofText = "Answer a few focused questions so we can estimate indexed universal life protection built around long-term flexibility and legacy planning.";
         contactFirstProofChips = new List<string> { "Long-term flexibility", "Future planning", "You stay in control" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
@@ -779,28 +779,20 @@
         normalizedOfferKey.Contains("iul", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("iul", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("iul", StringComparison.OrdinalIgnoreCase) ? "iul" :
         "life";
 
-    var step1IntroTitle = productLanguageKey switch
-    {
-        "term" => "Start with what would change first",
-        "wholelife" => "Start with what should stay protected for life",
-        "finalexpense" => "Start with what your family should not have to carry",
-        "mortgage" => "Start with the home and who depends on it",
-        "iul" => "Start with the long-term purpose",
-        _ => "Start with the real pressure"
-    };
+    var step1IntroTitle = "Start here";
     var step1IntroHelper = productLanguageKey switch
     {
-        "term" => "Pick the closest fit. This helps size a term life range around the years your family would depend on your income, stability, and presence most.",
-        "wholelife" => "Pick the closest fit. This helps shape a whole life estimate around lifelong protection, stable structure, and the people you want supported.",
-        "finalexpense" => "Pick the closest fit. This helps estimate final expense coverage around funeral costs, final bills, and the burden you do not want left behind.",
-        "mortgage" => "Pick the closest fit. This helps estimate mortgage protection around the home, the payment, and the household that would need stability.",
-        "iul" => "Pick the closest fit. This helps shape an IUL estimate around long-term protection, flexibility, and legacy planning.",
-        _ => "Pick the closest fit. This helps point you toward the protection path that matches the situation instead of guessing."
+        "term" => "Answer a few focused questions so we can estimate your term life coverage range.",
+        "wholelife" => "Answer a few focused questions so we can estimate your whole life coverage range.",
+        "finalexpense" => "Answer a few focused questions so we can estimate your final expense coverage range.",
+        "mortgage" => "Answer a few focused questions so we can estimate your mortgage protection range.",
+        "iul" => "Answer a few focused questions so we can estimate your IUL coverage range.",
+        _ => "Pick the closest fit. Review a few key details to see your protection path and starting range."
     };
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
-        step1IntroTitle = "Start with the real pressure";
-        step1IntroHelper = "Pick the closest fit. This helps compare the protection paths and find the one that actually matches your family, budget, and next step.";
+        step1IntroTitle = "Start with a few focused questions";
+        step1IntroHelper = "Review a few key details to see your protection path and starting range.";
     }
     IReadOnlyList<(string Label, int Value, string RangeLabel)> ageQuickSelectOptions = isFinalExpenseOffer
         ? new List<(string Label, int Value, string RangeLabel)>
@@ -3781,6 +3773,93 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
     margin-bottom: 2px;
     padding: 0;
 }
+.lq-funnel-bridge-wrap {
+    width: 100%;
+    max-width: 860px;
+    margin: 2px auto 12px;
+}
+.lq-funnel-bridge {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    appearance: none;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+}
+.lq-funnel-bridge-line {
+    display: block;
+    height: 1px;
+    border-radius: 999px;
+    background:
+        linear-gradient(90deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.32) 18%, rgba(224,177,74,0.12) 100%);
+}
+.lq-funnel-bridge-line:last-child {
+    background:
+        linear-gradient(270deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.32) 18%, rgba(224,177,74,0.12) 100%);
+}
+.lq-funnel-bridge-core {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 42px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(224,177,74,0.28);
+    background:
+        linear-gradient(180deg, rgba(17,27,47,0.92) 0%, rgba(10,17,31,0.92) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 12px 22px rgba(0,0,0,0.14);
+    transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.lq-funnel-bridge:hover .lq-funnel-bridge-core,
+.lq-funnel-bridge:focus-visible .lq-funnel-bridge-core {
+    transform: translateY(-1px);
+    border-color: rgba(240,198,109,0.42);
+    background:
+        linear-gradient(180deg, rgba(21,34,58,0.94) 0%, rgba(12,20,35,0.94) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 14px 24px rgba(0,0,0,0.18),
+        0 0 0 1px rgba(224,177,74,0.08);
+}
+.lq-funnel-bridge:focus-visible {
+    outline: none;
+}
+.lq-funnel-bridge-arrow {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-grid;
+    place-items: center;
+    color: #f2cb72;
+    background:
+        radial-gradient(circle at 50% 32%, rgba(255,236,188,0.16), transparent 54%),
+        linear-gradient(180deg, rgba(26,37,60,0.98) 0%, rgba(13,21,35,0.98) 100%);
+    border: 1px solid rgba(224,177,74,0.28);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 8px 16px rgba(0,0,0,0.14);
+}
+.lq-funnel-bridge-arrow svg {
+    width: 15px;
+    height: 15px;
+    display: block;
+    animation: lqBridgeArrowPulse 1.8s ease-in-out infinite;
+}
+.lq-funnel-bridge-copy {
+    color: rgba(248,239,219,0.9);
+    font-size: .79rem;
+    font-weight: 820;
+    line-height: 1.2;
+    letter-spacing: .015em;
+    text-align: left;
+}
 .lq-contact-first-proof-chip {
     display: inline-flex;
     align-items: center;
@@ -4356,7 +4435,27 @@ body.page-variant-contact-first-education-v1 .lq-options-summary-copy {
 body.page-variant-contact-first-education-v1 .lq-contact-first-proof-chip {
     color: rgba(236,240,247,0.74);
 }
-body.page-variant-contact-first-education-v1 body.page-variant-contact-first-education-v1 body.page-variant-contact-first-education-v1 body.page-variant-contact-first-education-v1 body.page-variant-contact-first-education-v1 body.page-variant-contact-first-education-v1 .lq-option-summary-card {
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-line {
+    background:
+        linear-gradient(90deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.34) 18%, rgba(224,177,74,0.08) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-line:last-child {
+    background:
+        linear-gradient(270deg, rgba(224,177,74,0) 0%, rgba(224,177,74,0.34) 18%, rgba(224,177,74,0.08) 100%);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-core {
+    background:
+        linear-gradient(180deg, rgba(23,34,56,0.94) 0%, rgba(12,20,34,0.94) 100%);
+    border-color: rgba(232,196,115,0.34);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-copy {
+    color: rgba(248,241,225,0.92);
+}
+body.page-variant-contact-first-education-v1 .lq-funnel-bridge-arrow {
+    color: #f6d98d;
+    border-color: rgba(232,196,115,0.34);
+}
+body.page-variant-contact-first-education-v1 .lq-option-summary-card {
     background:
         radial-gradient(circle at top right, rgba(226,181,79,0.05), transparent 34%),
         linear-gradient(180deg, rgba(38,44,55,0.98) 0%, rgba(31,37,48,0.98) 100%);
@@ -5207,13 +5306,55 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
 }
 
 @@media (prefers-reduced-motion: reduce) {
+    .lq-funnel-bridge-arrow svg {
+        animation: none !important;
     }
+}
 
 @@media (max-width: 640px) {
+    .lq-funnel-bridge-wrap {
+        margin: 0 auto 10px;
     }
 
-@@media (max-width: 480px) {
+    .lq-funnel-bridge {
+        gap: 8px;
     }
+
+    .lq-funnel-bridge-core {
+        min-height: 38px;
+        padding: 6px 11px;
+        gap: 8px;
+    }
+
+    .lq-funnel-bridge-copy {
+        font-size: .74rem;
+    }
+
+    .lq-funnel-bridge-arrow {
+        width: 24px;
+        height: 24px;
+    }
+
+    .lq-funnel-bridge-arrow svg {
+        width: 13px;
+        height: 13px;
+    }
+}
+
+@@media (max-width: 480px) {
+    .lq-funnel-bridge {
+        grid-template-columns: 12px minmax(0,1fr) 12px;
+    }
+
+    .lq-funnel-bridge-core {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .lq-funnel-bridge-copy {
+        text-align: center;
+    }
+}
 
 /* Low-friction options landing variant */
 body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
@@ -5388,7 +5529,11 @@ body.life-final-step-active .lq-contact-step {
     position: relative;
     z-index: 2;
 }
-body.life-final-step-active.page-variant-contact-first-education-v1 body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack {
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-funnel-bridge-wrap,
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-options-summary {
+    display: none !important;
+}
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack {
     gap: 0;
 }
 body.life-final-step-active.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid {
@@ -7003,7 +7148,27 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
             </div>
         }
     </div>
-    
+    @if (usesContactFirstShell)
+    {
+        @if (!isLowFrictionOptionsVariant)
+        {
+            <div class="lq-funnel-bridge-wrap">
+                <button type="button" class="lq-funnel-bridge" id="lifeFunnelBridge" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="bridge" aria-label="@contactFirstBridgeText">
+                    <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+                    <span class="lq-funnel-bridge-core">
+                        <span class="lq-funnel-bridge-arrow" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none">
+                                <path d="M7 8.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M7 4.5l5 5 5-5" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>
+                            </svg>
+                        </span>
+                        <span class="lq-funnel-bridge-copy">@contactFirstBridgeText</span>
+                    </span>
+                    <span class="lq-funnel-bridge-line" aria-hidden="true"></span>
+                </button>
+            </div>
+        }
+    }
 
     @if (isLowFrictionOptionsVariant)
     {
