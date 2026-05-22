@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Protect_Website.Models;
 using ProtectWebsite.Services;
+using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
 using Shared.Meta;
@@ -18,6 +19,7 @@ namespace Protect_Website.Controllers
 
         private readonly MasterAppDbContext _db;
         private readonly AgentTrackingResolver _resolver;
+        private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly string _defaultBookingLink;
         private readonly string _trackingApiBase;
         private readonly ILogger<ThankYouController> _logger;
@@ -26,10 +28,12 @@ namespace Protect_Website.Controllers
             MasterAppDbContext db,
             IConfiguration configuration,
             AgentTrackingResolver resolver,
+            IPublicBookingResolver publicBookingResolver,
             ILogger<ThankYouController> logger)
         {
             _db = db;
             _resolver = resolver;
+            _publicBookingResolver = publicBookingResolver;
             _defaultBookingLink = (configuration["Contact:BookingLink"] ?? FallbackBookingLink).Trim();
             _trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _logger = logger;
@@ -188,8 +192,21 @@ namespace Protect_Website.Controllers
                     ? null
                     : agentProfile.ShortBio.Trim(),
                 ProfileImageUrl = BuildAgentAvatarUrl(resolved.Slug),
-                SchedulingLink = null
+                SchedulingLink = ResolveSchedulingLink(resolved.Slug)
             };
+        }
+
+        private string? ResolveSchedulingLink(string? agentSlug)
+        {
+            var bookingResolution = _publicBookingResolver.Resolve(agentSlug);
+            if (bookingResolution.HasFallback)
+            {
+                return bookingResolution.FallbackUrl;
+            }
+
+            return bookingResolution.HasEmbed
+                ? bookingResolution.EmbedUrl
+                : null;
         }
 
         private async Task<ResolvedAgentContext?> ResolveAgentContextAsync(WebsiteLead? lead, CancellationToken ct)

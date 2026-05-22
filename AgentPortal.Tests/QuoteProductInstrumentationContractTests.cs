@@ -141,6 +141,27 @@ public class QuoteProductInstrumentationContractTests
     }
 
     [Fact]
+    public void LifeQuote_PostSubmitBookingExperience_StaysInlineAndUsesRequestedOnlyAppointmentFlow()
+    {
+        var repoRoot = GetRepoRoot();
+        var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
+        var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
+
+        Assert.Contains("id=\"lifePostSubmitSlot\" hidden", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"lifeBookingModal\"", view, StringComparison.Ordinal);
+        Assert.Contains("showPostSubmitSuccess(", view, StringComparison.Ordinal);
+        Assert.Contains("bookingExperienceUrl", view, StringComparison.Ordinal);
+        Assert.Contains("'appointment_embed_viewed'", view, StringComparison.Ordinal);
+        Assert.Contains("'appointment_abandoned'", view, StringComparison.Ordinal);
+        Assert.Contains("'appointment_booking_fallback_clicked'", view, StringComparison.Ordinal);
+        Assert.DoesNotContain("window.location.href = resolveThankYouPath();", view, StringComparison.Ordinal);
+
+        Assert.Contains("[HttpPost(\"Life/booking-experience\")]", controller, StringComparison.Ordinal);
+        Assert.Contains("UpsertRequestedPublicAppointmentAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("LeadAppointmentStatus.Requested", controller, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void TrackingAssets_UseCacheBustingAndLiveAnalyticsConfigInjection()
     {
         var repoRoot = GetRepoRoot();

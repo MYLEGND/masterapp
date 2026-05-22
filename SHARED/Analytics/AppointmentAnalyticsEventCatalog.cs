@@ -6,6 +6,7 @@ public static class AppointmentAnalyticsEventCatalog
     public const string SlotSelected = "appointment_slot_selected";
     public const string Booked = "appointment_booked";
     public const string Abandoned = "appointment_abandoned";
+    public const string BookingFallbackClicked = "appointment_booking_fallback_clicked";
     public const string Completed = "appointment_completed";
     public const string NoShow = "appointment_no_show";
 
@@ -15,6 +16,7 @@ public static class AppointmentAnalyticsEventCatalog
         SlotSelected,
         Booked,
         Abandoned,
+        BookingFallbackClicked,
         Completed,
         NoShow
     ];

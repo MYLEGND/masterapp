@@ -2941,6 +2941,250 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-contact-estimate-wrap .lq-estimate-disclaimer:empty {
     display: none;
 }
+.lq-post-submit-slot {
+    margin-top: 16px;
+}
+.lq-post-submit-card {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 18px;
+    border: 1.4px solid rgba(199,153,49,0.34);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.12), transparent 36%),
+        linear-gradient(180deg, rgba(19,31,52,0.96) 0%, rgba(12,20,35,0.98) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.04),
+        0 18px 30px rgba(0,0,0,0.22);
+}
+.lq-post-submit-head {
+    display: grid;
+    gap: 6px;
+}
+.lq-post-submit-kicker {
+    color: rgba(240,198,109,0.86);
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-post-submit-title {
+    color: #fff7df;
+    font-size: 1.18rem;
+    font-weight: 920;
+    line-height: 1.16;
+}
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note {
+    color: rgba(236,240,247,0.76);
+    font-size: .88rem;
+    line-height: 1.5;
+}
+.lq-booking-shell {
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+    border: 1.2px solid rgba(199,153,49,0.24);
+    background:
+        linear-gradient(180deg, rgba(14,24,41,0.74) 0%, rgba(10,18,32,0.56) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 12px 22px rgba(0,0,0,0.16);
+}
+.lq-booking-shell.is-disabled {
+    border-color: rgba(199,153,49,0.18);
+    background:
+        linear-gradient(180deg, rgba(13,20,34,0.52) 0%, rgba(10,16,28,0.48) 100%);
+}
+.lq-booking-head {
+    display: grid;
+    gap: 5px;
+}
+.lq-booking-title {
+    color: #fff5dc;
+    font-size: 1.08rem;
+    font-weight: 900;
+    line-height: 1.15;
+}
+.lq-booking-status-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    min-height: 30px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(240,198,109,0.24);
+    background: rgba(240,198,109,0.08);
+    color: #f5d488;
+    font-size: .72rem;
+    font-weight: 860;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+.lq-booking-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+}
+.lq-booking-primary {
+    width: 100%;
+}
+.lq-booking-secondary-link {
+    color: #f0c66d;
+    font-size: .84rem;
+    font-weight: 820;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.lq-booking-secondary-link:hover,
+.lq-booking-secondary-link:focus-visible {
+    color: #f8ddb0;
+}
+.lq-booking-embed-shell {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background: rgba(9,15,27,0.56);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 12px 20px rgba(0,0,0,0.16);
+}
+.lq-booking-embed-status {
+    color: rgba(236,240,247,0.72);
+    font-size: .82rem;
+    font-weight: 760;
+    line-height: 1.45;
+}
+.lq-booking-embed-frame-wrap {
+    position: relative;
+    min-height: 620px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(199,153,49,0.22);
+    background:
+        linear-gradient(180deg, rgba(11,18,31,0.96) 0%, rgba(7,12,23,0.98) 100%);
+}
+.lq-booking-iframe {
+    display: block;
+    width: 100%;
+    min-height: 620px;
+    border: 0;
+    background: transparent;
+}
+.lq-booking-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 56;
+    display: grid;
+    place-items: center;
+    padding: 14px;
+}
+.lq-booking-modal[hidden] {
+    display: none !important;
+}
+.lq-booking-modal-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(3,8,18,0.78);
+    backdrop-filter: blur(3px);
+}
+.lq-booking-modal-dialog {
+    position: relative;
+    z-index: 1;
+    width: min(100%, 760px);
+    display: grid;
+    gap: 12px;
+    padding: 14px;
+    border-radius: 18px;
+    border: 1.4px solid rgba(199,153,49,0.34);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.10), transparent 36%),
+        linear-gradient(180deg, rgba(19,31,52,0.98) 0%, rgba(12,20,35,0.99) 100%);
+    box-shadow:
+        0 24px 42px rgba(0,0,0,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.04);
+}
+.lq-booking-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+.lq-booking-modal-title {
+    color: #fff7df;
+    font-size: 1rem;
+    font-weight: 900;
+    line-height: 1.1;
+}
+.lq-booking-modal-close {
+    appearance: none;
+    border: 1px solid rgba(199,153,49,0.34);
+    background: rgba(11,18,31,0.46);
+    color: rgba(248,250,252,0.88);
+    font-size: .82rem;
+    font-weight: 820;
+    line-height: 1;
+    padding: 8px 12px;
+    border-radius: 999px;
+}
+.lq-booking-modal-close:hover,
+.lq-booking-modal-close:focus-visible {
+    border-color: rgba(244,210,124,0.64);
+    color: #fff7df;
+}
+.lq-booking-modal-shell .lq-booking-embed-frame-wrap,
+.lq-booking-embed-shell.is-modal .lq-booking-embed-frame-wrap {
+    min-height: min(78vh, 720px);
+}
+.lq-booking-modal-shell .lq-booking-iframe,
+.lq-booking-embed-shell.is-modal .lq-booking-iframe {
+    min-height: min(78vh, 720px);
+}
+@@media (max-width: 767.98px) {
+    .lq-post-submit-slot {
+        margin-top: 14px;
+    }
+    .lq-post-submit-card {
+        padding: 14px;
+        gap: 12px;
+        border-radius: 16px;
+    }
+    .lq-post-submit-title {
+        font-size: 1.06rem;
+    }
+    .lq-booking-shell,
+    .lq-booking-embed-shell {
+        padding: 12px;
+        border-radius: 14px;
+    }
+    .lq-booking-embed-frame-wrap,
+    .lq-booking-iframe {
+        min-height: 520px;
+    }
+    .lq-booking-modal {
+        padding: 10px;
+        align-items: end;
+    }
+    .lq-booking-modal-dialog {
+        width: 100%;
+        max-height: 92vh;
+        padding: 12px;
+        border-radius: 16px 16px 14px 14px;
+    }
+    .lq-booking-modal-shell .lq-booking-embed-frame-wrap,
+    .lq-booking-embed-shell.is-modal .lq-booking-embed-frame-wrap,
+    .lq-booking-modal-shell .lq-booking-iframe,
+    .lq-booking-embed-shell.is-modal .lq-booking-iframe {
+        min-height: 68vh;
+    }
+}
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-wrap {
     background:
         radial-gradient(circle at top right, rgba(226,187,100,0.10), transparent 34%),
@@ -5707,6 +5951,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                     <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                                     <div class="lq-contact-grid">
                                         <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                                    </div>
+                                    <div id="lifeContactCaptureWrap">
+                                        <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
                                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
@@ -5765,16 +6012,18 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                             </label>
                                             <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                                         </div>
-                                    </div>
-                                    <div class="lq-step-actions">
-                                        <div class="lq-submit-row">
-                                            <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
-                                            <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                         </div>
-                                        <div class="lq-error" id="lifeError"></div>
-                                        <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                                        <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
+                                        <div class="lq-step-actions">
+                                            <div class="lq-submit-row">
+                                                <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
+                                                <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                                            </div>
+                                            <div class="lq-error" id="lifeError"></div>
+                                            <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
+                                            <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
+                                        </div>
                                     </div>
+                                    <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
                                 </div>
                             </div>
                         </div>
@@ -6179,8 +6428,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                 <div class="lq-step-progress" id="lifeStep2Progress">Estimate ready</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                 <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
+                <div class="lq-contact-grid">
+                    <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                </div>
+                <div id="lifeContactCaptureWrap">
                     <div class="lq-contact-grid">
-                        <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
                         <div class="full lq-contact-capture-head">
                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
@@ -6312,10 +6564,26 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
                     </div>
-                    <div class="lq-reassurance" hidden></div>
+                </div>
+                <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
+                <div class="lq-reassurance" hidden></div>
             </div>
         </div>
         }
+
+        <div class="lq-booking-modal" id="lifeBookingModal" hidden aria-hidden="true">
+            <div class="lq-booking-modal-backdrop" data-booking-modal-close></div>
+            <div class="lq-booking-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="lifeBookingModalTitle">
+                <div class="lq-booking-modal-head">
+                    <div class="lq-booking-modal-title" id="lifeBookingModalTitle">Schedule Your Review</div>
+                    <button type="button" class="lq-booking-modal-close" data-booking-modal-close aria-label="Close scheduling">Close</button>
+                </div>
+                <div class="lq-booking-embed-shell is-modal" id="lifeBookingModalShell">
+                    <div class="lq-booking-embed-status" id="lifeBookingModalStatus">Loading your scheduling options...</div>
+                    <div class="lq-booking-embed-frame-wrap" id="lifeBookingModalFrameSlot"></div>
+                </div>
+            </div>
+        </div>
     </form>
 </div>
 </div>
@@ -6351,6 +6619,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
   const heroTrustStrip = document.getElementById('lifeHeroTrustStrip');
   const step2EstimateSlot = document.getElementById('lifeStep2EstimateSlot');
+  const contactCaptureWrap = document.getElementById('lifeContactCaptureWrap');
+  const postSubmitSlot = document.getElementById('lifePostSubmitSlot');
+  const bookingModal = document.getElementById('lifeBookingModal');
+  const bookingModalFrameSlot = document.getElementById('lifeBookingModalFrameSlot');
+  const bookingModalStatus = document.getElementById('lifeBookingModalStatus');
+  const bookingModalCloseButtons = Array.from(document.querySelectorAll('[data-booking-modal-close]'));
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const ageStepContinueBtn = document.getElementById('ageStepContinueBtn');
   const step1ContinueBtn = document.getElementById('step1Continue');
@@ -6375,6 +6649,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const pageKey = form.dataset.formKey || 'quote_life';
   const quoteType = '@normalizedOfferKey';
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
+  const bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "LifeQuote")';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
   const firstDiscoveryFieldName = '@firstDiscoveryFieldName';
@@ -6427,6 +6702,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const AGE_DEFAULT = @selectedAgeValue;
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 450;
+  const postSubmitSuccessHeadingText = 'Thanks — your estimate is ready.';
+  const postSubmitSuccessHelperText = 'Your information is saved. Keep this estimate and choose a time below if you want a guided review.';
+  const publicBookingHeadingText = 'Schedule Your Review';
+  const publicBookingCopyText = 'Stay on this page and choose a time that works for you.';
+  const publicBookingCtaText = 'Schedule My Review';
+  const publicBookingFallbackText = 'Open scheduling in a new tab';
+  const publicBookingLoadingText = 'Loading your scheduling options...';
+  const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available here right now, and a licensed agent can still follow up with you.';
+  const publicBookingFallbackOnlyText = 'Scheduling for this request opens in a new tab for now.';
+  const publicBookingPendingText = 'We only mark appointments as booked after Microsoft confirms the scheduling request.';
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
   const defaultProcessingNoteText = processingNote?.textContent?.trim() || '';
@@ -6462,6 +6747,14 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let firstQuestionViewTracked = false;
   let firstQuestionAnsweredTracked = false;
   let contactStepViewTracked = false;
+  let thankYouViewTracked = false;
+  let postSubmitSuccessActive = false;
+  let publicBookingState = null;
+  let publicBookingEmbedViewed = false;
+  let publicBookingBookedConfirmed = false;
+  let publicBookingSlotSelectedTracked = false;
+  let publicBookingFallbackClicked = false;
+  let publicBookingAbandonedTracked = false;
 
   function safeTrackingCall(label, factory) {
     try {
@@ -6494,6 +6787,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function getActivePanelKey() {
+    if (postSubmitSuccessActive) return 'success';
     if (step2Panel && !step2Panel.hidden) return 'contact';
     if (processingPanel && !processingPanel.hidden) return 'processing';
     return 'step1';
@@ -6635,6 +6929,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function resetFunnelToMarkupDefaults() {
+    resetPostSubmitSuccessState();
     form.reset();
     if (stateSelect?.dataset.selected) {
       stateSelect.value = stateSelect.dataset.selected;
@@ -6692,6 +6987,11 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     const storage = getSessionStorageSafe();
     if (!storage) {
+      return;
+    }
+
+    if (postSubmitSuccessActive) {
+      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
       return;
     }
 
@@ -7973,6 +8273,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   }
 
   function showStep1(microStepIndex = 0, shouldScroll = false, options = {}) {
+    if (postSubmitSuccessActive) {
+      resetPostSubmitSuccessState();
+    }
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
     setActivePanel(step1Panel);
@@ -8041,6 +8344,493 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     });
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function trackThankYouViewOnce(metadata = {}) {
+    if (thankYouViewTracked) {
+      return Promise.resolve();
+    }
+
+    thankYouViewTracked = true;
+    return trackEvent('thank_you_view', metadata);
+  }
+
+  function resolveRequestedBookingSurface(payload) {
+    if (!payload?.canEmbed) {
+      return 'external_redirect_fallback';
+    }
+
+    return shouldUseBookingModal(payload)
+      ? 'website_modal'
+      : 'website_embed';
+  }
+
+  function shouldUseBookingModal(payload) {
+    return Boolean(payload?.canEmbed)
+      && Boolean(payload?.preferModalOnMobile)
+      && window.matchMedia('(max-width: 767.98px)').matches;
+  }
+
+  function buildDisabledBookingState(reason = 'disabled') {
+    return {
+      enabled: false,
+      canEmbed: false,
+      canFallback: false,
+      preferModalOnMobile: true,
+      embedUrl: '',
+      fallbackUrl: '',
+      surface: 'external_redirect_fallback',
+      linkedToLead: false,
+      appointmentStatus: '',
+      pendingConfirmation: false,
+      reason,
+      contextToken: ''
+    };
+  }
+
+  function normalizePublicBookingPayload(payload, hint = null) {
+    const source = payload && typeof payload === 'object' ? payload : {};
+    const sourceHint = hint && typeof hint === 'object' ? hint : {};
+    const canEmbed = Boolean(source.canEmbed ?? sourceHint.canEmbed);
+    const canFallback = Boolean(source.canFallback ?? sourceHint.canFallback);
+    const preferModalOnMobile = Boolean(source.preferModalOnMobile ?? sourceHint.preferModalOnMobile);
+    const enabled = Boolean(source.enabled ?? sourceHint.eligible) && (canEmbed || canFallback);
+
+    return {
+      enabled,
+      canEmbed,
+      canFallback,
+      preferModalOnMobile,
+      embedUrl: asTrimmed(source.embedUrl || sourceHint.embedUrl || ''),
+      fallbackUrl: asTrimmed(source.fallbackUrl || sourceHint.fallbackUrl || ''),
+      surface: asTrimmed(source.surface || resolveRequestedBookingSurface(sourceHint)),
+      linkedToLead: Boolean(source.linkedToLead),
+      appointmentStatus: asTrimmed(source.appointmentStatus || ''),
+      pendingConfirmation: Boolean(source.pendingConfirmation),
+      reason: asTrimmed(source.reason || (enabled ? 'configured' : 'disabled')) || 'disabled',
+      contextToken: asTrimmed(source.contextToken || sourceHint.contextToken || '')
+    };
+  }
+
+  function buildAppointmentTrackingMetadata(payload, extra = {}) {
+    const normalized = normalizePublicBookingPayload(payload, publicBookingState);
+    return {
+      bookingSurface: normalized.surface || resolveRequestedBookingSurface(normalized),
+      bookingMode: shouldUseBookingModal(normalized) ? 'modal' : normalized.canEmbed ? 'inline' : 'fallback',
+      hasFallback: normalized.canFallback,
+      appointmentStatus: normalized.appointmentStatus || '',
+      linkedToLead: normalized.linkedToLead,
+      pendingConfirmation: normalized.pendingConfirmation,
+      bookingReason: normalized.reason || '',
+      handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
+      recommendationPrimaryKey: recPrimaryKeyEl?.value || '',
+      recommendationSecondaryKey: recSecondaryKeyEl?.value || '',
+      ...extra
+    };
+  }
+
+  function closeBookingModal(options = {}) {
+    if (!(bookingModal instanceof HTMLElement)) {
+      return;
+    }
+
+    bookingModal.hidden = true;
+    bookingModal.setAttribute('aria-hidden', 'true');
+    document.body.style.removeProperty('overflow');
+
+    if (options.clearFrame !== false && bookingModalFrameSlot instanceof HTMLElement) {
+      bookingModalFrameSlot.innerHTML = '';
+    }
+    if (bookingModalStatus instanceof HTMLElement) {
+      bookingModalStatus.hidden = false;
+      bookingModalStatus.textContent = publicBookingLoadingText;
+    }
+  }
+
+  function resetPostSubmitSuccessState() {
+    postSubmitSuccessActive = false;
+    thankYouViewTracked = false;
+    publicBookingState = null;
+    publicBookingEmbedViewed = false;
+    publicBookingBookedConfirmed = false;
+    publicBookingSlotSelectedTracked = false;
+    publicBookingFallbackClicked = false;
+    publicBookingAbandonedTracked = false;
+    closeBookingModal({ clearFrame: true });
+
+    if (contactCaptureWrap instanceof HTMLElement) {
+      contactCaptureWrap.hidden = false;
+    }
+    if (postSubmitSlot instanceof HTMLElement) {
+      postSubmitSlot.hidden = true;
+      postSubmitSlot.innerHTML = '';
+    }
+    if (step2Progress) {
+      step2Progress.textContent = defaultStep2ProgressText;
+    }
+    if (step2Heading) {
+      step2Heading.textContent = defaultStep2HeadingText;
+    }
+    if (step2Helper) {
+      step2Helper.textContent = defaultStep2HelperText;
+      step2Helper.hidden = defaultStep2HelperHidden;
+    }
+    if (step2ContactTitle) {
+      step2ContactTitle.textContent = defaultStep2ContactTitleText;
+    }
+    if (step2ContactCopy) {
+      step2ContactCopy.textContent = defaultStep2ContactCopyText;
+    }
+  }
+
+  function renderBookingIframe(frameSlot, statusEl, url) {
+    if (!(frameSlot instanceof HTMLElement) || !(statusEl instanceof HTMLElement) || !url) {
+      return;
+    }
+
+    frameSlot.innerHTML = '';
+    statusEl.hidden = false;
+    statusEl.textContent = publicBookingLoadingText;
+
+    const iframe = document.createElement('iframe');
+    iframe.className = 'lq-booking-iframe';
+    iframe.src = url;
+    iframe.loading = 'lazy';
+    iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+    iframe.title = 'Schedule your review';
+
+    let frameLoaded = false;
+    const loadTimeout = window.setTimeout(() => {
+      if (frameLoaded) {
+        return;
+      }
+
+      statusEl.hidden = false;
+      statusEl.textContent = 'Scheduling is taking longer than expected. You can still open it in a new tab if needed.';
+    }, 8000);
+
+    iframe.addEventListener('load', () => {
+      frameLoaded = true;
+      window.clearTimeout(loadTimeout);
+      statusEl.hidden = true;
+    }, { once: true });
+
+    frameSlot.appendChild(iframe);
+  }
+
+  function markAppointmentEmbedViewed(surface, payload) {
+    if (publicBookingEmbedViewed) {
+      return;
+    }
+
+    publicBookingEmbedViewed = true;
+    trackEvent('appointment_embed_viewed', buildAppointmentTrackingMetadata(payload, {
+      bookingSurface: surface || resolveRequestedBookingSurface(payload)
+    }));
+  }
+
+  async function activatePublicBookingExperience(hint, surfaceOverride = '') {
+    if (!hint || typeof hint !== 'object' || !asTrimmed(hint.contextToken)) {
+      return buildDisabledBookingState('missing_context');
+    }
+
+    const requestSurface = asTrimmed(surfaceOverride) || resolveRequestedBookingSurface(hint);
+
+    try {
+      const response = await fetch(bookingExperienceUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'fetch'
+        },
+        body: JSON.stringify({
+          contextToken: hint.contextToken,
+          surface: requestSurface
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('booking_activation_failed');
+      }
+
+      const payload = await response.json().catch(() => ({}));
+      return normalizePublicBookingPayload(payload, hint);
+    } catch (error) {
+      console.warn('[LifeQuote] public booking activation failed', error);
+      return normalizePublicBookingPayload({
+        enabled: Boolean(hint.eligible),
+        canEmbed: Boolean(hint.canEmbed),
+        canFallback: Boolean(hint.canFallback),
+        preferModalOnMobile: Boolean(hint.preferModalOnMobile),
+        embedUrl: hint.embedUrl || '',
+        fallbackUrl: hint.fallbackUrl || '',
+        surface: requestSurface,
+        reason: 'activation_failed',
+        contextToken: hint.contextToken || ''
+      }, hint);
+    }
+  }
+
+  function renderPostSubmitBookingState(payload) {
+    if (!(postSubmitSlot instanceof HTMLElement)) {
+      return;
+    }
+
+    const normalized = payload?.loading
+      ? { loading: true }
+      : normalizePublicBookingPayload(payload, publicBookingState);
+
+    if (!normalized.loading) {
+      publicBookingState = normalized;
+    }
+
+    const supportCopy = hasAgentTrustProfile
+      ? `If you schedule now, you’ll meet directly with ${agentDirectContactName}.`
+      : 'Choose a time now if you want a guided review.';
+
+    const noteText = normalized.loading
+      ? publicBookingLoadingText
+      : !normalized.enabled
+        ? publicBookingDisabledText
+        : normalized.canEmbed
+          ? supportCopy
+          : normalized.canFallback
+            ? publicBookingFallbackOnlyText
+            : publicBookingDisabledText;
+
+    const statusLabel = normalized.loading
+      ? 'Preparing scheduling'
+      : !normalized.enabled
+        ? 'Scheduling optional'
+        : normalized.canEmbed
+          ? 'Stay on this page'
+          : normalized.canFallback
+            ? 'New tab fallback'
+            : 'Scheduling optional';
+
+    const showPrimaryCta = !normalized.loading && normalized.enabled && normalized.canEmbed;
+    const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
+    const showInlineShell = showPrimaryCta && !shouldUseBookingModal(normalized);
+
+    postSubmitSlot.innerHTML = `
+      <section class="lq-post-submit-card" aria-labelledby="lifePostSubmitBookingTitle">
+        <div class="lq-post-submit-head">
+          <div class="lq-post-submit-kicker">Saved to your estimate</div>
+          <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">${escapeHtml(publicBookingHeadingText)}</div>
+          <div class="lq-post-submit-copy">${escapeHtml(publicBookingCopyText)}</div>
+        </div>
+        <div class="lq-booking-shell${!normalized.enabled && !normalized.loading ? ' is-disabled' : ''}">
+          <div class="lq-booking-head">
+            <div class="lq-booking-status-pill">${escapeHtml(statusLabel)}</div>
+            <div class="lq-booking-title">${escapeHtml(publicBookingHeadingText)}</div>
+            <div class="lq-booking-copy">${escapeHtml(noteText)}</div>
+            ${(!normalized.loading && normalized.pendingConfirmation) ? `<div class="lq-booking-pending-note">${escapeHtml(publicBookingPendingText)}</div>` : ''}
+          </div>
+          <div class="lq-booking-actions">
+            ${showPrimaryCta ? `<button type="button" class="btn-gold lq-booking-primary" id="lifeBookingPrimaryCta">${escapeHtml(publicBookingCtaText)}</button>` : ''}
+            ${showFallbackLink ? `<a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText)}</a>` : ''}
+          </div>
+          ${showInlineShell ? `
+            <div class="lq-booking-embed-shell" id="lifeBookingInlineShell" hidden>
+              <div class="lq-booking-embed-status" id="lifeBookingInlineStatus">${escapeHtml(publicBookingLoadingText)}</div>
+              <div class="lq-booking-embed-frame-wrap" id="lifeBookingInlineFrameSlot"></div>
+            </div>
+          ` : ''}
+          ${(!normalized.loading && !normalized.enabled) ? `<div class="lq-booking-note">${escapeHtml(publicBookingDisabledText)}</div>` : ''}
+        </div>
+      </section>`;
+
+    postSubmitSlot.hidden = false;
+
+    const primaryCta = document.getElementById('lifeBookingPrimaryCta');
+    if (primaryCta instanceof HTMLButtonElement) {
+      primaryCta.addEventListener('click', () => {
+        const activeBookingState = normalizePublicBookingPayload(publicBookingState, payload);
+        if (shouldUseBookingModal(activeBookingState)) {
+          if (!(bookingModal instanceof HTMLElement)) {
+            return;
+          }
+
+          bookingModal.hidden = false;
+          bookingModal.setAttribute('aria-hidden', 'false');
+          document.body.style.setProperty('overflow', 'hidden');
+          if (bookingModalStatus instanceof HTMLElement) {
+            bookingModalStatus.hidden = false;
+            bookingModalStatus.textContent = publicBookingLoadingText;
+          }
+          renderBookingIframe(bookingModalFrameSlot, bookingModalStatus, activeBookingState.embedUrl);
+          markAppointmentEmbedViewed('website_modal', activeBookingState);
+          window.setTimeout(() => {
+            bookingModal.querySelector('.lq-booking-modal-close')?.focus({ preventScroll: true });
+          }, 50);
+          return;
+        }
+
+        const inlineShell = document.getElementById('lifeBookingInlineShell');
+        const inlineFrameSlot = document.getElementById('lifeBookingInlineFrameSlot');
+        const inlineStatus = document.getElementById('lifeBookingInlineStatus');
+        if (!(inlineShell instanceof HTMLElement)) {
+          return;
+        }
+
+        inlineShell.hidden = false;
+        renderBookingIframe(inlineFrameSlot, inlineStatus, activeBookingState.embedUrl);
+        markAppointmentEmbedViewed('website_embed', activeBookingState);
+        scrollIntoViewAndFocus(inlineShell, false, {
+          align: 'start',
+          preferVisiblePanel: true,
+          behavior: 'smooth'
+        });
+      });
+    }
+
+    const fallbackLink = document.getElementById('lifeBookingFallbackLink');
+    if (fallbackLink instanceof HTMLAnchorElement) {
+      fallbackLink.addEventListener('click', () => {
+        publicBookingFallbackClicked = true;
+        trackEvent('appointment_booking_fallback_clicked', buildAppointmentTrackingMetadata(publicBookingState, {
+          bookingSurface: 'external_redirect_fallback'
+        }));
+        if (publicBookingState?.contextToken) {
+          void activatePublicBookingExperience(publicBookingState, 'external_redirect_fallback')
+            .then((nextState) => {
+              publicBookingState = normalizePublicBookingPayload(nextState, publicBookingState);
+            });
+        }
+      });
+    }
+  }
+
+  function trackAppointmentAbandonedIfNeeded() {
+    if (!publicBookingEmbedViewed || publicBookingBookedConfirmed || publicBookingFallbackClicked || publicBookingAbandonedTracked) {
+      return;
+    }
+
+    publicBookingAbandonedTracked = true;
+    trackEvent('appointment_abandoned', buildAppointmentTrackingMetadata(publicBookingState, {
+      slotSelectedDetected: publicBookingSlotSelectedTracked
+    }));
+  }
+
+  function resolveBookingMessageSignal(event) {
+    if (!event || typeof event !== 'object' || !event.origin) {
+      return '';
+    }
+
+    let hostname = '';
+    try {
+      hostname = new URL(event.origin).hostname.toLowerCase();
+    } catch {
+      return '';
+    }
+
+    if (!hostname.endsWith('office.com') &&
+        !hostname.endsWith('outlook.com') &&
+        !hostname.endsWith('microsoft.com')) {
+      return '';
+    }
+
+    const data = event.data;
+    const signalType = typeof data === 'string'
+      ? data.trim().toLowerCase()
+      : typeof data?.type === 'string'
+        ? data.type.trim().toLowerCase()
+        : '';
+
+    if (signalType === 'appointment_slot_selected' || signalType === 'ms_bookings_slot_selected') {
+      return 'slot_selected';
+    }
+
+    if (signalType === 'appointment_booked' || signalType === 'ms_bookings_booked' || signalType === 'ms_bookings_confirmed') {
+      return 'booked';
+    }
+
+    if (typeof data === 'object' && data?.bookingConfirmed === true) {
+      return 'booked';
+    }
+
+    return '';
+  }
+
+  window.addEventListener('message', (event) => {
+    const signal = resolveBookingMessageSignal(event);
+    if (!signal) {
+      return;
+    }
+
+    if (signal === 'slot_selected' && !publicBookingSlotSelectedTracked) {
+      publicBookingSlotSelectedTracked = true;
+      trackEvent('appointment_slot_selected', buildAppointmentTrackingMetadata(publicBookingState));
+      return;
+    }
+
+    if (signal === 'booked' && !publicBookingBookedConfirmed) {
+      publicBookingBookedConfirmed = true;
+      trackEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
+    }
+  });
+
+  bookingModalCloseButtons.forEach((button) => {
+    button.addEventListener('click', () => closeBookingModal({ clearFrame: true }));
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && bookingModal instanceof HTMLElement && !bookingModal.hidden) {
+      closeBookingModal({ clearFrame: true });
+    }
+  });
+
+  async function showPostSubmitSuccess(responseBody = {}, estimatePreview = null) {
+    postSubmitSuccessActive = true;
+    publicBookingState = null;
+    publicBookingEmbedViewed = false;
+    publicBookingBookedConfirmed = false;
+    publicBookingSlotSelectedTracked = false;
+    publicBookingFallbackClicked = false;
+    publicBookingAbandonedTracked = false;
+    clearPersistedFunnelState();
+
+    if (contactCaptureWrap instanceof HTMLElement) {
+      contactCaptureWrap.hidden = true;
+    }
+    if (step2Progress) {
+      step2Progress.textContent = 'Saved';
+    }
+    if (step2Heading) {
+      step2Heading.textContent = postSubmitSuccessHeadingText;
+    }
+    if (step2Helper) {
+      step2Helper.hidden = false;
+      step2Helper.textContent = postSubmitSuccessHelperText;
+    }
+
+    await trackThankYouViewOnce({
+      inlineExperience: true,
+      handoffType: hasAgentTrustProfile ? 'agent' : 'generic'
+    });
+
+    renderPostSubmitBookingState({ loading: true });
+    focusFunnelPanel(step2Panel, { shouldFocus: true });
+
+    const bookingHint = responseBody && typeof responseBody.booking === 'object'
+      ? responseBody.booking
+      : null;
+
+    if (!bookingHint?.eligible) {
+      renderPostSubmitBookingState(buildDisabledBookingState(asTrimmed(bookingHint?.reason) || 'disabled'));
+      return;
+    }
+
+    const bookingPayload = await activatePublicBookingExperience(bookingHint);
+    renderPostSubmitBookingState(bookingPayload);
+  }
+
   function showProcessingBridge(shouldScroll = true) {
     clearAutoAdvanceTimer();
     clearProcessingTimer(true);
@@ -8083,6 +8873,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     latestEstimatePreview = estimatePreview || null;
     applyEstimatePreviewToHiddenFields(latestEstimatePreview);
     renderStep2EstimateSummary(latestEstimatePreview);
+    if (!postSubmitSuccessActive) {
+      if (contactCaptureWrap instanceof HTMLElement) {
+        contactCaptureWrap.hidden = false;
+      }
+      if (postSubmitSlot instanceof HTMLElement) {
+        postSubmitSlot.hidden = true;
+        postSubmitSlot.innerHTML = '';
+      }
+    }
     setActivePanel(step2Panel);
     if (options.trackRecommendationView !== false) {
       await trackEstimateSummaryView(latestEstimatePreview);
@@ -8495,7 +9294,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         await flushSuccessTracking(leadId, metaLeadEventId);
       }
       clearPersistedFunnelState();
-      window.location.href = resolveThankYouPath();
+      await showPostSubmitSuccess(responseBody, estimatePreview);
     } catch (err) {
       if (lifeError) {
         lifeError.textContent = 'We could not send this right now. Please try again.';
@@ -8529,6 +9328,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }
   window.addEventListener('pagehide', () => {
+    trackAppointmentAbandonedIfNeeded();
     syncStepOneAnswersFromUI();
     persistFunnelState();
   });

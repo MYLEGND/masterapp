@@ -4,10 +4,12 @@ using System.Threading.Tasks;
 using Infrastructure.Leads;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Protect_Website.Controllers;
+using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Tracking;
@@ -30,6 +32,8 @@ public class LifeQuoteControllerRouteTests
             Mock.Of<IMetaPixelResolutionService>(),
             Mock.Of<IMetaSignalIntelligenceService>(),
             Mock.Of<IWebsiteLifeLeadCaptureService>(),
+            Mock.Of<IPublicBookingResolver>(),
+            new PublicBookingContextProtector(DataProtectionProvider.Create(new System.IO.DirectoryInfo(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"))))),
             NullLogger<LifeQuoteController>.Instance);
 
         var http = new DefaultHttpContext();

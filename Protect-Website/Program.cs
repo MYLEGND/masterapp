@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
+using ProtectWebsite.Services.Booking;
 using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +52,9 @@ builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddlewar
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
 builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
 builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
+builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
+builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
+builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
 builder.Services.Configure<MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));

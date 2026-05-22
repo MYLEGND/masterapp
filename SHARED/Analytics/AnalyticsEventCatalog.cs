@@ -67,6 +67,7 @@ public static class AnalyticsEventCatalog
         Define(AppointmentAnalyticsEventCatalog.SlotSelected, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_slot_selected"]),
         Define(AppointmentAnalyticsEventCatalog.Booked, "appointment", AllQuotes, "appointment", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["appointment_booked"]),
         Define(AppointmentAnalyticsEventCatalog.Abandoned, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_abandoned"]),
+        Define(AppointmentAnalyticsEventCatalog.BookingFallbackClicked, "appointment", AllQuotes, "appointment", allowBrowser: true, dashboardMetrics: ["appointment_booking_fallback_clicked"]),
         Define(AppointmentAnalyticsEventCatalog.Completed, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_completed"]),
         Define(AppointmentAnalyticsEventCatalog.NoShow, "appointment", AllQuotes, "appointment", critical: true, allowServer: true, dashboardMetrics: ["appointment_no_show"]),
         Define("meta_browser_event_attempt", "meta", AllQuotes, "meta", critical: true, allowBrowser: true, allowServer: true, dashboardMetrics: ["meta_browser_event_attempt"]),

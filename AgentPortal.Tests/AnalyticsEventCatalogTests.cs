@@ -135,6 +135,28 @@ public class AnalyticsEventCatalogTests
     }
 
     [Fact]
+    public void AnalyticsEventCatalog_PublicBookingEvents_AreKnownAndBrowserAllowed()
+    {
+        var browserEvents = new[]
+        {
+            AppointmentAnalyticsEventCatalog.EmbedViewed,
+            AppointmentAnalyticsEventCatalog.SlotSelected,
+            AppointmentAnalyticsEventCatalog.Abandoned,
+            AppointmentAnalyticsEventCatalog.BookingFallbackClicked
+        };
+
+        foreach (var eventName in browserEvents)
+        {
+            Assert.True(AnalyticsEventCatalog.TryGet(eventName, out var definition), $"Catalog missing appointment event '{eventName}'.");
+            Assert.True(definition.AllowBrowser, $"Appointment event '{eventName}' must be browser-allowed.");
+        }
+
+        Assert.True(AnalyticsEventCatalog.TryGet(AppointmentAnalyticsEventCatalog.Booked, out var bookedDefinition));
+        Assert.True(bookedDefinition.AllowBrowser);
+        Assert.True(bookedDefinition.AllowServer);
+    }
+
+    [Fact]
     public void AnalyticsEventCatalog_SourceFiles_OnlyReferenceKnownAnalyticsEvents()
     {
         var files = new[]
@@ -294,6 +316,11 @@ public class AnalyticsEventCatalogTests
                    value.EndsWith("_continue", StringComparison.OrdinalIgnoreCase) ||
                    value.EndsWith("_complete", StringComparison.OrdinalIgnoreCase) ||
                    value.EndsWith("_back", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (value.StartsWith("appointment_", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
         }
 
         if (value.StartsWith("meta_", StringComparison.OrdinalIgnoreCase))
