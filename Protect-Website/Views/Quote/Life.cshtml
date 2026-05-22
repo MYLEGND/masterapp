@@ -6745,6 +6745,46 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     }
 }
 
+
+/* ================================================================
+   Booking copy/hierarchy cleanup — confident, not forced
+   ================================================================ */
+.lq-booking-status-pill,
+.lq-booking-embed-status,
+.lq-booking-pending-note,
+.lq-booking-note {
+    display: none !important;
+}
+
+.lq-booking-head {
+    padding: 12px 0 10px !important;
+    margin-top: 12px !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-title {
+    font-size: 1.32rem !important;
+    line-height: 1.12 !important;
+    margin-bottom: 5px !important;
+}
+
+.lq-booking-copy {
+    max-width: 46ch !important;
+    font-size: .92rem !important;
+    line-height: 1.45 !important;
+    color: rgba(248,250,252,.76) !important;
+}
+
+.lq-booking-actions {
+    display: none !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 10px !important;
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -8032,13 +8072,13 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   const postSubmitSuccessHeadingText = 'Your personalized review is ready.';
   const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule while this is fresh if you want help comparing the fit in more detail.';
   const publicBookingHeadingText = 'Schedule Your Review';
-  const publicBookingKickerText = 'Continue your personalized review';
+  const publicBookingKickerText = 'Schedule your review';
   const publicBookingCopyText = 'Choose a time to continue your personalized review, compare what surfaced, and confirm what may realistically fit best.';
   const publicBookingCtaText = 'Schedule Your Review';
-  const publicBookingFallbackText = 'Continue on this page';
+  const publicBookingFallbackText = 'Schedule below';
   const publicBookingLoadingText = 'Preparing your scheduling options...';
   const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available in this view right now, but a licensed agent can still continue your personalized review.';
-  const publicBookingFallbackOnlyText = 'Continue your personalized review in scheduling. It opens in a new tab for now.';
+  const publicBookingFallbackOnlyText = 'Schedule your review in scheduling. It opens in a new tab for now.';
   const publicBookingPendingText = 'We only mark appointments as booked after Microsoft confirms the scheduling request.';
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
@@ -9314,8 +9354,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
   function buildPostSubmitContinueCopy(preview) {
     const leadIn = hasAgentTrustProfile
-      ? `Continue your personalized review by choosing a time with ${agentDirectContactName}`
-      : 'Continue your personalized review by choosing a time below';
+      ? `Schedule your review by choosing a time with ${agentDirectContactName}`
+      : 'Schedule your review by choosing a time below';
 
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
@@ -9357,7 +9397,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       case 'wholelife':
         return 'Choose a time to continue your personalized review and see whether lifelong protection fits the long-term stability you want to keep in place.';
       case 'finalexpense':
-        return 'Choose a time to continue your personalized review and see what level of protection may help your loved ones avoid funeral costs, final bills, and added pressure.';
+        return 'Choose a time to review your result and compare the best next step.';
       case 'mortgage':
         return 'Choose a time to continue your personalized review and see what level of protection may help your family keep the home and preserve breathing room.';
       case 'iul':
@@ -10629,7 +10669,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       : !normalized.enabled
         ? 'Review saved'
         : normalized.canEmbed
-          ? 'Continue on this page'
+          ? 'Schedule below'
           : normalized.canFallback
             ? 'Continue in new tab'
             : 'Review saved';
