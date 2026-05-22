@@ -116,6 +116,42 @@
     box-shadow: none !important;
     padding: 0 !important;
 }
+
+/* Lead-capture teaser result: keep contact step focused */
+.lq-contact-estimate-wrap.is-teaser-only {
+    gap: 10px !important;
+}
+
+.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-copy {
+    max-width: 44ch !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-card-wrap {
+    margin-top: 2px !important;
+}
+
+.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-unlock {
+    border-color: rgba(243,214,136,.36) !important;
+    background: rgba(199,153,49,.08) !important;
+}
+
+.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-unlock-label {
+    color: #f3d688 !important;
+}
+
+.lq-contact-estimate-wrap.is-teaser-only .lq-estimate-disclaimer {
+    font-size: .76rem !important;
+    opacity: .72 !important;
+}
+
+/* No scheduling language should show before lead capture */
+#lifeWizardForm .lq-step-two-panel:not(.is-submitted) .lq-booking-shell,
+#lifeWizardForm .lq-step-two-panel:not(.is-submitted) .lq-booking-embed-shell {
+    display: none !important;
+}
+
 </style>
 
 @using System.Text.Json
@@ -638,16 +674,16 @@
         _ => "the protection, stability, and long-term fit that matter most"
     };
     var stepTwoContactKickerText = "Review ready";
-    var contactMethodHelperText = "Add the best contact method so your review stays connected to you.";
-    var contactMethodErrorText = "Add an email or phone so your review can be saved and sent.";
+    var contactMethodHelperText = "Add one contact method so we can send the full estimate details.";
+    var contactMethodErrorText = "Add an email or phone to unlock your full estimate.";
     var consentPromptText = $"I agree that {agentDirectContactName} or a licensed Legend agent may email, call, or text me about this review and the options tied to this request.";
-    var consentErrorText = "Please check the box so we can send your review and options.";
-    var stepTwoContactTitleText = "Where should we send it?";
-    var stepTwoContactCopyText = "Save your starting point and continue.";
-    var stepTwoSubmitNoteText = "Next: full review + scheduling.";
+    var consentErrorText = "Please check the box so we can send your full estimate.";
+    var stepTwoContactTitleText = "Where should we send your full estimate?";
+    var stepTwoContactCopyText = "Your preview is ready. Enter your info to unlock the full estimate details.";
+    var stepTwoSubmitNoteText = "Unlock the full estimate details.";
     var stepTwoProgressText = "Protection preview";
-    var finalStepHeading = "Your starting point is ready";
-    var finalStepHelper = "Save your starting point to continue into the full review.";
+    var finalStepHeading = "Your estimate preview is ready";
+    var finalStepHelper = "Enter your info to unlock the full estimate details.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -666,7 +702,7 @@
         "iul" => "Continue My IUL Review",
         _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Continue to My Full Review";
+    var finalSubmitButtonText = "Unlock My Full Estimate";
     var heroHeadline = isContactFirstEducationVariant
         ? "See the protection path that best aligns with the people who depend on you most."
         : "See the protection path that best aligns with your family, budget, and goals.";
@@ -745,7 +781,7 @@
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Save this whole life preview so we can review the coverage amount, monthly range, and long-term fit.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the whole life coverage amount, monthly range, and long-term structure that fits what you want protected.";
         finalSubmitButtonText = "Continue My Whole Life Review";
         productFocusTitle = "What this whole life review is built around";
@@ -767,7 +803,7 @@
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Save this term life preview so we can review the coverage amount, monthly range, and next step that fits your family’s stability.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the term coverage amount, monthly range, and next step that realistically fits your family.";
         finalSubmitButtonText = "Continue My Term Review";
         productFocusTitle = "What this term life review is built around";
@@ -789,7 +825,7 @@
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Save this final expense preview so we can review the coverage amount, monthly range, and next step that helps protect your loved ones from added pressure.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the final expense coverage amount and monthly range that can help spare your loved ones added financial pressure.";
         finalSubmitButtonText = "Continue My Final Expense Review";
         productFocusTitle = "What this final expense review is built around";
@@ -811,7 +847,7 @@
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Save this mortgage protection preview so we can review the coverage amount, monthly range, and next step tied to protecting the home.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the mortgage protection amount, monthly range, and structure that fits the home you want protected.";
         finalSubmitButtonText = "Continue My Home Protection Review";
         productFocusTitle = "What this mortgage protection review is built around";
@@ -833,7 +869,7 @@
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Save this IUL preview so we can review the coverage amount, monthly range, and long-term structure tied to your goals.";
+        finalStepHelper = "Enter your info to unlock the full estimate details.";
         agentTrustBio = "I’ll help you review the IUL coverage amount, monthly range, and long-term structure that fits what you want to build.";
         finalSubmitButtonText = "Continue My IUL Review";
         productFocusTitle = "What this IUL review is built around";
@@ -9476,17 +9512,17 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   function buildStep2UnlockCopy(preview) {
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Save this estimate to unlock the full family-protection review and continue into scheduling.';
+        return 'Enter your info to unlock the term life estimate details, coverage range, and next best step.';
       case 'wholelife':
-        return 'Save this estimate to unlock the full lifelong-protection review and continue into scheduling.';
+        return 'Enter your info to unlock the whole life estimate details, coverage range, and next best step.';
       case 'finalexpense':
-        return 'Save this estimate to unlock the full family-relief review and continue into scheduling.';
+        return 'Enter your info to unlock the final expense estimate details, coverage range, and next best step.';
       case 'mortgage':
-        return 'Save this estimate to unlock the full home-protection review and continue into scheduling.';
+        return 'Enter your info to unlock the mortgage protection estimate details, coverage range, and next best step.';
       case 'iul':
-        return 'Save this estimate to unlock the full long-range protection review and continue into scheduling.';
+        return 'Enter your info to unlock the IUL estimate details, coverage range, and next best step.';
       default:
-        return 'Save this estimate to unlock the full recommendation review and continue into scheduling.';
+        return 'Enter your info to unlock the full estimate details, coverage range, and next best step.';
     }
   }
 
@@ -9669,20 +9705,44 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
   function buildPreSubmitEstimateSummaryHtml(preview) {
     const normalized = normalizeStep2Preview(preview);
+    const monthlyRange = formatCurrencyRangeCompactForStep2(
+      normalized.primary.estimatedLowMonthly,
+      normalized.primary.estimatedHighMonthly
+    );
+
     return `
-      <div class="lq-contact-estimate-wrap is-preview-locked" id="lifeStep2EstimateSummary">
+      <div class="lq-contact-estimate-wrap is-preview-locked is-teaser-only" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
-          <div class="lq-contact-estimate-kicker">Protection preview</div>
-          <div class="lq-contact-estimate-title">${escapeHtml(buildPreSubmitEstimateTitle(normalized))}</div>
-          <div class="lq-contact-estimate-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
+          <div class="lq-contact-estimate-kicker">Estimate preview ready</div>
+          <div class="lq-contact-estimate-title">Your starting range is ready.</div>
+          <div class="lq-contact-estimate-copy">We found an estimated monthly range based on your answers. Unlock the full details to see the coverage breakdown.</div>
         </div>
-        ${buildStep2EstimateCardHtml(normalized)}
+
+        <div class="lq-contact-estimate-card-wrap">
+          <article class="lq-rec-card lq-estimate-card primary lq-estimate-card-compact" aria-label="Estimate preview">
+            <div class="lq-estimate-card-top">
+              <span class="lq-rec-badge primary">Preview</span>
+            </div>
+            <div class="lq-contact-estimate-product">Estimated monthly range</div>
+            <div class="lq-contact-estimate-metrics" aria-label="Estimate preview highlights">
+              <div class="lq-contact-estimate-metric">
+                <div class="lq-contact-estimate-metric-label">Starting range</div>
+                <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
+              </div>
+              <div class="lq-contact-estimate-metric">
+                <div class="lq-contact-estimate-metric-label">Full details</div>
+                <div class="lq-contact-estimate-metric-value">Locked</div>
+              </div>
+            </div>
+          </article>
+        </div>
+
         <div class="lq-contact-estimate-unlock">
-          <div class="lq-contact-estimate-unlock-label">Full review after submit</div>
+          <div class="lq-contact-estimate-unlock-label">Unlock full estimate</div>
           <div class="lq-contact-estimate-unlock-copy">${escapeHtml(buildStep2UnlockCopy(normalized))}</div>
         </div>
-        ${buildStep2SignalChips(normalized, 4)}
-        <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
+
+        <div class="lq-estimate-disclaimer">Preview only. Final pricing depends on underwriting and carrier review.</div>
       </div>`;
   }
 
@@ -9756,16 +9816,16 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     }
 
     if (step2Progress) {
-      step2Progress.textContent = expanded ? 'Review ready' : defaultStep2ProgressText;
+      step2Progress.textContent = expanded ? 'Review ready' : 'Estimate preview';
     }
 
     if (step2Heading) {
-      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : defaultStep2HeadingText;
+      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : 'Your estimate preview is ready';
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : defaultStep2HelperText;
+      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Enter your info to unlock the full estimate details.';
     }
 
     if (step2ContactTitle) {
