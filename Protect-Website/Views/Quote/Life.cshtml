@@ -679,6 +679,75 @@ input[name="Phone"]:focus {
     backdrop-filter: none !important;
 }
 
+
+/* TOP TIER FORM SURFACE REFINEMENT — clean graphite, no brown, more breathing room */
+#lifeEducationContactPanel,
+#lifeWizardForm .lq-contact-first-form-surface {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,.10), transparent 38%),
+        linear-gradient(180deg, rgba(10,22,42,.98) 0%, rgba(5,13,27,.99) 100%) !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    border-radius: 24px !important;
+    box-shadow:
+        0 34px 80px rgba(0,0,0,.42),
+        inset 0 1px 0 rgba(255,255,255,.08) !important;
+}
+
+/* remove brown agent pill area */
+#lifeEducationContactPanel > .lq-contact-first-proof-row,
+#lifeWizardForm .lq-contact-first-proof-row {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 18px 24px 20px !important;
+    margin: 0 !important;
+    border-bottom: 1px solid rgba(243,214,136,.18) !important;
+}
+
+/* give the question container space to breathe */
+#lifeWizardForm #lifeStep1Panel,
+#lifeWizardForm .lq-step-panel-pad:has(.lq-micro-step),
+#lifeWizardForm .lq-step-panel-pad:has(.lq-choice-grid) {
+    margin-top: 24px !important;
+    padding: 32px 30px 30px !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,.13), transparent 36%),
+        linear-gradient(180deg, rgba(36,45,58,.86) 0%, rgba(12,24,42,.96) 100%) !important;
+    border: 1px solid rgba(226,232,240,.22) !important;
+    border-radius: 24px !important;
+}
+
+/* better spacing inside questions */
+#lifeWizardForm .lq-micro-step,
+#lifeWizardForm .lq-choice-grid {
+    gap: 16px !important;
+}
+
+#lifeWizardForm .lq-micro-question,
+#lifeWizardForm #lbl-step1-goal,
+#lifeWizardForm #lbl-step1-protect,
+#lifeWizardForm #lbl-step1-coverage,
+#lifeWizardForm #lbl-step1-age,
+#lifeWizardForm #lbl-step1-tobacco {
+    margin: 18px auto 22px !important;
+    line-height: 1.08 !important;
+}
+
+/* answer cards breathe more */
+#lifeWizardForm label:has(input[type="radio"]) {
+    min-height: 126px !important;
+    padding: 22px 18px !important;
+}
+
+/* make gold cleaner, not muddy */
+#lifeWizardForm label:has(input[type="radio"]:checked) {
+    border-color: #f6d46d !important;
+    box-shadow:
+        0 18px 42px rgba(0,0,0,.38),
+        0 0 0 2px rgba(246,212,109,.24),
+        0 0 28px rgba(246,212,109,.14) !important;
+}
+
 </style>
 
 @using System.Text.Json
