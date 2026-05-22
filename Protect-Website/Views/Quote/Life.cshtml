@@ -175,12 +175,12 @@
 
         var fallbackGoalQuestion = normalizedOfferKey switch
         {
-            "term" => "What would you want term life to help protect first?",
-            "wholelife" => "What would you want whole life to help with most?",
-            "finalexpense" => "What would you want final expense coverage to help with first?",
-            "mortgage" => "What would you want protected if something happened to you?",
-            "iul" => "What would you want this IUL coverage to help with most?",
-            _ => "What would you want this coverage to help with first?"
+            "term" => "If your income stopped, what would need to stay steady first?",
+            "wholelife" => "What lasting protection do you want in place for the people you love?",
+            "finalexpense" => "Which burden do you most want lifted from your family?",
+            "mortgage" => "If you were gone, what part of the home situation needs to stay steady?",
+            "iul" => "What long-term outcome are you trying to build this around?",
+            _ => "If something happened to you, what would need to stay steady first?"
         };
 
         var fallbackProtectQuestion = normalizedOfferKey switch
@@ -740,8 +740,8 @@
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "Protection preview • Personalized review • Scheduling available";
-        contactFirstProofKicker = "Quick options review";
-        contactFirstProofText = "You’ll see which protection path best aligns with your family, budget, and long-term goals before continuing into a personalized review.";
+        contactFirstProofKicker = "Find the right protection path";
+        contactFirstProofText = "Start with the pressure your family would feel first. Then we’ll point you toward the protection path that fits the situation instead of forcing one product.";
         contactFirstProofChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
@@ -755,7 +755,7 @@
             ("A stronger next step", "Review the result first, then continue into a personalized review if the direction is worth exploring.")
         };
     }
-var heroTrustAriaLabel = "Licensed professional guidance";
+    var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var productLanguageKey =
         normalizedOfferKey.Contains("term", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("term", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("term", StringComparison.OrdinalIgnoreCase) ? "term" :
