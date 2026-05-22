@@ -503,17 +503,17 @@
         "iul" => "long-term protection, flexibility, and future planning",
         _ => "the protection, stability, and long-term fit that matter most"
     };
-    var stepTwoContactKickerText = "Your review is ready";
+    var stepTwoContactKickerText = "Review ready";
     var contactMethodHelperText = "Add the best contact method so your review stays connected to you.";
     var contactMethodErrorText = "Add an email or phone so your review can be saved and sent.";
     var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this review and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your review and options.";
     var stepTwoContactTitleText = "Where should we send it?";
-    var stepTwoContactCopyText = "Save your preview and continue to the full review.";
-    var stepTwoSubmitNoteText = "Next: full review and scheduling.";
+    var stepTwoContactCopyText = "Save your starting point and continue.";
+    var stepTwoSubmitNoteText = "Next: full review + scheduling.";
     var stepTwoProgressText = "Protection preview";
-    var finalStepHeading = "Your protection preview is ready";
-    var finalStepHelper = "Save your preview to continue into the full recommendation.";
+    var finalStepHeading = "Your starting point is ready";
+    var finalStepHelper = "Save your starting point to continue into the full review.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -532,7 +532,7 @@
         "iul" => "Continue My IUL Review",
         _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Continue to My Review";
+    var finalSubmitButtonText = "Continue to My Full Review";
     var heroHeadline = isContactFirstEducationVariant
         ? "See the protection path that best aligns with the people who depend on you most."
         : "See the protection path that best aligns with your family, budget, and goals.";
@@ -6145,6 +6145,419 @@ body.life-final-step-active #submitLife {
 
     .lq-booking-iframe {
         min-height: 590px !important;
+    }
+}
+
+
+/* ================================================================
+   Premium Funnel Flattening Pass
+   Goal: max 3 visual containers desktop, max 2 mobile.
+   Preserve all logic. Remove forced card-inside-card feeling.
+   ================================================================ */
+
+/* ---------- Global funnel container discipline ---------- */
+
+.lq-hero-shell {
+    max-width: 760px !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(226,186,93,0.08), transparent 34%),
+        linear-gradient(180deg, #081426 0%, #0b1529 54%, #070d19 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    box-shadow:
+        0 24px 46px rgba(0,0,0,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.035) !important;
+}
+
+/* Flatten all step panels so the hero shell is the main outer container. */
+.lq-step1-panel,
+.lq-step-panel,
+.lq-question-shell,
+.lq-contact-panel,
+.lq-contact-capture,
+#lifeEducationContactPanel {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+/* Remove nested visual noise from common inner containers. */
+.lq-step-panel-pad,
+.lq-question-card,
+.lq-contact-capture-inner,
+.lq-contact-first-proof,
+.lq-contact-estimate-wrap,
+.lq-contact-estimate-card,
+.lq-contact-summary-card,
+.lq-result-shell,
+.lq-result-panel,
+.lq-recommendation-card,
+.lq-recommendation-inner {
+    box-shadow: none !important;
+}
+
+/* ---------- Question steps: cleaner focus ---------- */
+
+.lq-step-question,
+.lq-question-title,
+.lq-contact-capture-title {
+    color: #fff7df !important;
+    letter-spacing: -0.02em !important;
+}
+
+.lq-step-question {
+    font-size: clamp(1.25rem, 3vw, 1.75rem) !important;
+    line-height: 1.08 !important;
+    margin-bottom: 14px !important;
+}
+
+.lq-step-helper,
+.lq-helper-intro,
+.lq-subtext {
+    color: rgba(248,250,252,0.72) !important;
+}
+
+/* Option cards should be the active selectable layer, not another heavy card stack. */
+.lq-choice-card,
+.lq-option-card,
+.lq-answer-card {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.78) 0%, rgba(8,15,28,0.82) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.20) !important;
+    box-shadow: none !important;
+    border-radius: 14px !important;
+}
+
+.lq-choice-card:hover,
+.lq-option-card:hover,
+.lq-answer-card:hover {
+    border-color: rgba(243,214,136,0.58) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.22) !important;
+}
+
+.lq-choice-card.is-selected,
+.lq-option-card.is-selected,
+.lq-answer-card.is-selected,
+input:checked + .lq-choice-card,
+input:checked + .lq-option-card,
+input:checked + .lq-answer-card {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(243,214,136,0.14), transparent 42%),
+        linear-gradient(180deg, rgba(26,39,62,0.92), rgba(11,21,39,0.92)) !important;
+    border-color: rgba(243,214,136,0.78) !important;
+    box-shadow:
+        0 14px 28px rgba(0,0,0,0.26),
+        0 0 0 1px rgba(243,214,136,0.18) !important;
+}
+
+/* ---------- Contact step: make submit the visual destination ---------- */
+
+body.life-final-step-active .lq-hero-shell {
+    max-width: 700px !important;
+    padding: 18px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding: 0 !important;
+}
+
+/* Keep only one meaningful pre-submit result block. Hide repetitive support copy. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal,
+body.life-final-step-active #lifeEducationContactPanel .lq-helper-intro,
+body.life-final-step-active #lifeEducationContactPanel .lq-carrier-strip,
+body.life-final-step-active #lifeEducationContactPanel .trusted-carrier-strip {
+    display: none !important;
+}
+
+/* The recommendation block becomes one clean section, not multiple nested boxes. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-card,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-summary-card {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+    margin-bottom: 14px !important;
+}
+
+/* Inner recommendation preview: one clear bordered block only. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-main,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-result,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-recommendation {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.74), rgba(8,15,28,0.80)) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    padding: 14px !important;
+}
+
+/* Stats should feel like data, not extra cards. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    background: rgba(5,11,22,0.52) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat span,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat label {
+    color: rgba(248,250,252,0.60) !important;
+    font-size: .68rem !important;
+    letter-spacing: .07em !important;
+    text-transform: uppercase !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat strong,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat .value {
+    color: #fff7df !important;
+    font-size: 1.02rem !important;
+    font-weight: 950 !important;
+}
+
+/* Contact capture should feel like the next action. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    text-align: center !important;
+    margin: 12px 0 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-kicker,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-kicker {
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    letter-spacing: .09em !important;
+    text-transform: uppercase !important;
+    font-weight: 950 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: clamp(1.25rem, 3vw, 1.55rem) !important;
+    line-height: 1.08 !important;
+    margin: 2px 0 0 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 9px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    color: rgba(248,250,252,0.74) !important;
+    font-size: .76rem !important;
+    margin-bottom: 4px !important;
+    font-weight: 820 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control,
+body.life-final-step-active #lifeEducationContactPanel .form-select {
+    min-height: 44px !important;
+    padding: 9px 11px !important;
+    border-radius: 11px !important;
+    margin-bottom: 0 !important;
+    border: 1.5px solid rgba(243,214,136,0.72) !important;
+}
+
+/* Compliance stays, but visually secondary. */
+body.life-final-step-active #lifeEducationContactPanel .lq-consent,
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    background: rgba(5,11,22,0.48) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 9px 10px !important;
+    margin-top: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .consent-main {
+    color: rgba(248,250,252,0.68) !important;
+    font-size: .72rem !important;
+    line-height: 1.28 !important;
+}
+
+/* CTA must dominate the final step. */
+body.life-final-step-active #lifeSubmitTrustNote {
+    color: #f3d688 !important;
+    font-size: .82rem !important;
+    font-weight: 900 !important;
+    text-align: center !important;
+    margin: 8px 0 6px !important;
+}
+
+body.life-final-step-active #submitLife {
+    width: 100% !important;
+    min-height: 60px !important;
+    font-size: 1.05rem !important;
+    font-weight: 950 !important;
+    border-radius: 15px !important;
+    box-shadow:
+        0 18px 34px rgba(0,0,0,0.34),
+        0 0 0 1px rgba(248,220,145,0.30),
+        0 0 26px rgba(226,186,93,0.20) !important;
+}
+
+/* ---------- Post-submit: make booking the obvious next step ---------- */
+
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 20% 0%, rgba(226,186,93,0.11), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #08111f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    color: #f8fafc !important;
+    box-shadow:
+        0 18px 38px rgba(0,0,0,0.30),
+        inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+/* Flatten nested post-submit review blocks. */
+.lq-post-submit-review,
+.lq-post-submit-result,
+.lq-post-submit-summary,
+.lq-post-submit-details,
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.76) !important;
+}
+
+/* Booking section gets one header + iframe. No CTA gate, no extra visual weight. */
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72), rgba(8,15,28,0.68)) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    padding: 14px 15px !important;
+    margin-top: 14px !important;
+}
+
+.lq-booking-primary {
+    display: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 6px !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: .82 !important;
+    font-size: .78rem !important;
+    font-weight: 850 !important;
+}
+
+.lq-booking-embed-shell {
+    display: block !important;
+    margin-top: 12px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 8px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 670px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+/* ---------- Mobile: max 2 containers, tighter hierarchy ---------- */
+
+@@media (max-width: 767.98px) {
+    .lq-container {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    .lq-hero-shell {
+        border-radius: 16px !important;
+        padding: 12px !important;
+    }
+
+    body.life-final-step-active .lq-hero-shell {
+        padding: 11px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-main,
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-result,
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-recommendation {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 6px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two,
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+        display: none !important;
+    }
+
+    .lq-post-submit-card {
+        padding: 13px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 600px !important;
     }
 }
 
