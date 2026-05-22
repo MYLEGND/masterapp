@@ -13,6 +13,29 @@
   button[data-age] {
     display: none !important;
   }
+
+/* product-specific protect-other option */
+.choice-icon-other {
+    position: relative;
+}
+.choice-icon-other::before {
+    content: "✦";
+    display: inline-grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    color: #f3d688;
+    font-size: 1.05rem;
+    font-weight: 950;
+    text-shadow: 0 0 14px rgba(243,214,136,.35);
+}
+.tone-protect .choice-icon-other {
+    background:
+        radial-gradient(circle at 35% 25%, rgba(243,214,136,.22), transparent 42%),
+        linear-gradient(180deg, rgba(24,44,78,.96), rgba(8,20,42,.96)) !important;
+    border-color: rgba(243,214,136,.52) !important;
+}
+
 </style>
 
 @using System.Text.Json
@@ -61,6 +84,7 @@
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children or grandchildren"),
                 new("family","My loved ones"),
+                new("other","Other"),
             },
             "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
             {
@@ -68,24 +92,28 @@
                 new("children","My children"),
                 new("family","My household"),
                 new("just_me","Just me"),
+                new("other","Other"),
             },
             "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children"),
                 new("family","My family or legacy"),
+                new("other","Other"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children"),
                 new("family","My family or legacy"),
+                new("other","Other"),
             },
             _ => new List<Protect_Website.Models.LifeWizardOption>
             {
                 new("spouse_or_partner","My spouse or partner"),
                 new("children","My children"),
                 new("family","My family"),
+                new("other","Other"),
             }
         };
 
@@ -292,6 +320,15 @@
                     },
                     "tone-protect"),
                 "just_me" => ("icon", "choice-icon-home", "Just me", "Keep the focus on protecting the home and monthly stability you depend on.", "tone-protect"),
+                "other" => ("icon", "choice-icon-other", "Other", normalizedOfferKey switch
+                    {
+                        "term" => "Keep this term life review focused on the person or responsibility you have in mind.",
+                        "wholelife" => "Keep this whole life review focused on the person, legacy, or responsibility you want protected.",
+                        "finalexpense" => "Keep this final expense review focused on the person or loved ones you do not want left carrying the burden.",
+                        "mortgage" => "Keep this mortgage protection review focused on the person or household responsibility tied to the home.",
+                        "iul" => "Keep this IUL review focused on the person, legacy, or long-term responsibility you have in mind.",
+                        _ => "Keep the review focused on the person or responsibility you have in mind."
+                    }, "tone-protect"),
                 _ => ("icon", "choice-icon-family", string.Empty, string.Empty, "tone-protect")
             },
             "CoverageGoal" => normalizedCode switch
@@ -623,21 +660,21 @@
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
         contactFirstProofKicker = "Whole life guidance";
-        contactFirstProofText = "Review a few key details to see whether lifelong protection points toward the stability you want to keep in place.";
+        contactFirstProofText = "Answer a few focused questions so we can estimate whole life protection designed to stay in place long term.";
         contactFirstProofChips = new List<string> { "Lifelong protection", "Stable long-term fit", "You stay in control" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
-        contactFirstProcessingHelper = "You’ll see whether lifelong protection looks like the clearest fit first.";
+        contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Save this whole life preview to review whether lifelong protection aligns with the stability you want.";
-        agentTrustBio = "I’ll help you review whether lifelong protection truly fits the stability you want to keep in place.";
+        finalStepHelper = "Save this whole life preview so we can review the coverage amount, monthly range, and long-term fit.";
+        agentTrustBio = "I’ll help you review the whole life coverage amount, monthly range, and long-term structure that fits what you want protected.";
         finalSubmitButtonText = "Continue My Whole Life Review";
-        productFocusTitle = "Why people explore whole life";
-        productFocusCopy = "Whole life is usually explored by people who want protection that stays with them, does not expire later, and supports a steadier long-term plan.";
+        productFocusTitle = "What this whole life review is built around";
+        productFocusCopy = "This whole life review is built around lifelong protection, stable premiums, lasting family support, and a policy designed to stay in place.";
         productFocusCards = new List<(string Title, string Copy)>
         {
             ("Protection that stays", "Designed for people who want something built to stay in place instead of expiring later."),
             ("Long-term stability", "Often explored when dependable lifelong protection matters more than a temporary solution."),
-            ("Permanent planning", "Keeps the conversation centered on lasting protection and the role it plays in long-term security.")
+            ("Permanent planning", "Keeps the review centered on lasting protection, stable structure, and long-term family security.")
         };
     }
     else if (normalizedOfferKey == "term")
@@ -645,21 +682,21 @@
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
-        contactFirstProofText = "Review a few key details to see whether term life points toward the years your family depends on you most.";
+        contactFirstProofText = "Answer a few focused questions so we can estimate term life protection for the years your family depends on you most.";
         contactFirstProofChips = new List<string> { "Family stability", "Protect key years", "You stay in control" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
-        contactFirstProcessingHelper = "You’ll see whether term life looks like the clearest practical fit first.";
+        contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Save this term life preview to review what level of protection supports your family’s stability.";
-        agentTrustBio = "I’ll help you review what level of protection may realistically matter most for your family.";
+        finalStepHelper = "Save this term life preview so we can review the coverage amount, monthly range, and next step that fits your family’s stability.";
+        agentTrustBio = "I’ll help you review the term coverage amount, monthly range, and next step that realistically fits your family.";
         finalSubmitButtonText = "Continue My Term Review";
-        productFocusTitle = "Why people explore term life";
-        productFocusCopy = "Term life is usually explored when the goal is practical family protection during the years income, bills, and day-to-day stability matter most.";
+        productFocusTitle = "What this term life review is built around";
+        productFocusCopy = "This term life review is built around protecting the years where your income, bills, mortgage, children, and day-to-day family stability matter most.";
         productFocusCards = new List<(string Title, string Copy)>
         {
             ("Protect the key years", "Built for the years your family would feel the loss of your income, stability, and presence the most."),
             ("Practical monthly fit", "Often the first place families look when meaningful protection still needs to stay workable in the budget."),
-            ("Straightforward review", "Keeps the conversation centered on family stability instead of unnecessary complexity.")
+            ("Focused term review", "Keeps the review centered on coverage amount, monthly range, and the years your family needs protection most.")
         };
     }
     else if (normalizedOfferKey == "finalexpense")
@@ -667,21 +704,21 @@
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
-        contactFirstProofText = "Review a few key details to see whether final expense protection points toward easing the burden on your loved ones.";
+        contactFirstProofText = "Answer a few focused questions so we can estimate final expense coverage designed to ease the burden on your loved ones.";
         contactFirstProofChips = new List<string> { "Ease the burden", "Protect loved ones", "You stay in control" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
-        contactFirstProcessingHelper = "You’ll see whether final expense protection looks like the clearest fit first.";
+        contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Save this final expense preview to review what level of protection eases the burden on your loved ones.";
-        agentTrustBio = "I’ll help you review what may best spare your loved ones financial pressure during a hard time.";
+        finalStepHelper = "Save this final expense preview so we can review the coverage amount, monthly range, and next step that helps protect your loved ones from added pressure.";
+        agentTrustBio = "I’ll help you review the final expense coverage amount and monthly range that can help spare your loved ones added financial pressure.";
         finalSubmitButtonText = "Continue My Final Expense Review";
-        productFocusTitle = "Why people explore final expense";
-        productFocusCopy = "Final expense coverage is usually explored to help loved ones avoid carrying funeral costs, final bills, and added financial pressure during an already difficult moment.";
+        productFocusTitle = "What this final expense review is built around";
+        productFocusCopy = "This final expense review is built around funeral costs, final bills, family relief, and keeping loved ones from carrying the burden alone.";
         productFocusCards = new List<(string Title, string Copy)>
         {
             ("Burden relief", "Keeps the estimate centered on easing the financial load families are often left carrying alone."),
             ("Dignity and peace of mind", "Often reviewed by people who want final wishes handled without turning them into a family money problem."),
-            ("Straightforward protection", "Designed to keep the conversation simple, clear, and emotionally real.")
+            ("Simple protection review", "Keeps the review clear around coverage amount, monthly range, and family relief.")
         };
     }
     else if (normalizedOfferKey == "mortgage")
@@ -689,19 +726,19 @@
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
-        contactFirstProofText = "Review a few key details to see whether mortgage protection points toward keeping the home and monthly stability protected.";
+        contactFirstProofText = "Answer a few focused questions so we can estimate mortgage protection built around your home and monthly stability.";
         contactFirstProofChips = new List<string> { "Protect the home", "Keep stability", "You stay in control" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
-        contactFirstProcessingHelper = "You’ll see whether mortgage protection looks like the clearest home-first fit first.";
+        contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Save this mortgage protection preview to review what level of protection supports the home and financial breathing room.";
-        agentTrustBio = "I’ll help you review what may best protect the home and the financial breathing room around it.";
+        finalStepHelper = "Save this mortgage protection preview so we can review the coverage amount, monthly range, and next step tied to protecting the home.";
+        agentTrustBio = "I’ll help you review the mortgage protection amount, monthly range, and structure that fits the home you want protected.";
         finalSubmitButtonText = "Continue My Home Protection Review";
-        productFocusTitle = "Why people explore mortgage protection";
-        productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority, not overexplaining policy mechanics.";
+        productFocusTitle = "What this mortgage protection review is built around";
+        productFocusCopy = "This mortgage protection review is built around the home, the monthly payment, the people who depend on it, and the financial pressure they could face.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Home-first protection", "Keeps the estimate focused on protecting the home and the monthly stability your family depends on."),
+            ("Home-first protection", "Keeps the estimate focused on the mortgage, the monthly payment, and the household depending on it."),
             ("Real household pressure", "Centers the walkthrough on the financial pressure your family would actually feel if something changed unexpectedly."),
             ("Family continuity", "Often reviewed when staying in the home and keeping life steady matter most.")
         };
@@ -711,19 +748,19 @@
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
         contactFirstProofKicker = "IUL guidance";
-        contactFirstProofText = "Review a few key details to see whether indexed universal life points toward the long-term flexibility you are building around.";
+        contactFirstProofText = "Answer a few focused questions so we can estimate indexed universal life protection built around long-term flexibility and legacy planning.";
         contactFirstProofChips = new List<string> { "Long-term flexibility", "Future planning", "You stay in control" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
-        contactFirstProcessingHelper = "You’ll see whether indexed universal life looks like the clearest long-range fit first.";
+        contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Save this IUL preview to review whether long-term flexibility aligns with your goals.";
-        agentTrustBio = "I’ll help you review whether a more flexible long-term protection strategy actually fits what you want to build.";
+        finalStepHelper = "Save this IUL preview so we can review the coverage amount, monthly range, and long-term structure tied to your goals.";
+        agentTrustBio = "I’ll help you review the IUL coverage amount, monthly range, and long-term structure that fits what you want to build.";
         finalSubmitButtonText = "Continue My IUL Review";
-        productFocusTitle = "Why people explore indexed universal life";
-        productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with more flexibility built into future planning and legacy conversations.";
+        productFocusTitle = "What this IUL review is built around";
+        productFocusCopy = "This IUL review is built around long-term protection, flexible structure, future planning, and legacy goals.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Long-term flexibility", "Keeps the estimate focused on protection designed to provide more flexibility over time."),
+            ("Long-term flexibility", "Keeps the estimate focused on IUL protection, flexible structure, and future planning room."),
             ("Future planning", "Centers the conversation on how long-range structure and future access can matter later on."),
             ("Legacy planning", "Often reviewed when long-term protection and leaving something meaningful behind are both priorities.")
         };
