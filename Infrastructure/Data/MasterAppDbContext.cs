@@ -594,7 +594,7 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.WorkstationLead)
                 .WithMany()
                 .HasForeignKey(x => x.WorkstationLeadId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.Cascade);
 
             e.HasOne(x => x.WebsiteLeadIntakeLink)
                 .WithMany()

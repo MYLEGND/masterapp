@@ -11,65 +11,74 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var isSqlite = migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+            var string80Type = isSqlite ? "TEXT" : "nvarchar(80)";
+            var string200Type = isSqlite ? "TEXT" : "nvarchar(200)";
+            var string320Type = isSqlite ? "TEXT" : "nvarchar(320)";
+            var string450Type = isSqlite ? "TEXT" : "nvarchar(450)";
+            var string2048Type = isSqlite ? "TEXT" : "nvarchar(2048)";
+            var guidType = isSqlite ? "TEXT" : "uniqueidentifier";
+            var boolType = isSqlite ? "INTEGER" : "bit";
+
             migrationBuilder.AddColumn<string>(
                 name: "BookingAgentSlug",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string200Type,
                 maxLength: 200,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingAgentUserId",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string450Type,
                 maxLength: 450,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingCalendarEmail",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string320Type,
                 maxLength: 320,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingCalendarUserId",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string450Type,
                 maxLength: 450,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingConfigurationSource",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string80Type,
                 maxLength: 80,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingPageIdOrMailbox",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string320Type,
                 maxLength: 320,
                 nullable: true);
 
             migrationBuilder.AddColumn<Guid>(
                 name: "BookingTrackingProfileId",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: guidType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ConfirmationSource",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string80Type,
                 maxLength: 80,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "RequestedBookingSource",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: string80Type,
                 maxLength: 80,
                 nullable: false,
                 defaultValue: "");
@@ -77,48 +86,48 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<bool>(
                 name: "BookingEnabled",
                 table: "AgentProfiles",
-                type: "INTEGER",
+                type: boolType,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "BookingPageIdOrMailbox",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: string320Type,
                 maxLength: 320,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CalendarEmail",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: string320Type,
                 maxLength: 320,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "CalendarUserId",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: string450Type,
                 maxLength: 450,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "FallbackBookingUrl",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: string2048Type,
                 maxLength: 2048,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "MicrosoftBookingsEmbedUrl",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: string2048Type,
                 maxLength: 2048,
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "PreferModalOnMobile",
                 table: "AgentProfiles",
-                type: "INTEGER",
+                type: boolType,
                 nullable: true);
         }
 
