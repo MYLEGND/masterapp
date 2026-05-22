@@ -36,6 +36,75 @@
     border-color: rgba(243,214,136,.52) !important;
 }
 
+
+/* final post-submit booking cleanup */
+.lq-post-submit-card-final-clean {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(199,153,49,.10), transparent 42%),
+        linear-gradient(180deg, #07152b 0%, #0b1c37 100%) !important;
+    border: 1px solid rgba(199,153,49,.45) !important;
+    border-radius: 18px !important;
+    padding: 18px !important;
+    box-shadow: 0 22px 44px rgba(0,0,0,.34) !important;
+}
+
+.lq-post-submit-head-final-clean {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 0 14px 0 !important;
+}
+
+.lq-post-submit-card-final-clean .lq-post-submit-kicker {
+    color: #f3d688 !important;
+    font-size: .78rem !important;
+    font-weight: 950 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .08em !important;
+}
+
+.lq-post-submit-card-final-clean .lq-post-submit-title {
+    color: #fff6d8 !important;
+    font-size: 1.45rem !important;
+    font-weight: 950 !important;
+    line-height: 1.05 !important;
+    margin-top: 4px !important;
+}
+
+.lq-post-submit-card-final-clean .lq-post-submit-copy {
+    color: rgba(248,250,252,.84) !important;
+    font-size: .98rem !important;
+    line-height: 1.45 !important;
+    margin-top: 8px !important;
+}
+
+.lq-booking-frame-only {
+    margin-top: 10px !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    border: 1px solid rgba(199,153,49,.38) !important;
+    box-shadow: 0 18px 36px rgba(0,0,0,.30) !important;
+}
+
+.lq-booking-frame-only iframe,
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+}
+
+/* kill old nested shells if old markup survives cached render */
+.lq-post-submit-card-final-clean .lq-booking-shell,
+.lq-post-submit-card-final-clean .lq-booking-head,
+.lq-post-submit-card-final-clean .lq-booking-embed-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
 </style>
 
 @using System.Text.Json
@@ -807,8 +876,24 @@
     }
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
+    var productLanguageKey =
+        normalizedOfferKey.Contains("term", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("term", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("term", StringComparison.OrdinalIgnoreCase) ? "term" :
+        normalizedOfferKey.Contains("whole", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("whole", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("whole", StringComparison.OrdinalIgnoreCase) ? "wholelife" :
+        normalizedOfferKey.Contains("final", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("final", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("final", StringComparison.OrdinalIgnoreCase) ? "finalexpense" :
+        normalizedOfferKey.Contains("mortgage", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("mortgage", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("mortgage", StringComparison.OrdinalIgnoreCase) ? "mortgage" :
+        normalizedOfferKey.Contains("iul", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("iul", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("iul", StringComparison.OrdinalIgnoreCase) ? "iul" :
+        "life";
+
     var step1IntroTitle = "Start here";
-    var step1IntroHelper = "Pick the closest fit. Review a few key details to see your protection path and starting range.";
+    var step1IntroHelper = productLanguageKey switch
+    {
+        "term" => "Answer a few focused questions so we can estimate your term life coverage range.",
+        "wholelife" => "Answer a few focused questions so we can estimate your whole life coverage range.",
+        "finalexpense" => "Answer a few focused questions so we can estimate your final expense coverage range.",
+        "mortgage" => "Answer a few focused questions so we can estimate your mortgage protection range.",
+        "iul" => "Answer a few focused questions so we can estimate your IUL coverage range.",
+        _ => "Pick the closest fit. Review a few key details to see your protection path and starting range."
+    };
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         step1IntroTitle = "Start with a few focused questions";
@@ -10812,111 +10897,35 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       }
     }
 
-    const estimateContextForBooking = latestEstimatePreview || { offerKey: quoteType };
-    const supportCopy = buildPostSubmitContinueCopy(estimateContextForBooking);
-    const bookingCopyText = resolvePublicBookingCopy(estimateContextForBooking) || publicBookingCopyText;
-
-    const noteText = normalized.loading
-      ? publicBookingLoadingText
-      : !normalized.enabled
-        ? publicBookingDisabledText
-        : normalized.canEmbed
-          ? supportCopy
-          : normalized.canFallback
-            ? publicBookingFallbackOnlyText
-            : publicBookingDisabledText;
-
-    const statusLabel = normalized.loading
-      ? 'Preparing your review'
-      : !normalized.enabled
-        ? 'Review saved'
-        : normalized.canEmbed
-          ? ''
-          : normalized.canFallback
-            ? 'Continue in new tab'
-            : 'Review saved';
-
-    const showPrimaryCta = false;
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
     const showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
 
     postSubmitSlot.innerHTML = `
-      <section class="lq-post-submit-card" aria-labelledby="lifePostSubmitBookingTitle">
-        <div class="lq-post-submit-head">
-          <div class="lq-post-submit-kicker">${escapeHtml(publicBookingKickerText)}</div>
-          <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">${escapeHtml(publicBookingHeadingText)}</div>
-          <div class="lq-post-submit-copy">${escapeHtml(bookingCopyText)}</div>
+      <section class="lq-post-submit-card lq-post-submit-card-final-clean" aria-labelledby="lifePostSubmitBookingTitle">
+        <div class="lq-post-submit-head lq-post-submit-head-final-clean">
+          <div class="lq-post-submit-kicker">Continue your review</div>
+          <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">Continue Your Review</div>
+          <div class="lq-post-submit-copy">Choose a time below to review your protection path with Zac.</div>
         </div>
-        <div class="lq-booking-shell${!normalized.enabled && !normalized.loading ? ' is-disabled' : ''}">
-          <div class="lq-booking-head">
-            <div class="lq-booking-status-pill">${escapeHtml(statusLabel)}</div>
-            <div class="lq-booking-copy">${escapeHtml(noteText)}</div>
-            ${(!normalized.loading && normalized.pendingConfirmation) ? `<div class="lq-booking-pending-note">${escapeHtml(publicBookingPendingText)}</div>` : ''}
-          </div>
-          <div class="lq-booking-actions">
-            
-            ${showFallbackLink ? `<a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText)}</a>` : ''}
-          </div>
-          ${showInlineShell ? `
-            <div class="lq-booking-embed-shell is-auto-open" id="lifeBookingInlineShell">
-              <div class="lq-booking-embed-status" id="lifeBookingInlineStatus">${escapeHtml(publicBookingLoadingText)}</div>
-              <div class="lq-booking-embed-frame-wrap" id="lifeBookingInlineFrameSlot"></div>
-            </div>
-          ` : ''}
-        </div>
+
+        ${showInlineShell ? `
+          <div class="lq-booking-frame-only" id="lifeBookingInlineFrameSlot"></div>
+          <div class="lq-booking-embed-status" id="lifeBookingInlineStatus" hidden>${escapeHtml(publicBookingLoadingText)}</div>
+        ` : ''}
+
+        ${showFallbackLink ? `
+          <a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText)}</a>
+        ` : ''}
       </section>`;
 
     postSubmitSlot.hidden = false;
 
-    const inlineShellAuto = document.getElementById('lifeBookingInlineShell');
     const inlineFrameSlotAuto = document.getElementById('lifeBookingInlineFrameSlot');
     const inlineStatusAuto = document.getElementById('lifeBookingInlineStatus');
-    if (showInlineShell && inlineShellAuto instanceof HTMLElement) {
-      inlineShellAuto.hidden = false;
+
+    if (showInlineShell) {
       renderBookingIframe(inlineFrameSlotAuto, inlineStatusAuto, normalizePublicBookingPayload(publicBookingState, payload).embedUrl);
       markAppointmentEmbedViewed('website_embed', normalizePublicBookingPayload(publicBookingState, payload));
-    }
-
-    const primaryCta = document.getElementById('lifeBookingPrimaryCta');
-    if (primaryCta instanceof HTMLButtonElement) {
-      primaryCta.addEventListener('click', () => {
-        const activeBookingState = normalizePublicBookingPayload(publicBookingState, payload);
-        if (shouldUseBookingModal(activeBookingState)) {
-          if (!(bookingModal instanceof HTMLElement)) {
-            return;
-          }
-
-          bookingModal.hidden = false;
-          bookingModal.setAttribute('aria-hidden', 'false');
-          document.body.style.setProperty('overflow', 'hidden');
-          if (bookingModalStatus instanceof HTMLElement) {
-            bookingModalStatus.hidden = false;
-            bookingModalStatus.textContent = publicBookingLoadingText;
-          }
-          renderBookingIframe(bookingModalFrameSlot, bookingModalStatus, activeBookingState.embedUrl);
-          markAppointmentEmbedViewed('website_modal', activeBookingState);
-          window.setTimeout(() => {
-            bookingModal.querySelector('.lq-booking-modal-close')?.focus({ preventScroll: true });
-          }, 50);
-          return;
-        }
-
-        const inlineShell = document.getElementById('lifeBookingInlineShell');
-        const inlineFrameSlot = document.getElementById('lifeBookingInlineFrameSlot');
-        const inlineStatus = document.getElementById('lifeBookingInlineStatus');
-        if (!(inlineShell instanceof HTMLElement)) {
-          return;
-        }
-
-        inlineShell.hidden = false;
-        renderBookingIframe(inlineFrameSlot, inlineStatus, activeBookingState.embedUrl);
-        markAppointmentEmbedViewed('website_embed', activeBookingState);
-        scrollIntoViewAndFocus(inlineShell, false, {
-          align: 'start',
-          preferVisiblePanel: true,
-          behavior: 'smooth'
-        });
-      });
     }
 
     const fallbackLink = document.getElementById('lifeBookingFallbackLink');
@@ -11230,93 +11239,101 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     autoAdvanceTimer = window.setTimeout(() => showMicroStep(nextStep, true), 160);
   }
 
+  let tobaccoCompletionQueued = false;
+
+  function completeDiscoveryFromTobacco(radio) {
+    if (tobaccoCompletionQueued) return;
+    tobaccoCompletionQueued = true;
+
+    clearAutoAdvanceTimer();
+
+    window.setTimeout(() => {
+      showChoiceError('err-step1-tobacco-use', false);
+      clearQuoteFieldError('TobaccoUse');
+      clearEstimatePreviewCache();
+
+      if (radio instanceof HTMLInputElement && answer3Hidden) {
+        answer3Hidden.value = radio.value || '';
+      }
+
+      syncStepOneAnswersFromUI();
+      persistFunnelState();
+
+      trackEvent(finalDiscoveryContinueEvent, {
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || radio?.value || '',
+        age: answer4Hidden?.value || '',
+        ageRange: ageHidden?.value || '',
+        autoAdvanced: true
+      });
+
+      trackQuoteStepComplete(finalDiscoveryContinueEvent, {
+        protectingWho: answer1Hidden?.value || '',
+        coverageGoal: answer2Hidden?.value || '',
+        coverageAmount: coverageAmountHidden?.value || '',
+        tobaccoUse: answer3Hidden?.value || radio?.value || '',
+        age: answer4Hidden?.value || '',
+        ageRange: ageHidden?.value || '',
+        autoAdvanced: true
+      });
+
+      void ensureQuoteStartTracked({
+        startSource: 'tobacco_direct_finish',
+        fieldName: 'TobaccoUse',
+        choiceCode: radio?.value || answer3Hidden?.value || ''
+      });
+
+      if (metaSignalApi?.trackDiscoveryComplete) {
+        metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
+      } else {
+        metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
+      }
+
+      showProcessingBridge(true);
+    }, 180);
+  }
+
   function wireAutoAdvanceGroup(groupName, errorId, selectEvent, expectedStep, nextStep) {
     form.querySelectorAll(`input[name="${groupName}"]`).forEach((radio) => {
-      radio.addEventListener('change', () => {
+      const handleSelection = () => {
         showChoiceError(errorId, false);
         clearQuoteFieldError(groupName);
         clearEstimatePreviewCache();
         syncStepOneAnswersFromUI();
         persistFunnelState();
+
         trackEvent(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
+
         if (groupName === firstDiscoveryFieldName) {
           trackFirstQuestionAnsweredOnce(radio.value, radio.dataset.label || radio.value);
         }
+
         trackQuoteStepComplete(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         void ensureQuoteStartTracked({ startSource: `${groupName}_change`, fieldName: groupName, choiceCode: radio.value });
         void ensureMetaLeadFormStart();
-        if (groupName === 'TobaccoUse' && isAgeBeforeTobaccoFlow) {
-        window.setTimeout(() => {
-          syncStepOneAnswersFromUI();
-          if (!validateStepOneComplete()) return;
-          void ensureQuoteStartTracked({ startSource: 'tobacco_auto_continue' });
-          trackEvent(finalDiscoveryContinueEvent, {
-            protectingWho: answer1Hidden?.value || '',
-            coverageGoal: answer2Hidden?.value || '',
-            coverageAmount: coverageAmountHidden?.value || '',
-            tobaccoUse: answer3Hidden?.value || '',
-            age: answer4Hidden?.value || '',
-            ageRange: ageHidden?.value || '',
-            autoAdvanced: true
-          });
-          trackQuoteStepComplete(finalDiscoveryContinueEvent, {
-            protectingWho: answer1Hidden?.value || '',
-            coverageGoal: answer2Hidden?.value || '',
-            coverageAmount: coverageAmountHidden?.value || '',
-            tobaccoUse: answer3Hidden?.value || '',
-            age: answer4Hidden?.value || '',
-            ageRange: ageHidden?.value || '',
-            autoAdvanced: true
-          });
-          if (metaSignalApi?.trackDiscoveryComplete) {
-            metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
-          } else {
-            metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
-          }
-          showProcessingBridge(true);
-        }, AUTO_ADVANCE_DELAY_MS);
-        return;
-      }
 
-      if (groupName === 'TobaccoUse' && isAgeBeforeTobaccoFlow) {
-        window.setTimeout(() => {
-          syncStepOneAnswersFromUI();
-          if (!validateStepOneComplete()) return;
-          void ensureQuoteStartTracked({ startSource: 'tobacco_auto_continue' });
-          trackEvent(finalDiscoveryContinueEvent, {
-            protectingWho: answer1Hidden?.value || '',
-            coverageGoal: answer2Hidden?.value || '',
-            coverageAmount: coverageAmountHidden?.value || '',
-            tobaccoUse: answer3Hidden?.value || '',
-            age: answer4Hidden?.value || '',
-            ageRange: ageHidden?.value || '',
-            autoAdvanced: true
-          });
-          trackQuoteStepComplete(finalDiscoveryContinueEvent, {
-            protectingWho: answer1Hidden?.value || '',
-            coverageGoal: answer2Hidden?.value || '',
-            coverageAmount: coverageAmountHidden?.value || '',
-            tobaccoUse: answer3Hidden?.value || '',
-            age: answer4Hidden?.value || '',
-            ageRange: ageHidden?.value || '',
-            autoAdvanced: true
-          });
-          if (metaSignalApi?.trackDiscoveryComplete) {
-            metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
-          } else {
-            metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
-          }
-          showProcessingBridge(true);
-        }, AUTO_ADVANCE_DELAY_MS);
-        return;
-      }
+        if (groupName === 'TobaccoUse') {
+          completeDiscoveryFromTobacco(radio);
+          return;
+        }
 
-      queueMicroAdvance(expectedStep, nextStep);
-      });
+        queueMicroAdvance(expectedStep, nextStep);
+      };
+
+      radio.addEventListener('change', handleSelection);
+
       radio.closest('label')?.addEventListener('click', () => {
-        // Allow forward movement when revisiting a step where the choice is already selected.
         setTimeout(() => {
-          if (radio.checked) queueMicroAdvance(expectedStep, nextStep);
+          if (!radio.checked) return;
+
+          if (groupName === 'TobaccoUse') {
+            completeDiscoveryFromTobacco(radio);
+            return;
+          }
+
+          queueMicroAdvance(expectedStep, nextStep);
         }, 0);
       });
     });
@@ -11383,7 +11400,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   });
 
   wireAutoAdvanceGroup('CoverageAmountOption', 'err-step1-coverage-amount', 'life_step1_coverage_select', coverageAmountStepIndex, coverageAmountStepIndex + 1);
-  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, isAgeBeforeTobaccoFlow ? Number.NaN : tobaccoStepIndex + 1);
+  wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, tobaccoStepIndex + 1);
+
 
   ageSliders.forEach((slider) => {
     if (!(slider instanceof HTMLInputElement)) {
