@@ -4166,13 +4166,13 @@ body.page-variant-contact-first-education-v1 {
     --cf-card-border: rgba(208,154,53,0.34);
     --cf-card-copy: rgba(236,240,247,0.84);
     --cf-funnel-shell-bg:
-        linear-gradient(180deg, #08254d 0%, #061d3d 54%, #071a36 100%);
+        linear-gradient(180deg, rgba(24,23,25,0.998) 0%, rgba(15,15,17,0.999) 54%, rgba(9,9,11,1) 100%);
     --cf-funnel-shell-border: rgba(234,198,113,0.50);
     --cf-funnel-surface-bg:
-        linear-gradient(180deg, #08254d 0%, #061d3d 100%);
+        linear-gradient(180deg, rgba(43,43,48,0.997) 0%, rgba(24,24,28,0.999) 100%);
     --cf-funnel-surface-border: rgba(255,244,214,0.08);
     --cf-funnel-choice-bg:
-        linear-gradient(180deg, #08254d 0%, #061d3d 100%);
+        linear-gradient(180deg, rgba(49,49,55,0.996) 0%, rgba(30,30,35,0.998) 100%);
     --cf-funnel-choice-border: rgba(236,200,116,0.46);
 }
 body.page-variant-contact-first-education-v1 .lq-education-stack {
@@ -8445,6 +8445,8 @@ body.life-landing .lq-hero-shell,
 <style>
 /* POST SUBMIT BOOKING CLEANUP — ONLY AFTER SUBMIT */
 
+/* Remove the dirty brown middle container after submit.
+   Leaves the main outer shell + one final review card only. */
 #lifeEducationContactPanel.lq-final-panel-no-chrome,
 #lifeEducationContactPanel.lq-final-review-flat-mode,
 #lifeEducationContactPanel.is-submitted {
@@ -8465,14 +8467,17 @@ body.life-landing .lq-hero-shell,
     margin: 0 !important;
 }
 
+/* Hide pre-submit contact chrome after success. */
 #lifeEducationContactPanel.lq-final-panel-no-chrome .lq-contact-first-proof-row,
 #lifeEducationContactPanel.lq-final-panel-no-chrome #lifeStep2Progress,
 #lifeEducationContactPanel.lq-final-panel-no-chrome #lifeStep2Heading,
 #lifeEducationContactPanel.lq-final-panel-no-chrome #lifeStep2Helper,
+/* keep recommendation visible */
 #lifeEducationContactPanel.lq-final-panel-no-chrome #lifeContactCaptureWrap {
     display: none !important;
 }
 
+/* Slot should not become its own visible container. */
 #lifePostSubmitSlot {
     width: 100% !important;
     margin: 0 !important;
@@ -8482,38 +8487,57 @@ body.life-landing .lq-hero-shell,
     box-shadow: none !important;
 }
 
+/* The ONE inner card. */
 #lifePostSubmitSlot .lq-final-review-unified-card {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 22px 24px 20px !important;
+    padding: 22px 24px 24px !important;
     border-radius: 24px !important;
     border: 1px solid rgba(59,130,246,.26) !important;
     background:
-        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%) !important;
+        radial-gradient(circle at 50% 0%, rgba(34,99,196,.12), transparent 42%),
+        linear-gradient(180deg, #062349 0%, #061b39 48%, #081c39 100%) !important;
     color: #f8fafc !important;
     box-shadow:
-        0 22px 46px rgba(2,12,27,.24),
+        0 24px 52px rgba(2,12,27,.22),
         inset 0 1px 0 rgba(255,255,255,.055) !important;
     overflow: hidden !important;
 }
 
+/* Clean top spacing without changing text. */
 #lifePostSubmitSlot .lq-final-review-head {
-    margin: 0 0 14px !important;
-    padding: 0 0 14px !important;
-    border-bottom: 1px solid rgba(59,130,246,.18) !important;
+    margin: 0 0 16px !important;
+    padding: 0 0 16px !important;
+    border-bottom: 1px solid rgba(59,130,246,.10) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-kicker,
+#lifePostSubmitSlot .lq-contact-estimate-kicker {
+    color: #f3d688 !important;
+    font-size: .8rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .09em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 8px !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-title {
-    margin: 0 0 8px !important;
-    line-height: 1.08 !important;
+    color: #fff8e7 !important;
+    font-size: 1.55rem !important;
+    line-height: 1.1 !important;
+    font-weight: 950 !important;
+    margin: 0 0 10px !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-copy {
+    color: rgba(248,250,252,.86) !important;
+    font-size: .96rem !important;
+    line-height: 1.38 !important;
     margin: 0 !important;
-    line-height: 1.34 !important;
 }
 
+/* Recommendation area should blend into the one card, not create a third container. */
 #lifePostSubmitSlot .lq-final-review-result-slot,
 #lifePostSubmitSlot .lq-contact-estimate-wrap,
 #lifePostSubmitSlot .lq-contact-estimate-card,
@@ -8523,21 +8547,22 @@ body.life-landing .lq-hero-shell,
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
-    margin: 0 0 14px !important;
+    margin: 0 0 18px !important;
 }
 
-#lifePostSubmitSlot .lq-contact-estimate-main {
-    margin: 0 0 14px !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-title {
-    margin: 0 0 14px !important;
-    line-height: 1.12 !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-copy {
-    margin: 0 0 12px !important;
-    line-height: 1.34 !important;
+/* Keep the actual estimate/recommendation sub-panels premium but not another big wrapper. */
+#lifePostSubmitSlot .lq-contact-estimate-main,
+#lifePostSubmitSlot .lq-contact-estimate-metric,
+#lifePostSubmitSlot .lq-metric,
+#lifePostSubmitSlot .lq-estimate-metric {
+    border-radius: 16px !important;
+    border: 1px solid rgba(59,130,246,.18) !important;
+    background:
+        linear-gradient(180deg, rgba(6,31,66,.88), rgba(4,19,38,.94)) !important;
+    color: #fff8e7 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.045),
+        0 10px 24px rgba(2,12,27,.12) !important;
 }
 
 #lifePostSubmitSlot .lq-contact-estimate-metrics,
@@ -8546,36 +8571,31 @@ body.life-landing .lq-hero-shell,
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px !important;
-    margin: 0 0 12px !important;
 }
 
-#lifePostSubmitSlot .lq-contact-estimate-metric,
-#lifePostSubmitSlot .lq-metric,
-#lifePostSubmitSlot .lq-estimate-metric {
-    min-height: 66px !important;
-    padding: 12px 14px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(59,130,246,.18) !important;
-    background: linear-gradient(180deg, #061d3d 0%, #071a36 100%) !important;
-    box-shadow: none !important;
-}
-
+/* Booking section: clean CTA flow into calendar. */
 #lifePostSubmitSlot .lq-final-review-booking-head {
-    margin: 12px 0 10px !important;
-    padding: 14px 0 0 !important;
-    border-top: 1px solid rgba(59,130,246,.16) !important;
+    margin: 16px 0 12px !important;
+    padding: 16px 0 0 !important;
+    border-top: 1px solid rgba(59,130,246,.10) !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-booking-title {
-    margin: 0 0 4px !important;
+    color: #fff8e7 !important;
+    font-size: 1.15rem !important;
+    font-weight: 950 !important;
     line-height: 1.12 !important;
+    margin: 0 0 6px !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-booking-copy {
+    color: rgba(248,250,252,.84) !important;
+    font-size: .95rem !important;
+    line-height: 1.35 !important;
     margin: 0 !important;
-    line-height: 1.32 !important;
 }
 
+/* Calendar embed should not look like another dirty container. */
 #lifePostSubmitSlot .lq-booking-shell,
 #lifePostSubmitSlot .lq-booking-embed-shell,
 #lifePostSubmitSlot .lq-booking-embed-frame-wrap {
@@ -8583,7 +8603,7 @@ body.life-landing .lq-hero-shell,
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
-    margin: 10px 0 0 !important;
+    margin: 0 !important;
 }
 
 #lifePostSubmitSlot .lq-booking-iframe {
@@ -8591,19 +8611,22 @@ body.life-landing .lq-hero-shell,
     width: 100% !important;
     min-height: 620px !important;
     border-radius: 18px !important;
-    border: 1px solid rgba(59,130,246,.22) !important;
+    border: 1px solid rgba(243,214,136,.36) !important;
     background: #ffffff !important;
-    box-shadow: 0 16px 34px rgba(2,12,27,.20) !important;
+    box-shadow:
+        0 18px 38px rgba(2,12,27,.18),
+        0 0 0 1px rgba(255,255,255,.04) !important;
 }
 
+/* Chips readable without adding container weight. */
 #lifePostSubmitSlot .lq-pill,
 #lifePostSubmitSlot .lq-chip {
-    margin-top: 6px !important;
-    background: rgba(4,16,32,.48) !important;
-    border: 1px solid rgba(59,130,246,.18) !important;
+    background: rgba(4,16,32,.62) !important;
+    border: 1px solid rgba(59,130,246,.13) !important;
     color: rgba(248,250,252,.88) !important;
 }
 
+/* Do not let older opacity/color damage wash this step out. */
 #lifePostSubmitSlot,
 #lifePostSubmitSlot * {
     opacity: 1 !important;
