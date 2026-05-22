@@ -186,6 +186,125 @@ input[name="Phone"]:focus {
     margin-left: 3px;
 }
 
+
+/* FINAL REVIEW: flatten the extra post-submit container layer */
+.lq-final-review-flat-mode {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-final-review-flat-mode > .lq-step-panel-pad,
+.lq-final-review-flat-mode .lq-step-panel-pad {
+    padding: 0 !important;
+}
+
+/* The unified final review card is now the ONLY inner container after the main shell */
+.lq-final-review-unified-card {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(199,153,49,.09), transparent 44%),
+        linear-gradient(180deg, #07152b 0%, #0b1c37 100%) !important;
+    border: 1px solid rgba(199,153,49,.46) !important;
+    border-radius: 18px !important;
+    padding: 18px !important;
+    box-shadow: 0 22px 44px rgba(0,0,0,.34) !important;
+}
+
+.lq-final-review-head {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 0 14px 0 !important;
+}
+
+.lq-final-review-kicker {
+    color: #f3d688 !important;
+    font-size: .78rem !important;
+    font-weight: 950 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .08em !important;
+}
+
+.lq-final-review-title {
+    color: #fff6d8 !important;
+    font-size: 1.55rem !important;
+    font-weight: 950 !important;
+    line-height: 1.08 !important;
+    margin-top: 5px !important;
+}
+
+.lq-final-review-copy {
+    color: rgba(248,250,252,.84) !important;
+    font-size: .98rem !important;
+    line-height: 1.45 !important;
+    margin-top: 8px !important;
+}
+
+.lq-final-review-result-slot {
+    margin-top: 12px !important;
+}
+
+.lq-final-review-result-slot .lq-contact-estimate-wrap,
+.lq-final-review-result-slot .lq-contact-estimate-card-wrap,
+.lq-final-review-result-slot .lq-rec-card,
+.lq-final-review-result-slot .lq-estimate-card {
+    box-shadow: none !important;
+}
+
+.lq-final-review-booking-head {
+    margin-top: 18px !important;
+    padding-top: 16px !important;
+    border-top: 1px solid rgba(199,153,49,.28) !important;
+}
+
+.lq-final-review-booking-title {
+    color: #fff6d8 !important;
+    font-size: 1.35rem !important;
+    font-weight: 950 !important;
+    line-height: 1.05 !important;
+}
+
+.lq-final-review-booking-copy {
+    color: rgba(248,250,252,.82) !important;
+    font-size: .96rem !important;
+    line-height: 1.4 !important;
+    margin-top: 7px !important;
+}
+
+/* Booking frame mount point must not create another container */
+.lq-final-review-unified-card .lq-booking-frame-only {
+    margin-top: 14px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+}
+
+.lq-final-review-unified-card .lq-booking-frame-only iframe,
+.lq-final-review-unified-card .lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+}
+
+/* Kill old booking/result card chrome if any cached markup survives */
+.lq-final-review-unified-card .lq-post-submit-card,
+.lq-final-review-unified-card .lq-post-submit-head,
+.lq-final-review-unified-card .lq-booking-shell,
+.lq-final-review-unified-card .lq-booking-head,
+.lq-final-review-unified-card .lq-booking-embed-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
 </style>
 
 @using System.Text.Json
@@ -11001,11 +11120,39 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
     const showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
 
+    // Flatten the submitted step chrome. The final review card becomes the only real inner container.
+    const submittedPanel =
+      document.querySelector('.lq-step-two-panel') ||
+      document.querySelector('.lq-step2-panel') ||
+      postSubmitSlot.closest('section, .lq-step-panel, .lq-contact-panel');
+
+    submittedPanel?.classList?.add('is-submitted', 'lq-final-review-flat-mode');
+
+    const existingResult =
+      document.getElementById('lifeStep2EstimateSummary') ||
+      document.querySelector('.lq-contact-estimate-wrap:not(.is-teaser-only)') ||
+      document.querySelector('.lq-contact-estimate-wrap');
+
+    const resultHtml = existingResult ? existingResult.outerHTML : '';
+    if (existingResult) existingResult.remove();
+
     postSubmitSlot.innerHTML = `
-      <section class="lq-post-submit-card lq-post-submit-card-final-clean" aria-labelledby="lifePostSubmitBookingTitle">
-        <div class="lq-post-submit-head lq-post-submit-head-final-clean">
-          <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">Continue Your Review</div>
-          <div class="lq-post-submit-copy">Choose a time below to review your protection path with Zac.</div>
+      <section class="lq-final-review-unified-card" aria-labelledby="lifePostSubmitBookingTitle">
+        <div class="lq-final-review-head">
+          <div class="lq-final-review-kicker">Review ready</div>
+          <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">Your personalized review is ready.</div>
+          <div class="lq-final-review-copy">Review the recommendation below, then choose a time if you want help judging what level of protection may help your family stay financially steady.</div>
+        </div>
+
+        ${resultHtml ? `
+          <div class="lq-final-review-result-slot">
+            ${resultHtml}
+          </div>
+        ` : ''}
+
+        <div class="lq-final-review-booking-head">
+          <div class="lq-final-review-booking-title">Continue Your Review</div>
+          <div class="lq-final-review-booking-copy">Choose a time below to review your protection path with Zac.</div>
         </div>
 
         ${showInlineShell ? `
@@ -11014,7 +11161,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         ` : ''}
 
         ${showFallbackLink ? `
-          <a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText)}</a>
+          <a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText || 'Open scheduling')}</a>
         ` : ''}
       </section>`;
 
