@@ -504,22 +504,22 @@
         _ => "the protection, stability, and long-term fit that matter most"
     };
     var stepTwoContactKickerText = "Unlock the full review";
-    var contactMethodHelperText = "Phone is best for a quick review. Email works too if you prefer a written copy.";
+    var contactMethodHelperText = "Add a phone or email so your review stays connected to you.";
     var contactMethodErrorText = "Add an email or phone so your protection review stays connected to you.";
     var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this estimate and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your estimate and options.";
-    var stepTwoContactTitleText = "Where should we send your estimate?";
-    var stepTwoContactCopyText = "Save your preview, unlock the full recommendation, and continue into scheduling.";
+    var stepTwoContactTitleText = "Where should we send your review?";
+    var stepTwoContactCopyText = "Save your preview and continue to the full review.";
     var stepTwoSubmitNoteText = "Save your preview and continue to the full review.";
     var stepTwoProgressText = "Protection preview";
     var finalStepHeading = "Your protection preview is ready";
-    var finalStepHelper = "Send it to yourself to unlock the full recommendation and continue into scheduling.";
+    var finalStepHelper = "Save your preview, then continue to the full recommendation.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = isContactFirstEducationVariant
-        ? "I’ll help you review the recommendation, compare the options, and confirm the next step."
-        : "I’ll help you review the recommendation, compare the options, and confirm the next step.";
+        ? "I’ll help you review the recommendation and confirm the next step."
+        : "I’ll help you review the recommendation and confirm the next step.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
@@ -5773,6 +5773,111 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 }
 
+
+/* ================================================================
+   Final contact-step declutter — reduce crowding before submit
+   ================================================================ */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal {
+    display: none !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding-top: 10px !important;
+    padding-bottom: 12px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    gap: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-avatar {
+    width: 42px !important;
+    height: 42px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-title {
+    font-size: .95rem !important;
+    line-height: 1.18 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-text {
+    font-size: .76rem !important;
+    line-height: 1.28 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: 1.08rem !important;
+    line-height: 1.16 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap {
+    margin-bottom: 10px !important;
+    gap: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    padding: 7px 8px !important;
+    border-radius: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    font-size: .78rem !important;
+    margin-bottom: 4px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control {
+    min-height: 42px !important;
+    padding: 9px 10px !important;
+    margin-bottom: 0 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    margin-top: 6px !important;
+    padding: 9px 10px !important;
+}
+
+body.life-final-step-active #submitLife {
+    min-height: 54px !important;
+    margin-top: 8px !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+        padding: 7px 0 !important;
+        border-radius: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two {
+        grid-template-columns: 1fr !important;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -6347,7 +6452,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Phone">Phone for a quick review</label>
+                                                <label for="Phone">Phone</label>
                                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
@@ -6827,7 +6932,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Phone">Phone for a quick review</label>
+                                <label for="Phone">Phone</label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                             </div>
