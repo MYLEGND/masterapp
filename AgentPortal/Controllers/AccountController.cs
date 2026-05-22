@@ -57,9 +57,9 @@ public class AccountController : Controller
 
     private AgentProfile? FindAgentProfile(string userId, string? normalizedEmail)
     {
-        // Prefer the existing email-owned profile first.
-        // This prevents trying to update another AgentUserId row to an email that already exists
-        // under IX_AgentProfiles_NormalizedEmail.
+        // Resolve by email first because NormalizedEmail is unique.
+        // Do NOT mutate AgentUserId inside a lookup method. If another profile already owns
+        // this userId, changing it here can cause a duplicate-key crash on SaveChanges().
         if (!string.IsNullOrWhiteSpace(normalizedEmail))
         {
             var byEmail = _db.AgentProfiles.FirstOrDefault(x =>
@@ -67,15 +67,7 @@ public class AccountController : Controller
                 (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == normalizedEmail));
 
             if (byEmail != null)
-            {
-                if (!string.Equals(byEmail.AgentUserId, userId, StringComparison.Ordinal))
-                {
-                    byEmail.AgentUserId = userId;
-                    byEmail.UpdatedUtc = DateTime.UtcNow;
-                }
-
                 return byEmail;
-            }
         }
 
         return _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
