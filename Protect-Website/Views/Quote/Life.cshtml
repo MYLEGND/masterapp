@@ -228,6 +228,37 @@
     var goalStep = ResolveStep("CoverageGoal", 0);
     var coverageAmountStep = ResolveStep("CoverageAmountOption", 2);
     var tobaccoStep = ResolveStep("TobaccoUse", 4);
+
+    var optimizedGoalQuestion = normalizedOfferKey switch
+    {
+        "term" => "If your income stopped, what would need to stay steady first?",
+        "wholelife" => "What lasting protection do you want in place for the people you love?",
+        "finalexpense" => "Which burden do you most want lifted from your family?",
+        "mortgage" => "If you were gone, what part of the home situation needs to stay steady?",
+        "iul" => "What long-term outcome are you trying to build this around?",
+        _ => "If something happened to you, what would need to stay steady first?"
+    };
+
+    var optimizedProtectQuestion = normalizedOfferKey switch
+    {
+        "finalexpense" => "Who would be left handling those costs?",
+        "mortgage" => "Who would need the home to stay protected?",
+        _ => "Who would feel the financial impact first?"
+    };
+
+    var optimizedCoverageQuestion = normalizedOfferKey switch
+    {
+        "term" => "What coverage range would give your family real breathing room?",
+        "wholelife" => "What lifelong coverage range feels worth reviewing?",
+        "finalexpense" => "What amount would help your family avoid scrambling?",
+        "mortgage" => "What mortgage balance should this protection be built around?",
+        "iul" => "What coverage range should this long-term plan start around?",
+        _ => "What coverage range feels worth reviewing first?"
+    };
+
+    goalStep = new Protect_Website.Models.LifeWizardStep(optimizedGoalQuestion, goalStep.Options, goalStep.FieldAlias);
+    protectStep = new Protect_Website.Models.LifeWizardStep(optimizedProtectQuestion, protectStep.Options, protectStep.FieldAlias);
+    coverageAmountStep = new Protect_Website.Models.LifeWizardStep(optimizedCoverageQuestion, coverageAmountStep.Options, coverageAmountStep.FieldAlias);
     var firstDiscoveryStep = usesGoalFirstDiscovery ? goalStep : protectStep;
     var secondDiscoveryStep = usesGoalFirstDiscovery ? protectStep : goalStep;
     var firstDiscoveryFieldName = usesGoalFirstDiscovery ? "CoverageGoal" : "ProtectingWho";
@@ -7219,7 +7250,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
+                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                                             </div>
                                         }
                                         else
@@ -7680,7 +7711,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                             </div>
                             <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
+                        <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                         </div>
                     }
                     else
@@ -12500,129 +12531,41 @@ body.life-landing .lq-hero-shell,
 
 
 
-<style>
-/* FINAL FUNNEL MOMENTUM PASS
-   Left-aligns the first question and tightens the section so it feels like one guided flow,
-   not stacked reading blocks. */
 
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+
+<style>
+/* RELEASE FUNNEL POLISH LOCK */
+
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel {
     padding-top: 18px !important;
 }
 
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
-    padding: 2px 0 12px !important;
-    margin: 0 0 18px !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-title {
-    margin-bottom: 3px !important;
-    line-height: 1.08 !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-text {
-    line-height: 1.24 !important;
-    max-width: 46ch !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips {
-    display: none !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
-    padding: 42px 52px 42px !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-title {
-    text-align: left !important;
-    margin: 0 0 6px !important;
-    font-size: 1.08rem !important;
-    line-height: 1.1 !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-helper {
-    text-align: left !important;
-    margin: 0 0 16px !important;
-    max-width: 58ch !important;
-    line-height: 1.35 !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
-    text-align: left !important;
-    margin: 0 0 18px !important;
-    max-width: 580px !important;
-    font-size: clamp(1.75rem, 3vw, 2.12rem) !important;
-    line-height: 1.02 !important;
-    white-space: normal !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-choice-grid {
-    gap: 12px !important;
-}
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card-rich {
-    min-height: 120px !important;
-    padding: 14px 16px !important;
-}
-
-@@media (max-width: 720px) {
-    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
-        padding: 16px !important;
-    }
-
-    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
-        padding: 28px 20px 28px !important;
-    }
-
-    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
-        font-size: clamp(1.55rem, 7vw, 1.95rem) !important;
-        margin-bottom: 14px !important;
-    }
-
-    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card-rich {
-        min-height: 104px !important;
-    }
-}
-</style>
-
-<style>
-/* FINAL MICRO-SPACING TUNE
-   Keeps premium breathing room, removes excess dead air before the first question. */
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
     padding-top: 30px !important;
     padding-bottom: 34px !important;
 }
 
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
-    margin-bottom: 10px !important;
-    padding-bottom: 10px !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
+    padding: 2px 0 10px !important;
+    margin: 0 0 10px !important;
 }
 
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-title {
-    margin-top: 0 !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips {
+    display: none !important;
 }
 
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-helper {
-    margin-bottom: 14px !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-title,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-title,
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-helper,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-helper,
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question,
+body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-question {
+    text-align: left !important;
 }
-
-body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
-    margin-bottom: 16px !important;
-}
-
-@@media (max-width: 720px) {
-    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
-        padding-top: 22px !important;
-        padding-bottom: 26px !important;
-    }
-}
-</style>
-
-
-<style>
-/* FINAL QUESTION FOCUS RING KILL SWITCH
-   Prevents mobile browsers from drawing a blue focus rectangle around question labels
-   during automatic micro-step progression. */
 
 #lifeWizardForm .lq-step-question,
 #lifeWizardForm .lq-step-question:focus,
@@ -12632,5 +12575,18 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step
 #lifeWizardForm .lq-choice-label:focus-visible {
     outline: none !important;
     box-shadow: none !important;
+}
+
+@@media (max-width: 720px) {
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel,
+    body.page-variant-low-friction-options-v1 #lifeEducationContactPanel {
+        padding: 16px !important;
+    }
+
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface,
+    body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+        padding-top: 22px !important;
+        padding-bottom: 26px !important;
+    }
 }
 </style>
