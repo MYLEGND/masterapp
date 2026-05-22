@@ -156,22 +156,9 @@ public class AccountController : Controller
         }
         else
         {
-            var changed = false;
-            if (!string.IsNullOrWhiteSpace(upn) && !string.Equals(profile.AgentUpn, upn, StringComparison.OrdinalIgnoreCase))
-            {
-                profile.AgentUpn = upn;
-                changed = true;
-            }
-            if (normalizedUpn != null && !string.Equals(profile.NormalizedEmail, normalizedUpn, StringComparison.Ordinal))
-            {
-                profile.NormalizedEmail = normalizedUpn;
-                changed = true;
-            }
-            if (changed)
-            {
-                profile.UpdatedUtc = DateTime.UtcNow;
-                _db.SaveChanges();
-            }
+            // GET should be read-only.
+            // Do not mutate AgentUpn or NormalizedEmail during page load.
+            // Identity reconciliation is handled by FindAgentProfile() and POST save.
         }
 
         var firstName =
