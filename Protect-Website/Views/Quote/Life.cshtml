@@ -152,6 +152,32 @@
     display: none !important;
 }
 
+
+/* optional field indicators */
+.lq-optional-tag {
+    color: rgba(248,250,252,.54);
+    font-size: .78rem;
+    font-weight: 700;
+    margin-left: 4px;
+}
+
+
+/* emphasize phone field as primary action */
+#Phone,
+input[name="Phone"] {
+    border-width: 2px !important;
+    border-color: rgba(243,214,136,.72) !important;
+    box-shadow: 0 0 0 1px rgba(243,214,136,.18);
+}
+
+#Phone:focus,
+input[name="Phone"]:focus {
+    border-color: #f3d688 !important;
+    box-shadow:
+        0 0 0 3px rgba(243,214,136,.18),
+        0 0 18px rgba(243,214,136,.12) !important;
+}
+
 </style>
 
 @using System.Text.Json
@@ -674,16 +700,16 @@
         _ => "the protection, stability, and long-term fit that matter most"
     };
     var stepTwoContactKickerText = "Review ready";
-    var contactMethodHelperText = "Add one contact method so we can send the full estimate details.";
-    var contactMethodErrorText = "Add an email or phone to unlock your full estimate.";
-    var consentPromptText = $"I agree that {agentDirectContactName} or a licensed Legend agent may email, call, or text me about this review and the options tied to this request.";
+    var contactMethodHelperText = "Best number to send your estimate details.";
+    var contactMethodErrorText = "Please enter your phone number to unlock your full estimate.";
+    var consentPromptText = $"I agree that {agentDirectContactName} or a licensed Legend agent may call or text me about my estimate and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your full estimate.";
-    var stepTwoContactTitleText = "Where should we send your full estimate?";
-    var stepTwoContactCopyText = "Your preview is ready. Enter your info to unlock the full estimate details.";
+    var stepTwoContactTitleText = "Where should we send your estimate?";
+    var stepTwoContactCopyText = "Your estimate preview is ready. Enter your best number to unlock the full details.";
     var stepTwoSubmitNoteText = "Unlock the full estimate details.";
     var stepTwoProgressText = "Protection preview";
     var finalStepHeading = "Your estimate preview is ready";
-    var finalStepHelper = "Enter your info to unlock the full estimate details.";
+    var finalStepHelper = "Enter your best number to unlock the full estimate details.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -962,7 +988,7 @@
             ("45-54", 50, "45-54"),
             ("55+", 60, "55+")
         };
-    var requiredContactFieldNames = new[] { "FirstName", "ContactMethod" };
+    var requiredContactFieldNames = new[] { "FirstName", "Phone" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
     {
@@ -7655,14 +7681,14 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name (optional)</label>
+                                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
                                                 <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
                                                 <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
                                             </div>
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="Email">Email for a written copy</label>
+                                                <label for="Email">Email <span class="lq-optional-tag">(optional)</span></label>
                                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
