@@ -462,7 +462,7 @@
     }
     var minSelectableAge = isFinalExpenseOffer ? 45 : 18;
     var maxSelectableAge = 85;
-    var defaultSliderAge = isFinalExpenseOffer ? 62 : 38;
+    var defaultSliderAge = isFinalExpenseOffer ? 45 : 18;
     var selectedAgeValue = Math.Clamp(ageValueNumber ?? defaultSliderAge, minSelectableAge, maxSelectableAge);
     var ageValue = selectedAgeValue.ToString();
     var ageSliderMarkerValues = isFinalExpenseOffer
@@ -7310,7 +7310,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                             </div>
                                             <div class="lq-step-actions dual">
                                                 <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn">Continue</button>
+                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                                             </div>
                                         }
                                         else
@@ -7378,7 +7378,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                             </div>
                                             <div class="lq-step-actions dual">
                                                 <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate">@stepOneContinueButtonText</button>
+                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                         else
@@ -7790,7 +7790,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                         </div>
                         <div class="lq-step-actions dual">
                             <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn">Continue</button>
+                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                         </div>
                     }
                     else
@@ -7858,7 +7858,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                         </div>
                         <div class="lq-step-actions dual">
                             <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate">@stepOneContinueButtonText</button>
+                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                         </div>
                     }
                     else
@@ -8394,7 +8394,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   }
 
   function getSelectedAgeValue() {
-    return hasExplicitAgeSelectionInUi() ? getCurrentSliderAgeValue() : '';
+    return getCurrentSliderAgeValue() || String(AGE_DEFAULT);
   }
 
   function getSelectedAgeBand() {
@@ -8443,7 +8443,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         input.value = formatPhoneNumber(input.value);
       }
     });
-    syncAgePickerUi(AGE_DEFAULT, AGE_SELECTION_PROVIDED);
+    syncAgePickerUi(AGE_DEFAULT, true);
 
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
@@ -10319,8 +10319,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   function validateAgeOnly() {
     const ageValue = getSelectedAgeValue();
     const ageNum = Number.parseInt(ageValue, 10);
-    const hasValidAge = hasExplicitAgeSelectionInUi()
-      && Number.isFinite(ageNum)
+    const hasValidAge = Number.isFinite(ageNum)
       && ageNum >= AGE_MIN
       && ageNum <= AGE_MAX;
     showChoiceError('err-step1-age', !hasValidAge);
@@ -10338,8 +10337,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         {
           const ageValue = getSelectedAgeValue();
           const ageNum = Number.parseInt(ageValue, 10);
-          return hasExplicitAgeSelectionInUi()
-            && Number.isFinite(ageNum)
+          return Number.isFinite(ageNum)
             && ageNum >= AGE_MIN
             && ageNum <= AGE_MAX;
         }
@@ -11217,7 +11215,73 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         trackQuoteStepComplete(selectEvent, { choice: radio.dataset.label || radio.value, code: radio.value });
         void ensureQuoteStartTracked({ startSource: `${groupName}_change`, fieldName: groupName, choiceCode: radio.value });
         void ensureMetaLeadFormStart();
-        queueMicroAdvance(expectedStep, nextStep);
+        if (groupName === 'TobaccoUse' && isAgeBeforeTobaccoFlow) {
+        window.setTimeout(() => {
+          syncStepOneAnswersFromUI();
+          if (!validateStepOneComplete()) return;
+          void ensureQuoteStartTracked({ startSource: 'tobacco_auto_continue' });
+          trackEvent(finalDiscoveryContinueEvent, {
+            protectingWho: answer1Hidden?.value || '',
+            coverageGoal: answer2Hidden?.value || '',
+            coverageAmount: coverageAmountHidden?.value || '',
+            tobaccoUse: answer3Hidden?.value || '',
+            age: answer4Hidden?.value || '',
+            ageRange: ageHidden?.value || '',
+            autoAdvanced: true
+          });
+          trackQuoteStepComplete(finalDiscoveryContinueEvent, {
+            protectingWho: answer1Hidden?.value || '',
+            coverageGoal: answer2Hidden?.value || '',
+            coverageAmount: coverageAmountHidden?.value || '',
+            tobaccoUse: answer3Hidden?.value || '',
+            age: answer4Hidden?.value || '',
+            ageRange: ageHidden?.value || '',
+            autoAdvanced: true
+          });
+          if (metaSignalApi?.trackDiscoveryComplete) {
+            metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
+          } else {
+            metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
+          }
+          showProcessingBridge(true);
+        }, AUTO_ADVANCE_DELAY_MS);
+        return;
+      }
+
+      if (groupName === 'TobaccoUse' && isAgeBeforeTobaccoFlow) {
+        window.setTimeout(() => {
+          syncStepOneAnswersFromUI();
+          if (!validateStepOneComplete()) return;
+          void ensureQuoteStartTracked({ startSource: 'tobacco_auto_continue' });
+          trackEvent(finalDiscoveryContinueEvent, {
+            protectingWho: answer1Hidden?.value || '',
+            coverageGoal: answer2Hidden?.value || '',
+            coverageAmount: coverageAmountHidden?.value || '',
+            tobaccoUse: answer3Hidden?.value || '',
+            age: answer4Hidden?.value || '',
+            ageRange: ageHidden?.value || '',
+            autoAdvanced: true
+          });
+          trackQuoteStepComplete(finalDiscoveryContinueEvent, {
+            protectingWho: answer1Hidden?.value || '',
+            coverageGoal: answer2Hidden?.value || '',
+            coverageAmount: coverageAmountHidden?.value || '',
+            tobaccoUse: answer3Hidden?.value || '',
+            age: answer4Hidden?.value || '',
+            ageRange: ageHidden?.value || '',
+            autoAdvanced: true
+          });
+          if (metaSignalApi?.trackDiscoveryComplete) {
+            metaSignalApi.trackDiscoveryComplete(buildMetaProgressMetadata());
+          } else {
+            metaSignalApi?.trackStepComplete(1, 'discovery_complete', buildMetaProgressMetadata());
+          }
+          showProcessingBridge(true);
+        }, AUTO_ADVANCE_DELAY_MS);
+        return;
+      }
+
+      queueMicroAdvance(expectedStep, nextStep);
       });
       radio.closest('label')?.addEventListener('click', () => {
         // Allow forward movement when revisiting a step where the choice is already selected.
@@ -11321,6 +11385,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       });
       void ensureQuoteStartTracked({ startSource: 'age_change', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
       void ensureMetaLeadFormStart();
+      queueMicroAdvance(ageStepIndex, tobaccoStepIndex);
     });
   });
   ageQuickButtons.forEach((button) => {
