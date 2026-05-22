@@ -9825,23 +9825,28 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     }
   }
 
+
   function buildPostSubmitEstimateTitle(preview) {
     const normalized = normalizeStep2Preview(preview);
     const policyType = normalized.primary.policyType || 'Life Insurance';
 
+    if (isGeneralLifeQuoteForStep2(normalized)) {
+      return `${policyType} is the clearest first option to review.`;
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(normalized)) {
       case 'term':
-        return `${policyType} is the clearest first protection path to review.`;
+        return `Your term life estimate is ready.`;
       case 'wholelife':
-        return `${policyType} is the clearest long-term protection path to review.`;
+        return `Your whole life estimate is ready.`;
       case 'finalexpense':
-        return `${policyType} is the clearest family-relief path to review.`;
+        return `Your final expense estimate is ready.`;
       case 'mortgage':
-        return `${policyType} is the clearest home-protection path to review.`;
+        return `Your mortgage protection estimate is ready.`;
       case 'iul':
-        return `${policyType} is the clearest long-range protection path to review.`;
+        return `Your IUL estimate is ready.`;
       default:
-        return `${policyType} is the clearest first option to review.`;
+        return `Your personalized estimate is ready.`;
     }
   }
 
@@ -9862,57 +9867,68 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     }
   }
 
+
   function buildCompactStep2Reason(preview) {
     const normalized = normalizeStep2Preview(preview);
     const priorityContext = buildPriorityContextForStep2(normalized);
 
+    if (isGeneralLifeQuoteForStep2(normalized)) {
+      return priorityContext
+        ? `This surfaced because your answers point toward ${priorityContext}.`
+        : 'This surfaced based on the protection, budget, and long-term priorities you shared.';
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(normalized)) {
       case 'term':
         return priorityContext
-          ? `Term life looks like the clearest first fit because you are focused on ${priorityContext} during the years your family depends on you the most.`
-          : 'Term life looks like the clearest first fit because it is built to help families protect the years when losing income would hit the hardest.';
+          ? `This term life estimate is built around ${priorityContext} during the years your family depends on you most.`
+          : 'This term life estimate is built around affordable protection for the years your family depends on you most.';
       case 'wholelife':
         return priorityContext
-          ? `Whole life looks like the clearest lasting fit because you are leaning toward ${priorityContext} with protection that stays in place instead of expiring later.`
-          : 'Whole life looks like the clearest lasting fit because it is designed for people who want protection that stays in place instead of expiring later.';
+          ? `This whole life estimate is built around ${priorityContext} with protection designed to stay in place long term.`
+          : 'This whole life estimate is built around permanent protection designed to stay in place long term.';
       case 'finalexpense':
         return priorityContext
-          ? `Final expense looks like the clearest first fit because you are focused on ${priorityContext} without leaving loved ones to handle the pressure alone.`
-          : 'Final expense looks like the clearest first fit because it is built to help loved ones avoid funeral costs, final bills, and added financial pressure.';
+          ? `This final expense estimate is built around ${priorityContext} and easing the burden on loved ones.`
+          : 'This final expense estimate is built around funeral costs, final bills, and easing the burden on loved ones.';
       case 'mortgage':
         return priorityContext
-          ? `Mortgage protection looks like the clearest first fit because you are focused on ${priorityContext} and keeping life steady at home.`
-          : 'Mortgage protection looks like the clearest first fit because it is built around helping families keep the home and monthly stability in place.';
+          ? `This mortgage protection estimate is built around ${priorityContext} and keeping the home protected.`
+          : 'This mortgage protection estimate is built around the home, the mortgage, and family stability.';
       case 'iul':
         return priorityContext
-          ? `Indexed universal life looks like the clearest long-range fit because you are focused on ${priorityContext} with more flexibility built into the plan.`
-          : 'Indexed universal life looks like the clearest long-range fit because it is designed for people thinking long-term about protection, flexibility, and future planning.';
+          ? `This IUL estimate is built around ${priorityContext} with long-term flexibility in view.`
+          : 'This IUL estimate is built around long-term protection, flexibility, and future planning.';
       default:
-        return priorityContext
-          ? `This looks like the clearest place to start because you are focused on ${priorityContext}.`
-          : 'This looks like the clearest place to start based on the protection, budget, and long-term priorities you shared.';
+        return 'This estimate is built around the details you shared.';
     }
   }
+
 
   function buildExpandedStep2Reason(preview) {
     const normalized = normalizeStep2Preview(preview);
     const priorityContext = buildPriorityContextForStep2(normalized);
 
+    if (isGeneralLifeQuoteForStep2(normalized)) {
+      return `This protection path surfaced because it looks like the most realistic place to start based on the family, budget, and long-term priorities you shared.${priorityContext ? ` That includes ${priorityContext}.` : ''}`;
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(normalized)) {
       case 'term':
-        return `Term life rose to the top because it is often the most practical way to help a family maintain financial stability if income disappears during the years it matters most.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+        return `Term life is designed to provide a strong amount of protection for a specific period of time, often during the years income, children, mortgage payments, and major bills matter most.${priorityContext ? ` This estimate is built around what you shared about ${priorityContext}.` : ''}`;
       case 'wholelife':
-        return `Whole life rose to the top because it fits people who want protection that stays with them instead of expiring later.${priorityContext ? ` That matches what you shared about ${priorityContext}.` : ''}`;
+        return `Whole life is designed to provide permanent protection that can stay in place for life, with stable structure and long-term family support in view.${priorityContext ? ` This estimate is built around what you shared about ${priorityContext}.` : ''}`;
       case 'finalexpense':
-        return `Final expense rose to the top because it is designed around protecting loved ones from funeral costs, final bills, and financial stress during an already difficult time.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+        return `Final expense coverage is designed to help loved ones handle funeral costs, final bills, and immediate expenses without carrying that burden alone.${priorityContext ? ` This estimate is built around what you shared about ${priorityContext}.` : ''}`;
       case 'mortgage':
-        return `Mortgage protection rose to the top because it is built around helping a family keep the home and preserve financial breathing room if something unexpected happens.${priorityContext ? ` That matches what you shared about ${priorityContext}.` : ''}`;
+        return `Mortgage protection is designed to help protect the home and give the people depending on it more financial breathing room if something unexpected happens.${priorityContext ? ` This estimate is built around what you shared about ${priorityContext}.` : ''}`;
       case 'iul':
-        return `Indexed universal life rose to the top because it can fit people who want long-term protection with more flexibility built into future planning.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+        return `Indexed universal life is designed for long-term protection with flexible structure, future planning room, and legacy goals in view.${priorityContext ? ` This estimate is built around what you shared about ${priorityContext}.` : ''}`;
       default:
-        return `This protection path rose to the top because it looks like the most realistic place to start based on the family, budget, and long-term priorities you shared.${priorityContext ? ` That includes ${priorityContext}.` : ''}`;
+        return `This estimate is built around the protection details you shared.${priorityContext ? ` That includes ${priorityContext}.` : ''}`;
     }
   }
+
 
   function buildExpandedStep2Reasons(preview) {
     const normalized = normalizeStep2Preview(preview);
@@ -9920,42 +9936,50 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
     const priorityContext = buildPriorityContextForStep2(normalized);
 
+    if (isGeneralLifeQuoteForStep2(normalized)) {
+      return [
+        'Surfaces the protection path most aligned with what you said matters right now.',
+        'Keeps the review centered on family fit, budget, and long-term direction.',
+        'Gives you a clearer place to start before comparing alternatives.'
+      ];
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(normalized)) {
       case 'term':
         return [
-          priorityContext ? `Your answers point toward ${priorityContext}, which is where term life is often most useful.` : 'Built to help protect the years your family depends on you most.',
-          'Keeps the review centered on family stability and practical monthly fit.',
-          coverageRange ? `Starts the conversation around roughly ${coverageRange} of protection, then confirms whether that feels realistic.` : 'Creates a clear first conversation before comparing other options.'
+          priorityContext ? `Built around ${priorityContext} during the years your family depends on you most.` : 'Built around protecting the years your family depends on you most.',
+          'Keeps the review focused on term length, coverage amount, monthly range, and family stability.',
+          coverageRange ? `Uses roughly ${coverageRange} as the starting coverage range to review.` : 'Keeps the next step focused on whether the coverage amount and monthly range feel realistic.'
         ].filter(Boolean).slice(0, 3);
       case 'wholelife':
         return [
-          'Built for people who want protection that stays in place instead of expiring later.',
-          'Keeps the review centered on long-term stability and lasting protection.',
-          coverageRange ? `Starts the conversation around ${coverageRange} while confirming whether a lifelong approach feels aligned.` : 'Helps confirm whether a lifelong protection approach feels aligned.'
-        ].slice(0, 3);
+          priorityContext ? `Built around ${priorityContext} with permanent protection in view.` : 'Built around permanent protection designed to stay in place long term.',
+          'Keeps the review focused on lifelong coverage, stable structure, and long-term family support.',
+          coverageRange ? `Uses roughly ${coverageRange} as the starting coverage range to review.` : 'Keeps the next step focused on whether a lifelong policy structure fits.'
+        ].filter(Boolean).slice(0, 3);
       case 'finalexpense':
         return [
-          'Keeps the focus on funeral costs, final bills, and protecting loved ones from added pressure.',
-          'Built around easing the burden on family during an already difficult time.',
-          'Helps review what level of protection may keep final wishes from becoming a financial problem.'
+          priorityContext ? `Built around ${priorityContext} and reducing pressure on loved ones.` : 'Built around funeral costs, final bills, and reducing pressure on loved ones.',
+          'Keeps the review focused on a simple coverage amount and a manageable monthly range.',
+          'Helps confirm what level of final expense protection may keep loved ones from scrambling financially.'
         ];
       case 'mortgage':
         return [
-          'Keeps the review centered on the home and the monthly stability your family depends on.',
-          'Fits a goal of helping loved ones stay in the home if something unexpected happens.',
-          coverageRange ? `Starts with roughly ${coverageRange} so the conversation stays grounded in real household pressure.` : 'Keeps the conversation grounded in real household pressure instead of generic policy talk.'
-        ].slice(0, 3);
+          priorityContext ? `Built around ${priorityContext} and protecting the home.` : 'Built around the home, the mortgage, and monthly household stability.',
+          'Keeps the review focused on the mortgage balance, monthly payment pressure, and family continuity.',
+          coverageRange ? `Uses roughly ${coverageRange} as the starting protection range to review.` : 'Keeps the next step focused on what level of protection fits the home.'
+        ].filter(Boolean).slice(0, 3);
       case 'iul':
         return [
-          'Keeps the conversation focused on long-term protection with more flexibility over time.',
-          'Fits people thinking beyond short-term coverage and into future planning.',
-          'Helps compare whether a more strategic protection structure makes sense for your goals.'
-        ];
+          priorityContext ? `Built around ${priorityContext} with long-term flexibility in view.` : 'Built around long-term protection, flexibility, and future planning.',
+          'Keeps the review focused on structure, funding comfort, protection needs, and legacy goals.',
+          coverageRange ? `Uses roughly ${coverageRange} as the starting coverage range to review.` : 'Helps confirm whether the IUL structure fits your long-range goals.'
+        ].filter(Boolean).slice(0, 3);
       default:
         return [
-          'Surfaces the protection path most aligned with what you said matters right now.',
-          'Keeps the review centered on family fit, budget, and long-term direction.',
-          'Gives you a clearer place to start before comparing alternatives.'
+          'Built around the details you shared.',
+          'Keeps the review focused on coverage amount, monthly range, and next step.',
+          'Helps confirm whether the estimate fits your situation.'
         ];
     }
   }
@@ -9984,58 +10008,72 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     }
   }
 
+
   function buildPostSubmitContinueCopy(preview) {
     const leadIn = hasAgentTrustProfile
       ? `Continue your review by choosing a time with ${agentDirectContactName}`
       : 'Continue your review by choosing a time below';
 
+    if (isGeneralLifeQuoteForStep2(preview)) {
+      return `${leadIn} to compare the protection path that surfaced for you and confirm what may realistically fit best.`;
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return `${leadIn} to see what level of protection may help your family stay financially steady.`;
+        return `${leadIn} to review the term life coverage amount, term length, and monthly range.`;
       case 'wholelife':
-        return `${leadIn} to see whether lifelong protection fits the stability you want to keep in place.`;
+        return `${leadIn} to review the whole life coverage amount, policy structure, and long-term fit.`;
       case 'finalexpense':
-        return `${leadIn} to see what level of protection may spare your loved ones added financial stress.`;
+        return `${leadIn} to review the final expense coverage amount and monthly range.`;
       case 'mortgage':
-        return `${leadIn} to see what may best help your family keep the home and financial breathing room.`;
+        return `${leadIn} to review the mortgage protection amount tied to the home.`;
       case 'iul':
-        return `${leadIn} to see whether a more flexible long-term protection strategy fits your future plans.`;
+        return `${leadIn} to review the IUL coverage amount, structure, and long-term fit.`;
       default:
-        return `${leadIn} to compare the protection path that surfaced for you and confirm what may realistically fit best.`;
+        return `${leadIn} to review the estimate details.`;
     }
   }
 
   function resolvePostSubmitSuccessHelperText(preview) {
+    if (isGeneralLifeQuoteForStep2(preview)) {
+      return 'Review the recommendation below, then schedule while this is fresh if you want help comparing which protection path may realistically fit you best.';
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Review the recommendation below, then schedule while this is fresh if you want help judging what level of protection may help your family stay financially steady.';
+        return 'Review your term life estimate below, then choose a time if you want help confirming the coverage amount, term length, and monthly range.';
       case 'wholelife':
-        return 'Review the recommendation below, then schedule while this is fresh if you want help deciding whether lifelong protection fits the stability you want to keep in place.';
+        return 'Review your whole life estimate below, then choose a time if you want help confirming the coverage amount, policy structure, and long-term fit.';
       case 'finalexpense':
-        return 'Review the recommendation below, then schedule while this is fresh if you want help seeing what level of protection may spare your loved ones added financial stress.';
+        return 'Review your final expense estimate below, then choose a time if you want help confirming the coverage amount and monthly range.';
       case 'mortgage':
-        return 'Review the recommendation below, then schedule while this is fresh if you want help judging what may best protect the home and your family’s monthly breathing room.';
+        return 'Review your mortgage protection estimate below, then choose a time if you want help confirming the protection amount tied to the home.';
       case 'iul':
-        return 'Review the recommendation below, then schedule while this is fresh if you want help evaluating whether a more flexible long-term protection strategy fits your plans.';
+        return 'Review your IUL estimate below, then choose a time if you want help confirming the coverage amount, structure, and long-term fit.';
       default:
-        return 'Review the recommendation below, then schedule while this is fresh if you want help comparing which protection path may realistically fit you best.';
+        return 'Review your estimate below, then choose a time if you want help confirming the details.';
     }
   }
 
+
   function resolvePublicBookingCopy(preview) {
+    if (isGeneralLifeQuoteForStep2(preview)) {
+      return 'Choose a time to continue your personalized review, compare the protection path that surfaced for you, and confirm what may realistically fit your situation best.';
+    }
+
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Choose a time below to review your protection path with Zac.';
+        return 'Choose a time below to review your term life estimate with Zac.';
       case 'wholelife':
-        return 'Choose a time to continue your personalized review and see whether lifelong protection fits the long-term stability you want to keep in place.';
+        return 'Choose a time below to review your whole life estimate with Zac.';
       case 'finalexpense':
-        return 'Choose a time below to review your protection path with Zac.';
+        return 'Choose a time below to review your final expense estimate with Zac.';
       case 'mortgage':
-        return 'Choose a time to continue your personalized review and see what level of protection may help your family keep the home and preserve breathing room.';
+        return 'Choose a time below to review your mortgage protection estimate with Zac.';
       case 'iul':
-        return 'Choose a time to continue your personalized review and see whether a more flexible long-term protection strategy fits your goals and future plans.';
+        return 'Choose a time below to review your IUL estimate with Zac.';
       default:
-        return 'Choose a time to continue your personalized review, compare the protection path that surfaced for you, and confirm what may realistically fit your situation best.';
+        return 'Choose a time below to review your estimate with Zac.';
     }
   }
 
@@ -10097,7 +10135,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     return `
       <div class="lq-contact-estimate-wrap is-expanded-review" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
-          <div class="lq-contact-estimate-kicker">Personalized recommendation</div>
+          <div class="lq-contact-estimate-kicker">${escapeHtml(isGeneralLifeQuoteForStep2(normalized) ? "Personalized recommendation" : "Personalized estimate")}</div>
           <div class="lq-contact-estimate-title">${escapeHtml(buildPostSubmitEstimateTitle(normalized))}</div>
           <div class="lq-contact-estimate-copy">${escapeHtml(buildExpandedStep2Reason(normalized))}</div>
         </div>
