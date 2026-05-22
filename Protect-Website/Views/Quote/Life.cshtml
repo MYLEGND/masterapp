@@ -8537,6 +8537,72 @@ body.life-landing .lq-hero-shell,
 }
 
 #lifePostSubmitSlot .lq-final-review-head {
+    position: relative !important;
+    padding: 0 0 14px !important;
+    margin: 0 0 16px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-head::before {
+    content: "" !important;
+    position: absolute !important;
+    inset: -10px -10px auto -10px !important;
+    height: 88px !important;
+    border-radius: 20px !important;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(243,214,136,.14), transparent 52%),
+        linear-gradient(180deg, rgba(16,38,76,.42) 0%, transparent 100%) !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-kicker {
+    position: relative !important;
+    z-index: 1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: #f3d688 !important;
+    font-size: .73rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .12em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 8px !important;
+    text-shadow: 0 1px 10px rgba(243,214,136,.12) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-kicker::after {
+    content: "" !important;
+    width: 42px !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, rgba(243,214,136,.9), rgba(243,214,136,0)) !important;
+    display: block !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-title {
+    position: relative !important;
+    z-index: 1 !important;
+    color: #fff8e7 !important;
+    font-size: clamp(1.9rem, 4vw, 2.45rem) !important;
+    line-height: .98 !important;
+    letter-spacing: -.045em !important;
+    font-weight: 960 !important;
+    margin: 0 0 10px !important;
+    text-wrap: balance !important;
+    text-shadow:
+        0 2px 18px rgba(0,0,0,.22),
+        0 0 18px rgba(243,214,136,.05) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-copy {
+    position: relative !important;
+    z-index: 1 !important;
+    color: rgba(248,250,252,.82) !important;
+    font-size: .98rem !important;
+    line-height: 1.48 !important;
+    font-weight: 720 !important;
+    max-width: 60ch !important;
+    margin: 0 !important;
+}
     margin: 0 0 14px !important;
     padding: 0 0 14px !important;
     border-bottom: 1px solid rgba(59,130,246,.18) !important;
@@ -8769,8 +8835,14 @@ body.life-landing .lq-hero-shell,
     }
 
     #lifePostSubmitSlot .lq-final-review-title {
-        font-size: 1.42rem !important;
-        line-height: 1.08 !important;
+        font-size: 1.62rem !important;
+        line-height: 1.02 !important;
+        letter-spacing: -.04em !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-copy {
+        font-size: .93rem !important;
+        line-height: 1.42 !important;
     }
 
     #lifePostSubmitSlot .lq-booking-iframe {
