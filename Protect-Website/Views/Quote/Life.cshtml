@@ -40,7 +40,7 @@
 /* final post-submit booking cleanup */
 .lq-post-submit-card-final-clean {
     background:
-        radial-gradient(circle at 50% 0%, rgba(199,153,49,.10), transparent 42%),
+        radial-gradient(circle at 50% 0%, rgba(199,153,49,.08), transparent 45%),
         linear-gradient(180deg, #07152b 0%, #0b1c37 100%) !important;
     border: 1px solid rgba(199,153,49,.45) !important;
     border-radius: 18px !important;
@@ -52,23 +52,31 @@
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    padding: 0 0 14px 0 !important;
+    padding: 0 0 18px 0 !important;
 }
 
 .lq-post-submit-card-final-clean .lq-post-submit-kicker {
-    color: #f3d688 !important;
-    font-size: .78rem !important;
-    font-weight: 950 !important;
-    text-transform: uppercase !important;
-    letter-spacing: .08em !important;
+    display: none !important;
 }
 
 .lq-post-submit-card-final-clean .lq-post-submit-title {
     color: #fff6d8 !important;
-    font-size: 1.45rem !important;
+    font-size: 1.55rem !important;
     font-weight: 950 !important;
     line-height: 1.05 !important;
-    margin-top: 4px !important;
+    margin: 0 !important;
+    padding-left: 0 !important;
+    border-left: 0 !important;
+}
+
+.lq-post-submit-card-final-clean .lq-post-submit-title::before {
+    content: "";
+    display: block;
+    width: 54px;
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #f3d688, rgba(243,214,136,.15));
+    margin-bottom: 9px;
 }
 
 .lq-post-submit-card-final-clean .lq-post-submit-copy {
@@ -78,13 +86,15 @@
     margin-top: 8px !important;
 }
 
+/* This wrapper exists only as a mount point for the iframe. It must NOT look like a third container. */
 .lq-booking-frame-only {
-    margin-top: 10px !important;
-    border-radius: 16px !important;
-    overflow: hidden !important;
-    background: #ffffff !important;
-    border: 1px solid rgba(199,153,49,.38) !important;
-    box-shadow: 0 18px 36px rgba(0,0,0,.30) !important;
+    margin-top: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    overflow: visible !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
 .lq-booking-frame-only iframe,
@@ -93,6 +103,8 @@
     width: 100% !important;
     min-height: 640px !important;
     border: 0 !important;
+    border-radius: 12px !important;
+    background: transparent !important;
 }
 
 /* kill old nested shells if old markup survives cached render */
@@ -104,7 +116,6 @@
     box-shadow: none !important;
     padding: 0 !important;
 }
-
 </style>
 
 @using System.Text.Json
@@ -10882,9 +10893,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   }
 
   function renderPostSubmitBookingState(payload) {
-    if (!(postSubmitSlot instanceof HTMLElement)) {
-      return;
-    }
+    if (!(postSubmitSlot instanceof HTMLElement)) return;
 
     const normalized = payload?.loading
       ? { loading: true }
@@ -10892,9 +10901,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
     if (!normalized.loading) {
       publicBookingState = normalized;
-      if (normalized.confirmationVerified) {
-        publicBookingBookedConfirmed = true;
-      }
+      if (normalized.confirmationVerified) publicBookingBookedConfirmed = true;
     }
 
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
@@ -10903,7 +10910,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     postSubmitSlot.innerHTML = `
       <section class="lq-post-submit-card lq-post-submit-card-final-clean" aria-labelledby="lifePostSubmitBookingTitle">
         <div class="lq-post-submit-head lq-post-submit-head-final-clean">
-          <div class="lq-post-submit-kicker">Continue your review</div>
           <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">Continue Your Review</div>
           <div class="lq-post-submit-copy">Choose a time below to review your protection path with Zac.</div>
         </div>
