@@ -8309,58 +8309,6 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel #lifeSte
 }
 </style>
 
-
-<style>
-/* FINAL LABEL + REQUIRED STAR FIX */
-#lifeContactCaptureWrap label,
-#lifeContactCaptureWrap .form-label,
-#lifeContactCaptureWrap .lq-field-label,
-#lifeContactCaptureWrap .lq-contact-field label {
-    color: rgba(248,250,252,.92) !important;
-    opacity: 1 !important;
-    font-size: .82rem !important;
-    font-weight: 900 !important;
-    line-height: 1.15 !important;
-    margin: 0 0 7px 0 !important;
-    display: inline-block !important;
-    text-shadow: 0 1px 0 rgba(0,0,0,.35) !important;
-}
-
-#lifeContactCaptureWrap .lq-required-star,
-#lifeContactCaptureWrap .required,
-#lifeContactCaptureWrap .required-star,
-#lifeContactCaptureWrap .asterisk,
-#lifeContactCaptureWrap label span,
-#lifeContactCaptureWrap label .text-danger {
-    color: #ff2d2d !important;
-    opacity: 1 !important;
-    font-weight: 950 !important;
-    display: inline !important;
-    visibility: visible !important;
-    margin-left: 3px !important;
-    text-shadow: none !important;
-}
-
-#lifeContactCaptureWrap .lq-optional-tag,
-#lifeContactCaptureWrap label small,
-#lifeContactCaptureWrap label .optional {
-    color: rgba(248,250,252,.68) !important;
-    opacity: 1 !important;
-    font-weight: 800 !important;
-}
-
-/* keep consent label readable but do not make checkbox row title-style */
-#lifeContactCaptureWrap .lq-consent label,
-#lifeContactCaptureWrap .lq-contact-consent label {
-    display: inline !important;
-    color: rgba(248,250,252,.82) !important;
-    font-size: .78rem !important;
-    font-weight: 800 !important;
-    line-height: 1.28 !important;
-    margin: 0 !important;
-}
-</style>
-
 <script src="~/js/life-estimate-engine.js" asp-append-version="true"></script>
 <script src="~/js/trusted-carrier-strip.js" asp-append-version="true"></script>
 <script>
