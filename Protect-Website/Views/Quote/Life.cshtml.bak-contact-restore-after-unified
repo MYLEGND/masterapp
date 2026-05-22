@@ -8103,53 +8103,130 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
 
 
-
-
-
 <style>
-/* CONTACT STEP RESTORE — CLEAN NAVY/GOLD ONLY */
-#lifeEducationContactPanel {
-    box-sizing: border-box !important;
-    width: 100% !important;
-    padding: 20px 26px 18px !important;
-    border-radius: 26px !important;
-    border: 1px solid rgba(243,214,136,.48) !important;
+/* =========================================================
+   LEGEND LIFE WIZARD — SINGLE NAVY/GOLD AUTHORITY
+   Applies to all wizard steps, contact step, and post-submit review.
+   ========================================================= */
+
+body.life-landing .lq-hero-shell,
+.lq-hero-shell {
+    max-width: 760px !important;
+    margin: 10px auto 16px !important;
+    padding: 22px !important;
+    border-radius: 24px !important;
+    border: 1px solid rgba(243,214,136,.46) !important;
     background:
-        radial-gradient(circle at 50% 0%, rgba(243,214,136,.055), transparent 40%),
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,.055), transparent 42%),
         linear-gradient(180deg, #061f42 0%, #061a36 48%, #05142a 100%) !important;
     box-shadow:
         0 32px 70px rgba(0,0,0,.42),
         inset 0 1px 0 rgba(255,255,255,.055) !important;
 }
 
+#lifeWizardForm,
+#lifeEducationContactPanel,
+#lifePostSubmitSlot {
+    box-sizing: border-box !important;
+    width: 100% !important;
+}
+
+#lifeWizardForm *,
 #lifeEducationContactPanel *,
-#lifeContactCaptureWrap * {
+#lifePostSubmitSlot * {
     box-sizing: border-box !important;
 }
 
-#lifeEducationContactPanel .lq-contact-first-form-surface,
-#lifeEducationContactPanel #lifeStep2Panel,
-#lifeEducationContactPanel #lifeStep2Panel .lq-step-panel-pad {
+/* shared cards / panels */
+#lifeWizardForm .lq-step-panel,
+#lifeWizardForm .lq-education-panel,
+#lifeWizardForm .lq-contact-first-form-panel,
+#lifeEducationContactPanel,
+#lifePostSubmitSlot .lq-final-review-unified-card,
+#lifePostSubmitSlot .lq-rec-card,
+#lifePostSubmitSlot .lq-estimate-card,
+#lifePostSubmitSlot .lq-card,
+#lifePostSubmitSlot .lq-calendar-card {
+    border-radius: 24px !important;
+    border: 1px solid rgba(243,214,136,.46) !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,.05), transparent 42%),
+        linear-gradient(180deg, #062349 0%, #061b39 52%, #05162e 100%) !important;
+    color: #f8fafc !important;
+    box-shadow:
+        0 20px 46px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+/* remove inner fake surfaces that caused side breathing room problems */
+#lifeWizardForm .lq-contact-first-form-surface,
+#lifeWizardForm #lifeStep2Panel,
+#lifeWizardForm #lifeStep2Panel .lq-step-panel-pad,
+#lifeWizardForm .lq-step-panel-pad {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
 }
 
+/* universal step spacing */
+#lifeWizardForm .lq-step-panel,
+#lifeEducationContactPanel {
+    padding: 20px 26px 18px !important;
+}
+
+#lifeWizardForm .lq-step-panel-pad {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+#lifeWizardForm .lq-step-progress {
+    margin: 0 0 14px !important;
+}
+
+#lifeWizardForm .lq-step-question,
+#lifeWizardForm h1,
+#lifeWizardForm h2,
+#lifePostSubmitSlot h1,
+#lifePostSubmitSlot h2,
+#lifePostSubmitSlot h3 {
+    color: #fff8e7 !important;
+    text-shadow: 0 1px 0 rgba(0,0,0,.28) !important;
+}
+
+#lifeWizardForm .lq-helper-intro,
+#lifeWizardForm p,
+#lifePostSubmitSlot p,
+#lifePostSubmitSlot small,
+#lifePostSubmitSlot span {
+    color: rgba(248,250,252,.82) !important;
+}
+
+/* option cards */
+#lifeWizardForm .lq-card,
+#lifeWizardForm .lq-option-card,
+#lifeWizardForm label.lq-card {
+    border: 1px solid rgba(243,214,136,.30) !important;
+    border-radius: 18px !important;
+    background:
+        linear-gradient(180deg, rgba(6,31,66,.92), rgba(5,20,42,.96)) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.04),
+        0 10px 24px rgba(0,0,0,.18) !important;
+}
+
+#lifeWizardForm .lq-card:hover,
+#lifeWizardForm .lq-card.lq-selected,
+#lifeWizardForm .lq-card:has(input:checked) {
+    border-color: rgba(243,214,136,.64) !important;
+    background:
+        linear-gradient(180deg, #07305e 0%, #061d3b 100%) !important;
+}
+
+/* estimate preview card */
 #lifeStep2Progress,
 #lifeStep2Heading,
 #lifeStep2Helper {
     display: none !important;
-}
-
-#lifeEducationContactPanel .lq-contact-first-proof-row {
-    background: transparent !important;
-    border: 0 !important;
-    border-bottom: 1px solid rgba(243,214,136,.16) !important;
-    padding: 0 0 13px !important;
-    margin: 0 0 16px !important;
-    box-shadow: none !important;
 }
 
 #lifeStep2EstimateSummary,
@@ -8163,9 +8240,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     background:
         radial-gradient(circle at 20% 0%, rgba(243,214,136,.06), transparent 36%),
         linear-gradient(180deg, #062349 0%, #061b39 52%, #05162e 100%) !important;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 16px 34px rgba(0,0,0,.24) !important;
 }
 
 #lifeStep2EstimateSummary .lq-contact-teaser-final-copy {
@@ -8173,13 +8247,14 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 }
 
 #lifeStep2EstimateSummary .lq-contact-estimate-kicker,
-#lifeContactCaptureWrap .lq-contact-capture-kicker {
+#lifeContactCaptureWrap .lq-contact-capture-kicker,
+#lifePostSubmitSlot .lq-kicker,
+#lifePostSubmitSlot .lq-section-kicker {
     color: #f3d688 !important;
     font-size: .8rem !important;
     font-weight: 950 !important;
     letter-spacing: .09em !important;
     text-transform: uppercase !important;
-    margin: 0 0 8px !important;
 }
 
 #lifeStep2EstimateSummary .lq-contact-estimate-title {
@@ -8193,17 +8268,20 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     color: rgba(248,250,252,.84) !important;
     font-size: .98rem !important;
     line-height: 1.32 !important;
-    margin: 0 !important;
 }
 
 #lifeStep2EstimateSummary .lq-contact-teaser-final-metrics,
-#lifeStep2EstimateSummary .lq-contact-estimate-metrics {
+#lifeStep2EstimateSummary .lq-contact-estimate-metrics,
+#lifePostSubmitSlot .lq-estimate-metrics,
+#lifePostSubmitSlot .lq-metric-grid {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0,1fr)) !important;
     gap: 8px !important;
 }
 
-#lifeStep2EstimateSummary .lq-contact-estimate-metric {
+#lifeStep2EstimateSummary .lq-contact-estimate-metric,
+#lifePostSubmitSlot .lq-metric,
+#lifePostSubmitSlot .lq-estimate-metric {
     min-height: 76px !important;
     padding: 13px 14px !important;
     border-radius: 16px !important;
@@ -8212,7 +8290,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     color: #fff8e7 !important;
 }
 
-/* contact body */
+/* contact fields */
 #lifeContactCaptureWrap {
     width: 100% !important;
     max-width: 100% !important;
@@ -8238,7 +8316,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
 #lifeContactCaptureWrap .lq-contact-fields,
 #lifeContactCaptureWrap .lq-form-grid,
-#lifeContactCaptureWrap .lq-contact-grid {
+#lifeContactCaptureWrap .lq-contact-grid,
+#lifeContactCaptureWrap .lq-field-row.two {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0,1fr)) !important;
     gap: 14px 16px !important;
@@ -8264,7 +8343,9 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 }
 
 #lifeContactCaptureWrap input:not([type="checkbox"]):not([type="radio"]),
-#lifeContactCaptureWrap select {
+#lifeContactCaptureWrap select,
+#lifeWizardForm input:not([type="checkbox"]):not([type="radio"]),
+#lifeWizardForm select {
     height: 50px !important;
     min-height: 50px !important;
     border-radius: 12px !important;
@@ -8290,14 +8371,10 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     border: 1px solid rgba(243,214,136,.26) !important;
 }
 
-#lifeContactCaptureWrap .lq-form-actions,
-#lifeWizardForm .lq-form-actions {
-    margin-top: 14px !important;
-    padding-top: 14px !important;
-}
-
+/* buttons */
+#lifeWizardForm .btn-progress,
+#lifeWizardForm button[type="submit"],
 #lifeContactCaptureWrap button[type="submit"] {
-    width: 100% !important;
     min-height: 58px !important;
     border-radius: 12px !important;
     background:
@@ -8307,8 +8384,57 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     font-weight: 950 !important;
 }
 
+/* post-submit/calendar restore */
+#lifePostSubmitSlot {
+    padding: 0 !important;
+    margin-top: 18px !important;
+    background: transparent !important;
+    color: #f8fafc !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-unified-card,
+#lifePostSubmitSlot .lq-rec-card,
+#lifePostSubmitSlot .lq-estimate-card,
+#lifePostSubmitSlot .lq-calendar-card {
+    padding: 20px 22px !important;
+    margin: 0 0 18px !important;
+}
+
+#lifePostSubmitSlot iframe,
+#lifePostSubmitSlot .booking-iframe,
+#lifePostSubmitSlot .calendar-frame {
+    width: 100% !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    background: #061b39 !important;
+}
+
+/* remove white wash / opacity damage */
+#lifePostSubmitSlot,
+#lifePostSubmitSlot * {
+    opacity: 1 !important;
+}
+
+#lifePostSubmitSlot .lq-pill,
+#lifePostSubmitSlot .lq-chip {
+    background: rgba(4,16,32,.72) !important;
+    border: 1px solid rgba(243,214,136,.22) !important;
+    color: rgba(248,250,252,.84) !important;
+}
+
+/* mobile */
 @@media (max-width: 720px) {
-    #lifeEducationContactPanel {
+    body.life-landing .lq-hero-shell,
+    .lq-hero-shell {
+        padding: 16px !important;
+    }
+
+    #lifeWizardForm .lq-step-panel,
+    #lifeEducationContactPanel,
+    #lifePostSubmitSlot .lq-final-review-unified-card,
+    #lifePostSubmitSlot .lq-rec-card,
+    #lifePostSubmitSlot .lq-estimate-card,
+    #lifePostSubmitSlot .lq-calendar-card {
         padding: 16px !important;
     }
 
@@ -8316,7 +8442,10 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     #lifeStep2EstimateSummary .lq-contact-estimate-metrics,
     #lifeContactCaptureWrap .lq-contact-fields,
     #lifeContactCaptureWrap .lq-form-grid,
-    #lifeContactCaptureWrap .lq-contact-grid {
+    #lifeContactCaptureWrap .lq-contact-grid,
+    #lifeContactCaptureWrap .lq-field-row.two,
+    #lifePostSubmitSlot .lq-estimate-metrics,
+    #lifePostSubmitSlot .lq-metric-grid {
         grid-template-columns: 1fr !important;
     }
 
