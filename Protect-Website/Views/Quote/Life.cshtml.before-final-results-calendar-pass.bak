@@ -8396,7 +8396,7 @@ body.life-landing .lq-hero-shell,
 
 
 <style>
-/* POST SUBMIT RESULTS/CALENDAR OPTIMIZATION — ONLY AFTER SUBMIT */
+/* POST SUBMIT BOOKING CLEANUP — ONLY AFTER SUBMIT */
 
 #lifeEducationContactPanel.lq-final-panel-no-chrome,
 #lifeEducationContactPanel.lq-final-review-flat-mode,
@@ -8441,34 +8441,48 @@ body.life-landing .lq-hero-shell,
     margin: 0 !important;
     padding: 22px 24px 20px !important;
     border-radius: 24px !important;
-    border: 1px solid rgba(199,153,49,.38) !important;
+    border: 1px solid rgba(59,130,246,.26) !important;
     background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 36%),
-        linear-gradient(180deg, #09244a 0%, #071d3d 52%, #061832 100%) !important;
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%) !important;
     color: #f8fafc !important;
     box-shadow:
-        0 22px 46px rgba(2,12,27,.26),
+        0 22px 46px rgba(2,12,27,.24),
         inset 0 1px 0 rgba(255,255,255,.055) !important;
     overflow: hidden !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-head {
     position: relative !important;
-    padding: 0 0 13px !important;
-    margin: 0 0 12px !important;
-    border-bottom: 1px solid rgba(243,214,136,.14) !important;
+    padding: 0 0 14px !important;
+    margin: 0 0 16px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-head::before {
+    content: "" !important;
+    position: absolute !important;
+    inset: -10px -10px auto -10px !important;
+    height: 88px !important;
+    border-radius: 20px !important;
+    background:
+        radial-gradient(circle at 15% 20%, rgba(243,214,136,.14), transparent 52%),
+        linear-gradient(180deg, rgba(16,38,76,.42) 0%, transparent 100%) !important;
+    pointer-events: none !important;
+    z-index: 0 !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-kicker {
+    position: relative !important;
+    z-index: 1 !important;
     display: inline-flex !important;
     align-items: center !important;
     gap: 8px !important;
     color: #f3d688 !important;
-    font-size: .72rem !important;
+    font-size: .73rem !important;
     font-weight: 950 !important;
-    letter-spacing: .11em !important;
+    letter-spacing: .12em !important;
     text-transform: uppercase !important;
     margin: 0 0 8px !important;
+    text-shadow: 0 1px 10px rgba(243,214,136,.12) !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-kicker::after {
@@ -8480,82 +8494,42 @@ body.life-landing .lq-hero-shell,
 }
 
 #lifePostSubmitSlot .lq-final-review-title {
+    position: relative !important;
+    z-index: 1 !important;
     color: #fff8e7 !important;
-    font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
-    line-height: 1.02 !important;
-    letter-spacing: -.04em !important;
+    font-size: clamp(1.9rem, 4vw, 2.45rem) !important;
+    line-height: .98 !important;
+    letter-spacing: -.045em !important;
     font-weight: 960 !important;
-    margin: 0 0 9px !important;
+    margin: 0 0 10px !important;
     text-wrap: balance !important;
+    text-shadow:
+        0 2px 18px rgba(0,0,0,.22),
+        0 0 18px rgba(243,214,136,.05) !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .96rem !important;
-    line-height: 1.42 !important;
+    position: relative !important;
+    z-index: 1 !important;
+    color: rgba(248,250,252,.82) !important;
+    font-size: .98rem !important;
+    line-height: 1.48 !important;
     font-weight: 720 !important;
-    max-width: 64ch !important;
+    max-width: 60ch !important;
     margin: 0 !important;
 }
-
-#lifePostSubmitSlot .lq-final-review-proof-row {
-    display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 7px !important;
-    margin: 0 0 13px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-proof-row span {
-    display: inline-flex !important;
-    align-items: center !important;
-    min-height: 28px !important;
-    padding: 6px 10px !important;
-    border-radius: 999px !important;
-    border: 1px solid rgba(243,214,136,.30) !important;
-    background: rgba(4,16,32,.42) !important;
-    color: rgba(255,246,216,.92) !important;
-    font-size: .72rem !important;
-    font-weight: 900 !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 10px !important;
     margin: 0 0 14px !important;
+    padding: 0 0 14px !important;
+    border-bottom: 1px solid rgba(59,130,246,.18) !important;
 }
 
-#lifePostSubmitSlot .lq-final-review-impact-card {
-    padding: 13px 14px !important;
-    border-radius: 16px !important;
-    border: 1px solid rgba(199,153,49,.22) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
-        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
+#lifePostSubmitSlot .lq-final-review-title {
+    margin: 0 0 8px !important;
+    line-height: 1.08 !important;
 }
 
-#lifePostSubmitSlot .lq-final-review-impact-card.is-urgent {
-    border-color: rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
-        linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-label,
-#lifePostSubmitSlot .lq-final-review-next-kicker,
-#lifePostSubmitSlot .lq-final-review-booking-kicker {
-    color: #f3d688 !important;
-    font-size: .70rem !important;
-    font-weight: 940 !important;
-    letter-spacing: .08em !important;
-    text-transform: uppercase !important;
-    margin: 0 0 5px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-impact-text {
-    color: rgba(248,250,252,.88) !important;
-    font-size: .87rem !important;
-    font-weight: 760 !important;
+#lifePostSubmitSlot .lq-final-review-copy {
+    margin: 0 !important;
     line-height: 1.34 !important;
 }
 
@@ -8575,12 +8549,98 @@ body.life-landing .lq-hero-shell,
     margin: 0 0 14px !important;
 }
 
+#lifePostSubmitSlot .lq-contact-estimate-title {
+    margin: 0 0 14px !important;
+    line-height: 1.12 !important;
+}
+
+
 #lifePostSubmitSlot .lq-contact-estimate-carrier-note {
     margin: 0 0 14px !important;
     padding: 12px 14px !important;
     border-radius: 14px !important;
-    border: 1px solid rgba(199,153,49,.20) !important;
+    border: 1px solid rgba(59,130,246,.18) !important;
     background: linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.86) 100%) !important;
+}
+
+#lifePostSubmitSlot .lq-contact-estimate-carrier-main {
+    color: rgba(248,250,252,.92) !important;
+    font-size: .92rem !important;
+    font-weight: 850 !important;
+    line-height: 1.32 !important;
+    margin: 0 0 5px !important;
+}
+
+#lifePostSubmitSlot .lq-contact-estimate-carrier-urgency {
+    color: rgba(248,250,252,.74) !important;
+    font-size: .86rem !important;
+    font-weight: 700 !important;
+    line-height: 1.32 !important;
+    margin: 0 !important;
+}
+
+#lifePostSubmitSlot .lq-contact-estimate-copy {
+    margin: 0 0 12px !important;
+    line-height: 1.34 !important;
+}
+
+#lifePostSubmitSlot .lq-contact-estimate-metrics,
+#lifePostSubmitSlot .lq-estimate-metrics,
+#lifePostSubmitSlot .lq-metric-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    margin: 0 0 12px !important;
+}
+
+#lifePostSubmitSlot .lq-contact-estimate-metric,
+#lifePostSubmitSlot .lq-metric,
+#lifePostSubmitSlot .lq-estimate-metric {
+    min-height: 66px !important;
+    padding: 12px 14px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(59,130,246,.18) !important;
+    background: linear-gradient(180deg, #061d3d 0%, #071a36 100%) !important;
+    box-shadow: none !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-impact-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    margin: 0 0 14px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-impact-card {
+    padding: 13px 14px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(199,153,49,.22) !important;
+    background:
+        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
+        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-impact-card.is-urgent {
+    border-color: rgba(243,214,136,.36) !important;
+    background:
+        radial-gradient(circle at 15% 0%, rgba(243,214,136,.13), transparent 38%),
+        linear-gradient(180deg, rgba(8,37,77,.88) 0%, rgba(7,26,54,.96) 100%) !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-impact-label {
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 5px !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-impact-text {
+    color: rgba(248,250,252,.88) !important;
+    font-size: .88rem !important;
+    font-weight: 760 !important;
+    line-height: 1.34 !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-next-step {
@@ -8596,12 +8656,21 @@ body.life-landing .lq-hero-shell,
         0 14px 28px rgba(2,12,27,.14) !important;
 }
 
+#lifePostSubmitSlot .lq-final-review-next-kicker {
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    font-weight: 940 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 5px !important;
+}
+
 #lifePostSubmitSlot .lq-final-review-next-title {
     color: #fff7df !important;
     font-size: 1.02rem !important;
-    font-weight: 930 !important;
+    font-weight: 900 !important;
     line-height: 1.22 !important;
-    margin: 0 0 6px !important;
+    margin: 0 0 5px !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-next-copy {
@@ -8609,98 +8678,51 @@ body.life-landing .lq-hero-shell,
     font-size: .9rem !important;
     font-weight: 720 !important;
     line-height: 1.38 !important;
-    margin: 0 0 10px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-checklist {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 7px !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-checklist span {
-    padding: 8px 9px !important;
-    border-radius: 12px !important;
-    border: 1px solid rgba(243,214,136,.20) !important;
-    background: rgba(4,16,32,.35) !important;
-    color: rgba(248,250,252,.88) !important;
-    font-size: .76rem !important;
-    font-weight: 850 !important;
-    text-align: center !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-card {
-    margin: 12px 0 10px !important;
-    padding: 15px 16px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(243,214,136,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.15), transparent 36%),
-        linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-title {
-    color: #fff8e7 !important;
-    font-size: 1.16rem !important;
-    font-weight: 950 !important;
-    line-height: 1.13 !important;
-    margin: 0 0 5px !important;
-    text-wrap: balance !important;
-}
-
-#lifePostSubmitSlot .lq-final-review-booking-copy {
-    color: rgba(248,250,252,.84) !important;
-    font-size: .92rem !important;
-    font-weight: 740 !important;
-    line-height: 1.36 !important;
     margin: 0 !important;
 }
 
-#lifePostSubmitSlot .lq-final-review-loading,
-#lifePostSubmitSlot .lq-final-review-unavailable,
-#lifePostSubmitSlot .lq-booking-embed-status {
-    margin: 10px 0 !important;
-    padding: 10px 12px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(243,214,136,.22) !important;
-    background: rgba(4,16,32,.38) !important;
-    color: rgba(248,250,252,.82) !important;
-    font-size: .86rem !important;
-    font-weight: 760 !important;
+#lifePostSubmitSlot .lq-final-review-booking-head {
+    margin: 12px 0 10px !important;
+    padding: 14px 0 0 !important;
+    border-top: 1px solid rgba(59,130,246,.16) !important;
 }
 
-#lifePostSubmitSlot .lq-booking-frame-only {
-    margin: 10px 0 0 !important;
-    padding: 0 !important;
+#lifePostSubmitSlot .lq-final-review-booking-title {
+    margin: 0 0 4px !important;
+    line-height: 1.12 !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-booking-copy {
+    margin: 0 !important;
+    line-height: 1.32 !important;
+}
+
+#lifePostSubmitSlot .lq-booking-shell,
+#lifePostSubmitSlot .lq-booking-embed-shell,
+#lifePostSubmitSlot .lq-booking-embed-frame-wrap {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
+    padding: 0 !important;
+    margin: 10px 0 0 !important;
 }
 
 #lifePostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
-    min-height: 650px !important;
+    min-height: 620px !important;
     border-radius: 18px !important;
-    border: 1px solid rgba(199,153,49,.28) !important;
+    border: 1px solid rgba(59,130,246,.22) !important;
     background: #ffffff !important;
-    box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
+    box-shadow: 0 16px 34px rgba(2,12,27,.20) !important;
 }
 
-#lifePostSubmitSlot .lq-booking-secondary-link {
-    display: inline-flex !important;
-    justify-content: center !important;
-    align-items: center !important;
-    width: 100% !important;
-    min-height: 46px !important;
-    margin-top: 10px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    color: #f3d688 !important;
-    background: rgba(4,16,32,.38) !important;
-    font-size: .86rem !important;
-    font-weight: 900 !important;
-    text-decoration: none !important;
+#lifePostSubmitSlot .lq-pill,
+#lifePostSubmitSlot .lq-chip {
+    margin-top: 6px !important;
+    background: rgba(4,16,32,.48) !important;
+    border: 1px solid rgba(59,130,246,.18) !important;
+    color: rgba(248,250,252,.88) !important;
 }
 
 #lifePostSubmitSlot,
@@ -8711,37 +8733,39 @@ body.life-landing .lq-hero-shell,
 
 @@media (max-width: 720px) {
     #lifePostSubmitSlot .lq-final-review-unified-card {
-        padding: 17px !important;
+        padding: 18px !important;
         border-radius: 22px !important;
     }
 
-    #lifePostSubmitSlot .lq-final-review-title {
-        font-size: 1.52rem !important;
-        line-height: 1.04 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-copy {
-        font-size: .91rem !important;
-        line-height: 1.4 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-impact-grid,
-    #lifePostSubmitSlot .lq-final-review-checklist {
+    #lifePostSubmitSlot .lq-contact-estimate-metrics,
+    #lifePostSubmitSlot .lq-estimate-metrics,
+    #lifePostSubmitSlot .lq-metric-grid,
+    #lifePostSubmitSlot .lq-final-review-impact-grid {
         grid-template-columns: 1fr !important;
     }
 
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card {
+    #lifePostSubmitSlot .lq-final-review-next-step {
         padding: 14px !important;
         border-radius: 16px !important;
     }
 
+    #lifePostSubmitSlot .lq-final-review-title {
+        font-size: 1.62rem !important;
+        line-height: 1.02 !important;
+        letter-spacing: -.04em !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-copy {
+        font-size: .93rem !important;
+        line-height: 1.42 !important;
+    }
+
     #lifePostSubmitSlot .lq-booking-iframe {
-        min-height: 620px !important;
-        border-radius: 14px !important;
+        min-height: 660px !important;
     }
 }
 </style>
+
 
 
 
@@ -8920,63 +8944,63 @@ body.life-landing .lq-hero-shell,
 
   const finalHandoffCopyByQuoteType = Object.freeze({
     term: {
-      kicker: 'Review ready',
-      title: 'Your term life estimate is worth confirming.',
-      copy: 'Your answers point to the years your family would feel the pressure first: income, mortgage, bills, children, and daily stability. The estimate is saved. The review is where the range gets checked against real carrier fit, monthly comfort, and the term length that actually makes sense.',
-      diagnosis: 'A defined protection window may be needed around income, bills, and major family responsibilities.',
-      implication: 'Age, health, and underwriting drive the real options. Waiting usually does not create better pricing flexibility.',
-      nextStep: 'Confirm coverage amount, monthly fit, term length, and whether this is the right first direction before the details get pushed aside.',
-      bookingTitle: 'Choose a time to confirm the term fit',
-      bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm carrier fit, and help you decide if this should move forward.'
+      kicker: 'Protection path ready',
+      title: 'Your term life review is ready.',
+      copy: 'Your answers point to the years your family may feel the most pressure if your income suddenly stopped: the mortgage, monthly bills, children, and day-to-day stability. This is not a final underwriting offer yet. It is the clearest starting point to review before the details get pushed aside.',
+      diagnosis: 'Your family may need a defined protection window around income, bills, and major responsibilities.',
+      implication: 'Rates and approval options are tied to age, health, and underwriting. Reviewing sooner usually preserves more flexibility than waiting.',
+      nextStep: 'Confirm coverage amount, monthly fit, term length, and whether this is the right first direction.',
+      bookingTitle: 'Choose your term review time',
+      bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm fit, and help you decide whether this should move forward.'
     },
     wholelife: {
-      kicker: 'Review ready',
-      title: 'Your whole life estimate is worth confirming.',
-      copy: 'Your answers point toward protection designed to stay in place long term. The estimate is saved, but whole life should not be judged from a quick number alone. The structure, monthly fit, and long-term purpose need to be reviewed before deciding.',
+      kicker: 'Permanent fit ready',
+      title: 'Your whole life review is ready.',
+      copy: 'Your answers point toward protection designed to stay in place long term, not something that simply expires later. The estimate is only the first filter. The important part is confirming whether the structure, monthly fit, and long-term purpose actually make sense.',
       diagnosis: 'You may be looking for lifelong protection, stable structure, and lasting family support.',
       implication: 'Permanent coverage is sensitive to age, health, design, and funding. The right structure matters more than just seeing a number.',
-      nextStep: 'Confirm whether whole life is truly the right fit, how it should be structured, and whether alternatives should be compared.',
-      bookingTitle: 'Choose a time to review the long-term fit',
-      bookingCopy: 'Choose a time so {{agentName}} can walk through the estimate, structure, and whether whole life is the right direction.'
+      nextStep: 'Confirm whether whole life is truly the right fit before comparing alternatives.',
+      bookingTitle: 'Review the long-term fit',
+      bookingCopy: 'Choose a time so {{agentName}} can walk through the range, structure, and whether whole life is the right direction.'
     },
     finalexpense: {
-      kicker: 'Review ready',
-      title: 'Your final expense estimate is worth confirming.',
-      copy: 'Your answers point to a simple but serious goal: keeping loved ones from carrying funeral costs, final bills, and added pressure. The estimate is saved. The review confirms whether the amount and monthly fit can actually protect your family from scrambling.',
+      kicker: 'Family relief ready',
+      title: 'Your final expense review is ready.',
+      copy: 'Your answers point to a simple but serious goal: keeping loved ones from carrying funeral costs, final bills, and added pressure during an already painful moment. The estimate gives a starting range. The review confirms what may actually fit.',
       diagnosis: 'Loved ones could be left handling final costs without a clear plan in place.',
       implication: 'Final expense pricing and eligibility can tighten as age and health change, so waiting rarely creates more options.',
       nextStep: 'Confirm the benefit amount, monthly fit, and whether this gives your family enough breathing room.',
-      bookingTitle: 'Choose a time to confirm the family relief plan',
+      bookingTitle: 'Confirm the family relief plan',
       bookingCopy: 'Choose a time so {{agentName}} can confirm the amount, monthly fit, and next step while this is still clear.'
     },
     mortgage: {
-      kicker: 'Review ready',
-      title: 'Your mortgage protection estimate is worth confirming.',
-      copy: 'Your answers point to the home, the payment, and the people who depend on both. The estimate is saved. The review confirms whether this range actually lines up with the mortgage pressure and household stability you want protected.',
+      kicker: 'Home protection ready',
+      title: 'Your mortgage protection review is ready.',
+      copy: 'Your answers point to the home, the payment, and the people who depend on both. This starting range needs to be checked against the real mortgage pressure so the next step is clear instead of guessed.',
       diagnosis: 'The home may need a protection layer if income suddenly disappears.',
       implication: 'The mortgage does not pause because life changes. The longer this sits, the easier it is for the same home risk to stay uncovered.',
       nextStep: 'Confirm the mortgage balance, monthly fit, household need, and best protection structure.',
-      bookingTitle: 'Choose a time to confirm the home-protection fit',
+      bookingTitle: 'Choose your home protection review',
       bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm the home-protection fit, and help you decide what makes sense.'
     },
     iul: {
-      kicker: 'Review ready',
-      title: 'Your IUL estimate is worth confirming.',
-      copy: 'Your answers point toward long-term protection, flexibility, and legacy planning. The estimate is saved, but IUL depends heavily on structure. The review is where the design, funding, expectations, and alternatives need to be checked.',
+      kicker: 'Long-term strategy ready',
+      title: 'Your IUL review is ready.',
+      copy: 'Your answers point toward long-term protection, flexibility, and legacy planning. IUL should not be judged from a quick estimate alone because the structure matters just as much as the coverage amount.',
       diagnosis: 'You may be exploring protection with long-term flexibility and future planning room.',
-      implication: 'IUL depends on age, health, funding, policy design, and long-term assumptions. Guessing here creates bad decisions.',
+      implication: 'IUL depends on age, health, funding, policy design, and long-term expectations. Guessing here creates bad decisions.',
       nextStep: 'Confirm whether IUL is appropriate, how it would be structured, and what alternatives should be compared.',
-      bookingTitle: 'Choose a time to review the long-term structure',
+      bookingTitle: 'Review the long-term structure',
       bookingCopy: 'Choose a time so {{agentName}} can walk through the range, structure, and whether IUL is the right fit.'
     },
     life: {
-      kicker: 'Review ready',
-      title: 'Your personalized estimate is worth confirming.',
-      copy: 'Your answers created a starting range and a likely protection path. The estimate is saved. The review confirms whether it actually fits your family, budget, carrier options, and next best step before the details get pushed aside.',
+      kicker: 'Protection path ready',
+      title: 'Your personalized review is ready.',
+      copy: 'Your answers created a starting range and a likely protection path. Now the important part is confirming whether it actually fits your family, budget, and goals before the details get pushed aside.',
       diagnosis: 'There may be a real protection gap worth reviewing.',
       implication: 'Rates and eligibility are tied to age and health, so reviewing sooner usually gives more flexibility.',
       nextStep: 'Confirm the coverage amount, monthly fit, carrier direction, and whether this should move forward.',
-      bookingTitle: 'Choose a time to confirm the fit',
+      bookingTitle: 'Choose your review time',
       bookingCopy: 'Pick the soonest time that works so {{agentName}} can compare the range, confirm fit, and help you decide the next step.'
     }
   });
@@ -11691,12 +11715,8 @@ body.life-landing .lq-hero-shell,
 
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
     const showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
-    const bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
-      ? (normalized.enabled
-          ? 'Your estimate is saved. Scheduling is not available in this view right now, but your review can still continue with a licensed agent.'
-          : publicBookingDisabledText)
-      : '';
 
+    // Flatten the submitted step chrome. The final review card becomes the only real inner container.
     const submittedPanel =
       document.querySelector('.lq-step-two-panel') ||
       document.querySelector('.lq-step2-panel') ||
@@ -11720,7 +11740,8 @@ body.life-landing .lq-hero-shell,
     if (existingResult) existingResult.remove();
 
     const handoffCopy = getFinalHandoffCopy(quoteType);
-    const agentNameRaw = asTrimmed(agentDirectContactName) || 'your licensed agent';
+    const agentNameRaw = asTrimmed(agentDirectContactName || agentDisplayName || "your licensed agent");
+    const agentName = escapeHtml(agentNameRaw);
     const bookingCopy = mergeAgentNameIntoCopy(handoffCopy.bookingCopy, agentNameRaw);
 
     postSubmitSlot.innerHTML = `
@@ -11735,12 +11756,6 @@ body.life-landing .lq-hero-shell,
           <div class="lq-final-review-kicker">${escapeHtml(handoffCopy.kicker)}</div>
           <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">${escapeHtml(handoffCopy.title)}</div>
           <div class="lq-final-review-copy">${escapeHtml(handoffCopy.copy)}</div>
-        </div>
-
-        <div class="lq-final-review-proof-row" aria-label="Review value">
-          <span>Estimate saved</span>
-          <span>25+ carriers</span>
-          <span>No obligation</span>
         </div>
 
         <div class="lq-final-review-impact-grid" aria-label="Why this review matters">
@@ -11761,33 +11776,19 @@ body.life-landing .lq-hero-shell,
         ` : ''}
 
         <div class="lq-final-review-next-step" aria-label="What happens during the review">
-          <div class="lq-final-review-next-kicker">What the review confirms</div>
-          <div class="lq-final-review-next-title">${escapeHtml(agentNameRaw)} helps turn this estimate into a clear decision.</div>
+          <div class="lq-final-review-next-kicker">What happens next</div>
+          <div class="lq-final-review-next-title">${escapeHtml(agentNameRaw)} helps you turn the estimate into a clear decision.</div>
           <div class="lq-final-review-next-copy">${escapeHtml(handoffCopy.nextStep)}</div>
-          <div class="lq-final-review-checklist" aria-label="Review checklist">
-            <span>Coverage amount</span>
-            <span>Monthly fit</span>
-            <span>Carrier direction</span>
-          </div>
         </div>
 
-        <div class="lq-final-review-booking-card">
-          <div class="lq-final-review-booking-kicker">Finish the review</div>
+        <div class="lq-final-review-booking-head">
           <div class="lq-final-review-booking-title">${escapeHtml(handoffCopy.bookingTitle)}</div>
           <div class="lq-final-review-booking-copy">${escapeHtml(bookingCopy)}</div>
         </div>
 
-        ${normalized.loading ? `
-          <div class="lq-final-review-loading">${escapeHtml(publicBookingLoadingText)}</div>
-        ` : ''}
-
         ${showInlineShell ? `
           <div class="lq-booking-frame-only" id="lifeBookingInlineFrameSlot"></div>
           <div class="lq-booking-embed-status" id="lifeBookingInlineStatus" hidden>${escapeHtml(publicBookingLoadingText)}</div>
-        ` : ''}
-
-        ${bookingUnavailableCopy ? `
-          <div class="lq-final-review-unavailable">${escapeHtml(bookingUnavailableCopy)}</div>
         ` : ''}
 
         ${showFallbackLink ? `
