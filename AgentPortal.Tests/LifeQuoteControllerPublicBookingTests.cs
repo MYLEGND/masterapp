@@ -459,10 +459,11 @@ public class LifeQuoteControllerPublicBookingTests
         var leadRow = Assert.Single(leadsDoc.RootElement.EnumerateArray());
 
         Assert.Equal(workstationLead.LeadId, GetRequiredProperty(leadRow, "leadId").GetString());
-        Assert.Equal("Life Insurance", GetRequiredProperty(leadRow, "quoteTypeLabel").GetString());
-        Assert.Equal("Life Insurance", GetRequiredProperty(leadRow, "productInterestLabel").GetString());
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, GetRequiredProperty(leadRow, "bucket").GetString());
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, GetRequiredProperty(leadRow, "originalLeadType").GetString());
         Assert.True(leadRow.TryGetProperty("intakeSnapshot", out var intakeSnapshot));
         Assert.Equal("quote_life", GetRequiredProperty(intakeSnapshot, "sourcePageKey").GetString());
+        Assert.Equal("Life", GetRequiredProperty(intakeSnapshot, "quoteTypeLabel").GetString());
     }
 
     private static LifeQuoteController BuildController(
