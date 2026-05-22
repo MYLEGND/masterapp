@@ -8573,31 +8573,6 @@ body.life-landing .lq-hero-shell,
     line-height: 1.12 !important;
 }
 
-
-#lifePostSubmitSlot .lq-contact-estimate-carrier-note {
-    margin: 0 0 14px !important;
-    padding: 12px 14px !important;
-    border-radius: 14px !important;
-    border: 1px solid rgba(59,130,246,.18) !important;
-    background: linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.86) 100%) !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-carrier-main {
-    color: rgba(248,250,252,.92) !important;
-    font-size: .92rem !important;
-    font-weight: 850 !important;
-    line-height: 1.32 !important;
-    margin: 0 0 5px !important;
-}
-
-#lifePostSubmitSlot .lq-contact-estimate-carrier-urgency {
-    color: rgba(248,250,252,.74) !important;
-    font-size: .86rem !important;
-    font-weight: 700 !important;
-    line-height: 1.32 !important;
-    margin: 0 !important;
-}
-
 #lifePostSubmitSlot .lq-contact-estimate-copy {
     margin: 0 0 12px !important;
     line-height: 1.34 !important;
@@ -10369,11 +10344,6 @@ body.life-landing .lq-hero-shell,
             <div class="lq-contact-estimate-metric-label">Coverage range to review</div>
             <div class="lq-contact-estimate-metric-value">${escapeHtml(coverageRange)}</div>
           </div>
-        </div>
-
-        <div class="lq-contact-estimate-carrier-note">
-          <div class="lq-contact-estimate-carrier-main">We compare coverage across top-rated carriers to help match your age, health profile, and protection goal.</div>
-          <div class="lq-contact-estimate-carrier-urgency">Rates and approval options can shift based on age, health, and underwriting changes, which is why reviewing sooner usually gives you more flexibility.</div>
         </div>
 
         <div class="lq-contact-estimate-copy">${escapeHtml(productCopy.insight)}</div>
