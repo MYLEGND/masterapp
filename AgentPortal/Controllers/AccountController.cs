@@ -57,13 +57,28 @@ public class AccountController : Controller
 
     private AgentProfile? FindAgentProfile(string userId, string? normalizedEmail)
     {
-        var profile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
-        if (profile != null || string.IsNullOrWhiteSpace(normalizedEmail))
-            return profile;
+        // Prefer the existing email-owned profile first.
+        // This prevents trying to update another AgentUserId row to an email that already exists
+        // under IX_AgentProfiles_NormalizedEmail.
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            var byEmail = _db.AgentProfiles.FirstOrDefault(x =>
+                x.NormalizedEmail == normalizedEmail ||
+                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == normalizedEmail));
 
-        return _db.AgentProfiles.FirstOrDefault(x =>
-            x.NormalizedEmail == normalizedEmail ||
-            (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == normalizedEmail));
+            if (byEmail != null)
+            {
+                if (!string.Equals(byEmail.AgentUserId, userId, StringComparison.Ordinal))
+                {
+                    byEmail.AgentUserId = userId;
+                    byEmail.UpdatedUtc = DateTime.UtcNow;
+                }
+
+                return byEmail;
+            }
+        }
+
+        return _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
     }
 
     // GET: /Account/Login
