@@ -10238,7 +10238,6 @@ body.life-landing .lq-hero-shell,
     const normalized = normalizeStep2Preview(preview);
     const offerKey = resolveDisplayedOfferKeyForStep2(normalized);
     const isGeneral = isGeneralLifeQuoteForStep2(normalized);
-    const agentName = asTrimmed(agentDirectContactName) || 'your licensed agent';
 
     const monthlyRange = formatCurrencyRangeCompactForStep2(
       normalized.primary.estimatedLowMonthly,
@@ -10259,69 +10258,90 @@ body.life-landing .lq-hero-shell,
     const productCopy = (() => {
       if (isGeneral) {
         return {
-          insight: `Based on what you selected, ${productName} looks like the strongest first direction to review. The goal now is not to guess between every life insurance option — it is to confirm whether this starting range fits your family, budget, and protection gap before comparing anything else.`,
-          focusOneLabel: 'Best first direction',
+          kicker: 'Personalized recommendation',
+          title: `${productName} is the strongest first path to review.`,
+          reason: `Your answers point toward ${priorityContext || 'a specific protection need'}, so this result gives you a clear place to start before comparing alternatives.`,
+          focusOneLabel: 'Best first review',
           focusOneValue: productName,
           focusTwoLabel: 'Compare only if needed',
           focusTwoValue: normalized.secondary?.policyType || 'Other life options',
-          nextStep: `Choose a time below so ${agentName} can walk through the range, confirm the fit, and help you decide whether to move forward, adjust the amount, or look at a better option.`
+          actionTitle: 'Confirm the fit before the window closes',
+          actionCopy: 'Use the calendar below to review the recommendation, verify the coverage range, and decide whether this is worth moving forward with.'
         };
       }
 
       switch (offerKey) {
         case 'term':
           return {
-            insight: `This term life range is built around protecting the years your family depends on your income, mortgage support, and day-to-day stability. The key now is confirming the term length, coverage amount, and monthly fit before this turns into another unfinished quote.`,
-            focusOneLabel: 'Built to protect',
+            kicker: 'Term life estimate',
+            title: 'Your term life range is ready.',
+            reason: `This term estimate is built around ${priorityContext || 'protecting the key years your family depends on you most'}. The next step is confirming the term length, coverage amount, and monthly fit before assuming this range is accurate.`,
+            focusOneLabel: 'Protection focus',
             focusOneValue: 'Income, mortgage, and key family years',
-            focusTwoLabel: 'Review priority',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Term length + coverage amount',
-            nextStep: `Choose a time below so ${agentName} can help confirm whether this term range is enough protection without overbuilding the policy.`
+            actionTitle: 'Lock in a clear term review',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the term range, confirm what it protects, and show whether this amount is realistic for your family.'
           };
         case 'wholelife':
           return {
-            insight: `This whole life range is built around permanent protection that can stay in place long term. The review needs to confirm whether the premium, benefit amount, and structure actually make sense for the legacy and stability you want.`,
-            focusOneLabel: 'Built to protect',
-            focusOneValue: 'Lifetime coverage and long-term stability',
-            focusTwoLabel: 'Review priority',
+            kicker: 'Whole life estimate',
+            title: 'Your whole life range is ready.',
+            reason: `This whole life estimate is built around ${priorityContext || 'permanent protection that can stay in place long term'}. The review should confirm premium fit, coverage amount, and whether lifelong protection makes sense for your situation.`,
+            focusOneLabel: 'Protection focus',
+            focusOneValue: 'Lifetime coverage and stability',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Premium structure + long-term fit',
-            nextStep: `Choose a time below so ${agentName} can walk through the structure and help confirm whether whole life fits your long-term goal.`
+            actionTitle: 'Review the lifetime structure',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the whole life range, explain the structure, and confirm whether it fits your long-term goal.'
           };
         case 'finalexpense':
           return {
-            insight: `This final expense range is built around helping loved ones handle funeral costs, final bills, and immediate pressure without being left scrambling. The key is making sure the amount is enough without paying for more than you need.`,
-            focusOneLabel: 'Built to protect',
+            kicker: 'Final expense estimate',
+            title: 'Your final expense range is ready.',
+            reason: `This final expense estimate is built around ${priorityContext || 'helping loved ones handle funeral costs, final bills, and immediate expenses'}. The next step is making sure the amount is enough without overpaying for coverage you do not need.`,
+            focusOneLabel: 'Protection focus',
             focusOneValue: 'Funeral costs, final bills, and family relief',
-            focusTwoLabel: 'Review priority',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Benefit amount + monthly fit',
-            nextStep: `Choose a time below so ${agentName} can help confirm whether this amount gives your loved ones the relief you intended.`
+            actionTitle: 'Confirm the amount before guessing',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can help review whether this amount is enough to protect your loved ones from carrying the burden alone.'
           };
         case 'mortgage':
           return {
-            insight: `This mortgage protection range is built around the home, the monthly payment, and the people who depend on both. The next move is confirming whether the benefit amount lines up with the mortgage balance and the real pressure your household could face.`,
-            focusOneLabel: 'Built to protect',
+            kicker: 'Mortgage protection estimate',
+            title: 'Your mortgage protection range is ready.',
+            reason: `This mortgage protection estimate is built around ${priorityContext || 'protecting the home and keeping household stability intact'}. The next step is checking whether the benefit amount lines up with the mortgage, payment pressure, and people depending on the home.`,
+            focusOneLabel: 'Protection focus',
             focusOneValue: 'Home, mortgage payment, and household stability',
-            focusTwoLabel: 'Review priority',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Mortgage balance + monthly fit',
-            nextStep: `Choose a time below so ${agentName} can help confirm whether this range is strong enough to protect the home without overcomplicating the plan.`
+            actionTitle: 'Protect the home with clarity',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can review the mortgage protection range and confirm whether it lines up with the home you want protected.'
           };
         case 'iul':
           return {
-            insight: `This IUL range is built around long-term protection, future flexibility, and legacy planning. Because the structure matters, the review should confirm how the coverage, premium, and flexibility work before any decision is made.`,
-            focusOneLabel: 'Built to protect',
+            kicker: 'IUL estimate',
+            title: 'Your IUL range is ready.',
+            reason: `This IUL estimate is built around ${priorityContext || 'long-term protection, flexibility, and future planning'}. The next step is reviewing the structure carefully so the protection, premium, and flexibility are not misunderstood.`,
+            focusOneLabel: 'Protection focus',
             focusOneValue: 'Long-term coverage and future flexibility',
-            focusTwoLabel: 'Review priority',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Structure + funding fit',
-            nextStep: `Choose a time below so ${agentName} can explain the structure clearly and help confirm whether it fits your long-term plan.`
+            actionTitle: 'Review the structure before deciding',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can explain how the IUL range works and whether the structure fits your long-term plan.'
           };
         default:
           return {
-            insight: `This range is built around the protection details you shared. The next step is confirming whether the coverage amount, monthly range, and purpose actually line up with what you need protected.`,
-            focusOneLabel: 'Built to protect',
+            kicker: 'Personalized estimate',
+            title: 'Your protection range is ready.',
+            reason: `This estimate is built around ${priorityContext || 'the protection details you shared'}. The next step is confirming the amount, monthly fit, and what this would actually protect.`,
+            focusOneLabel: 'Protection focus',
             focusOneValue: productName,
-            focusTwoLabel: 'Review priority',
+            focusTwoLabel: 'What needs review',
             focusTwoValue: 'Coverage amount + monthly fit',
-            nextStep: `Choose a time below so ${agentName} can walk through the range and help confirm the right next step.`
+            actionTitle: 'Confirm the best next step',
+            actionCopy: 'Choose a time below so ${escapeHtml(agentDirectContactName || "your licensed agent")} can walk through the range and help confirm whether this is the right direction.'
           };
       }
     })();
@@ -10335,6 +10355,12 @@ body.life-landing .lq-hero-shell,
 
     return `
       <div class="lq-contact-estimate-wrap is-expanded-review" id="lifeStep2EstimateSummary">
+        <div class="lq-contact-estimate-head">
+          <div class="lq-contact-estimate-kicker">${escapeHtml(productCopy.kicker)}</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(productCopy.title)}</div>
+          <div class="lq-contact-estimate-copy">${escapeHtml(productCopy.reason)}</div>
+        </div>
+
         <div class="lq-contact-estimate-metrics">
           <div class="lq-contact-estimate-metric">
             <div class="lq-contact-estimate-metric-label">Estimated monthly range</div>
@@ -10345,8 +10371,6 @@ body.life-landing .lq-hero-shell,
             <div class="lq-contact-estimate-metric-value">${escapeHtml(coverageRange)}</div>
           </div>
         </div>
-
-        <div class="lq-contact-estimate-copy">${escapeHtml(productCopy.insight)}</div>
 
         <div class="lq-contact-estimate-stats">
           <div class="lq-contact-estimate-stat">
@@ -10362,9 +10386,10 @@ body.life-landing .lq-hero-shell,
 
         <div class="lq-contact-estimate-signal">
           <div class="lq-contact-estimate-signal-badge">Next step</div>
-          <div class="lq-contact-estimate-signal-copy">${escapeHtml(productCopy.nextStep)}</div>
+          <div class="lq-contact-estimate-signal-copy">${escapeHtml(productCopy.actionCopy)}</div>
         </div>
 
+        ${buildStep2SignalChips(normalized, 5)}
         <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
       </div>`;
   }
@@ -11571,7 +11596,7 @@ body.life-landing .lq-hero-shell,
         <div class="lq-final-review-head">
           <div class="lq-final-review-kicker">Review ready</div>
           <div class="lq-final-review-title" id="lifePostSubmitBookingTitle">Your personalized review is ready.</div>
-          <div class="lq-final-review-copy">You have a starting range. Now the important part is confirming whether it actually fits before the details get pushed aside. Review the summary below, then choose a time so ${escapeHtml(agentDirectContactName || "your licensed agent")} can help turn this into a clear yes, no, or better-fit direction.</div>
+          <div class="lq-final-review-copy">Your range is ready, but the numbers still need to be checked against your real situation. Choose a time below before this gets pushed aside, so ${escapeHtml(agentDirectContactName || "your licensed agent")} can confirm the coverage amount, monthly fit, and next step while the details are fresh.</div>
         </div>
 
         ${resultHtml ? `
@@ -11582,7 +11607,7 @@ body.life-landing .lq-hero-shell,
 
         <div class="lq-final-review-booking-head">
           <div class="lq-final-review-booking-title">Choose Your Review Time</div>
-          <div class="lq-final-review-booking-copy">Pick the soonest time that works while the details are fresh.</div>
+          <div class="lq-final-review-booking-copy">Pick the soonest time that works. This is where ${escapeHtml(agentDirectContactName || "your licensed agent")} helps turn the estimate into a clear yes, no, or better-fit direction.</div>
         </div>
 
         ${showInlineShell ? `
