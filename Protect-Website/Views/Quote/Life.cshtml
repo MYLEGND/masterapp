@@ -1583,6 +1583,50 @@ input[name="Phone"] {
     }
 }
 
+
+/* HARD NAVY OVERRIDE — remove ALL dirty brown surfaces */
+#lifeEducationContactPanel,
+#lifeWizardForm .lq-contact-first-form-surface,
+#lifeWizardForm .lq-step-panel-pad,
+#lifeWizardForm .lq-contact-estimate-wrap,
+#lifeWizardForm .lq-contact-estimate-unlock,
+#lifeWizardForm .lq-estimate-card-compact,
+#lifeWizardForm #lifeStep2EstimateSummary {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,.05), transparent 34%),
+        linear-gradient(180deg,
+            rgba(7,22,45,.985) 0%,
+            rgba(4,12,25,.995) 100%) !important;
+}
+
+/* remove muddy gold tint overlays */
+#lifeWizardForm .lq-contact-estimate-wrap::before,
+#lifeWizardForm .lq-contact-estimate-unlock::before,
+#lifeWizardForm .lq-step-panel-pad::before,
+#lifeWizardForm .lq-contact-first-form-surface::before {
+    display: none !important;
+    opacity: 0 !important;
+    background: none !important;
+}
+
+/* cleaner borders */
+#lifeWizardForm .lq-contact-estimate-wrap,
+#lifeWizardForm .lq-contact-estimate-unlock,
+#lifeWizardForm .lq-estimate-card-compact,
+#lifeWizardForm #lifeStep2EstimateSummary {
+    border: 1px solid rgba(243,214,136,.30) !important;
+    box-shadow:
+        0 14px 34px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+/* make entire section visually cleaner */
+#lifeEducationContactPanel {
+    box-shadow:
+        0 30px 70px rgba(0,0,0,.42),
+        inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
 </style>
 
 @using System.Text.Json
