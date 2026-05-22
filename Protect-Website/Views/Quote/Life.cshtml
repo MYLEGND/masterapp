@@ -6785,6 +6785,44 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     margin-top: 10px !important;
 }
 
+
+/* ================================================================
+   Booking duplicate cleanup — one line, calendar immediately below
+   ================================================================ */
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-status-pill,
+.lq-booking-embed-status,
+.lq-booking-actions,
+.lq-booking-secondary-link {
+    display: none !important;
+}
+
+.lq-booking-head {
+    padding: 0 0 8px !important;
+    margin: 8px 0 6px !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-title {
+    margin-bottom: 4px !important;
+}
+
+.lq-booking-copy {
+    margin-bottom: 0 !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 6px !important;
+    padding-top: 0 !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 4px !important;
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -8075,7 +8113,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   const publicBookingKickerText = 'Schedule your review';
   const publicBookingCopyText = 'Choose a time to continue your personalized review, compare what surfaced, and confirm what may realistically fit best.';
   const publicBookingCtaText = 'Schedule Your Review';
-  const publicBookingFallbackText = 'Schedule below';
+  const publicBookingFallbackText = '';
   const publicBookingLoadingText = 'Preparing your scheduling options...';
   const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available in this view right now, but a licensed agent can still continue your personalized review.';
   const publicBookingFallbackOnlyText = 'Schedule your review in scheduling. It opens in a new tab for now.';
@@ -10669,7 +10707,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
       : !normalized.enabled
         ? 'Review saved'
         : normalized.canEmbed
-          ? 'Schedule below'
+          ? ''
           : normalized.canFallback
             ? 'Continue in new tab'
             : 'Review saved';
