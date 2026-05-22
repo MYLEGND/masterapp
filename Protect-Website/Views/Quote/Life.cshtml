@@ -488,6 +488,197 @@ input[name="Phone"]:focus {
     margin: 0 !important;
 }
 
+
+/* UNIFY DISCOVERY ANSWER BUTTONS WITH AGE TILE NAVY/GOLD STYLE */
+#lifeWizardForm .lq-micro-step label,
+#lifeWizardForm .lq-choice-card,
+#lifeWizardForm .lq-option-card,
+#lifeWizardForm .lq-answer-card,
+#lifeWizardForm .lq-radio-card,
+#lifeWizardForm .choice-card,
+#lifeWizardForm label:has(input[type="radio"]) {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 38%),
+        linear-gradient(180deg, rgba(10,25,50,.98) 0%, rgba(5,15,33,.98) 100%) !important;
+    border: 1px solid rgba(199,153,49,.48) !important;
+    border-radius: 18px !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.06),
+        0 14px 30px rgba(0,0,0,.24) !important;
+    color: #fff6d8 !important;
+    transition:
+        transform .16s ease,
+        border-color .16s ease,
+        box-shadow .16s ease,
+        background .16s ease !important;
+}
+
+#lifeWizardForm .lq-micro-step label:hover,
+#lifeWizardForm .lq-choice-card:hover,
+#lifeWizardForm .lq-option-card:hover,
+#lifeWizardForm .lq-answer-card:hover,
+#lifeWizardForm .lq-radio-card:hover,
+#lifeWizardForm .choice-card:hover,
+#lifeWizardForm label:has(input[type="radio"]):hover {
+    transform: translateY(-1px) !important;
+    border-color: rgba(243,214,136,.82) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 18px 38px rgba(0,0,0,.32),
+        0 0 0 1px rgba(243,214,136,.18) !important;
+}
+
+#lifeWizardForm .lq-micro-step label:has(input[type="radio"]:checked),
+#lifeWizardForm label:has(input[type="radio"]:checked),
+#lifeWizardForm .lq-choice-card.is-selected,
+#lifeWizardForm .lq-option-card.is-selected,
+#lifeWizardForm .lq-answer-card.is-selected,
+#lifeWizardForm .lq-radio-card.is-selected,
+#lifeWizardForm .choice-card.is-selected {
+    background:
+        radial-gradient(circle at 20% 0%, rgba(243,214,136,.20), transparent 42%),
+        linear-gradient(180deg, rgba(18,43,78,.99) 0%, rgba(7,24,52,.99) 100%) !important;
+    border-color: #f3d688 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 20px 42px rgba(0,0,0,.36),
+        0 0 0 2px rgba(243,214,136,.22) !important;
+}
+
+#lifeWizardForm .lq-micro-step label strong,
+#lifeWizardForm .lq-choice-card strong,
+#lifeWizardForm .lq-option-card strong,
+#lifeWizardForm .lq-answer-card strong,
+#lifeWizardForm .lq-radio-card strong,
+#lifeWizardForm .choice-card strong,
+#lifeWizardForm label:has(input[type="radio"]) strong,
+#lifeWizardForm label:has(input[type="radio"]) .choice-title,
+#lifeWizardForm label:has(input[type="radio"]) .lq-choice-title {
+    color: #fff6d8 !important;
+    font-weight: 950 !important;
+}
+
+#lifeWizardForm .lq-micro-step label small,
+#lifeWizardForm .lq-choice-card small,
+#lifeWizardForm .lq-option-card small,
+#lifeWizardForm .lq-answer-card small,
+#lifeWizardForm .lq-radio-card small,
+#lifeWizardForm .choice-card small,
+#lifeWizardForm label:has(input[type="radio"]) small,
+#lifeWizardForm label:has(input[type="radio"]) .choice-helper,
+#lifeWizardForm label:has(input[type="radio"]) .lq-choice-helper,
+#lifeWizardForm label:has(input[type="radio"]) .choice-kicker,
+#lifeWizardForm label:has(input[type="radio"]) .lq-choice-kicker {
+    color: rgba(248,250,252,.78) !important;
+}
+
+/* Keep radio indicators gold and premium */
+#lifeWizardForm input[type="radio"] {
+    accent-color: #d8a92f !important;
+}
+
+#lifeWizardForm label:has(input[type="radio"])::after,
+#lifeWizardForm .lq-choice-card::after,
+#lifeWizardForm .lq-option-card::after,
+#lifeWizardForm .lq-answer-card::after,
+#lifeWizardForm .lq-radio-card::after,
+#lifeWizardForm .choice-card::after {
+    border-color: rgba(243,214,136,.64) !important;
+}
+
+/* Do not let the broad label rule damage form/contact labels */
+#lifeWizardForm #lifeContactCaptureWrap label,
+#lifeWizardForm .lq-contact-field label,
+#lifeWizardForm .lq-consent label {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    color: inherit !important;
+    border-radius: 0 !important;
+}
+
+/* Keep age slider tile untouched but visually aligned */
+#lifeWizardForm .lq-age-slider-card,
+#lifeWizardForm .age-slider-card,
+#lifeWizardForm .lq-age-card {
+    border-color: rgba(243,214,136,.64) !important;
+}
+
+
+/* PREMIUM GRAPHITE-SILVER QUESTION SHELL — replaces muddy brown form holder */
+#lifeWizardForm #lifeStep1Panel,
+#lifeWizardForm .lq-step-one-panel,
+#lifeWizardForm .lq-contact-first-form-surface,
+#lifeWizardForm .lq-step-panel-pad:has(.lq-micro-step),
+#lifeWizardForm .lq-step-panel-pad:has(.lq-choice-grid),
+#lifeWizardForm .lq-step-panel-pad:has(label input[type="radio"]) {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(255,255,255,.18), transparent 34%),
+        radial-gradient(circle at 85% 12%, rgba(243,214,136,.12), transparent 32%),
+        linear-gradient(180deg, rgba(42,48,61,.94) 0%, rgba(18,24,36,.96) 48%, rgba(8,18,34,.98) 100%) !important;
+    border: 1px solid rgba(226,232,240,.24) !important;
+    border-radius: 22px !important;
+    box-shadow:
+        0 28px 70px rgba(0,0,0,.38),
+        inset 0 1px 0 rgba(255,255,255,.16),
+        inset 0 0 0 1px rgba(243,214,136,.10) !important;
+}
+
+/* stronger gold hierarchy inside the question shell */
+#lifeWizardForm #lifeStep1Panel h2,
+#lifeWizardForm #lifeStep1Panel h3,
+#lifeWizardForm #lifeStep1Panel .lq-step-title,
+#lifeWizardForm #lifeStep1Panel .lq-micro-question,
+#lifeWizardForm .lq-contact-first-form-surface h2,
+#lifeWizardForm .lq-contact-first-form-surface h3,
+#lifeWizardForm .lq-contact-first-form-surface .lq-step-title,
+#lifeWizardForm .lq-contact-first-form-surface .lq-micro-question {
+    color: #fff9e8 !important;
+    text-shadow:
+        0 1px 0 rgba(0,0,0,.35),
+        0 0 22px rgba(243,214,136,.16) !important;
+}
+
+#lifeWizardForm #lifeStep1Panel .lq-step-kicker,
+#lifeWizardForm #lifeStep1Panel .lq-step-intro-title,
+#lifeWizardForm .lq-contact-first-form-surface .lq-step-kicker,
+#lifeWizardForm .lq-contact-first-form-surface .lq-step-intro-title,
+#lifeWizardForm .lq-contact-first-form-surface .lq-contact-first-proof-kicker {
+    color: #f3d688 !important;
+    text-shadow: 0 0 18px rgba(243,214,136,.24) !important;
+}
+
+/* add premium gold edge without turning the whole shell brown */
+#lifeWizardForm #lifeStep1Panel::before,
+#lifeWizardForm .lq-contact-first-form-surface::before {
+    background:
+        linear-gradient(90deg, transparent, rgba(243,214,136,.55), transparent) !important;
+    opacity: .75 !important;
+}
+
+/* make selected answer gold pop harder against silver graphite shell */
+#lifeWizardForm label:has(input[type="radio"]:checked),
+#lifeWizardForm .lq-choice-card.is-selected,
+#lifeWizardForm .lq-option-card.is-selected,
+#lifeWizardForm .lq-answer-card.is-selected,
+#lifeWizardForm .lq-radio-card.is-selected,
+#lifeWizardForm .choice-card.is-selected {
+    border-color: #f8d978 !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 20px 44px rgba(0,0,0,.38),
+        0 0 0 2px rgba(248,217,120,.30),
+        0 0 34px rgba(248,217,120,.13) !important;
+}
+
+/* keep contact/final submitted surfaces from inheriting this question-shell treatment */
+#lifeWizardForm #lifeContactCaptureWrap,
+#lifeWizardForm #lifePostSubmitSlot,
+#lifeWizardForm .lq-final-review-unified-card {
+    backdrop-filter: none !important;
+}
+
 </style>
 
 @using System.Text.Json
