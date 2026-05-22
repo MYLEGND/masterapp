@@ -431,6 +431,9 @@ namespace Protect_Website.Controllers
                         correlationId,
                         lead.LeadId,
                         captureResult.Reason ?? "unknown");
+
+                    if (IsAjax())
+                        return StatusCode(500, new { error = "Workstation capture skipped", reason = captureResult.Reason ?? "unknown", bucket = captureResult.Bucket, agentUserId = captureResult.AgentUserId });
                 }
             }
             catch (Exception captureEx)
