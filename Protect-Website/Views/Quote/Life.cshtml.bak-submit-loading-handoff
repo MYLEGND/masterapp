@@ -8629,45 +8629,29 @@ body.life-landing .lq-hero-shell,
 </style>
 
 
-
-
-
 <style>
-/* TRUE SUBMIT LOADING HANDOFF */
-#lifeEducationContactPanel.is-submit-loading #lifeStep1Panel,
-#lifeEducationContactPanel.is-submit-loading #lifeStep2Panel,
-#lifeEducationContactPanel.is-submit-loading #lifeStep2EstimateSummary,
-#lifeEducationContactPanel.is-submit-loading #lifeContactCaptureWrap,
-#lifeEducationContactPanel.is-submit-loading #lifePostSubmitSlot {
-    display: none !important;
-}
-
-#lifeEducationContactPanel.is-submit-loading #lifeProcessingPanel {
-    display: block !important;
-}
-
+/* PROCESSING PANEL CLEANUP — SUBMIT LOADING ONLY */
 #lifeProcessingPanel {
     background:
         radial-gradient(circle at 50% 0%, rgba(243,214,136,.06), transparent 42%),
         linear-gradient(180deg, #062349 0%, #061b39 48%, #05142a 100%) !important;
     border: 1px solid rgba(243,214,136,.48) !important;
     border-radius: 24px !important;
-    color: #f8fafc !important;
     box-shadow:
         0 24px 52px rgba(0,0,0,.30),
         inset 0 1px 0 rgba(255,255,255,.055) !important;
+    color: #f8fafc !important;
 }
 
 #lifeProcessingPanel .lq-step-panel-pad {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    padding: 24px !important;
+    padding: 22px 24px !important;
     margin: 0 !important;
 }
 
-#lifeProcessingPanel .lq-step-progress,
-#lifeProcessingPanel .lq-processing-note {
+#lifeProcessingPanel .lq-step-progress {
     color: #f3d688 !important;
 }
 
@@ -8675,8 +8659,14 @@ body.life-landing .lq-hero-shell,
     color: #fff8e7 !important;
 }
 
-#lifeProcessingPanel .lq-step-helper {
+#lifeProcessingPanel .lq-step-helper,
+#lifeProcessingPanel .lq-processing-note {
     color: rgba(248,250,252,.84) !important;
+}
+
+#lifeProcessingPanel .lq-processing-track {
+    background: rgba(4,16,32,.72) !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
 }
 </style>
 
@@ -12143,29 +12133,6 @@ body.life-landing .lq-hero-shell,
 
     populateAttributionFields();
 
-    const enterSubmitLoading = () => {
-      contactFirstPanel?.classList.add('is-submit-loading');
-      processingPanel?.removeAttribute('hidden');
-      if (processingPanel) processingPanel.style.display = 'block';
-      if (postSubmitSlot) postSubmitSlot.style.display = 'none';
-      if (processingFill) {
-        processingFill.style.width = '18%';
-        requestAnimationFrame(() => { processingFill.style.width = '76%'; });
-      }
-      processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    };
-
-    const exitSubmitLoadingToContact = () => {
-      contactFirstPanel?.classList.remove('is-submit-loading');
-      if (processingPanel) processingPanel.style.display = 'none';
-      if (step2Panel) step2Panel.style.display = 'block';
-      if (contactCaptureWrap) contactCaptureWrap.style.display = 'block';
-      if (processingFill) processingFill.style.width = '0%';
-    };
-
-    enterSubmitLoading();
-    await new Promise(resolve => requestAnimationFrame(resolve));
-
     trackFormSubmitOutcome('attempt', {
       step: 'submit_attempt',
       protectingWho: answer1Hidden?.value || '',
@@ -12204,13 +12171,8 @@ body.life-landing .lq-hero-shell,
         await flushSuccessTracking(leadId, metaLeadEventId);
       }
       clearPersistedFunnelState();
-      if (processingFill) processingFill.style.width = '100%';
       await showPostSubmitSuccess(responseBody, estimatePreview);
-      contactFirstPanel?.classList.remove('is-submit-loading');
-      if (processingPanel) processingPanel.style.display = 'none';
-      if (postSubmitSlot) postSubmitSlot.style.display = 'block';
     } catch (err) {
-      exitSubmitLoadingToContact();
       const responseBody = err && typeof err === 'object' && 'responseBody' in err && err.responseBody && typeof err.responseBody === 'object'
         ? err.responseBody
         : null;
