@@ -453,6 +453,11 @@ namespace Protect_Website.Controllers
                     correlationId,
                     lead.LeadId);
 
+                if (IsAjax())
+                    return StatusCode(500, new { error = "Workstation capture failed", detail = captureEx.ToString() });
+
+                throw;
+
                 await TryWriteLeadPipelineEventAsync(
                     lead,
                     cfg.ProductType,
