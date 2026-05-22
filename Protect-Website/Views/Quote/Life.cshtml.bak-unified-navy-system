@@ -8100,9 +8100,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
 
 
-
-
-
 <style>
 /* =========================================================
    LEGEND LIFE WIZARD — SINGLE NAVY/GOLD AUTHORITY
@@ -8423,7 +8420,7 @@ body.life-landing .lq-hero-shell,
 }
 
 /* mobile */
-@@media (max-width: 720px) {
+@media (max-width: 720px) {
     body.life-landing .lq-hero-shell,
     .lq-hero-shell {
         padding: 16px !important;
