@@ -12498,102 +12498,88 @@ body.life-landing .lq-hero-shell,
 
 
 
-<style>
-/* FINAL PRE-QUESTION MOMENTUM PASS
-   Tightens the space from agent intro → first question.
-   Keeps the premium feel, removes the slow staged gap. */
 
-#lifeEducationContactPanel {
+
+<style>
+/* FINAL FUNNEL MOMENTUM PASS
+   Left-aligns the first question and tightens the section so it feels like one guided flow,
+   not stacked reading blocks. */
+
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
     padding-top: 18px !important;
 }
 
-#lifeEducationContactPanel .lq-contact-first-proof-row {
-    padding-bottom: 9px !important;
-    margin-bottom: 10px !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
+    padding: 2px 0 12px !important;
+    margin: 0 0 18px !important;
 }
 
-#lifeEducationContactPanel .lq-contact-first-proof-chips {
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-title {
+    margin-bottom: 3px !important;
+    line-height: 1.08 !important;
+}
+
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-text {
+    line-height: 1.24 !important;
+    max-width: 46ch !important;
+}
+
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips {
     display: none !important;
 }
 
-#lifeWizardForm .lq-step-title {
-    margin-top: 0 !important;
-    margin-bottom: 6px !important;
-    font-size: clamp(1.05rem, 2vw, 1.25rem) !important;
-    line-height: 1.15 !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+    padding: 42px 52px 42px !important;
 }
 
-#lifeWizardForm .lq-step-helper {
-    margin-top: 0 !important;
-    margin-bottom: 14px !important;
-    max-width: 620px !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-title {
+    text-align: left !important;
+    margin: 0 0 6px !important;
+    font-size: 1.08rem !important;
+    line-height: 1.1 !important;
+}
+
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-helper {
+    text-align: left !important;
+    margin: 0 0 16px !important;
+    max-width: 58ch !important;
     line-height: 1.35 !important;
 }
 
-#lifeWizardForm .lq-step-question {
-    margin-top: 0 !important;
-    margin-bottom: 14px !important;
-    font-size: clamp(1.55rem, 3.2vw, 2rem) !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
+    text-align: left !important;
+    margin: 0 0 18px !important;
+    max-width: 580px !important;
+    font-size: clamp(1.75rem, 3vw, 2.12rem) !important;
     line-height: 1.02 !important;
+    white-space: normal !important;
 }
 
-#lifeWizardForm .lq-choice-grid,
-#lifeWizardForm .lq-options-grid,
-#lifeWizardForm .lq-card-grid {
-    margin-top: 0 !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-choice-grid {
     gap: 12px !important;
 }
 
-#lifeWizardForm .lq-choice-card,
-#lifeWizardForm .lq-card,
-#lifeWizardForm label.lq-card,
-#lifeWizardForm .lq-option-card {
-    min-height: 112px !important;
+body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card-rich {
+    min-height: 120px !important;
     padding: 14px 16px !important;
 }
 
-#lifeWizardForm .lq-choice-icon,
-#lifeWizardForm .lq-card-icon,
-#lifeWizardForm .lq-option-icon {
-    margin-bottom: 8px !important;
-}
-
 @@media (max-width: 720px) {
-    #lifeEducationContactPanel {
-        padding: 15px !important;
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+        padding: 16px !important;
     }
 
-    #lifeEducationContactPanel .lq-contact-first-proof-row {
-        padding-bottom: 8px !important;
-        margin-bottom: 10px !important;
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
+        padding: 28px 20px 28px !important;
     }
 
-    #lifeWizardForm .lq-step-title {
-        margin-bottom: 5px !important;
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step-question {
+        font-size: clamp(1.55rem, 7vw, 1.95rem) !important;
+        margin-bottom: 14px !important;
     }
 
-    #lifeWizardForm .lq-step-helper {
-        margin-bottom: 12px !important;
-        font-size: .92rem !important;
-    }
-
-    #lifeWizardForm .lq-step-question {
-        margin-bottom: 12px !important;
-        font-size: clamp(1.42rem, 7vw, 1.9rem) !important;
-    }
-
-    #lifeWizardForm .lq-choice-grid,
-    #lifeWizardForm .lq-options-grid,
-    #lifeWizardForm .lq-card-grid {
-        gap: 10px !important;
-    }
-
-    #lifeWizardForm .lq-choice-card,
-    #lifeWizardForm .lq-card,
-    #lifeWizardForm label.lq-card,
-    #lifeWizardForm .lq-option-card {
+    body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-card-rich {
         min-height: 104px !important;
-        padding: 13px 14px !important;
     }
 }
 </style>
