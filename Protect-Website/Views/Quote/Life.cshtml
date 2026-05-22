@@ -503,17 +503,17 @@
         "iul" => "long-term protection, flexibility, and future planning",
         _ => "the protection, stability, and long-term fit that matter most"
     };
-    var stepTwoContactKickerText = "Unlock the full review";
-    var contactMethodHelperText = "Add a phone or email so your review stays connected to you.";
-    var contactMethodErrorText = "Add an email or phone so your protection review stays connected to you.";
-    var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this estimate and the options tied to this request.";
-    var consentErrorText = "Please check the box so we can send your estimate and options.";
-    var stepTwoContactTitleText = "Where should we send your review?";
+    var stepTwoContactKickerText = "Your review is ready";
+    var contactMethodHelperText = "Add the best contact method so your review stays connected to you.";
+    var contactMethodErrorText = "Add an email or phone so your review can be saved and sent.";
+    var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this review and the options tied to this request.";
+    var consentErrorText = "Please check the box so we can send your review and options.";
+    var stepTwoContactTitleText = "Where should we send it?";
     var stepTwoContactCopyText = "Save your preview and continue to the full review.";
-    var stepTwoSubmitNoteText = "Save your preview and continue to the full review.";
+    var stepTwoSubmitNoteText = "Next: full review and scheduling.";
     var stepTwoProgressText = "Protection preview";
     var finalStepHeading = "Your protection preview is ready";
-    var finalStepHelper = "Save your preview, then continue to the full recommendation.";
+    var finalStepHelper = "Save your preview to continue into the full recommendation.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -525,21 +525,21 @@
         : null;
     var stepOneContinueButtonText = normalizedOfferKey switch
     {
-        "term" => "See My Term Life Estimate",
-        "wholelife" => "See My Whole Life Estimate",
-        "finalexpense" => "See My Final Expense Estimate",
-        "mortgage" => "See My Home Protection Estimate",
-        "iul" => "See My IUL Estimate",
-        _ => "See My Protection Estimate"
+        "term" => "Continue My Term Review",
+        "wholelife" => "Continue My Whole Life Review",
+        "finalexpense" => "Continue My Final Expense Review",
+        "mortgage" => "Continue My Home Protection Review",
+        "iul" => "Continue My IUL Review",
+        _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Send My Estimate";
+    var finalSubmitButtonText = "Continue to My Review";
     var heroHeadline = isContactFirstEducationVariant
         ? "See the protection path that best aligns with the people who depend on you most."
         : "See the protection path that best aligns with your family, budget, and goals.";
     var heroSubheadline = isContactFirstEducationVariant
         ? "Life insurance can feel confusing. Walk through a short protection review and see which path points toward your next best step."
         : (isLandingView ? "Walk through a few focused details to see your starting point, monthly range, and whether the result is worth reviewing." : string.Empty);
-    var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Estimate first" : "Quick • Private • Estimate first";
+    var heroTrustNote = isContactFirstEducationVariant ? "Private • Focused • Review first" : "Private • Focused • Review first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
         : "Zac Owen";
@@ -577,23 +577,23 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Personal guidance";
-    var contactFirstProofText = "Walk through a short protection review to see your starting point, monthly range, and whether the result is worth reviewing.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Protection preview", "Personalized review", "Clear next step" };
+    var contactFirstProofText = "Walk through a focused protection review to see your starting point, monthly range, and next step.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Protection preview", "Personalized review", "Next step" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
     var lowFrictionHeroHeadline = "See which protection path best aligns with your family.";
     var lowFrictionHeroSubheadline = "Start with a focused protection check. You’ll see a practical starting point, monthly range, and a clear next step.";
-    var lowFrictionHeroCtaText = "See My Options";
-    var lowFrictionHeroCtaNote = "Protection preview • Personalized review • Scheduling available";
-    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
+    var lowFrictionHeroCtaText = "Start My Review";
+    var lowFrictionHeroCtaNote = "Protection preview • Full review • Scheduling available";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "Focused review", "Starting range", "Scheduling available" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A guided starting point", "A realistic monthly range", "Clear next step" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = false;
     var showPreContactEducationSummary = false;
     var productFocusTitle = "What this review is built around";
-    var productFocusCopy = "This review stays centered on the protection gap you came here to solve, so the next step feels focused and relevant.";
+    var productFocusCopy = "This review stays centered on the protection gap you came here to solve, so the next step is clear.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
     {
         ("Focused guidance", "See a starting point centered on the protection gap you are actually trying to solve."),
@@ -611,9 +611,9 @@
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see whether lifelong protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Send yourself this whole life preview, then review whether lifelong protection aligns with the long-term stability you want.";
+        finalStepHelper = "Save this whole life preview to review whether lifelong protection aligns with the stability you want.";
         agentTrustBio = "I’ll help you review whether lifelong protection truly fits the stability you want to keep in place.";
-        finalSubmitButtonText = "Send My Whole Life Estimate";
+        finalSubmitButtonText = "Continue My Whole Life Review";
         productFocusTitle = "Why people explore whole life";
         productFocusCopy = "Whole life is usually explored by people who want protection that stays with them, does not expire later, and supports a steadier long-term plan.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -633,9 +633,9 @@
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "You’ll see whether term life looks like the clearest practical fit first.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Send yourself this term life preview, then review what level of protection best aligns with your family’s stability.";
+        finalStepHelper = "Save this term life preview to review what level of protection supports your family’s stability.";
         agentTrustBio = "I’ll help you review what level of protection may realistically matter most for your family.";
-        finalSubmitButtonText = "Send My Term Life Estimate";
+        finalSubmitButtonText = "Continue My Term Review";
         productFocusTitle = "Why people explore term life";
         productFocusCopy = "Term life is usually explored when the goal is practical family protection during the years income, bills, and day-to-day stability matter most.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -655,9 +655,9 @@
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see whether final expense protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Send yourself this final expense preview, then review what level of protection best protects your loved ones from added financial pressure.";
+        finalStepHelper = "Save this final expense preview to review what level of protection eases the burden on your loved ones.";
         agentTrustBio = "I’ll help you review what may best spare your loved ones financial pressure during a hard time.";
-        finalSubmitButtonText = "Send My Final Expense Estimate";
+        finalSubmitButtonText = "Continue My Final Expense Review";
         productFocusTitle = "Why people explore final expense";
         productFocusCopy = "Final expense coverage is usually explored to help loved ones avoid carrying funeral costs, final bills, and added financial pressure during an already difficult moment.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -677,9 +677,9 @@
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see whether mortgage protection looks like the clearest home-first fit first.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Send yourself this mortgage protection preview, then review what level of protection best supports the home and financial breathing room.";
+        finalStepHelper = "Save this mortgage protection preview to review what level of protection supports the home and financial breathing room.";
         agentTrustBio = "I’ll help you review what may best protect the home and the financial breathing room around it.";
-        finalSubmitButtonText = "Send My Mortgage Estimate";
+        finalSubmitButtonText = "Continue My Home Protection Review";
         productFocusTitle = "Why people explore mortgage protection";
         productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority, not overexplaining policy mechanics.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -699,9 +699,9 @@
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see whether indexed universal life looks like the clearest long-range fit first.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Send yourself this IUL preview, then review whether a flexible long-term protection strategy aligns with your goals.";
+        finalStepHelper = "Save this IUL preview to review whether long-term flexibility aligns with your goals.";
         agentTrustBio = "I’ll help you review whether a more flexible long-term protection strategy actually fits what you want to build.";
-        finalSubmitButtonText = "Send My IUL Estimate";
+        finalSubmitButtonText = "Continue My IUL Review";
         productFocusTitle = "Why people explore indexed universal life";
         productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with more flexibility built into future planning and legacy conversations.";
         productFocusCards = new List<(string Title, string Copy)>
@@ -714,11 +714,11 @@
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         stepOneContinueButtonText = "See My Starting Point";
-        finalSubmitButtonText = "Send My Estimate";
+        finalSubmitButtonText = "Continue to My Review";
         finalStepHeading = "Your protection preview is ready";
-        finalStepHelper = "Send it to yourself to unlock the full recommendation and continue into scheduling.";
-        stepTwoContactTitleText = "Where should we send your estimate?";
-        stepTwoContactCopyText = "Save your preview, unlock the full recommendation, and continue into scheduling.";
+        finalStepHelper = "Save your preview to continue into the full recommendation.";
+        stepTwoContactTitleText = "Where should we send it?";
+        stepTwoContactCopyText = "Save your preview and continue to the full review.";
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "Protection preview • Personalized review • Scheduling available";
@@ -740,12 +740,12 @@
 
     var contactFirstBridgeText = normalizedOfferKey switch
     {
-        "wholelife" => "Start my whole life estimate",
-        "term" => "Start my term life estimate",
-        "finalexpense" => "Start my final expense estimate",
-        "mortgage" => "Start my home protection estimate",
-        "iul" => "Start my IUL estimate",
-        _ => "Start my protection estimate"
+        "wholelife" => "Start my whole life review",
+        "term" => "Start my term life review",
+        "finalexpense" => "Start my final expense review",
+        "mortgage" => "Start my home protection review",
+        "iul" => "Start my IUL review",
+        _ => "Start my protection review"
     };
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
@@ -5878,6 +5878,276 @@ body.life-final-step-active #submitLife {
     }
 }
 
+
+/* ================================================================
+   Funnel hierarchy repair — lean contact step + auto booking embed
+   ================================================================ */
+
+/* Contact step: make the submit action the visual destination */
+body.life-final-step-active .lq-hero-shell {
+    max-width: 720px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding-top: 8px !important;
+    padding-bottom: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal,
+body.life-final-step-active #lifeEducationContactPanel .lq-helper-intro {
+    display: none !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid rgba(199,153,49,0.14) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-avatar {
+    width: 38px !important;
+    height: 38px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-title {
+    font-size: .92rem !important;
+    line-height: 1.12 !important;
+    color: #fff7df !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-text {
+    font-size: .72rem !important;
+    line-height: 1.22 !important;
+    color: rgba(248,250,252,0.68) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    margin-bottom: 7px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: 1.08rem !important;
+    line-height: 1.14 !important;
+    color: #fff7df !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap {
+    margin-bottom: 9px !important;
+    gap: 7px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    padding: 7px 8px !important;
+    border-radius: 10px !important;
+    background: rgba(8,16,30,0.55) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat strong,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat .value {
+    color: #f7d780 !important;
+    font-weight: 900 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    font-size: .76rem !important;
+    margin-bottom: 4px !important;
+    color: rgba(248,250,252,0.78) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control,
+body.life-final-step-active #lifeEducationContactPanel .form-select {
+    min-height: 42px !important;
+    padding: 9px 10px !important;
+    margin-bottom: 0 !important;
+    border-radius: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-consent,
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    margin-top: 6px !important;
+    padding: 9px 10px !important;
+    border-radius: 12px !important;
+    background: rgba(8,16,30,0.52) !important;
+    border: 1px solid rgba(199,153,49,0.14) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .consent-main {
+    font-size: .72rem !important;
+    line-height: 1.28 !important;
+    color: rgba(248,250,252,0.72) !important;
+}
+
+body.life-final-step-active #lifeSubmitTrustNote {
+    color: #f3d688 !important;
+    font-size: .8rem !important;
+    font-weight: 860 !important;
+    margin-bottom: 6px !important;
+}
+
+body.life-final-step-active #submitLife {
+    min-height: 56px !important;
+    margin-top: 6px !important;
+    font-size: 1rem !important;
+    box-shadow:
+        0 16px 30px rgba(0,0,0,0.30),
+        0 0 0 1px rgba(248,220,145,0.22),
+        0 0 24px rgba(226,186,93,0.18) !important;
+}
+
+/* Post-submit: booking appears automatically and stays on-brand */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226,186,93,0.11), transparent 36%),
+        linear-gradient(180deg, #0d182d 0%, #08111f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    color: #f8fafc !important;
+    box-shadow:
+        0 18px 38px rgba(0,0,0,0.30),
+        inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.76) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.20) !important;
+    border-radius: 16px !important;
+    padding: 14px 15px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 8px !important;
+}
+
+.lq-booking-primary {
+    display: none !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.82 !important;
+    font-weight: 800 !important;
+    font-size: .78rem !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 14px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-shell.is-auto-open .lq-booking-embed-status {
+    margin-bottom: 7px !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 8px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 660px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active .lq-hero-shell {
+        padding: 10px 12px 12px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+        padding: 6px 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two {
+        grid-template-columns: 1fr !important;
+    }
+
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 590px !important;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -9767,9 +10037,9 @@ body.life-final-step-active #submitLife {
             ? 'Continue in new tab'
             : 'Review saved';
 
-    const showPrimaryCta = !normalized.loading && normalized.enabled && normalized.canEmbed;
+    const showPrimaryCta = false;
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
-    const showInlineShell = showPrimaryCta && !shouldUseBookingModal(normalized);
+    const showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
 
     postSubmitSlot.innerHTML = `
       <section class="lq-post-submit-card" aria-labelledby="lifePostSubmitBookingTitle">
@@ -9785,11 +10055,11 @@ body.life-final-step-active #submitLife {
             ${(!normalized.loading && normalized.pendingConfirmation) ? `<div class="lq-booking-pending-note">${escapeHtml(publicBookingPendingText)}</div>` : ''}
           </div>
           <div class="lq-booking-actions">
-            ${showPrimaryCta ? `<button type="button" class="btn-gold lq-booking-primary" id="lifeBookingPrimaryCta">${escapeHtml(publicBookingCtaText)}</button>` : ''}
+            
             ${showFallbackLink ? `<a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText)}</a>` : ''}
           </div>
           ${showInlineShell ? `
-            <div class="lq-booking-embed-shell" id="lifeBookingInlineShell" hidden>
+            <div class="lq-booking-embed-shell is-auto-open" id="lifeBookingInlineShell">
               <div class="lq-booking-embed-status" id="lifeBookingInlineStatus">${escapeHtml(publicBookingLoadingText)}</div>
               <div class="lq-booking-embed-frame-wrap" id="lifeBookingInlineFrameSlot"></div>
             </div>
@@ -9798,6 +10068,15 @@ body.life-final-step-active #submitLife {
       </section>`;
 
     postSubmitSlot.hidden = false;
+
+    const inlineShellAuto = document.getElementById('lifeBookingInlineShell');
+    const inlineFrameSlotAuto = document.getElementById('lifeBookingInlineFrameSlot');
+    const inlineStatusAuto = document.getElementById('lifeBookingInlineStatus');
+    if (showInlineShell && inlineShellAuto instanceof HTMLElement) {
+      inlineShellAuto.hidden = false;
+      renderBookingIframe(inlineFrameSlotAuto, inlineStatusAuto, normalizePublicBookingPayload(publicBookingState, payload).embedUrl);
+      markAppointmentEmbedViewed('website_embed', normalizePublicBookingPayload(publicBookingState, payload));
+    }
 
     const primaryCta = document.getElementById('lifeBookingPrimaryCta');
     if (primaryCta instanceof HTMLButtonElement) {
