@@ -144,12 +144,23 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             lead.UpdatedUtc = submittedUtc;
         }
 
+        await _db.SaveChangesAsync(cancellationToken);
+
         if (websiteLead != null)
         {
-            await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
+            try
+            {
+                await UpsertIntakeLinkAsync(websiteLead, lead, agentUserId, bucket, submittedUtc, cancellationToken);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Website life lead {WebsiteLeadId} created workstation lead {WorkstationLeadId}, but intake link enrichment failed.",
+                    request.WebsiteLeadId,
+                    lead.LeadId);
+            }
         }
-
-        await _db.SaveChangesAsync(cancellationToken);
 
         return new WebsiteLifeLeadCaptureResult(true, created, lead.LeadId, bucket, agentUserId, null);
     }
