@@ -10865,7 +10865,7 @@ body.life-landing .lq-hero-shell,
     }
 
     if (funnelPanel === step1Panel) {
-      return getActiveMicroStepElement()?.querySelector('.lq-step-question') || step1Progress || funnelPanel;
+      return step1Progress || funnelPanel;
     }
 
     if (funnelPanel === processingPanel) {
@@ -12615,5 +12615,22 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-step
         padding-top: 22px !important;
         padding-bottom: 26px !important;
     }
+}
+</style>
+
+
+<style>
+/* FINAL QUESTION FOCUS RING KILL SWITCH
+   Prevents mobile browsers from drawing a blue focus rectangle around question labels
+   during automatic micro-step progression. */
+
+#lifeWizardForm .lq-step-question,
+#lifeWizardForm .lq-step-question:focus,
+#lifeWizardForm .lq-step-question:focus-visible,
+#lifeWizardForm .lq-choice-label,
+#lifeWizardForm .lq-choice-label:focus,
+#lifeWizardForm .lq-choice-label:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
 }
 </style>
