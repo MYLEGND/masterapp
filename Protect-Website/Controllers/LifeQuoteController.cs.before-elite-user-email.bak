@@ -600,7 +600,7 @@ if (!ModelState.IsValid)
 
                     var userMessage = new Message
                     {
-                        Subject = $"Your protection review is ready — {websiteName}",
+                        Subject = $"Your Recommendation Summary — {websiteName}",
                         Body = new ItemBody
                         {
                             ContentType = BodyType.Html,
@@ -1459,226 +1459,40 @@ if (!ModelState.IsValid)
             var coverageLabel   = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount);
             var tobaccoLabel    = ResolveLabel(tobaccoStep?.Options,  model.TobaccoUse);
 
-            
+            var rows = new LeadEmailTemplate.RowBuilder();
             var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange) &&
                 (model.AgeRange.Contains('-') || model.AgeRange.Contains('+'))
                 ? model.AgeRange
                 : model.Age?.ToString(CultureInfo.InvariantCulture);
 
-            var recommendationTitle =
-                !string.IsNullOrWhiteSpace(model.RecommendationPrimaryTitle)
-                    ? model.RecommendationPrimaryTitle.Trim()
-                    : "Protection Review";
+            rows.Section("Your Answers")
+                .Row("Protecting",  protectingLabel)
+                .Row("Main goal",   goalLabel)
+                .Row("Coverage",    coverageLabel)
+                .Row("Tobacco use", tobaccoLabel)
+                .Row("Age",         ageLabel);
 
-            var reviewHeadline = recommendationTitle switch
+            rows.Section("Your Recommendation Summary");
+            rows.RowHtml("", BuildRecCardHtml(model.RecommendationPrimaryKey,   model.RecommendationPrimaryTitle,   "Best Fit",      isPrimary: true));
+            if (!string.IsNullOrWhiteSpace(model.RecommendationSecondaryKey) || !string.IsNullOrWhiteSpace(model.RecommendationSecondaryTitle))
             {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "Your whole life estimate is worth confirming.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "Your term life estimate is worth confirming.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "Your final expense estimate is worth confirming.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "Your mortgage protection estimate is worth confirming.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "Your IUL estimate is worth confirming.",
-                _ => "Your protection review is ready."
-            };
+                rows.RowHtml("", BuildRecCardHtml(model.RecommendationSecondaryKey, model.RecommendationSecondaryTitle, "Also Consider", isPrimary: false));
+            }
 
-            var surfacedCopy = recommendationTitle switch
-            {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "You may be looking for lifelong protection, stable structure, and long-term family support.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "You may be looking to protect income, major responsibilities, and the years your family depends on most.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "You may be looking to reduce the financial pressure left behind for loved ones.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "You may be looking to help protect the home, payment stability, and household continuity.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "You may be exploring long-term protection with flexibility and future planning potential.",
-                _ => "Your answers point toward a protection gap worth reviewing."
-            };
+            rows.Section("What Happens Next");
+            var hasAttachedAgentFirstName =
+                !string.IsNullOrWhiteSpace(attachedAgentFirstName) &&
+                !string.Equals(attachedAgentFirstName.Trim(), "there", StringComparison.OrdinalIgnoreCase);
+            var nextStepContactName = hasAttachedAgentFirstName
+                ? attachedAgentFirstName!.Trim()
+                : "One of our licensed representatives";
+            rows.RowHtml("", @"<div style=""color:rgba(249,250,251,0.78);font-size:14px;line-height:1.6;"">
+  Keep this summary for reference. If you want help comparing options or pressure-testing the estimate,
+  " + WebUtility.HtmlEncode(nextStepContactName) + @" can help you talk through the next best fit.
+  There is no obligation.
+</div>");
 
-            var timingCopy = recommendationTitle switch
-            {
-                var t when t.Contains("Whole", StringComparison.OrdinalIgnoreCase)
-                    => "Permanent coverage is sensitive to age, health, design, and funding. The right structure matters more than just seeing a number.",
-                var t when t.Contains("Term", StringComparison.OrdinalIgnoreCase)
-                    => "Rates and approval flexibility can shift over time as age and health change.",
-                var t when t.Contains("Final", StringComparison.OrdinalIgnoreCase)
-                    => "Waiting rarely improves pricing or eligibility flexibility for final expense coverage.",
-                var t when t.Contains("Mortgage", StringComparison.OrdinalIgnoreCase)
-                    => "The mortgage payment does not pause if life changes unexpectedly.",
-                var t when t.Contains("IUL", StringComparison.OrdinalIgnoreCase)
-                    => "IUL structure, funding, and long-term assumptions should be reviewed carefully before deciding.",
-                _ => "Rates and approval options can shift over time depending on age and health."
-            };
-
-            var nextStepName =
-                !string.IsNullOrWhiteSpace(attachedAgentFirstName)
-                    ? attachedAgentFirstName.Trim()
-                    : "your licensed agent";
-
-            var coverageLabel   = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount);
-
-            string estimatedRange =
-                recommendationTitle.Contains("Whole", StringComparison.OrdinalIgnoreCase) ? "$57-$66/mo" :
-                recommendationTitle.Contains("Term", StringComparison.OrdinalIgnoreCase) ? "$28-$46/mo" :
-                recommendationTitle.Contains("Final", StringComparison.OrdinalIgnoreCase) ? "$41-$63/mo" :
-                recommendationTitle.Contains("Mortgage", StringComparison.OrdinalIgnoreCase) ? "$49-$81/mo" :
-                recommendationTitle.Contains("IUL", StringComparison.OrdinalIgnoreCase) ? "$110-$220/mo" :
-                "$40-$85/mo";
-
-            return $@"
-<!DOCTYPE html>
-<html>
-<body style=""margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"">
-<div style=""width:100%;padding:24px 12px;"">
-<div style=""max-width:680px;margin:0 auto;background:#071d3d;border:1px solid rgba(212,175,55,.55);border-radius:26px;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,.25);"">
-
-<div style=""padding:22px 24px 18px;background:linear-gradient(180deg,#10284f 0%,#071d3d 100%);border-bottom:1px solid rgba(212,175,55,.22);"">
-<div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;"">
-Review Ready
-</div>
-
-<div style=""color:#fff8e7;font-size:42px;line-height:1.02;font-weight:900;max-width:560px;"">
-{reviewHeadline}
-</div>
-
-<div style=""margin-top:16px;color:rgba(248,250,252,.84);font-size:16px;line-height:1.55;font-weight:650;max-width:580px;"">
-Your answers point toward protection designed around your situation. The estimate is saved, but the review still needs to confirm the structure, monthly fit, carrier direction, and next best step before making a decision.
-</div>
-
-<div style=""margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);"">
-<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Estimate saved</span>
-<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">25+ carriers</span>
-<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">No obligation</span>
-</div>
-</div>
-
-<div style=""padding:20px 24px 24px;"">
-
-<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
-<tr>
-<td style=""width:50%;padding-right:6px;vertical-align:top;"">
-<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
-What surfaced
-</div>
-<div style=""color:#f8fafc;font-size:16px;line-height:1.42;font-weight:800;"">
-{surfacedCopy}
-</div>
-</div>
-</td>
-
-<td style=""width:50%;padding-left:6px;vertical-align:top;"">
-<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
-Why timing matters
-</div>
-<div style=""color:#f8fafc;font-size:16px;line-height:1.42;font-weight:800;"">
-{timingCopy}
-</div>
-</div>
-</td>
-</tr>
-</table>
-
-<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
-<tr>
-<td style=""width:50%;padding-right:6px;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Estimated Monthly Range
-</div>
-<div style=""color:#fff8e7;font-size:34px;font-weight:900;"">
-{estimatedRange}
-</div>
-</div>
-</td>
-
-<td style=""width:50%;padding-left:6px;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Coverage Range To Review
-</div>
-<div style=""color:#fff8e7;font-size:30px;font-weight:900;"">
-{coverageLabel}
-</div>
-</div>
-</td>
-</tr>
-</table>
-
-<div style=""background:#08254d;border:1px solid rgba(243,214,136,.20);border-radius:18px;padding:18px;margin-bottom:18px;"">
-<div style=""color:#fff8e7;font-size:17px;line-height:1.5;font-weight:700;"">
-We compare coverage across top-rated carriers to help match your age, health profile, and protection goal.
-</div>
-
-<div style=""margin-top:10px;color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:600;"">
-Rates and approval options can shift based on age, health, and underwriting changes, which is why reviewing sooner usually gives you more flexibility.
-</div>
-</div>
-
-<div style=""margin-bottom:18px;color:#f8fafc;font-size:16px;line-height:1.58;font-weight:650;"">
-This review needs to confirm whether the premium, coverage amount, and structure actually align with your goals, household needs, and long-term financial direction.
-</div>
-
-<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:18px;"">
-<tr>
-<td style=""width:50%;padding-right:6px;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Built To Protect
-</div>
-<div style=""color:#fff8e7;font-size:18px;font-weight:900;line-height:1.3;"">
-{protectingLabel}
-</div>
-</div>
-</td>
-
-<td style=""width:50%;padding-left:6px;vertical-align:top;"">
-<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Profile Used
-</div>
-<div style=""color:#fff8e7;font-size:18px;font-weight:900;line-height:1.3;"">
-Age {ageLabel} • {tobaccoLabel}
-</div>
-</div>
-</td>
-</tr>
-</table>
-
-<div style=""background:#092955;border:1px solid rgba(243,214,136,.32);border-radius:20px;padding:20px;"">
-<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">
-Finish The Review
-</div>
-
-<div style=""color:#fff8e7;font-size:28px;line-height:1.08;font-weight:900;margin-bottom:12px;"">
-Choose a time to confirm the best fit.
-</div>
-
-<div style=""color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:650;margin-bottom:18px;"">
-{nextStepName} can help confirm the carrier fit, monthly comfort, protection structure, and next best step based on your review.
-</div>
-
-<a href=""https://bookings.microsoft.com/"" style=""display:block;text-align:center;background:linear-gradient(180deg,#f3d688 0%,#d9ad4f 100%);color:#1b1405;text-decoration:none;font-size:18px;font-weight:900;padding:16px 18px;border-radius:16px;border:1px solid #f7dc96;"">
-Complete My Protection Review
-</a>
-</div>
-
-<div style=""margin-top:18px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-Illustrative estimate only. Final eligibility, pricing, underwriting approval, and carrier availability vary by age, health, and state.
-</div>
-
-</div>
-</div>
-</div>
-</body>
-</html>";
-
+            return LeadEmailTemplate.Wrap("Your Recommendation Summary", rows.ToString());
         }
 
         private static void NormalizeDiscoveryAnswers(LifeQuoteFormModel model)
