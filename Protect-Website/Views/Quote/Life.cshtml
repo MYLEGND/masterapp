@@ -606,24 +606,7 @@ input[name="Phone"]:focus {
 }
 
 
-/* PREMIUM GRAPHITE-SILVER QUESTION SHELL — replaces muddy brown form holder */
-#lifeWizardForm #lifeStep1Panel,
-#lifeWizardForm .lq-step-one-panel,
-#lifeWizardForm .lq-contact-first-form-surface,
-#lifeWizardForm .lq-step-panel-pad:has(.lq-micro-step),
-#lifeWizardForm .lq-step-panel-pad:has(.lq-choice-grid),
-#lifeWizardForm .lq-step-panel-pad:has(label input[type="radio"]) {
-    background:
-        radial-gradient(circle at 18% 0%, rgba(255,255,255,.18), transparent 34%),
-        radial-gradient(circle at 85% 12%, rgba(243,214,136,.12), transparent 32%),
-        linear-gradient(180deg, rgba(42,48,61,.94) 0%, rgba(18,24,36,.96) 48%, rgba(8,18,34,.98) 100%) !important;
-    border: 1px solid rgba(226,232,240,.24) !important;
-    border-radius: 22px !important;
-    box-shadow:
-        0 28px 70px rgba(0,0,0,.38),
-        inset 0 1px 0 rgba(255,255,255,.16),
-        inset 0 0 0 1px rgba(243,214,136,.10) !important;
-}
+
 
 /* stronger gold hierarchy inside the question shell */
 #lifeWizardForm #lifeStep1Panel h2,
@@ -680,18 +663,7 @@ input[name="Phone"]:focus {
 }
 
 
-/* TOP TIER FORM SURFACE REFINEMENT — clean graphite, no brown, more breathing room */
-#lifeEducationContactPanel,
-#lifeWizardForm .lq-contact-first-form-surface {
-    background:
-        radial-gradient(circle at 50% 0%, rgba(255,255,255,.10), transparent 38%),
-        linear-gradient(180deg, rgba(10,22,42,.98) 0%, rgba(5,13,27,.99) 100%) !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    border-radius: 24px !important;
-    box-shadow:
-        0 34px 80px rgba(0,0,0,.42),
-        inset 0 1px 0 rgba(255,255,255,.08) !important;
-}
+
 
 /* remove brown agent pill area */
 #lifeEducationContactPanel > .lq-contact-first-proof-row,
@@ -744,6 +716,86 @@ input[name="Phone"]:focus {
     border-color: #f6d46d !important;
     box-shadow:
         0 18px 42px rgba(0,0,0,.38),
+        0 0 0 2px rgba(246,212,109,.24),
+        0 0 28px rgba(246,212,109,.14) !important;
+}
+
+
+/* CLEAN FORM SURFACE RESET — one shell, no maze, no brown */
+#lifeEducationContactPanel {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,.08), transparent 36%),
+        linear-gradient(180deg, #07152b 0%, #050d1b 100%) !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    border-radius: 24px !important;
+    padding: 24px !important;
+    box-shadow:
+        0 34px 80px rgba(0,0,0,.42),
+        inset 0 1px 0 rgba(255,255,255,.06) !important;
+}
+
+/* kill the brown agent strip */
+#lifeEducationContactPanel > .lq-contact-first-proof-row,
+#lifeWizardForm .lq-contact-first-proof-row {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(243,214,136,.20) !important;
+    box-shadow: none !important;
+    margin: 0 0 24px 0 !important;
+    padding: 0 0 20px 0 !important;
+}
+
+/* remove every extra nested question container chrome */
+#lifeWizardForm .lq-contact-first-form-surface,
+#lifeWizardForm #lifeStep1Panel,
+#lifeWizardForm .lq-step-panel-pad,
+#lifeWizardForm .lq-micro-step {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* clean spacing only */
+#lifeWizardForm .lq-step-intro,
+#lifeWizardForm .lq-step-intro-wrap {
+    margin-bottom: 20px !important;
+}
+
+#lifeWizardForm .lq-micro-question,
+#lifeWizardForm #lbl-step1-goal,
+#lifeWizardForm #lbl-step1-protect,
+#lifeWizardForm #lbl-step1-coverage,
+#lifeWizardForm #lbl-step1-age,
+#lifeWizardForm #lbl-step1-tobacco {
+    margin: 18px auto 24px !important;
+    line-height: 1.08 !important;
+    color: #fff6d8 !important;
+    text-shadow: 0 0 18px rgba(243,214,136,.12) !important;
+}
+
+#lifeWizardForm .lq-choice-grid {
+    gap: 16px !important;
+}
+
+/* answer cards stay premium navy/gold */
+#lifeWizardForm label:has(input[type="radio"]) {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 38%),
+        linear-gradient(180deg, rgba(10,25,50,.98) 0%, rgba(5,15,33,.98) 100%) !important;
+    border: 1px solid rgba(199,153,49,.50) !important;
+    border-radius: 18px !important;
+    min-height: 120px !important;
+    padding: 20px 18px !important;
+    box-shadow: 0 14px 30px rgba(0,0,0,.24) !important;
+}
+
+#lifeWizardForm label:has(input[type="radio"]:checked) {
+    border-color: #f6d46d !important;
+    box-shadow:
+        0 18px 42px rgba(0,0,0,.36),
         0 0 0 2px rgba(246,212,109,.24),
         0 0 28px rgba(246,212,109,.14) !important;
 }
