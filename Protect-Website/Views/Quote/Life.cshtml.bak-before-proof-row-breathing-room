@@ -4335,16 +4335,7 @@ body.page-variant-contact-first-education-v1 #lifeEducationContactPanel::before 
     content: none;
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-row {
-    display: grid !important;
-    grid-template-columns: 42px minmax(0, 1fr) !important;
-    align-items: center !important;
-    gap: 14px !important;
-    background: transparent !important;
-    border: 0 !important;
-    border-bottom: 1px solid rgba(59,130,246,.14) !important;
-    padding: 4px 0 16px !important;
-    margin: 0 0 18px !important;
-    box-shadow: none !important;
+    border-bottom-color: rgba(232,196,115,0.18);
 }
 body.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chip {
     color: rgba(245,241,233,0.82);
@@ -5556,36 +5547,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-title {
     font-size: 1rem;
 }
-body.life-final-step-active.page-variant-contact-first-education-v1 
-#lifeEducationContactPanel .lq-contact-first-proof-avatar,
-#lifeEducationContactPanel .lq-contact-first-proof-icon {
-    width: 42px !important;
-    height: 42px !important;
-    flex: 0 0 42px !important;
-    margin: 0 !important;
-}
-
-#lifeEducationContactPanel .lq-contact-first-proof-copy,
-#lifeEducationContactPanel .lq-contact-first-proof-text {
-    min-width: 0 !important;
-    padding: 0 !important;
-    margin: 0 !important;
-}
-
-#lifeEducationContactPanel .lq-contact-first-proof-copy strong,
-#lifeEducationContactPanel .lq-contact-first-proof-text strong {
-    display: block !important;
-    margin: 0 0 3px !important;
-    line-height: 1.12 !important;
-}
-
-#lifeEducationContactPanel .lq-contact-first-proof-copy p,
-#lifeEducationContactPanel .lq-contact-first-proof-text p {
-    margin: 0 !important;
-    line-height: 1.24 !important;
-}
-
-#lifeEducationContactPanel .lq-contact-first-proof-chips {
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-proof-chips {
     display: none;
 }
 body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel .lq-contact-first-form-surface {
