@@ -7078,14 +7078,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                             }
                             <div class="lq-step-panel lq-step1-panel lq-contact-first-wizard-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
-                                    @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
-                                    {
-                                        <div class="lq-step-title">@step1IntroTitle</div>
-                                    }
-                                    @if (!string.IsNullOrWhiteSpace(step1IntroHelper))
-                                    {
-                                        <div class="lq-step-helper">@step1IntroHelper</div>
-                                    }
                                     <div class="lq-step-progress-wrap" aria-live="polite">
                                         <div class="lq-step-progress" id="lifeStep1Progress">Question 1</div>
                                         <div class="lq-step-progress-track" aria-hidden="true">
@@ -7094,6 +7086,14 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="0">
+                                        @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
+                                        {
+                                            <div class="lq-step-title lq-step-intro-only">@step1IntroTitle</div>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(step1IntroHelper))
+                                        {
+                                            <div class="lq-step-helper lq-step-intro-only">@step1IntroHelper</div>
+                                        }
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="@firstDiscoveryQuestionId">
                                             <div class="lq-choice-label lq-step-question" id="@firstDiscoveryQuestionId">@firstDiscoveryStep.Question</div>
                                             <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
@@ -7522,14 +7522,6 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
         {
         <div class="lq-step-panel lq-step1-panel" id="lifeStep1Panel" data-funnel-step="1" @(showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
-                {
-                    <div class="lq-step-title">@step1IntroTitle</div>
-                }
-                @if (!string.IsNullOrWhiteSpace(step1IntroHelper))
-                {
-                    <div class="lq-step-helper">@step1IntroHelper</div>
-                }
                 <div class="lq-step-progress-wrap" aria-live="polite">
                     <div class="lq-step-progress" id="lifeStep1Progress">Question 1</div>
                     <div class="lq-step-progress-track" aria-hidden="true">
@@ -7538,6 +7530,14 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                 </div>
 
                 <div class="lq-micro-step" data-micro-step="0">
+                    @if (!string.IsNullOrWhiteSpace(step1IntroTitle))
+                    {
+                        <div class="lq-step-title lq-step-intro-only">@step1IntroTitle</div>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(step1IntroHelper))
+                    {
+                        <div class="lq-step-helper lq-step-intro-only">@step1IntroHelper</div>
+                    }
                     <div class="lq-choice-group" role="radiogroup" aria-labelledby="@firstDiscoveryQuestionId">
                         <div class="lq-choice-label lq-step-question" id="@firstDiscoveryQuestionId">@firstDiscoveryStep.Question</div>
                         <div class="lq-choice-grid lq-grid-2 lq-step1-twoup">
